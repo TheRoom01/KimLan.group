@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/* ===== ADMIN FORM BASE ===== */
+input,
+select,
+textarea {
+  border: 0.5px solid #000;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 16px; /* tránh iOS zoom */
+  background: #fff;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 1px #000;
+}
+
+/* button */
+button {
+  min-height: 40px;
+  font-size: 16px;
+}
+
+/* checkbox / radio giữ nguyên */
+input[type="checkbox"],
+input[type="radio"] {
+  border: none;
+  padding: 0;
+  box-shadow: none;
+}
+
+/* ===== RESPONSIVE ADMIN ===== */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .admin-header {
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+  }
+
+  .admin-search {
+    max-width: 100% !important;
+  }
+
+  .admin-table {
+    font-size: 14px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  /* Modal full screen */
+  .room-modal {
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  /* Table -> Card */
+  .admin-table-header {
+    display: none;
+  }
+
+  .admin-row {
+    display: block !important;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 12px;
+  }
+
+  .admin-cell {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border: none !important;
+  }
+
+  .admin-actions {
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+}
