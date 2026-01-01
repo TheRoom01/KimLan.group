@@ -18,6 +18,34 @@ type Room = {
 
 export default function RoomCard(props: { room: Room; adminLevel: number }) {
   const { room, adminLevel } = props;
+
+  const title =
+  room.room_code ??
+  room.room_type ??
+  "Phòng cho thuê";
+
+const price =
+  (room as any).price ??
+  (room as any).price_month ??
+  (room as any).monthly_price ??
+  null;
+
+const address =
+  (room as any).address ??
+  (room as any).address_short ??
+  (room as any).location ??
+  "";
+
+const ward =
+  (room as any).ward ??
+  (room as any).ward_name ??
+  "";
+
+const district =
+  (room as any).district ??
+  (room as any).district_name ??
+  "";
+
   const images = room.gallery_urls
     ? room.gallery_urls.split(",").map((i) => i.trim())
     : [];
@@ -144,7 +172,7 @@ const mainImage = gallery[0] || "/no-image.png";
           {/* Dòng 2: Giá (trái) + description (phải, ngay dưới badge) */}
           <div className="flex items-start justify-between gap-3">
             <div className="text-[16px] font-semibold text-sky-600 leading-6">
-              Giá: {Number(room.price || 0).toLocaleString("vi-VN")} đ
+              Giá: {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
             </div>
 
             {room.description ? (
@@ -158,9 +186,9 @@ const mainImage = gallery[0] || "/no-image.png";
           {/* Dòng 3: Địa chỉ */}
           <p className="text-gray-800 font-semibold leading-6 pb-3">
             📍 {isAdmin && room.house_number && `${room.house_number} `}
-            {room.address}
-            {room.ward && `, ${room.ward}`}
-            {room.district && `, ${room.district}`}
+               {address}
+               {ward && `, ${ward}`}
+               {district && `, ${district}`}
           </p>
         </div>
         </Link>
