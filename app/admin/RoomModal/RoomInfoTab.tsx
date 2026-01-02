@@ -112,18 +112,19 @@ export default function RoomInfoTab({
           <label style={labelStyle}>Ảnh</label>
 
           <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            style={{ display: 'none' }}
-            onChange={e => {
-              const files = Array.from(e.target.files ?? [])
-              if (files.length) onUploadFiles(files)
-              // reset để chọn lại cùng file vẫn trigger
-              e.currentTarget.value = ''
-            }}
-          />
+  ref={fileRef}
+  type="file"
+  accept="image/*,video/*"
+  multiple
+  style={{ display: "none" }}
+  onChange={(e) => {
+    const files = Array.from(e.target.files ?? []);
+    const ok = files.filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    if (ok.length) onUploadFiles(ok);
+    e.currentTarget.value = "";
+  }}
+/>
+
 
           <button
             type="button"

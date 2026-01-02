@@ -85,9 +85,9 @@ const HomeClient = ({
 
   // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
-
+ 
   // ================== FILTER ==================
-  const [search, setSearch] = useState("");
+  
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
@@ -106,6 +106,22 @@ const HomeClient = ({
   const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
+ 
+  //-----------------appliedSearch------------
+  const [search, setSearch] = useState("");
+
+  function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(t);
+  }, [value, delayMs]);
+
+  return debounced;
+}
+
+// Debounce search input để fetch không bị trễ 1 nhịp + không spam request
+const appliedSearch = useDebouncedValue(search, 250);
 
   // ================== DEBOUNCE SEARCH ==================
   useEffect(() => {
@@ -117,6 +133,7 @@ const HomeClient = ({
     const s = debouncedSearch.trim();
     return s.length >= 2 ? s : "";
   }, [debouncedSearch]);
+  
 
   // ================== PAGINATION (cache) ==================
   const initCursor: string | UpdatedDescCursor | null =
@@ -809,7 +826,7 @@ useEffect(() => {
         limit: LIMIT,
         cursor: cursorForThisPage,
         adminLevel,
-        search: effectiveSearch || undefined,
+        search: appliedSearch.trim() ? appliedSearch.trim() : undefined,
         minPrice: minPriceApplied,
         maxPrice: maxPriceApplied,
         sortMode,
@@ -861,7 +878,7 @@ useEffect(() => {
   },
   [
     adminLevel,
-    effectiveSearch,
+    appliedSearch,
     minPriceApplied,
     maxPriceApplied,
     sortMode,
@@ -918,17 +935,31 @@ useEffect(() => {
     };
   }, [persistSoon]);
 
-  // ================== FILTER CHANGE ==================
+    const prevAppliedSearchRef = useRef<string>("");
+
+type BaselineState = {
+  pages: any[][];
+  cursors: typeof cursorsRef.current;
+  pageIndex: number;
+  displayPageIndex: number;
+  scrollTop: number;
+  hasNext: boolean;
+};
+
+const preSearchBaselineRef = useRef<BaselineState | null>(null);
+
+// ================== FILTER CHANGE ==================
 const lastFilterSigRef = useRef<string>("");
 
 useEffect(() => {
+  const applied = appliedSearch.trim();
+
   // ✅ nếu vừa hydrate (initial/popstate/restore) thì bỏ qua 1 nhịp FILTER CHANGE
   if (skipNextFilterEffectRef.current) {
     skipNextFilterEffectRef.current = false;
 
-    // cập nhật signature hiện tại để không reset ngay nhịp sau
     const sigNow = [
-      search.trim(),
+      applied,
       String(priceApplied[0]),
       String(priceApplied[1]),
       [...selectedDistricts].sort().join("|"),
@@ -938,6 +969,7 @@ useEffect(() => {
     ].join("~");
     lastFilterSigRef.current = sigNow;
 
+    prevAppliedSearchRef.current = applied;
     return;
   }
 
@@ -945,7 +977,7 @@ useEffect(() => {
 
   // ✅ normalize filter -> signature primitive để tránh array reference gây reset giả
   const sig = [
-    search.trim(),
+    applied,
     String(priceApplied[0]),
     String(priceApplied[1]),
     [...selectedDistricts].sort().join("|"),
@@ -954,15 +986,79 @@ useEffect(() => {
     sortMode ?? "",
   ].join("~");
 
-  // ✅ nếu không đổi thật thì không làm gì (tránh trắng)
   if (sig === lastFilterSigRef.current) return;
   lastFilterSigRef.current = sig;
 
-  // bump version + reset cache (page về 0)
+  // ====== Special logic for SEARCH baseline ======
+  const prevApplied = prevAppliedSearchRef.current;
+  prevAppliedSearchRef.current = applied;
+
+  const searchBecameNonEmpty = prevApplied === "" && applied !== "";
+  const searchBecameEmpty = prevApplied !== "" && applied === "";
+
+  // ✅ Khi bắt đầu search: lưu baseline (list/scroll/page trước search)
+  if (searchBecameNonEmpty) {
+    const el = scrollRef.current;
+    preSearchBaselineRef.current = {
+      pages: pagesRef.current,
+      cursors: cursorsRef.current,
+      pageIndex: pageIndexRef.current,
+      displayPageIndex: displayPageIndex,
+      scrollTop: el ? el.scrollTop : 0,
+      hasNext: hasNext,
+    };
+  }
+
+  // ✅ Khi xoá search: restore baseline (quay lại đúng UI trước search), KHÔNG reset/fetch
+  if (searchBecameEmpty && preSearchBaselineRef.current) {
+    const base = preSearchBaselineRef.current;
+
+    pagesRef.current = base.pages;
+    setPages(base.pages);
+
+    cursorsRef.current = base.cursors;
+    setHasNext(base.hasNext);
+
+    setPageIndex(base.pageIndex);
+    setDisplayPageIndex(base.displayPageIndex);
+
+    // update URL về trạng thái không search + giữ đúng page trước search
+    const qsBack = buildQs({
+      q: "", // không search
+      min: priceApplied[0],
+      max: priceApplied[1],
+      d: selectedDistricts,
+      t: selectedRoomTypes,
+      m: moveFilter,
+      s: sortMode,
+      p: base.pageIndex,
+    });
+
+    // clear baseline để lần search sau lưu lại mới
+    preSearchBaselineRef.current = null;
+
+    // apply ngay, không debounce
+    replaceUrlShallow(qsBack);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = scrollRef.current;
+        if (el) {
+          el.scrollTop = base.scrollTop;
+          lastScrollTopRef.current = base.scrollTop;
+        }
+      });
+    });
+
+    persistSoon();
+    return;
+  }
+
+  // ====== Normal filter change flow (debounced) ======
   filtersVersionRef.current += 1;
 
   const qs = buildQs({
-    q: search.trim(),
+    q: applied,
     min: priceApplied[0],
     max: priceApplied[1],
     d: selectedDistricts,
@@ -971,23 +1067,21 @@ useEffect(() => {
     s: sortMode,
     p: 0,
   });
-  
-// ... sau khi đã tính sig và lastFilterSigRef
-if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
 
-filterApplyTimerRef.current = window.setTimeout(() => {
-  replaceUrlShallow(qs);
-  resetPagination(0);
-  fetchPage(0);
-  persistSoon();
-}, 200);
-
-return () => {
   if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
-};
 
-  }, [
-  search,
+  filterApplyTimerRef.current = window.setTimeout(() => {
+    replaceUrlShallow(qs);
+    resetPagination(0);
+    fetchPage(0);
+    persistSoon();
+  }, 200);
+
+  return () => {
+    if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
+  };
+}, [
+  appliedSearch, // ✅ dùng debounced
   priceApplied,
   selectedDistricts,
   selectedRoomTypes,
@@ -998,7 +1092,10 @@ return () => {
   resetPagination,
   persistSoon,
   fetchPage,
+  displayPageIndex,
+  hasNext,
 ]);
+
 
 
   // ================== NEXT / PREV ==================
@@ -1150,7 +1247,7 @@ useEffect(() => {
         </header>
 
         {/* STICKY FILTER BAR */}
-        <div className="sticky top-0 z-[900] bg-gray-200">
+        <div className="relative lg:sticky lg:top-0 lg:z-[900] bg-gray-200">
           <div className="border-b border-black/10">
             <FilterBar
               districts={districts}

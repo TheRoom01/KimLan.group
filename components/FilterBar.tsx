@@ -180,7 +180,7 @@ const FilterBar = ({
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Tìm theo mã phòng / địa chỉ..."
+        placeholder="Tìm theo địa chỉ..."
         className="w-full rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2"
       />
 
@@ -207,7 +207,7 @@ const FilterBar = ({
 
             {openFilter === "district" && (
               <div
-                className="absolute mt-2 w-64 rounded-xl border bg-white shadow p-3 space-y-2"
+                className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,420px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -254,7 +254,7 @@ const FilterBar = ({
 
             {openFilter === "roomType" && (
               <div
-                className="absolute mt-2 w-64 rounded-xl border bg-white shadow p-3 space-y-2"
+                className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,420px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -301,7 +301,7 @@ const FilterBar = ({
 
             {openFilter === "move" && (
               <div
-                className="absolute mt-2 w-56 rounded-xl border bg-white shadow p-3 space-y-2"
+                className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >

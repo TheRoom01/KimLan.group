@@ -6,6 +6,16 @@ import { supabase } from "@/lib/supabase";
 
 /* ================= Utils ================= */
 
+function formatDMY(iso: any) {
+  if (!iso) return "";
+  const d = new Date(String(iso));
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function formatVND(value: any) {
   const n = Number(value);
   if (Number.isFinite(n)) return n.toLocaleString("vi-VN") + " đ";
@@ -280,6 +290,7 @@ export default function RoomDetailPage() {
   const roomType = room?.room_type ?? room?.type ?? room?.roomType ?? "";
   const statusText = humanStatus(room?.status);
   const priceText = formatVND(room?.price);
+  const updatedText = formatDMY(room?.updated_at);
 
   const houseNumber =
     room?.house_number ??
@@ -423,28 +434,47 @@ export default function RoomDetailPage() {
       </div>
 
       <div className="rounded-xl border p-4 space-y-2">
-        <div className="text-gray-800">
-          <span className="font-medium">Mã:</span> <span>{roomCode || "—"}</span>
-          {roomType && ` | ${roomType}`}
-        </div>
+  {/* Dòng 1: Mã | type  + Badge bên phải */}
+  <div className="flex items-center justify-between gap-3">
+    <div className="text-gray-800">
+      <span className="font-medium">Mã:</span> <span>{roomCode || "—"}</span>
+      {roomType && ` | ${roomType}`}
+    </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-gray-800">
-            <span className="font-medium">Giá:</span>{" "}
-            <span className="font-semibold text-sky-600">{priceText}</span>
-          </div>
+    {statusText && (
+      <span
+        className={[
+          "text-sm px-2 py-[2px] rounded-full border whitespace-nowrap transition-colors",
+          statusText === "Còn Trống"
+            ? "bg-white text-gray-800 border-gray-300 hover:bg-green-500 hover:text-white hover:border-green-500"
+            : "bg-white text-gray-800 border-gray-300 hover:bg-red-500 hover:text-white hover:border-red-500",
+        ].join(" ")}
+        title={statusText}
+      >
+        {statusText}
+      </span>
+    )}
+  </div>
 
-          {statusText && (
-            <span className="text-sm px-2 py-[2px] rounded-full border whitespace-nowrap">
-              {statusText}
-            </span>
-          )}
-        </div>
+  {/* Dòng 2: Giá + updated_at cùng dòng */}
+  <div className="flex items-center justify-between gap-3">
+    <div className="text-gray-800">
+      <span className="font-medium">Giá:</span>{" "}
+      <span className="font-semibold text-sky-600">{priceText}</span>
+    </div>
 
-        {addressLine && <div className="text-gray-800 font-semibold">📍 {addressLine}</div>}
-
-        {descriptionText && <div className="text-gray-800 whitespace-pre-line">{descriptionText}</div>}
+    {updatedText && (
+      <div className="text-sm text-gray-600 whitespace-nowrap">
+        <span className="font-medium"></span> {updatedText}
       </div>
+    )}
+  </div>
+
+  {addressLine && <div className="text-gray-800 font-semibold">📍 {addressLine}</div>}
+
+  {descriptionText && <div className="text-gray-800 whitespace-pre-line">{descriptionText}</div>}
+</div>
+
 
       <div className="space-y-2 pt-4 border-t">
         <h2 className="text-lg font-semibold">Chi phí</h2>
