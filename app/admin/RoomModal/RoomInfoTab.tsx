@@ -37,6 +37,16 @@ export default function RoomInfoTab({
       .filter(Boolean)
   }, [value.gallery_urls])
 
+  const mediaItems = useMemo(() => {
+  const arr: any = (value as any).media;
+  return Array.isArray(arr) ? arr : [];
+}, [(value as any).media]);
+
+const videoItems = useMemo(() => {
+  return mediaItems.filter((m: any) => m?.type === "video" && m?.url);
+}, [mediaItems]);
+
+
   const setImageUrls = (urls: string[]) => {
     onChange({ ...value, gallery_urls: urls.join(', ') })
   }
@@ -133,7 +143,7 @@ export default function RoomInfoTab({
             onClick={() => fileRef.current?.click()}
             aria-busy={uploading}
           >
-            {uploading ? 'Đang tải ảnh...' : 'Thêm ảnh'}
+            {uploading ? 'Đang tải...' : 'Thêm ảnh/Video'}
           </button>
 
           {/* Gợi ý UX nhỏ */}
@@ -177,8 +187,8 @@ export default function RoomInfoTab({
                     e.dataTransfer.effectAllowed = 'move'
                   }}
                   onDragEnter={e => {
-  e.preventDefault()
-  setOverIndex(prev => (prev === idx ? prev : idx))
+                  e.preventDefault()
+                  setOverIndex(prev => (prev === idx ? prev : idx))
 }}
 onDragOver={e => {
   e.preventDefault()
@@ -237,6 +247,40 @@ onDragOver={e => {
           </div>
         </div>
       )}
+
+      {/* Preview video */}
+<div className="flex gap-3 overflow-x-auto">
+  {videoItems.map((m: any, idx: number) => (
+    <div
+      key={`${m.url}-${idx}`}
+      className="relative w-32 h-24 rounded-lg border bg-black flex-shrink-0"
+    >
+      {/* ❌ nút xoá */}
+      <button
+        type="button"
+        onClick={() => {
+          // xoá video khỏi media
+          const nextMedia = (value.media || []).filter(
+            (x: any) => x.url !== m.url
+          );
+          onChange({ ...value, media: nextMedia });
+        }}
+        className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-white/90 hover:bg-white flex items-center justify-center"
+      >
+        ✕
+      </button>
+
+      {/* video preview */}
+      <video
+        src={m.url}
+        className="w-full h-full object-contain rounded-lg"
+        preload="metadata"
+        controls
+      />
+    </div>
+  ))}
+</div>
+
 
       {/* Link Zalo (textarea) - nằm trên mô tả */}
       <TextArea

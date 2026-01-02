@@ -130,60 +130,94 @@ export default function RoomModal({
 
   const [uploading, setUploading] = useState(false)
 
-  // Symbols: func handleUploadFiles
-  async function handleUploadFiles(files: File[]) {
-    if (!files.length) return
+  // ================== UPLOAD FILES ==================
+const handleUploadFiles = async (files: File[]) => {
+  if (!files?.length) return;
 
-    const roomCodeRaw = roomForm.room_code?.trim()
-    if (!roomCodeRaw) {
-      setErrorMsg('Vui lòng nhập Mã phòng trước khi thêm ảnh.')
-      return
-    }
+  // validate basic
+  const okFiles = files.filter(
+    (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
+  );
+  if (!okFiles.length) return;
 
-    // ✅ dùng key an toàn cho storage, nhưng KHÔNG đổi room_code trong DB
-    const safeRoomCode = toSafeStorageKey(roomCodeRaw) || 'room'
-
-    try {
-      setUploading(true)
-      setErrorMsg(null)
-
-      const BUCKET = 'room-images'
-      const folder = `room-${safeRoomCode}`
-
-      const uploadedUrls: string[] = []
-
-      for (const file of files) {
-        const ext = file.name.split('.').pop() || 'jpg'
-        const filename = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`
-        const path = `${folder}/${filename}`
-
-        const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: file.type || 'image/*',
-        })
-        if (upErr) throw upErr
-
-        const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
-        if (data?.publicUrl) uploadedUrls.push(data.publicUrl)
-      }
-
-      // append vào gallery_urls (comma-separated)
-      setRoomForm(prev => {
-        const existing = (prev.gallery_urls || '')
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-
-        const next = [...existing, ...uploadedUrls]
-        return { ...prev, gallery_urls: next.join(', ') }
-      })
-    } catch (e: any) {
-      setErrorMsg(e?.message ?? 'Upload ảnh thất bại')
-    } finally {
-      setUploading(false)
+  // (tuỳ bạn) giới hạn size để tránh upload quá nặng
+  for (const f of okFiles) {
+    const maxBytes = f.type.startsWith("video/") ? 300 * 1024 * 1024 : 20 * 1024 * 1024;
+    if (f.size > maxBytes) {
+      alert(`File quá lớn: ${f.name}`);
+      return;
     }
   }
+
+  setUploading(true);
+  try {
+    const safeRoomCode =
+      (roomForm.room_code || "unknown")
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-zA-Z0-9-_]/g, "") || "unknown";
+
+    const uploadedMedia: { type: "image" | "video"; url: string; path: string }[] = [];
+    const uploadedImageUrls: string[] = [];
+
+    for (const file of okFiles) {
+      const isVideo = file.type.startsWith("video/");
+      const folder = isVideo ? "videos" : "images";
+
+      const ext = (file.name.split(".").pop() || (isVideo ? "mp4" : "jpg")).toLowerCase();
+      const id = (crypto.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`);
+      const filePath = `${folder}/room-${safeRoomCode}/${id}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("room-images")
+        .upload(filePath, file, {
+          contentType: file.type,
+          upsert: false,
+          cacheControl: "3600",
+        });
+
+      if (upErr) throw upErr;
+
+      const { data } = supabase.storage.from("room-images").getPublicUrl(filePath);
+      const publicUrl = data?.publicUrl || "";
+
+      uploadedMedia.push({
+        type: isVideo ? "video" : "image",
+        url: publicUrl,
+        path: filePath,
+      });
+
+      if (!isVideo) uploadedImageUrls.push(publicUrl);
+    }
+
+    // update state:
+    // - media: lưu cả ảnh + video (NEW)
+    // - gallery_urls: chỉ lưu ảnh (OLD compat)
+    setRoomForm((prev: any) => {
+      const prevMedia = Array.isArray(prev.media) ? prev.media : [];
+      const nextMedia = [...prevMedia, ...uploadedMedia];
+
+      const prevGallery = String(prev.gallery_urls || "").trim();
+      const prevGalleryArr = prevGallery
+        ? prevGallery.split(",").map((x: string) => x.trim()).filter(Boolean)
+        : [];
+
+      const nextGalleryArr = [...prevGalleryArr, ...uploadedImageUrls];
+      const nextGallery = nextGalleryArr.join(", ");
+
+      return {
+        ...prev,
+        media: nextMedia,
+        gallery_urls: nextGallery,
+      };
+    });
+  } catch (e: any) {
+    console.error("Upload failed:", e);
+    alert(e?.message ?? "Upload failed");
+  } finally {
+    setUploading(false);
+  }
+};
 
   /* ===== LOAD DATA WHEN EDIT ===== */
   useEffect(() => {
@@ -202,6 +236,7 @@ export default function RoomModal({
         status: 'Trống',
         description: '',
         gallery_urls: '',
+        
         link_zalo: '',
       })
       setDetailForm(defaultDetailForm)
@@ -220,6 +255,7 @@ export default function RoomModal({
       status: normalizeStatus(editingRoom.status),
       description: editingRoom.description ?? '',
       gallery_urls: editingRoom.gallery_urls ?? '',
+      media: Array.isArray((editingRoom as any).media) ? (editingRoom as any).media : [],
       link_zalo: editingRoom.link_zalo ?? '',
     })
 
@@ -258,6 +294,15 @@ export default function RoomModal({
 
   /* ===== SUBMIT ===== */
   async function handleSubmit() {
+
+    // --- normalize media + keep compat gallery_urls (images only) ---
+const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : [];
+const imageUrlsFromMedia = media
+  .filter((m: any) => m?.type === "image" && m?.url)
+  .map((m: any) => String(m.url));
+
+const galleryCompat = imageUrlsFromMedia.join(", ");
+
     const v = validate()
     if (v) {
       setErrorMsg(v)
@@ -282,7 +327,8 @@ export default function RoomModal({
         price: roomForm.price,
         status: normalizeStatus(roomForm.status),
         description: roomForm.description,
-        gallery_urls: roomForm.gallery_urls,
+        media,
+        gallery_urls: galleryCompat,
         link_zalo: roomForm.link_zalo,
       }
 

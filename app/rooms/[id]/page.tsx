@@ -33,6 +33,52 @@ function splitGalleryUrls(gallery_urls: any): string[] {
   }
   return [];
 }
+type MediaItem = { kind: "video" | "image"; url: string };
+  
+function splitVideoUrls(room: any): string[] {
+  // ưu tiên room.media.video_urls nếu bạn lưu dạng jsonb
+  const v1 = room?.media?.video_urls;
+  if (Array.isArray(v1)) return v1.filter(Boolean);
+
+  // nếu có field video_urls độc lập
+  const v2 = room?.video_urls;
+  if (Array.isArray(v2)) return v2.filter(Boolean);
+
+  // nếu bạn lỡ lưu dạng string csv
+  if (typeof v2 === "string") {
+    return v2
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+
+function splitMediaVideos(media: any): string[] {
+  if (!media) return [];
+
+  let arr: any = media;
+
+  // nếu media bị lưu dạng string JSON
+  if (typeof arr === "string") {
+    const s = arr.trim();
+    if (!s) return [];
+    try {
+      arr = JSON.parse(s);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(arr)) return [];
+
+  return arr
+    .filter((m) => m && (m.type === "video" || m.type === "VIDEO"))
+    .map((m) => String(m.url || ""))
+    .filter(Boolean);
+}
 
 function joinParts(parts: Array<string | null | undefined>) {
   return parts
@@ -67,7 +113,6 @@ export default function RoomDetailPage() {
   const [room, setRoom] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  const [images, setImages] = useState<string[]>([]);
   const [imagesLoading, setImagesLoading] = useState(false);
 
   const [activeIndex, setActiveIndex] = useState(0);
@@ -84,9 +129,9 @@ export default function RoomDetailPage() {
   };
   const onTouchEnd = (e: any) => {
     const endX = e.changedTouches?.[0]?.clientX ?? 0;
-    if (!images.length) return;
+    if (!mediaItems.length) return;
 
-    if (startX - endX > 50 && activeIndex < images.length - 1) {
+    if (startX - endX > 50 && activeIndex < mediaItems.length - 1) {
       setActiveIndex((i: number) => i + 1);
     }
     if (endX - startX > 50 && activeIndex > 0) {
@@ -191,83 +236,146 @@ export default function RoomDetailPage() {
   }, [id, adminLevel]);
 
   // ✅ Images: ưu tiên DB, chỉ fallback bucket khi DB rỗng
-  useEffect(() => {
-    if (!id) return;
-    if (!room) return;
+  // ✅ Media: ưu tiên DB (video + ảnh), chỉ fallback bucket khi DB rỗng
+useEffect(() => {
+  if (!id) return;
+  if (!room) return;
 
-    const fromDB = splitGalleryUrls(room.gallery_urls);
-    if (fromDB.length > 0) {
-      setImages(fromDB);
-      setActiveIndex(0);
-      setImagesLoading(false);
-      return;
-    }
+  const videoUrls = splitVideoUrls(room);
+  const imageUrls = splitGalleryUrls(room.gallery_urls);
 
-    let cancelled = false;
+  // ✅ video đứng trước ảnh
+  const fromDB: MediaItem[] = [
+    ...videoUrls.map((url) => ({ kind: "video", url } as const)),
+    ...imageUrls.map((url) => ({ kind: "image", url } as const)),
+  ];
 
-    const fetchImagesFromBucket = async () => {
-      setImagesLoading(true);
+  if (fromDB.length > 0) {
+    setActiveIndex(0);
+    setImagesLoading(false);
+    return;
+  }
 
-      try {
-        const foldersToTry = [id, `room-${id}`];
-        let pickedUrls: string[] = [];
+  // ---- fallback bucket (khi DB rỗng hoàn toàn) ----
+  let cancelled = false;
 
-        for (const folder of foldersToTry) {
-          const { data, error } = await supabase.storage
-            .from("room-images")
-            .list(folder, {
-              limit: 50,
-              sortBy: { column: "name", order: "asc" },
-            });
+  const fetchFromBucket = async () => {
+    setImagesLoading(true);
 
-          if (cancelled) return;
+    try {
+      const roomCode =
+        room?.room_code ?? room?.code ?? room?.roomCode ?? "";
 
-          if (error || !data || data.length === 0) continue;
+      const foldersToTry = [
+        // folder mới theo roomCode
+        roomCode ? `videos/room-${roomCode}` : null,
+        roomCode ? `images/room-${roomCode}` : null,
 
-          const files = data.filter((f) => !!f?.name && !f.name.endsWith("/"));
-          const urls = files
-            .map((f) => {
-              const { data: pub } = supabase.storage
-                .from("room-images")
-                .getPublicUrl(`${folder}/${f.name}`);
-              return pub?.publicUrl || "";
-            })
-            .filter(Boolean);
+        // fallback cũ theo id để khỏi gãy data cũ
+        `videos/${id}`,
+        `images/${id}`,
+        `videos/room-${id}`,
+        `images/room-${id}`,
 
-          if (urls.length > 0) {
-            pickedUrls = urls;
-            break;
-          }
+        // giữ lại cách cũ bạn đang list
+        id,
+        `room-${id}`,
+      ].filter(Boolean) as string[];
+
+      let picked: MediaItem[] = [];
+
+      for (const folder of foldersToTry) {
+        const { data, error } = await supabase.storage
+          .from("room-images")
+          .list(folder, { limit: 50, sortBy: { column: "name", order: "asc" } });
+
+        if (cancelled) return;
+        if (error || !data || data.length === 0) continue;
+
+        const files = data.filter((f) => !!f?.name && !f.name.endsWith("/"));
+
+        const items: MediaItem[] = files
+          .map((f) => {
+            const fullPath = `${folder}/${f.name}`;
+            const { data: pub } = supabase.storage
+              .from("room-images")
+              .getPublicUrl(fullPath);
+
+            const url = pub?.publicUrl || "";
+            if (!url) return null;
+
+            // đoán kind theo extension
+            const lower = f.name.toLowerCase();
+            const isVideo =
+              lower.endsWith(".mp4") ||
+              lower.endsWith(".webm") ||
+              lower.endsWith(".mov") ||
+              lower.endsWith(".m4v");
+
+            return isVideo
+              ? ({ kind: "video", url } as const)
+              : ({ kind: "image", url } as const);
+          })
+          .filter(Boolean) as MediaItem[];
+
+        if (items.length > 0) {
+          // đảm bảo video luôn đứng trước
+          const vids = items.filter((x) => x.kind === "video");
+          const imgs = items.filter((x) => x.kind === "image");
+          picked = [...vids, ...imgs];
+          break;
         }
-
-        if (cancelled) return;
-
-        setImages(pickedUrls);
-        setActiveIndex(0);
-      } catch (e) {
-        if (cancelled) return;
-        console.error("fetchImages exception:", e);
-      } finally {
-        if (cancelled) return;
-        setImagesLoading(false);
       }
-    };
 
-    fetchImagesFromBucket();
+      if (cancelled) return;
 
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, room]);
+      setActiveIndex(0);
+    } catch (e) {
+      if (cancelled) return;
+      console.error("fetch media exception:", e);
+    } finally {
+      if (cancelled) return;
+      setImagesLoading(false);
+    }
+  };
+
+  fetchFromBucket();
+
+  return () => {
+    cancelled = true;
+  };
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [id, room]);
+
 
   const detail = room?.room_detail ?? {};
 
-  const currentImg = useMemo(() => {
-    if (!images?.length) return "";
-    const safeIndex = Math.min(Math.max(activeIndex, 0), images.length - 1);
-    return images[safeIndex];
-  }, [activeIndex, images]);
+  const imageUrls = useMemo(() => {
+  const s = String(room?.gallery_urls || "").trim();
+  return s ? s.split(",").map((x: string) => x.trim()).filter(Boolean) : [];
+}, [room?.gallery_urls]);
+
+const videoUrls = useMemo(() => {
+  const arr: any = room?.media;
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter((m: any) => String(m?.type).toLowerCase() === "video" && m?.url)
+    .map((m: any) => String(m.url))
+    .filter(Boolean);
+}, [room?.media]);
+
+const mediaItems: MediaItem[] = useMemo(() => {
+  const vids: MediaItem[] = videoUrls.map((url: string) => ({ kind: "video", url }));
+  const imgs: MediaItem[] = imageUrls.map((url: string) => ({ kind: "image", url }));
+  return [...vids, ...imgs]; // ✅ video đứng trước ảnh
+}, [videoUrls, imageUrls]);
+
+const activeItem = useMemo(() => {
+  if (!mediaItems.length) return null;
+  const safeIndex = Math.min(Math.max(activeIndex, 0), mediaItems.length - 1);
+  return mediaItems[safeIndex];
+}, [activeIndex, mediaItems]);
+
 
   if (!id) return <div className="p-6 text-base">Đang tải...</div>;
 
@@ -291,7 +399,7 @@ export default function RoomDetailPage() {
   const statusText = humanStatus(room?.status);
   const priceText = formatVND(room?.price);
   const updatedText = formatDMY(room?.updated_at);
-
+  
   const houseNumber =
     room?.house_number ??
     room?.houseNumber ??
@@ -364,7 +472,7 @@ export default function RoomDetailPage() {
       <div className="space-y-3">
         {imagesLoading ? (
           <div className="h-[340px] md:h-[440px] bg-gray-200 rounded-xl animate-pulse" />
-        ) : images.length > 0 ? (
+        ) : mediaItems.length > 0 ? (
           <>
             <div
               className="relative w-full h-[340px] md:h-[440px] rounded-xl overflow-hidden bg-black cursor-pointer"
@@ -372,17 +480,33 @@ export default function RoomDetailPage() {
               onTouchEnd={onTouchEnd}
               onClick={() => setViewerOpen(true)}
             >
-              <img
-                src={currentImg}
-                alt={room?.title || roomCode || ""}
-                className="w-full h-full object-contain"
-                loading="lazy"
-              />
+             {activeItem ? (
+  activeItem.kind === "video" ? (
+    <video
+      src={activeItem.url}
+      controls
+      playsInline
+      preload="metadata"
+      className="w-full h-full object-contain bg-black"
+    />
+  ) : (
+    <img
+      src={activeItem.url}
+      alt={room?.room_code || ""}
+      className="w-full h-full object-contain"
+      loading="lazy"
+    />
+  )
+) : (
+  <div className="flex items-center justify-center text-gray-500 h-full">
+    Chưa có hình ảnh
+  </div>
+)}
 
               <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
 
               <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded">
-                {activeIndex + 1} / {images.length}
+                {activeIndex + 1} / {mediaItems.length}
               </div>
 
               {activeIndex > 0 && (
@@ -397,7 +521,7 @@ export default function RoomDetailPage() {
                 </button>
               )}
 
-              {activeIndex < images.length - 1 && (
+              {activeIndex < mediaItems.length - 1 && (
                 <button
                   className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
                   onClick={(e) => {
@@ -411,20 +535,30 @@ export default function RoomDetailPage() {
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {images.slice(0, 20).map((src, idx) => (
-                <button
-                  key={src + idx}
-                  className={[
-                    "relative flex-none w-20 h-14 rounded-lg overflow-hidden border",
-                    idx === activeIndex ? "border-black" : "border-gray-200",
-                  ].join(" ")}
-                  onClick={() => setActiveIndex(idx)}
-                  aria-label={`Xem ảnh ${idx + 1}`}
-                >
-                  <img src={src} alt="" className="w-full h-full object-contain" loading="lazy" />
-                </button>
-              ))}
-            </div>
+  {mediaItems.slice(0, 20).map((it, idx) => (
+    <button
+      key={it.kind + it.url + idx}
+      className={[
+        "relative flex-none w-20 h-14 rounded-lg overflow-hidden border bg-black",
+        idx === activeIndex ? "border-black" : "border-gray-200",
+      ].join(" ")}
+      onClick={() => setActiveIndex(idx)}
+      aria-label={`Xem ${it.kind === "video" ? "video" : "ảnh"} ${idx + 1}`}
+    >
+      {it.kind === "video" ? (
+        <>
+          <video src={it.url} preload="metadata" className="w-full h-full object-contain" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="bg-black/50 text-white text-xs px-2 py-1 rounded">▶</div>
+          </div>
+        </>
+      ) : (
+        <img src={it.url} alt="" className="w-full h-full object-contain" loading="lazy" />
+      )}
+    </button>
+  ))}
+</div>
+
           </>
         ) : (
           <div className="h-[260px] bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
@@ -528,7 +662,7 @@ export default function RoomDetailPage() {
         </div>
       )}
 
-      {viewerOpen && images.length > 0 && (
+      {viewerOpen && mediaItems.length > 0 && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center" onClick={() => setViewerOpen(false)}>
           <div
             className="relative w-full h-full flex items-center justify-center"
@@ -536,7 +670,22 @@ export default function RoomDetailPage() {
             onTouchEnd={onTouchEnd}
             onClick={(e) => e.stopPropagation()}
           >
-            <img src={currentImg} className="max-w-full max-h-full object-contain" alt="" />
+            {activeItem?.kind === "video" ? (
+  <video
+    src={activeItem.url}
+    controls
+    preload="metadata"
+    playsInline
+    className="w-full h-full object-contain"
+  />
+) : (
+  <img
+    src={activeItem?.url || ""}
+    alt={room?.title || roomCode || ""}
+    className="w-full h-full object-contain"
+    loading="lazy"
+  />
+)}
 
             <button className="absolute top-4 right-4 text-white text-2xl" onClick={() => setViewerOpen(false)}>
               ✕
@@ -548,7 +697,7 @@ export default function RoomDetailPage() {
               </button>
             )}
 
-            {activeIndex < images.length - 1 && (
+            {activeIndex < mediaItems.length - 1 && (
               <button className="absolute right-4 text-white text-3xl" onClick={() => setActiveIndex((i) => i + 1)}>
                 ›
               </button>

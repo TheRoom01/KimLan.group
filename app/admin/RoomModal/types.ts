@@ -3,6 +3,12 @@
 import type { RoomStatus } from '../../types/room'
 
 export type TabKey = 'info' | 'fee' | 'amenity'
+export type MediaItem = {
+  type: "image" | "video";
+  url: string;   // public url
+  path: string;  // path trong bucket
+};
+
 
 export type RoomForm = {
   room_code: string
@@ -15,7 +21,9 @@ export type RoomForm = {
   status: RoomStatus
   description: string
   gallery_urls: string
+  media?: MediaItem[];
   link_zalo: string
+  
 }
 
 export type RoomDetail = {
