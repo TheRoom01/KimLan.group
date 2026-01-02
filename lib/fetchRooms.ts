@@ -1,8 +1,14 @@
 import { supabase } from "./supabase";
 
+export type UpdatedDescCursor = { id: string; updated_at: string };
+
 export type FetchRoomsParams = {
   limit: number;
-  cursor?: string | null; // uuid | null (cursor pagination)
+
+  // ✅ updated_desc: cursor object (updated_at + id)
+  // ✅ price_asc/price_desc/fallback: cursor có thể là uuid string
+  cursor?: string | UpdatedDescCursor | null;
+
   adminLevel?: 0 | 1 | 2;
 
   search?: string;
@@ -84,7 +90,7 @@ const ADMIN_L2_KEYS = [
 
 export async function fetchRooms(
   params: FetchRoomsParams
-): Promise<{ data: any[]; nextCursor: string | null }> {
+): Promise<{ data: any[]; nextCursor: string | UpdatedDescCursor | null }> {
   const {
     limit,
     cursor,
@@ -102,42 +108,27 @@ export async function fetchRooms(
   const effectiveRoomTypes =
     roomTypes?.length ? roomTypes : roomType?.trim() ? [roomType.trim()] : [];
 
-      const role = adminLevel === 2 ? 2 : adminLevel === 1 ? 1 : 0;
+  const role = adminLevel === 2 ? 2 : adminLevel === 1 ? 1 : 0;
 
-  // ✅ normalize cursor về uuid string hoặc null
-  const safeCursor: string | null =
-    typeof cursor === "string"
-      ? (() => {
-          const s = cursor.trim();
-          if (!s) return null;
-          // nếu ai đó lỡ truyền JSON string: {"id": "..."}
-          if (s.startsWith("{")) {
-            try {
-              const parsed = JSON.parse(s);
-              return typeof parsed?.id === "string" ? parsed.id : null;
-            } catch {
-              return null;
-            }
-          }
-          return s; // uuid string
-        })()
-      : null; // cursor type của bạn là string | null nên nhánh object không cần
+  // ✅ Parse cursor theo đúng SQL:
+  // - updated_desc dùng {updated_at, id}
+  // - price_asc/price_desc/fallback dùng uuid string
+  const cursorObj: UpdatedDescCursor | null =
+    cursor && typeof cursor === "object"
+      ? { id: String((cursor as any).id), updated_at: String((cursor as any).updated_at) }
+      : null;
 
+  const cursorId: string | null =
+    cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
+
+  const cursorUpdatedAt: string | null = cursorObj?.updated_at ?? null;
+
+  // (debug) nếu không cần nữa thì xoá log này để nhẹ
   console.log("RPC payload", {
     p_limit: limit,
-    p_cursor: safeCursor,
-    p_search: search ?? null,
-    p_min_price: minPrice ?? null,
-    p_max_price: maxPrice ?? null,
-    p_districts: districts?.length ? districts : null,
-    p_room_types: effectiveRoomTypes.length ? effectiveRoomTypes : null,
-    p_sort: sortMode ?? "updated_desc",
-  });
-
-  const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
-    p_role: role,
-    p_limit: limit,
-    p_cursor: safeCursor,
+    p_cursor: cursorId,
+    p_cursor_id: cursorId,
+    p_cursor_updated_at: cursorUpdatedAt,
     p_search: search ?? null,
     p_min_price: minPrice ?? null,
     p_max_price: maxPrice ?? null,
@@ -147,13 +138,31 @@ export async function fetchRooms(
     p_sort: sortMode ?? "updated_desc",
   });
 
+  const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
+    p_role: role,
+    p_limit: limit,
+
+    // ✅ quan trọng: updated_desc keyset cursor cần 2 khóa
+    p_cursor: cursorId, // giữ tương thích cho price_asc/desc + fallback
+    p_cursor_id: cursorId,
+    p_cursor_updated_at: cursorUpdatedAt,
+
+    p_search: search ?? null,
+    p_min_price: minPrice ?? null,
+    p_max_price: maxPrice ?? null,
+    p_districts: districts?.length ? districts : null,
+    p_room_types: effectiveRoomTypes.length ? effectiveRoomTypes : null,
+    p_move: move ?? null,
+    p_sort: sortMode ?? "updated_desc",
+  });
 
   if (error) {
     console.error(error);
     return { data: [], nextCursor: null };
   }
 
-  const rows = (data?.data ?? []) as any[];
+  // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null }
+  const rows = ((data as any)?.data ?? []) as any[];
 
   // ✅ Giảm work/memory ở FE bằng cách chỉ giữ field cần render list
   const projected =
@@ -163,9 +172,17 @@ export async function fetchRooms(
         ? rows.map((r) => pick(r, ADMIN_L2_KEYS))
         : rows.map((r) => pick(r, PUBLIC_KEYS));
 
-  // ✅ nextCursor luôn là uuid string | null
-  const nextCursor =
-    projected.length > 0 ? (projected[projected.length - 1].id as string) : null;
+  // ✅ nextCursor phải lấy đúng từ RPC:
+  // - updated_desc => object {updated_at,id}
+  // - price_* / fallback => uuid string | null
+  const rawNext = (data as any)?.nextCursor ?? null;
+
+  const nextCursor: string | UpdatedDescCursor | null =
+    rawNext && typeof rawNext === "object"
+      ? { id: String(rawNext.id), updated_at: String(rawNext.updated_at) }
+      : typeof rawNext === "string"
+        ? rawNext
+        : null;
 
   return { data: projected, nextCursor };
 }

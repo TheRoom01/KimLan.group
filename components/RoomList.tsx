@@ -19,7 +19,6 @@ const RoomList = ({
   showSkeleton,
   roomsToRender,
   adminLevel,
-  loading,
 }: RoomListProps) => {
   if (fetchError) {
     return (
@@ -29,7 +28,9 @@ const RoomList = ({
     );
   }
 
-  const shouldShowSkeleton = showSkeleton || (loading && roomsToRender.length === 0);
+  // ✅ Đồng bộ với HomeClient: phân biệt "chưa fetch" (showSkeleton=true) vs "đã fetch nhưng rỗng" (roomsToRender=[])
+  // -> RoomList KHÔNG tự suy luận từ `loading && roomsToRender.length===0` nữa để tránh kẹt Skeleton
+  const shouldShowSkeleton = showSkeleton;
 
   return (
     <main className="container mx-auto px-4 pb-10">
