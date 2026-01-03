@@ -241,6 +241,37 @@ export default function RoomModal({
 
     })
 
+    // ✅ Fetch media thật từ DB để tránh mất ảnh khi submit (list admin thường không có field media)
+void (async () => {
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('media, gallery_urls')
+      .eq('id', editingRoom.id)
+      .single()
+
+    if (error) {
+      console.error('fetch rooms.media failed:', error)
+      return
+    }
+
+    setRoomForm((prev: any) => {
+      const dbMedia = Array.isArray(data?.media) ? data.media : null
+      const dbGallery = typeof data?.gallery_urls === 'string' ? data.gallery_urls : ''
+
+      return {
+        ...prev,
+        // ưu tiên DB media; nếu DB không có thì giữ prev
+        media: dbMedia ?? prev.media ?? [],
+        // nếu prev.gallery_urls rỗng thì lấy từ DB (an toàn)
+        gallery_urls: (prev.gallery_urls && String(prev.gallery_urls).trim()) ? prev.gallery_urls : dbGallery,
+      }
+    })
+  } catch (e) {
+    console.error('fetch rooms.media exception:', e)
+  }
+})()
+
     ;(async () => {
       const { data, error } = await supabase
         .from('room_details')
@@ -284,7 +315,11 @@ export default function RoomModal({
       .filter((m: any) => m?.type === 'image' && m?.url)
       .map((m: any) => String(m.url))
 
-    const galleryCompat = imageUrlsFromMedia.join(', ')
+    const galleryCompat =
+  imageUrlsFromMedia.length > 0
+    ? imageUrlsFromMedia.join(', ')
+    : String(roomForm.gallery_urls || '').trim()
+
 
     const v = validate()
     if (v) {
