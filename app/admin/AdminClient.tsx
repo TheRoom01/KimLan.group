@@ -89,17 +89,40 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      const keyword = q.trim();
-      if (keyword) {
-        query = query.or(
-          [
-            `house_number.ilike.%${keyword}%`,
-            `address.ilike.%${keyword}%`,
-            `ward.ilike.%${keyword}%`,
-            `district.ilike.%${keyword}%`,
-          ].join(",")
-        );
-      }
+      const keyword = q.trim()
+
+if (keyword) {
+  // tách token: "3A lam Sơn" -> ["3A", "lam", "Sơn"]
+  // (tách cả dấu gạch ngang để "3A-Lam" vẫn ra token đúng)
+  const tokens = keyword
+    .split(/[\s-]+/g)
+    .map((x) => x.trim())
+    .filter(Boolean)
+
+  // Nếu chỉ có 1 token thì giữ logic cũ (đơn giản + nhanh)
+  if (tokens.length <= 1) {
+    const k = tokens[0] ?? keyword
+    query = query.or(
+      [
+        `house_number.ilike.%${k}%`,
+        `address.ilike.%${k}%`,
+        `ward.ilike.%${k}%`,
+        `district.ilike.%${k}%`,
+      ].join(',')
+    )
+  } else {
+    // N token: AND( OR(fields contain token1), OR(fields contain token2), ... )
+    const parts = tokens.map(
+      (t) =>
+        `or(house_number.ilike.%${t}%,address.ilike.%${t}%,ward.ilike.%${t}%,district.ilike.%${t}%)`
+    )
+
+    // PostgREST logic tree
+    const expr = `and(${parts.join(',')})`
+
+    query = query.or(expr)
+  }
+}
 
       const { data, count, error } = await query;
 

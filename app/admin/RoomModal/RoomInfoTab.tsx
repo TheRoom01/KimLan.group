@@ -55,6 +55,19 @@ const videoItems = useMemo(() => {
   return mediaItems.filter((m: any) => m?.type === "video" && m?.url);
 }, [mediaItems]);
 
+const [isMobile, setIsMobile] = useState(false)
+
+useEffect(() => {
+  if (typeof window === 'undefined') return
+
+  const mq = window.matchMedia('(max-width: 640px)')
+  const apply = () => setIsMobile(mq.matches)
+
+  apply()
+  mq.addEventListener?.('change', apply)
+  return () => mq.removeEventListener?.('change', apply)
+}, [])
+
 
   const setImageUrls = (urls: string[]) => {
     onChange({ ...value, gallery_urls: urls.join(', ') })
@@ -71,10 +84,14 @@ const videoItems = useMemo(() => {
     setImageUrls(next)
   }
 
+  const infoGridStyle: React.CSSProperties = isMobile
+  ? { ...grid4, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }
+  : grid4
+
   return (
     <div style={sectionBox}>
       {/* Row 1: Số nhà | tên đường | Phường | Quận */}
-      <div style={grid4}>
+      <div style={infoGridStyle}>
         <Input
           label="Số nhà"
           value={value.house_number}
@@ -98,7 +115,7 @@ const videoItems = useMemo(() => {
       </div>
 
       {/* Row 2: Mã phòng | Giá | Loại phòng */}
-      <div style={grid4}>
+      <div style={infoGridStyle}>
         <Input
           label="Mã phòng"
           value={value.room_code}
@@ -117,7 +134,7 @@ const videoItems = useMemo(() => {
       </div>
 
       {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
-      <div style={grid4}>
+      <div style={infoGridStyle}>
         <Select<RoomStatus>
           label="Trạng thái"
           value={value.status}

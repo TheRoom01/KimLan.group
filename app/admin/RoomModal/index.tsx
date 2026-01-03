@@ -401,9 +401,16 @@ onChangeChinhSach={(v: string) => setRoomForm(prev => ({ ...prev, chinh_sach: v 
           )}
 
           {/* ===== TAB FEE ===== */}
-          {activeTab === 'fee' && (
-            <RoomFeeTab detailForm={detailForm} onChange={(patch) => setDetailForm((prev) => ({ ...prev, ...patch }))} />
-          )}
+{activeTab === 'fee' && (
+  <RoomFeeTab
+    detailForm={detailForm}
+    onChange={(patch) =>
+      setDetailForm((prev) => ({ ...prev, ...patch }))
+    }
+    isNew={!editingRoom?.id}
+  />
+)}
+
 
           {/* ===== TAB AMENITY ===== */}
           {activeTab === 'amenity' && (
