@@ -109,22 +109,19 @@ function feeUnitLabel(unit: any) {
 export default function RoomDetailPage() {
   const params = useParams();
   const id = (params?.id as string) || "";
-
   const [room, setRoom] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-
-  const [imagesLoading, setImagesLoading] = useState(false);
-
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<any>(null);
-
-  const [adminLevel, setAdminLevel] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(0); // public default
  
   const isMountedRef = useRef(true);
-
+  const roomReqIdRef = useRef(0);
+  const [fetchStatus, setFetchStatus] = useState<"loading" | "done">("loading");
+  
  useEffect(() => {
   return () => {
     isMountedRef.current = false;
@@ -178,7 +175,8 @@ export default function RoomDetailPage() {
           .eq("user_id", user.id)
           .maybeSingle();
 
-        const level = !error && data?.level ? Number(data.level) : 0;
+        const rawLevel = Number(data?.level);
+        const level: 0 | 1 | 2 = rawLevel === 1 || rawLevel === 2 ? rawLevel : 0;
         setAdminLevel(level);
         setIsAdmin(level === 1 || level === 2);
       } catch (e) {
@@ -191,197 +189,52 @@ export default function RoomDetailPage() {
     checkAdmin();
   }, [user?.id]);
 
-  // ✅ Fetch room detail (không kẹt loading)
-  useEffect(() => {
-    if (!id) {
-      setLoading(false);
-      setRoom(null);
-      return;
-    }
+   
 
-    let cancelled = false;
-
-    const fetchRoom = async () => {
-      setLoading(true);
-
-      try {
-  const viewTable =
-    adminLevel === 1
-      ? "room_full_admin_l1"
-      : adminLevel === 2
-      ? "room_full_admin_l2"
-      : "room_full_public";
-
-  const { data: roomData, error: roomError } = await supabase
-    .from(viewTable)
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (cancelled) return;
-
-  if (roomError) {
-    console.error("fetchRoom error:", roomError);
-    setRoom(null);
-    return;
-  }
-
-  // ✅ BÙ media/gallery_urls từ bảng rooms (vì view thường thiếu 2 cột này)
-  let merged = roomData ?? null;
-
-  if (merged) {
-    const missingMedia = typeof (merged as any)?.media === "undefined";
-    const missingGallery = typeof (merged as any)?.gallery_urls === "undefined";
-
-    if (missingMedia || missingGallery) {
-      const { data: extra, error: extraErr } = await supabase
-        .from("rooms")
-        .select("media, gallery_urls")
-        .eq("id", id)
-        .maybeSingle();
-
-      if (!extraErr && extra) {
-        merged = {
-          ...merged,
-          media: (merged as any).media ?? (extra as any).media,
-          gallery_urls: (merged as any).gallery_urls ?? (extra as any).gallery_urls,
-        };
-      } else if (extraErr) {
-        console.warn("fetchRoom extra rooms(media/gallery_urls) error:", extraErr);
-      }
-    }
-  }
-
-  setRoom(merged);
-  console.log("[DETAIL room keys]", merged && Object.keys(merged), merged?.media, merged?.gallery_urls);
-
-} catch (e) {
-  if (cancelled) return;
-  console.error("fetchRoom exception:", e);
-  setRoom(null);
-}
-
-    };
-
-    fetchRoom();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, adminLevel]);
-
-  // ✅ Images: ưu tiên DB, chỉ fallback bucket khi DB rỗng
-  // ✅ Media: ưu tiên DB (video + ảnh), chỉ fallback bucket khi DB rỗng
+  // ✅ Fetch room detail (ổn định + không kẹt loading)
 useEffect(() => {
-  if (!id) return;
-  if (!room) return;
+  if (!id || adminLevel === null) return;
 
-  const videoUrls = splitVideoUrls(room);
-  const imageUrls = splitGalleryUrls(room.gallery_urls);
+  const myReq = ++roomReqIdRef.current;
 
-  // ✅ video đứng trước ảnh
-  const fromDB: MediaItem[] = [
-    ...videoUrls.map((url) => ({ kind: "video", url } as const)),
-    ...imageUrls.map((url) => ({ kind: "image", url } as const)),
-  ];
+  // ✅ set trạng thái ngay khi bắt đầu fetch
+  setFetchStatus("loading");
+  setLoading(true);
+  setRoom(null);
 
-  if (fromDB.length > 0) {
-    setActiveIndex(0);
-    setImagesLoading(false);
-    return;
-  }
-
-  // ---- fallback bucket (khi DB rỗng hoàn toàn) ----
-  let cancelled = false;
-
-  const fetchFromBucket = async () => {
-    setImagesLoading(true);
-
+  const fetchRoom = async () => {
     try {
-      const roomCode =
-        room?.room_code ?? room?.code ?? room?.roomCode ?? "";
+      const role: 0 | 1 | 2 = adminLevel === 1 ? 1 : adminLevel === 2 ? 2 : 0;
 
-      const foldersToTry = [
-        // folder mới theo roomCode
-        roomCode ? `videos/room-${roomCode}` : null,
-        roomCode ? `images/room-${roomCode}` : null,
+      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+        p_role: role,
+        p_id: id,
+      });
 
-        // fallback cũ theo id để khỏi gãy data cũ
-        `videos/${id}`,
-        `images/${id}`,
-        `videos/room-${id}`,
-        `images/room-${id}`,
+      if (!isMountedRef.current || myReq !== roomReqIdRef.current) return;
 
-        // giữ lại cách cũ bạn đang list
-        id,
-        `room-${id}`,
-      ].filter(Boolean) as string[];
-
-      let picked: MediaItem[] = [];
-
-      for (const folder of foldersToTry) {
-        const { data, error } = await supabase.storage
-          .from("room-images")
-          .list(folder, { limit: 50, sortBy: { column: "name", order: "asc" } });
-
-        if (cancelled) return;
-        if (error || !data || data.length === 0) continue;
-
-        const files = data.filter((f) => !!f?.name && !f.name.endsWith("/"));
-
-        const items: MediaItem[] = files
-          .map((f) => {
-            const fullPath = `${folder}/${f.name}`;
-            const { data: pub } = supabase.storage
-              .from("room-images")
-              .getPublicUrl(fullPath);
-
-            const url = pub?.publicUrl || "";
-            if (!url) return null;
-
-            // đoán kind theo extension
-            const lower = f.name.toLowerCase();
-            const isVideo =
-              lower.endsWith(".mp4") ||
-              lower.endsWith(".webm") ||
-              lower.endsWith(".mov") ||
-              lower.endsWith(".m4v");
-
-            return isVideo
-              ? ({ kind: "video", url } as const)
-              : ({ kind: "image", url } as const);
-          })
-          .filter(Boolean) as MediaItem[];
-
-        if (items.length > 0) {
-          // đảm bảo video luôn đứng trước
-          const vids = items.filter((x) => x.kind === "video");
-          const imgs = items.filter((x) => x.kind === "image");
-          picked = [...vids, ...imgs];
-          break;
-        }
+      if (error) {
+        console.error("fetchRoom error:", error);
+        setRoom(null);
+        return;
       }
 
-      if (cancelled) return;
-
-      setActiveIndex(0);
+      // RPC của bạn trả về object JSON -> set thẳng
+      setRoom(data ?? null);
     } catch (e) {
-      if (cancelled) return;
-      console.error("fetch media exception:", e);
+      if (!isMountedRef.current || myReq !== roomReqIdRef.current) return;
+      console.error("fetchRoom exception:", e);
+      setRoom(null);
     } finally {
-  // ✅ KHÔNG phụ thuộc cancelled, chỉ phụ thuộc mounted
-  if (isMountedRef.current) setLoading(false);
-}
-
+      if (isMountedRef.current && myReq === roomReqIdRef.current) {
+        setLoading(false);
+        setFetchStatus("done");
+      }
+    }
   };
 
-  fetchFromBucket();
-
-  return () => {
-    cancelled = true;
-  };
-// eslint-disable-next-line react-hooks/exhaustive-deps
-}, [id, room]);
+  fetchRoom();
+}, [id, adminLevel]);
 
 
   const detail = room?.room_detail ?? {};
@@ -412,23 +265,19 @@ const activeItem = useMemo(() => {
   return mediaItems[safeIndex];
 }, [activeIndex, mediaItems]);
 
+// ===== RENDER GUARD =====
+console.log("STATE", { id, adminLevel, fetchStatus, loading, hasRoom: !!room });
 
-  if (!id) return <div className="p-6 text-base">Đang tải...</div>;
+if (!id || adminLevel === null || fetchStatus === "loading") {
+  return (
+    <div className="p-6 space-y-4">
+      <div className="h-[340px] bg-gray-200 rounded animate-pulse" />
+      <div className="h-24 bg-gray-200 rounded animate-pulse" />
+    </div>
+  );
+}
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-4 text-base">
-        <div className="h-[340px] md:h-[440px] bg-gray-200 rounded-xl animate-pulse" />
-        <div className="h-24 bg-gray-200 rounded-xl animate-pulse" />
-        <div className="space-y-2">
-          <div className="h-4 bg-gray-200 rounded animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded animate-pulse" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>;
+if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>;
 
   const roomCode = room?.room_code ?? room?.code ?? room?.roomCode ?? "";
   const roomType = room?.room_type ?? room?.type ?? room?.roomType ?? "";
@@ -506,101 +355,109 @@ const activeItem = useMemo(() => {
   return (
     <div className="p-6 space-y-6 text-base">
       <div className="space-y-3">
-        {imagesLoading ? (
-          <div className="h-[340px] md:h-[440px] bg-gray-200 rounded-xl animate-pulse" />
-        ) : mediaItems.length > 0 ? (
-          <>
-            <div
-              className="relative w-full h-[340px] md:h-[440px] rounded-xl overflow-hidden bg-black cursor-pointer"
-              onTouchStart={onTouchStart}
-              onTouchEnd={onTouchEnd}
-              onClick={() => setViewerOpen(true)}
-            >
-             {activeItem ? (
-  activeItem.kind === "video" ? (
-    <video
-      src={activeItem.url}
-      controls
-      playsInline
-      preload="metadata"
-      className="w-full h-full object-contain bg-black"
-    />
-  ) : (
-    <img
-      src={activeItem.url}
-      alt={room?.room_code || ""}
-      className="w-full h-full object-contain"
-      loading="lazy"
-    />
-  )
+        {mediaItems.length > 0 ? (
+  <>
+    <div
+      className="relative w-full h-[340px] md:h-[440px] rounded-xl overflow-hidden bg-black cursor-pointer"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onClick={() => setViewerOpen(true)}
+    >
+      {activeItem ? (
+        activeItem.kind === "video" ? (
+          <video
+            src={activeItem.url}
+            controls
+            playsInline
+            preload="metadata"
+            className="w-full h-full object-contain bg-black"
+          />
+        ) : (
+          <img
+            src={activeItem.url}
+            alt={room?.room_code || ""}
+            className="w-full h-full object-contain"
+            loading="lazy"
+          />
+        )
+      ) : (
+        <div className="flex items-center justify-center text-gray-500 h-full">
+          Chưa có hình ảnh
+        </div>
+      )}
+
+      <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
+
+      <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded">
+        {activeIndex + 1} / {mediaItems.length}
+      </div>
+
+      {activeIndex > 0 && (
+        <button
+          className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveIndex((i) => i - 1);
+          }}
+        >
+          ‹
+        </button>
+      )}
+
+      {activeIndex < mediaItems.length - 1 && (
+        <button
+          className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveIndex((i) => i + 1);
+          }}
+        >
+          ›
+        </button>
+      )}
+    </div>
+
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      {mediaItems.slice(0, 20).map((it, idx) => (
+        <button
+          key={it.kind + it.url + idx}
+          className={[
+            "relative flex-none w-20 h-14 rounded-lg overflow-hidden border bg-black",
+            idx === activeIndex ? "border-black" : "border-gray-200",
+          ].join(" ")}
+          onClick={() => setActiveIndex(idx)}
+          aria-label={`Xem ${it.kind === "video" ? "video" : "ảnh"} ${idx + 1}`}
+        >
+          {it.kind === "video" ? (
+            <>
+              <video
+                src={it.url}
+                preload="metadata"
+                className="w-full h-full object-contain"
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="bg-black/50 text-white text-xs px-2 py-1 rounded">
+                  ▶
+                </div>
+              </div>
+            </>
+          ) : (
+            <img
+              src={it.url}
+              alt=""
+              className="w-full h-full object-contain"
+              loading="lazy"
+            />
+          )}
+        </button>
+      ))}
+    </div>
+  </>
 ) : (
-  <div className="flex items-center justify-center text-gray-500 h-full">
+  <div className="h-[260px] bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
     Chưa có hình ảnh
   </div>
 )}
-
-              <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
-
-              <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded">
-                {activeIndex + 1} / {mediaItems.length}
-              </div>
-
-              {activeIndex > 0 && (
-                <button
-                  className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveIndex((i) => i - 1);
-                  }}
-                >
-                  ‹
-                </button>
-              )}
-
-              {activeIndex < mediaItems.length - 1 && (
-                <button
-                  className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveIndex((i) => i + 1);
-                  }}
-                >
-                  ›
-                </button>
-              )}
-            </div>
-
-            <div className="flex gap-2 overflow-x-auto pb-1">
-  {mediaItems.slice(0, 20).map((it, idx) => (
-    <button
-      key={it.kind + it.url + idx}
-      className={[
-        "relative flex-none w-20 h-14 rounded-lg overflow-hidden border bg-black",
-        idx === activeIndex ? "border-black" : "border-gray-200",
-      ].join(" ")}
-      onClick={() => setActiveIndex(idx)}
-      aria-label={`Xem ${it.kind === "video" ? "video" : "ảnh"} ${idx + 1}`}
-    >
-      {it.kind === "video" ? (
-        <>
-          <video src={it.url} preload="metadata" className="w-full h-full object-contain" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-black/50 text-white text-xs px-2 py-1 rounded">▶</div>
-          </div>
-        </>
-      ) : (
-        <img src={it.url} alt="" className="w-full h-full object-contain" loading="lazy" />
-      )}
-    </button>
-  ))}
-</div>
-
-          </>
-        ) : (
-          <div className="h-[260px] bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
-            Chưa có hình ảnh
-          </div>
-        )}
       </div>
 
       <div className="rounded-xl border p-4 space-y-2">
