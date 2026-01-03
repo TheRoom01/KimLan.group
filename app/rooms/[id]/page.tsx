@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 
 /* ================= Utils ================= */
@@ -55,7 +55,6 @@ function splitVideoUrls(room: any): string[] {
   return [];
 }
 
-
 function splitMediaVideos(media: any): string[] {
   if (!media) return [];
 
@@ -104,6 +103,7 @@ function feeUnitLabel(unit: any) {
   return String(unit);
 }
 
+
 /* ================= Page ================= */
 
 export default function RoomDetailPage() {
@@ -122,6 +122,15 @@ export default function RoomDetailPage() {
   const [user, setUser] = useState<any>(null);
 
   const [adminLevel, setAdminLevel] = useState(0);
+ 
+  const isMountedRef = useRef(true);
+
+ useEffect(() => {
+  return () => {
+    isMountedRef.current = false;
+  };
+}, []);
+
 
   let startX = 0;
   const onTouchStart = (e: any) => {
@@ -196,36 +205,62 @@ export default function RoomDetailPage() {
       setLoading(true);
 
       try {
-        const viewTable =
-          adminLevel === 1
-            ? "room_full_admin_l1"
-            : adminLevel === 2
-            ? "room_full_admin_l2"
-            : "room_full_public";
+  const viewTable =
+    adminLevel === 1
+      ? "room_full_admin_l1"
+      : adminLevel === 2
+      ? "room_full_admin_l2"
+      : "room_full_public";
 
-        const { data: roomData, error: roomError } = await supabase
-          .from(viewTable)
-          .select("*")
-          .eq("id", id)
-          .maybeSingle();
+  const { data: roomData, error: roomError } = await supabase
+    .from(viewTable)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
 
-        if (cancelled) return;
+  if (cancelled) return;
 
-        if (roomError) {
-          console.error("fetchRoom error:", roomError);
-          setRoom(null);
-          return;
-        }
+  if (roomError) {
+    console.error("fetchRoom error:", roomError);
+    setRoom(null);
+    return;
+  }
 
-        setRoom(roomData ?? null);
-      } catch (e) {
-        if (cancelled) return;
-        console.error("fetchRoom exception:", e);
-        setRoom(null);
-      } finally {
-        if (cancelled) return;
-        setLoading(false);
+  // ✅ BÙ media/gallery_urls từ bảng rooms (vì view thường thiếu 2 cột này)
+  let merged = roomData ?? null;
+
+  if (merged) {
+    const missingMedia = typeof (merged as any)?.media === "undefined";
+    const missingGallery = typeof (merged as any)?.gallery_urls === "undefined";
+
+    if (missingMedia || missingGallery) {
+      const { data: extra, error: extraErr } = await supabase
+        .from("rooms")
+        .select("media, gallery_urls")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (!extraErr && extra) {
+        merged = {
+          ...merged,
+          media: (merged as any).media ?? (extra as any).media,
+          gallery_urls: (merged as any).gallery_urls ?? (extra as any).gallery_urls,
+        };
+      } else if (extraErr) {
+        console.warn("fetchRoom extra rooms(media/gallery_urls) error:", extraErr);
       }
+    }
+  }
+
+  setRoom(merged);
+  console.log("[DETAIL room keys]", merged && Object.keys(merged), merged?.media, merged?.gallery_urls);
+
+} catch (e) {
+  if (cancelled) return;
+  console.error("fetchRoom exception:", e);
+  setRoom(null);
+}
+
     };
 
     fetchRoom();
@@ -334,9 +369,10 @@ useEffect(() => {
       if (cancelled) return;
       console.error("fetch media exception:", e);
     } finally {
-      if (cancelled) return;
-      setImagesLoading(false);
-    }
+  // ✅ KHÔNG phụ thuộc cancelled, chỉ phụ thuộc mounted
+  if (isMountedRef.current) setLoading(false);
+}
+
   };
 
   fetchFromBucket();
