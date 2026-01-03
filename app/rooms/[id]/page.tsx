@@ -118,16 +118,9 @@ export default function RoomDetailPage() {
   const [loading, setLoading] = useState(false);
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(0); // public default
  
-  const isMountedRef = useRef(true);
-  const roomReqIdRef = useRef(0);
+    const roomReqIdRef = useRef(0);
   const [fetchStatus, setFetchStatus] = useState<"loading" | "done">("loading");
   
- useEffect(() => {
-  return () => {
-    isMountedRef.current = false;
-  };
-}, []);
-
 
   let startX = 0;
   const onTouchStart = (e: any) => {
@@ -189,20 +182,24 @@ export default function RoomDetailPage() {
     checkAdmin();
   }, [user?.id]);
 
-   
+useEffect(() => {
+  setFetchStatus("loading");
+  setRoom(null);
+  setActiveIndex(0);
+}, [id]);   
 
   // ✅ Fetch room detail (ổn định + không kẹt loading)
 useEffect(() => {
-  if (!id || adminLevel === null) return;
+  if (!id) return;
 
   const myReq = ++roomReqIdRef.current;
 
-  // ✅ set trạng thái ngay khi bắt đầu fetch
+  // set trạng thái ngay khi bắt đầu request mới
   setFetchStatus("loading");
   setLoading(true);
   setRoom(null);
 
-  const fetchRoom = async () => {
+  (async () => {
     try {
       const role: 0 | 1 | 2 = adminLevel === 1 ? 1 : adminLevel === 2 ? 2 : 0;
 
@@ -211,7 +208,8 @@ useEffect(() => {
         p_id: id,
       });
 
-      if (!isMountedRef.current || myReq !== roomReqIdRef.current) return;
+      // ✅ nếu không phải request mới nhất -> bỏ qua
+      if (myReq !== roomReqIdRef.current) return;
 
       if (error) {
         console.error("fetchRoom error:", error);
@@ -219,21 +217,18 @@ useEffect(() => {
         return;
       }
 
-      // RPC của bạn trả về object JSON -> set thẳng
       setRoom(data ?? null);
     } catch (e) {
-      if (!isMountedRef.current || myReq !== roomReqIdRef.current) return;
+      if (myReq !== roomReqIdRef.current) return;
       console.error("fetchRoom exception:", e);
       setRoom(null);
     } finally {
-      if (isMountedRef.current && myReq === roomReqIdRef.current) {
+      if (myReq === roomReqIdRef.current) {
         setLoading(false);
         setFetchStatus("done");
       }
     }
-  };
-
-  fetchRoom();
+  })();
 }, [id, adminLevel]);
 
 
@@ -268,7 +263,7 @@ const activeItem = useMemo(() => {
 // ===== RENDER GUARD =====
 console.log("STATE", { id, adminLevel, fetchStatus, loading, hasRoom: !!room });
 
-if (!id || adminLevel === null || fetchStatus === "loading") {
+if (!id || fetchStatus === "loading") {
   return (
     <div className="p-6 space-y-4">
       <div className="h-[340px] bg-gray-200 rounded animate-pulse" />
@@ -278,6 +273,7 @@ if (!id || adminLevel === null || fetchStatus === "loading") {
 }
 
 if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>;
+
 
   const roomCode = room?.room_code ?? room?.code ?? room?.roomCode ?? "";
   const roomType = room?.room_type ?? room?.type ?? room?.roomType ?? "";
