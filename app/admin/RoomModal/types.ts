@@ -23,6 +23,7 @@ export type RoomForm = {
   gallery_urls: string
   media?: MediaItem[];
   link_zalo: string
+  chinh_sach: string
   
 }
 
@@ -43,6 +44,7 @@ export type RoomDetail = {
 
   other_fee_value: number
   other_fee_note: string
+  policy?: string
 
   /* ===== Amenities ===== */
   has_elevator: boolean

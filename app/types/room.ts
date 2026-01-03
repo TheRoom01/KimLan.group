@@ -13,6 +13,7 @@ export type Room = {
   created_at?: string | null
   link_zalo?: string | null
   updated_at?: string | null
+   chinh_sach?: string | null
 
   // nếu có dùng ở modal thì để thêm:
   room_type?: string | null

@@ -7,14 +7,18 @@ import type { RoomStatus } from '../../types/room'
 import { sectionBox } from './styles'
 
 type Props = {
+
   value: RoomForm
   onChange: (next: RoomForm) => void
+  chinh_sach: string
+  onChangeChinhSach: (v: string) => void
 
   // label vẫn là "Ngày tạo" nhưng lấy từ updated_at theo yêu cầu
   updatedAt?: string | null
 
   uploading?: boolean
   onUploadFiles: (files: File[]) => void
+  
 }
 
 export default function RoomInfoTab({
@@ -23,7 +27,12 @@ export default function RoomInfoTab({
   updatedAt,
   uploading = false,
   onUploadFiles,
+  chinh_sach,
+  onChangeChinhSach,
+  
 }: Props) {
+  
+
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   // Drag state (for reorder)
@@ -89,7 +98,7 @@ const videoItems = useMemo(() => {
       </div>
 
       {/* Row 2: Mã phòng | Giá | Loại phòng */}
-      <div style={grid3}>
+      <div style={grid4}>
         <Input
           label="Mã phòng"
           value={value.room_code}
@@ -108,7 +117,7 @@ const videoItems = useMemo(() => {
       </div>
 
       {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
-      <div style={grid3}>
+      <div style={grid4}>
         <Select<RoomStatus>
           label="Trạng thái"
           value={value.status}
@@ -164,7 +173,14 @@ const videoItems = useMemo(() => {
         <div>
           <label style={labelStyle}>Ảnh đã thêm</label>
 
-          <div style={previewGrid}>
+          <div
+  style={{
+    ...previewGrid,
+    ...(typeof window !== 'undefined' && window.innerWidth >= 768
+      ? previewGridDesktop
+      : null),
+  }}
+>
             {imageUrls.map((url, idx) => {
               const isDragging = dragIndex === idx
               const isOver = overIndex === idx && dragIndex !== null && dragIndex !== idx
@@ -295,22 +311,23 @@ onDragOver={e => {
         value={value.description}
         onChange={v => onChange({ ...value, description: v })}
       />
+
+      <label style={labelStyle}>Chính sách</label>
+<textarea
+  value={chinh_sach}
+  onChange={(e) => onChangeChinhSach(e.target.value)}
+  placeholder="Nhập chính sách..."
+/>
+
+
     </div>
   )
 }
 
 /* ================= UI HELPERS ================= */
 
-const grid4: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-  gap: 12,
-}
-
-const grid3: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-  gap: 12,
+const previewGridDesktop: React.CSSProperties = {
+  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
 }
 
 function Input({
@@ -453,10 +470,15 @@ const addImageBtn: React.CSSProperties = {
 
 const previewGrid: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
   gap: 10,
+  gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
 }
 
+const grid4: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+  gap: 12,
+}
 const thumbWrap: React.CSSProperties = {
   width: '100%',
   aspectRatio: '1 / 1',

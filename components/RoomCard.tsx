@@ -14,6 +14,7 @@ type Room = {
   description?: string | null;
   status: "Trống" | "Đã thuê" | string;
   gallery_urls: string | null;
+  has_video?: boolean;
 };
 
 export default function RoomCard(props: { room: Room; adminLevel: number }) {
@@ -89,17 +90,30 @@ const mainImage = gallery[0] || "/no-image.png";
         <div className="h-[240px] overflow-hidden">
           <div className="grid grid-cols-[60%_40%] gap-1 h-full">
             {/* Ảnh chính */}
-            <img
-              src={showImages?.[0] || "/no-image.png"}
-              alt={room.room_type}
-              className="w-full h-full object-cover"
-              loading="lazy"
-              decoding="async"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "/no-image.png";
-              }}
-            />
+<div className="relative w-full h-full">
+  <img
+    src={showImages?.[0] || "/no-image.png"}
+    alt={room.room_type}
+    className="w-full h-full object-cover"
+    loading="lazy"
+    decoding="async"
+    fetchPriority={room.has_video ? "high" : "low"}
+    onError={(e) => {
+      (e.currentTarget as HTMLImageElement).src = "/no-image.png";
+    }}
+  />
 
+  {room.has_video && (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="bg-black/50 text-white text-2xl rounded-full w-12 h-12 flex items-center justify-center">
+        ▶
+      </div>
+    </div>
+  )}
+</div>
+
+
+           
             {/* Ảnh phụ */}
             <div className="grid grid-rows-2 gap-1 relative h-full">
               {/* Ảnh phụ 1 */}
@@ -144,6 +158,7 @@ const mainImage = gallery[0] || "/no-image.png";
             </div>
           </div>
         </div>
+        
 
         {/* ================= INFO SECTION ================= */}
         <div className="p-3 flex flex-col gap-2">

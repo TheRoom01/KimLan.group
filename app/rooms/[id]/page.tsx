@@ -117,7 +117,9 @@ export default function RoomDetailPage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(0); // public default
- 
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+const [showPlay, setShowPlay] = useState(true)
+
     const roomReqIdRef = useRef(0);
   const [fetchStatus, setFetchStatus] = useState<"loading" | "done">("loading");
   
@@ -355,39 +357,67 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   <>
     <div
       className="relative w-full h-[340px] md:h-[440px] rounded-xl overflow-hidden bg-black cursor-pointer"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-      onClick={() => setViewerOpen(true)}
+      onTouchStart={activeItem?.kind === "video" ? undefined : onTouchStart}
+onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
+
+      onClick={() => {
+  if (activeItem?.kind !== "video") setViewerOpen(true)
+}}
+
     >
       {activeItem ? (
-        activeItem.kind === "video" ? (
-          <video
-            src={activeItem.url}
-            controls
-            playsInline
-            preload="metadata"
-            className="w-full h-full object-contain bg-black"
-          />
-        ) : (
-          <img
-            src={activeItem.url}
-            alt={room?.room_code || ""}
-            className="w-full h-full object-contain"
-            loading="lazy"
-          />
-        )
-      ) : (
-        <div className="flex items-center justify-center text-gray-500 h-full">
-          Chưa có hình ảnh
-        </div>
+  activeItem.kind === "video" ? (
+    <div
+      className="relative w-full h-full"
+    >
+      <video
+        ref={videoRef}
+        src={activeItem.url}
+        controls
+        playsInline
+        preload="metadata"
+        className="w-full h-full object-contain bg-black"
+        onPlay={() => setShowPlay(false)}
+        onPause={() => setShowPlay(true)}
+        onEnded={() => setShowPlay(true)}
+      />
+
+      {showPlay && (
+        <button
+          className="absolute inset-0 m-auto w-16 h-16 rounded-full
+                     bg-black/40 text-white text-2xl
+                     flex items-center justify-center
+                     border border-white/40 backdrop-blur"
+          onClick={(e) => {
+            e.stopPropagation()
+            videoRef.current?.play()
+          }}
+        >
+          ▶
+        </button>
       )}
+    </div>
+  ) : (
+    <img
+      src={activeItem.url}
+      alt={room?.room_code || ""}
+      className="w-full h-full object-contain"
+      loading="lazy"
+    />
+  )
+) : (
+  <div className="flex items-center justify-center text-gray-500 h-full">
+    Chưa có hình ảnh
+  </div>
+)}
 
-      <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
-
-      <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded">
-        {activeIndex + 1} / {mediaItems.length}
-      </div>
-
+      {activeItem?.kind === "image" && (
+  <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
+)}
+      <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded pointer-events-none">
+  
+   {activeIndex + 1} / {mediaItems.length}
+    </div>
       {activeIndex > 0 && (
         <button
           className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
@@ -555,8 +585,9 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center" onClick={() => setViewerOpen(false)}>
           <div
             className="relative w-full h-full flex items-center justify-center"
-            onTouchStart={onTouchStart}
-            onTouchEnd={onTouchEnd}
+            onTouchStart={activeItem?.kind === "video" ? undefined : onTouchStart}
+onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
+
             onClick={(e) => e.stopPropagation()}
           >
             {activeItem?.kind === "video" ? (
