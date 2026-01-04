@@ -88,19 +88,13 @@ const mainImage = gallery[0] || "/no-image.png";
       >
         {/* ================= IMAGE SECTION ================= */}
         <div className="h-[240px] overflow-hidden">
-          <div className="grid grid-cols-[60%_40%] gap-1 h-full">
-            {/* Ảnh chính */}
-<div className="relative w-full h-full">
+  <div className="grid grid-cols-[60%_40%] gap-1 h-full">
+    
+    {/* Ảnh chính */}
+    <div className="relative w-full h-full overflow-hidden">
   <img
-    src={showImages?.[0] || "/no-image.png"}
-    alt={room.room_type}
-    className="w-full h-full object-cover"
-    loading="lazy"
-    decoding="async"
-    fetchPriority={room.has_video ? "high" : "low"}
-    onError={(e) => {
-      (e.currentTarget as HTMLImageElement).src = "/no-image.png";
-    }}
+    src={showImages?.[0]}
+    className="w-full h-full object-cover object-[50%_40%]"
   />
 
   {room.has_video && (
