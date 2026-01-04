@@ -198,6 +198,71 @@ export default function RoomModal({
     }
   }
 
+  async function tryAutofillByAddress(house: string, addr: string) {
+  // chỉ áp dụng khi thêm mới
+  if (editingRoom?.id) return
+
+  const house_number = house.trim()
+  const address = addr.trim()
+  if (!house_number || !address) return
+
+  // 1) tìm phòng mẫu gần nhất
+  const { data: roomSample, error } = await supabase
+    .from("rooms")
+    .select("id, ward, district, link_zalo, chinh_sach")
+    .eq("house_number", house_number)
+    .eq("address", address)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error || !roomSample) return
+
+  // 2) autofill rooms (chỉ fill field đang trống)
+  setRoomForm((prev) => ({
+    ...prev,
+    ward: prev.ward?.trim() ? prev.ward : roomSample.ward ?? "",
+    district: prev.district?.trim() ? prev.district : roomSample.district ?? "",
+    link_zalo: prev.link_zalo?.trim() ? prev.link_zalo : roomSample.link_zalo ?? "",
+    chinh_sach: prev.chinh_sach?.trim() ? prev.chinh_sach : roomSample.chinh_sach ?? "",
+  }))
+
+  // 3) lấy room_details của phòng mẫu
+  const { data: detailSample } = await supabase
+    .from("room_details")
+    .select(`
+      electric_fee_value, electric_fee_unit,
+      water_fee_value, water_fee_unit,
+      service_fee_value, service_fee_unit,
+      parking_fee_value, parking_fee_unit,
+      other_fee_value, other_fee_note,
+      has_elevator, has_stairs,
+      shared_washer, private_washer,
+      shared_dryer, private_dryer,
+      has_parking, has_basement,
+      fingerprint_lock,
+      allow_cat, allow_dog,
+      other_amenities
+    `)
+    .eq("room_id", roomSample.id)
+    .maybeSingle()
+
+  if (!detailSample) return
+
+  // 4) autofill room_details (chỉ fill field đang trống)
+  setDetailForm((prev) => ({
+    ...prev,
+    ...Object.fromEntries(
+      Object.entries(detailSample).filter(
+        ([key, value]) =>
+          value !== null &&
+          value !== undefined &&
+          (prev as any)[key] === defaultDetailForm[key as keyof typeof defaultDetailForm]
+      )
+    ),
+  }))
+ }
+
   /* ===== LOAD DATA WHEN EDIT ===== */
   useEffect(() => {
     setErrorMsg(null)
@@ -242,7 +307,7 @@ export default function RoomModal({
     })
 
     // ✅ Fetch media thật từ DB để tránh mất ảnh khi submit (list admin thường không có field media)
-void (async () => {
+   void (async () => {
   try {
     const { data, error } = await supabase
       .from('rooms')
@@ -297,6 +362,14 @@ void (async () => {
       }
     })()
   }, [editingRoom])
+
+  const requestClose = () => {
+  // nếu đang lưu / upload thì không cho đóng (tránh lỗi UX)
+  if (saving || uploading) return
+
+  const ok = window.confirm("Bạn có chắc muốn đóng? Thay đổi sẽ không được lưu.")
+  if (ok) onClose()
+}
 
   if (!open) return null
 
@@ -395,7 +468,7 @@ void (async () => {
   /* ================= UI ================= */
 
   return (
-    <div style={overlay} onMouseDown={onClose}>
+    <div style={overlay} onMouseDown={requestClose}>
       <div style={modal} onMouseDown={(e) => e.stopPropagation()}>
         <div style={modalBody}>
           <h3>{isEdit ? 'Chỉnh sửa phòng' : 'Thêm phòng mới'}</h3>
@@ -423,21 +496,21 @@ void (async () => {
               uploading={uploading}
               onUploadFiles={handleUploadFiles}
               chinh_sach={roomForm.chinh_sach}
-onChangeChinhSach={(v: string) => setRoomForm(prev => ({ ...prev, chinh_sach: v }))}
+             onChangeChinhSach={(v: string) => setRoomForm(prev => ({ ...prev, chinh_sach: v }))}
+             onAutofillByAddress={tryAutofillByAddress}
               />
           )}
 
           {/* ===== TAB FEE ===== */}
-{activeTab === 'fee' && (
-  <RoomFeeTab
-    detailForm={detailForm}
-    onChange={(patch) =>
-      setDetailForm((prev) => ({ ...prev, ...patch }))
-    }
-    isNew={!editingRoom?.id}
-  />
-)}
-
+            {activeTab === 'fee' && (
+              <RoomFeeTab
+                detailForm={detailForm}
+                onChange={(patch) =>
+                  setDetailForm((prev) => ({ ...prev, ...patch }))
+                }
+                isNew={!editingRoom?.id}
+              />
+            )}
 
           {/* ===== TAB AMENITY ===== */}
           {activeTab === 'amenity' && (
@@ -449,7 +522,7 @@ onChangeChinhSach={(v: string) => setRoomForm(prev => ({ ...prev, chinh_sach: v 
         </div>
 
         <div style={footerSticky}>
-          <button onClick={onClose} style={btnCancel} disabled={saving} type="button">
+          <button onClick={requestClose} style={btnCancel} disabled={saving} type="button">
             Huỷ
           </button>
           <button onClick={handleSubmit} style={btnSaveLight} disabled={saving} type="button">

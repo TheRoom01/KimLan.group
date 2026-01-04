@@ -12,6 +12,7 @@ type Props = {
   onChange: (next: RoomForm) => void
   chinh_sach: string
   onChangeChinhSach: (v: string) => void
+  onAutofillByAddress?: (house: string, address: string) => void
 
   // label vẫn là "Ngày tạo" nhưng lấy từ updated_at theo yêu cầu
   updatedAt?: string | null
@@ -29,7 +30,7 @@ export default function RoomInfoTab({
   onUploadFiles,
   chinh_sach,
   onChangeChinhSach,
-  
+  onAutofillByAddress,
 }: Props) {
   
 
@@ -96,11 +97,13 @@ useEffect(() => {
           label="Số nhà"
           value={value.house_number}
           onChange={v => onChange({ ...value, house_number: v })}
+          onBlur={() => onAutofillByAddress?.(value.house_number, value.address)}
         />
         <Input
           label="Tên đường"
           value={value.address}
           onChange={v => onChange({ ...value, address: v })}
+          onBlur={() => onAutofillByAddress?.(value.house_number, value.address)}
         />
         <Input
           label="Phường"
@@ -351,15 +354,18 @@ function Input({
   label,
   value,
   onChange,
+  onBlur,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
+  onBlur?: () => void
 }) {
   return (
     <div>
       <label style={labelStyle}>{label}</label>
-      <input style={inputStyle} value={value} onChange={e => onChange(e.target.value)} />
+      <input style={inputStyle} value={value} onChange={e => onChange(e.target.value)} 
+      onBlur={onBlur}/>
     </div>
   )
 }

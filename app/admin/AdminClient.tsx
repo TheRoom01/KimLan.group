@@ -223,79 +223,112 @@ if (keyword) {
           <thead>
             <tr>
               <th style={th}>Ngày cập nhật</th>
-              <th style={th}>Mã phòng</th>
+              <th style={th}>Link zalo</th>
               <th style={th}>Địa chỉ</th>
               <th style={th}>Loại phòng</th>
+              <th style={th}>Mã phòng</th>
               <th style={th}>Giá</th>
               <th style={th}>Trạng thái</th>
-              <th style={th}>Link zalo</th>
+              
               <th style={{ ...th, width: 120, textAlign: "right" }}>Thao tác</th>
             </tr>
           </thead>
 
           <tbody>
-            {rooms.length === 0 ? (
-              <tr>
-                <td style={td} colSpan={8}>
-                  Không có dữ liệu
-                </td>
-              </tr>
-            ) : (
-              rooms.map((r) => {
-                const isRented = normalizeStatus((r as any).status) === "đã thuê";
-                return (
-                  <tr key={(r as any).id}>
-                    <td style={td}>{formatDate((r as any).updated_at)}</td>
-                    <td style={td}><b>{(r as any).room_code ?? "-"}</b></td>
-                    <td style={td}>
-                      {[
-                        (r as any).house_number && (r as any).address
-                          ? `${(r as any).house_number} ${(r as any).address}`
-                          : (r as any).address,
-                        (r as any).ward ? `P.${(r as any).ward}` : null,
-                        (r as any).district ? formatDistrict((r as any).district) : null,
-                      ].filter(Boolean).join(", ") || "-"}
-                    </td>
-                    <td style={td}>{(r as any).room_type ?? "-"}</td>
-                    <td style={td}>{formatPrice((r as any).price)}</td>
-                    <td style={td}>
-                      <span style={{ ...badge, ...(isRented ? badgeRed : badgeGreen) }}>
-                        {(r as any).status ?? "Trống"}
-                      </span>
-                    </td>
-                    <td style={td}>
-                      {(r as any).link_zalo ? (
-                        <button type="button" style={linkBtn} onClick={() => openZaloUX((r as any).link_zalo)}>
-                          Mở Zalo
-                        </button>
-                      ) : "-"}
-                    </td>
-                    <td style={{ ...td, textAlign: "right" }}>
-                      <button
-                        style={iconBtn}
-                        onClick={() => {
-                          setEditingRoom(r);
-                          setActiveTab("info");
-                          setOpenModal(true);
-                        }}
-                        title="Sửa"
-                      >
-                        <Pencil size={18} strokeWidth={1.8} />
-                      </button>
+  {rooms.length === 0 ? (
+    <tr>
+      <td style={td} colSpan={8}>
+        Không có dữ liệu
+      </td>
+    </tr>
+  ) : (
+    rooms.map((r) => {
+      const isRented = normalizeStatus((r as any).status) === "đã thuê";
 
-                      <button
-                        style={{ ...iconBtn, marginLeft: 10 }}
-                        onClick={() => deleteRoom((r as any).id)}
-                        title="Xoá"
-                      >
-                        <Trash2 size={18} strokeWidth={1.8} color="#ef4444" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
+      const zaloLink = (r as any).link_zalo as string | undefined;
+
+      const addressText =
+        [
+          (r as any).house_number && (r as any).address
+            ? `${(r as any).house_number} ${(r as any).address}`
+            : (r as any).address,
+          (r as any).ward ? `P.${(r as any).ward}` : null,
+          (r as any).district ? formatDistrict((r as any).district) : null,
+        ]
+          .filter(Boolean)
+          .join(", ") || "-";
+
+      return (
+        <tr key={(r as any).id}>
+          {/* 1) Ngày cập nhật */}
+          <td style={td}>{formatDate((r as any).updated_at)}</td>
+
+          {/* 2) Link zalo */}
+          <td style={td}>
+            {zaloLink ? (
+              <button
+                type="button"
+                style={linkBtn}
+                onClick={() => openZaloUX(zaloLink)}
+              >
+                Mở Zalo
+              </button>
+            ) : (
+              "-"
             )}
-          </tbody>
+          </td>
+
+          {/* 3) Địa chỉ */}
+          <td style={td}>{addressText}</td>
+
+          {/* 4) Loại phòng */}
+          <td style={td}>{(r as any).room_type ?? "-"}</td>
+
+          {/* 5) Mã phòng */}
+          <td style={td}>
+            <b>{(r as any).room_code ?? "-"}</b>
+          </td>
+
+          {/* 6) Giá */}
+          <td style={{ ...td, minWidth: 110, whiteSpace: "nowrap" }}>
+           {formatPrice((r as any).price)}
+          </td>
+          
+          {/* 7) Trạng thái */}
+          <td style={td}>
+            <span style={{ ...badge, ...(isRented ? badgeRed : badgeGreen) }}>
+              {(r as any).status ?? "Trống"}
+            </span>
+          </td>
+
+          {/* 8) Thao tác */}
+          <td style={{ ...td, textAlign: "right" }}>
+            <button
+              style={iconBtn}
+              onClick={() => {
+                setEditingRoom(r);
+                setActiveTab("info");
+                setOpenModal(true);
+              }}
+              title="Sửa"
+            >
+              <Pencil size={18} strokeWidth={1.8} />
+            </button>
+
+            <button
+              style={{ ...iconBtn, marginLeft: 10 }}
+              onClick={() => deleteRoom((r as any).id)}
+              title="Xoá"
+            >
+              <Trash2 size={18} strokeWidth={1.8} color="#ef4444" />
+            </button>
+          </td>
+        </tr>
+      );
+    })
+  )}
+</tbody>
+
         </table>
       </div>
 

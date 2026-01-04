@@ -7,12 +7,17 @@ type PaginationProps = {
   goPrev: () => void;
   hasNext: boolean;
   loading: boolean;
+
+  total?: number;        // tổng số phòng
+  page?: number;         // trang hiện tại (1-based)
+  pageSize?: number;     // số phòng / trang
 };
 
-const Pagination = ({ goNext, goPrev, hasNext, loading }: PaginationProps) => {
+const Pagination = ({ goNext, goPrev, hasNext, loading, total }: PaginationProps) => {
   return (
     <div className="container mx-auto px-4 pb-10">
       <div className="flex items-center justify-between gap-3">
+        
         <button
           type="button"
           onClick={goPrev}
@@ -24,6 +29,12 @@ const Pagination = ({ goNext, goPrev, hasNext, loading }: PaginationProps) => {
           Trang trước
         </button>
 
+        <div className="text-sm text-gray-600 whitespace-nowrap">
+  {typeof total === "number"
+    ? `Tổng: ${total.toLocaleString("vi-VN")} phòng`
+    : ""}
+</div>
+
         <button
           type="button"
           onClick={goNext}
@@ -32,7 +43,7 @@ const Pagination = ({ goNext, goPrev, hasNext, loading }: PaginationProps) => {
             loading || !hasNext ? "opacity-60 cursor-not-allowed" : ""
           }`}
         >
-          Trang kế tiếp
+         Trang kế tiếp
         </button>
       </div>
     </div>
