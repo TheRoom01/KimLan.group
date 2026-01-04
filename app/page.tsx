@@ -54,6 +54,7 @@ export default async function HomePage() {
       initialAdminLevel={adminLevel}
       initialDistricts={initialDistricts}
       initialRoomTypes={initialRoomTypes}
+      initialTotal={res.total ?? null}
     />
   );
 }

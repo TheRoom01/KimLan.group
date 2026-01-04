@@ -14,6 +14,7 @@ type InitialProps = {
   initialAdminLevel: 0 | 1 | 2;
   initialDistricts: string[];
   initialRoomTypes: string[];
+  initialTotal?: number | null; // ✅
 };
 
 const LIMIT = 20;
@@ -63,6 +64,7 @@ type PersistState = {
   pages: any[][];
   cursors: (string | UpdatedDescCursor | null)[];
   hasNext: boolean;
+  
 
   // scroll
   scrollTop: number;
@@ -82,8 +84,10 @@ const HomeClient = ({
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const listQsRef = useRef<string>("");        // qs ổn định của list
   const didRestoreFromStorageRef = useRef(false);
+  const [total, setTotal] = useState<number | null>(null);
 
-  // ================== ROLE ==================
+
+    // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
  
   // ================== FILTER ==================
@@ -106,7 +110,7 @@ const HomeClient = ({
   const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
- 
+  
   //-----------------appliedSearch------------
   const [search, setSearch] = useState("");
 
@@ -148,7 +152,6 @@ const appliedSearch = useDebouncedValue(search, 250);
     initialRooms?.length ? [initialRooms] : []
   );
   const pagesRef = useRef<any[][]>(initialRooms?.length ? [initialRooms] : []);
-
   const [pageIndex, setPageIndex] = useState(0);
   const [displayPageIndex, setDisplayPageIndex] = useState(0);
   // ✅ luôn sync pageIndex/displayPageIndex mới nhất vào ref
@@ -159,6 +162,9 @@ useEffect(() => {
 useEffect(() => {
   lastDisplayPageIndexRef.current = displayPageIndex;
 }, [displayPageIndex]);
+useEffect(() => {
+  pagesRef.current = pages;
+}, [pages]);
 
   
   const cursorsRef = useRef<(string | UpdatedDescCursor | null)[]>(
@@ -437,7 +443,7 @@ useEffect(() => {
 
   cursorsRef.current = [null];
   setHasNext(true);
-
+   setTotal(null);
   setFetchError("");
   setLoading(false);
   setShowSkeleton(true);
@@ -660,6 +666,7 @@ try {
       setFetchError("");
       setLoading(false);
       setShowSkeleton(false);
+       setTotal(null);
     } else {
       resetPagination(0);
     }
@@ -834,9 +841,10 @@ useEffect(() => {
         roomTypes: selectedRoomTypes.length ? selectedRoomTypes : undefined,
         move: moveFilter ?? undefined,
       });
-
-      // ✅ drop nếu version đã đổi sau khi request bắt đầu
+    
+       // ✅ drop nếu version đã đổi sau khi request bắt đầu
       if (myVersion !== filtersVersionRef.current) return;
+      if (typeof res.total === "number") setTotal(res.total);
 
       // dedup theo id
       const seen = new Set<string>();
@@ -873,7 +881,7 @@ useEffect(() => {
       if (fetched) {
         setLoading(false);
         setShowSkeleton(false);
-      }
+          }
     }
   },
   [
@@ -1072,6 +1080,7 @@ useEffect(() => {
 
   filterApplyTimerRef.current = window.setTimeout(() => {
     replaceUrlShallow(qs);
+    setTotal(null);
     resetPagination(0);
     fetchPage(0);
     persistSoon();
@@ -1291,7 +1300,8 @@ useEffect(() => {
       </div>
 
       <div className="shrink-0 border-t bg-white">
-        <Pagination goNext={goNext} goPrev={goPrev} hasNext={hasNext} loading={loading} />
+        <Pagination goNext={goNext} goPrev={goPrev} hasNext={hasNext} loading={loading}
+        total={typeof total === "number" ? total : undefined} />
       </div>
 
       {/* portal root nếu bạn đang dùng */}

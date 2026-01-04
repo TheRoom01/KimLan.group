@@ -17,6 +17,9 @@ export type FetchRoomsParams = {
   roomType?: string | null;
   roomTypes?: string[] | null;
   move?: "elevator" | "stairs" | null;
+
+  // (server) vẫn có thể truyền sortMode nếu bạn muốn đồng bộ với client
+  sortMode?: "updated_desc" | "price_asc" | "price_desc" | null;
 };
 
 const pick = <T extends Record<string, any>, K extends readonly (keyof T)[]>(
@@ -90,7 +93,11 @@ const ADMIN_L2_KEYS = [
 export async function fetchRoomsServer(
   supabase: SupabaseClient,
   params: FetchRoomsParams
-): Promise<{ data: any[]; nextCursor: string | UpdatedDescCursor | null }> {
+): Promise<{
+  data: any[];
+  nextCursor: string | UpdatedDescCursor | null;
+  total?: number;
+}> {
   const {
     limit,
     cursor,
@@ -102,6 +109,7 @@ export async function fetchRoomsServer(
     roomType,
     roomTypes,
     move,
+    sortMode,
   } = params;
 
   const effectiveRoomTypes =
@@ -111,14 +119,17 @@ export async function fetchRoomsServer(
 
   // ✅ Parse cursor theo đúng SQL:
   // - updated_desc dùng {updated_at, id}
-  // - fallback dùng uuid string
+  // - price_asc/price_desc/fallback dùng uuid string
   const cursorObj: UpdatedDescCursor | null =
     cursor && typeof cursor === "object"
-      ? { id: String((cursor as any).id), updated_at: String((cursor as any).updated_at) }
+      ? {
+          id: String((cursor as any).id),
+          updated_at: String((cursor as any).updated_at),
+        }
       : null;
 
   const cursorId: string | null =
-    cursorObj?.id ?? (typeof cursor === "string" ? cursor : null);
+    cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
 
   const cursorUpdatedAt: string | null = cursorObj?.updated_at ?? null;
 
@@ -138,33 +149,41 @@ export async function fetchRoomsServer(
     p_room_types: effectiveRoomTypes.length ? effectiveRoomTypes : null,
     p_move: move ?? null,
 
-    p_sort: "updated_desc",
+    // ✅ đồng bộ với client nếu có; mặc định updated_desc
+    p_sort: sortMode ?? "updated_desc",
   });
 
   if (error) {
     console.error(error);
-    return { data: [], nextCursor: null };
+    return { data: [], nextCursor: null, total: undefined };
   }
 
-  // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null }
+  // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null, total_count?: number }
   const rows = ((data as any)?.data ?? []) as any[];
 
   const projected =
     role === 1
       ? rows.map((r) => pick(r, ADMIN_L1_KEYS))
       : role === 2
-        ? rows.map((r) => pick(r, ADMIN_L2_KEYS))
-        : rows.map((r) => pick(r, PUBLIC_KEYS));
+      ? rows.map((r) => pick(r, ADMIN_L2_KEYS))
+      : rows.map((r) => pick(r, PUBLIC_KEYS));
 
-  // ✅ nextCursor phải lấy đúng từ RPC (updated_desc => object {updated_at,id})
   const rawNext = (data as any)?.nextCursor ?? null;
 
   const nextCursor: string | UpdatedDescCursor | null =
     rawNext && typeof rawNext === "object"
-      ? { id: String(rawNext.id), updated_at: String(rawNext.updated_at) }
+      ? { id: String((rawNext as any).id), updated_at: String((rawNext as any).updated_at) }
       : typeof rawNext === "string"
-        ? rawNext
-        : null;
+      ? rawNext
+      : null;
 
-  return { data: projected, nextCursor };
+  const rawTotal = (data as any)?.total_count;
+  const total =
+    typeof rawTotal === "number"
+      ? rawTotal
+      : typeof rawTotal === "string" && rawTotal.trim() !== "" && Number.isFinite(Number(rawTotal))
+      ? Number(rawTotal)
+      : undefined;
+
+  return { data: projected, nextCursor, total };
 }

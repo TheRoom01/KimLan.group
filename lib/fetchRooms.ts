@@ -93,7 +93,11 @@ const ADMIN_L2_KEYS = [
 
 export async function fetchRooms(
   params: FetchRoomsParams
-): Promise<{ data: any[]; nextCursor: string | UpdatedDescCursor | null }> {
+): Promise<{
+  data: any[];
+  nextCursor: string | UpdatedDescCursor | null;
+  total?: number;
+}> {
   const {
     limit,
     cursor,
@@ -118,28 +122,16 @@ export async function fetchRooms(
   // - price_asc/price_desc/fallback dùng uuid string
   const cursorObj: UpdatedDescCursor | null =
     cursor && typeof cursor === "object"
-      ? { id: String((cursor as any).id), updated_at: String((cursor as any).updated_at) }
+      ? {
+          id: String((cursor as any).id),
+          updated_at: String((cursor as any).updated_at),
+        }
       : null;
 
   const cursorId: string | null =
     cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
 
   const cursorUpdatedAt: string | null = cursorObj?.updated_at ?? null;
-
-  // (debug) nếu không cần nữa thì xoá log này để nhẹ
-  console.log("RPC payload", {
-    p_limit: limit,
-    p_cursor: cursorId,
-    p_cursor_id: cursorId,
-    p_cursor_updated_at: cursorUpdatedAt,
-    p_search: search ?? null,
-    p_min_price: minPrice ?? null,
-    p_max_price: maxPrice ?? null,
-    p_districts: districts?.length ? districts : null,
-    p_room_types: effectiveRoomTypes.length ? effectiveRoomTypes : null,
-    p_move: move ?? null,
-    p_sort: sortMode ?? "updated_desc",
-  });
 
   const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
     p_role: role,
@@ -161,10 +153,10 @@ export async function fetchRooms(
 
   if (error) {
     console.error(error);
-    return { data: [], nextCursor: null };
+    return { data: [], nextCursor: null, total: undefined };
   }
 
-  // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null }
+  // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null, total_count?: number }
   const rows = ((data as any)?.data ?? []) as any[];
 
   // ✅ Giảm work/memory ở FE bằng cách chỉ giữ field cần render list
@@ -172,8 +164,8 @@ export async function fetchRooms(
     role === 1
       ? rows.map((r) => pick(r, ADMIN_L1_KEYS))
       : role === 2
-        ? rows.map((r) => pick(r, ADMIN_L2_KEYS))
-        : rows.map((r) => pick(r, PUBLIC_KEYS));
+      ? rows.map((r) => pick(r, ADMIN_L2_KEYS))
+      : rows.map((r) => pick(r, PUBLIC_KEYS));
 
   // ✅ nextCursor phải lấy đúng từ RPC:
   // - updated_desc => object {updated_at,id}
@@ -182,10 +174,19 @@ export async function fetchRooms(
 
   const nextCursor: string | UpdatedDescCursor | null =
     rawNext && typeof rawNext === "object"
-      ? { id: String(rawNext.id), updated_at: String(rawNext.updated_at) }
+      ? { id: String((rawNext as any).id), updated_at: String((rawNext as any).updated_at) }
       : typeof rawNext === "string"
-        ? rawNext
-        : null;
+      ? rawNext
+      : null;
 
-  return { data: projected, nextCursor };
+  // ✅ total_count từ RPC (nếu có)
+  const rawTotal = (data as any)?.total_count;
+  const total =
+    typeof rawTotal === "number"
+      ? rawTotal
+      : typeof rawTotal === "string" && rawTotal.trim() !== "" && Number.isFinite(Number(rawTotal))
+      ? Number(rawTotal)
+      : undefined;
+
+  return { data: projected, nextCursor, total };
 }
