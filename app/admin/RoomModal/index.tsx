@@ -311,15 +311,7 @@ void (async () => {
   /* ===== SUBMIT ===== */
   async function handleSubmit() {
     const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
-    const imageUrlsFromMedia = media
-      .filter((m: any) => m?.type === 'image' && m?.url)
-      .map((m: any) => String(m.url))
-
-    const galleryCompat =
-  imageUrlsFromMedia.length > 0
-    ? imageUrlsFromMedia.join(', ')
-    : String(roomForm.gallery_urls || '').trim()
-
+    const galleryCompat = String(roomForm.gallery_urls || '').trim()
 
     const v = validate()
     if (v) {

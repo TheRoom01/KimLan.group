@@ -204,7 +204,7 @@ useEffect(() => {
 
               return (
                 <div
-                  key={`${url}-${idx}`}
+                  key={url}
                   style={{
                     ...thumbWrap,
                     ...(isDragging ? draggingStyle : null),
@@ -220,13 +220,13 @@ useEffect(() => {
                     e.dataTransfer.effectAllowed = 'move'
                   }}
                   onDragEnter={e => {
-                  e.preventDefault()
-                  setOverIndex(prev => (prev === idx ? prev : idx))
+  e.preventDefault()
+  setOverIndex(idx)
 }}
+
 onDragOver={e => {
   e.preventDefault()
   e.dataTransfer.dropEffect = 'move'
-  setOverIndex(prev => (prev === idx ? prev : idx))
 }}
 
                   onDrop={e => {
