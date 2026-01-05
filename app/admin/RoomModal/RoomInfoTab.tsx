@@ -156,7 +156,7 @@ useEffect(() => {
           value={value.ward}
           onChange={v => onChange({ ...value, ward: v })}
         />
-        <Select<string>
+        <Select
           label="Quận"
           value={value.district}
           options={ensureOption(DISTRICT_OPTIONS, value.district)}
@@ -177,7 +177,7 @@ useEffect(() => {
           value={value.price}
           onChange={v => onChange({ ...value, price: v })}
         />
-        <Select<string>
+        <Select
           label="Loại phòng"
           value={value.room_type}
           options={ensureOption(ROOM_TYPE_OPTIONS, value.room_type)}
@@ -188,12 +188,13 @@ useEffect(() => {
 
       {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
       <div style={infoGridStyle}>
-        <Select<RoomStatus>
-          label="Trạng thái"
-          value={value.status}
-          options={['Trống', 'Đã thuê']}
-          onChange={v => onChange({ ...value, status: v })}
-        />
+       <Select
+  label="Trạng thái"
+  value={value.status}
+  options={["Trống", "Đã thuê"]}
+  onChange={(v: string) => onChange({ ...value, status: v as RoomStatus })}
+ />
+
 
         <ReadOnly label="Ngày tạo" value={formatDate(updatedAt)} />
 
@@ -459,30 +460,6 @@ function TextArea({
   )
 }
 
-function Select<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: T
-  options: T[]
-  onChange: (v: T) => void
-}) {
-  return (
-    <div>
-      <label style={labelStyle}>{label}</label>
-      <select style={inputStyle} value={value} onChange={e => onChange(e.target.value as T)}>
-        {options.map(o => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
 
 function ReadOnly({ label, value }: { label: string; value: string }) {
   return (
@@ -523,6 +500,99 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #cbd5e1',
   background: '#f8fafc',
 }
+
+type SimpleSelectProps = {
+  label: string
+  value: string
+  options: string[]
+  onChange: (v: string) => void
+}
+
+function Select({
+  label,
+  value,
+  options,
+  onChange,
+}: SimpleSelectProps) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    window.addEventListener("mousedown", onDown)
+    return () => window.removeEventListener("mousedown", onDown)
+  }, [open])
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <label style={labelStyle}>{label}</label>
+
+      <button
+        type="button"
+        style={{
+          ...inputStyle,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer",
+        }}
+        onClick={() => setOpen(v => !v)}
+      >
+        <span>{value || "Chọn..."}</span>
+        <span style={{ opacity: 0.6 }}>▾</span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: 10,
+            maxHeight: 260,
+            overflowY: "auto",
+            boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
+          }}
+        >
+          {options.map((o) => {
+            const active = o === value
+            return (
+              <button
+                key={o}
+                type="button"
+                onClick={() => {
+                  onChange(o)
+                  setOpen(false)
+                }}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  textAlign: "left",
+                  background: active ? "#111827" : "transparent",
+                  color: active ? "#fff" : "#111827",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                {o}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 const textareaStyle: React.CSSProperties = {
   ...inputStyle,
