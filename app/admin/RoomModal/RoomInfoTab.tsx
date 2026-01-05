@@ -22,6 +22,52 @@ type Props = {
   
 }
 
+// ✅ Danh sách cố định do bạn quy định (SỬA TẠI ĐÂY)
+const DISTRICT_OPTIONS = [
+  "Quận 1",
+  "Quận 3",
+  "Bình Thạnh",
+  "Tân Bình",
+  "Phú Nhuận",
+  "Gò Vấp",
+  "Quận 5",
+  "Quận 10",
+  "Quận 7",
+  "Quận 4",
+  "Quận 2",
+  "Quận 6",
+  "Quận 8",
+  "Quận 11",
+  "Quận 12",
+  "Thủ Đức",
+  "Bình Tân",
+  "Nhà Bè",
+] as const;
+
+const ROOM_TYPE_OPTIONS = [
+  "Studio",
+  "1 Phòng ngủ",
+  "2 Phòng ngủ",
+  "Duplex",
+  "Tách bếp",
+  "3 Phòng ngủ", 
+  "4 Phòng ngủ",
+] as const;
+
+// ✅ Nếu dữ liệu cũ đang có giá trị không nằm trong list,
+// vẫn cho nó xuất hiện để tránh “mất value” khi mở form edit.
+function ensureOption(options: readonly string[], current?: string | null): string[] {
+  const v = (current ?? "").trim();
+  if (!v) return [...options];
+
+  // nếu đã có trong list → clone ra mảng mutable
+  if (options.includes(v)) return [...options];
+
+  // nếu dữ liệu cũ khác list → đưa lên đầu để không mất giá trị
+  return [v, ...options];
+}
+
+
 export default function RoomInfoTab({
   value,
   onChange,
@@ -110,11 +156,13 @@ useEffect(() => {
           value={value.ward}
           onChange={v => onChange({ ...value, ward: v })}
         />
-        <Input
+        <Select<string>
           label="Quận"
           value={value.district}
-          onChange={v => onChange({ ...value, district: v })}
+          options={ensureOption(DISTRICT_OPTIONS, value.district)}
+          onChange={(v) => onChange({ ...value, district: v })}
         />
+
       </div>
 
       {/* Row 2: Mã phòng | Giá | Loại phòng */}
@@ -129,11 +177,13 @@ useEffect(() => {
           value={value.price}
           onChange={v => onChange({ ...value, price: v })}
         />
-        <Input
+        <Select<string>
           label="Loại phòng"
           value={value.room_type}
-          onChange={v => onChange({ ...value, room_type: v })}
+          options={ensureOption(ROOM_TYPE_OPTIONS, value.room_type)}
+          onChange={(v) => onChange({ ...value, room_type: v })}
         />
+
       </div>
 
       {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
