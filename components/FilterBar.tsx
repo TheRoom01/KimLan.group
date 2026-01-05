@@ -7,6 +7,7 @@ export type SortMode = "updated_desc" | "price_asc" | "price_desc";
 type FilterBarProps = {
   districts: string[];
   roomTypes: string[];
+  total?: number | null;
 
   search: string;
   setSearch: React.Dispatch<React.SetStateAction<string>>;
@@ -31,8 +32,8 @@ type FilterBarProps = {
 };
 
 const PRICE_MIN = 3_000_000;
-const PRICE_MAX = 30_000_000;
-const PRICE_STEP = 100_000;
+const PRICE_MAX = 50_000_000;
+const PRICE_STEP = 500_000;
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const snap = (v: number) => Math.round(v / PRICE_STEP) * PRICE_STEP;
@@ -53,6 +54,7 @@ const FilterBar = ({
   setMoveFilter,
   sortMode,
   setSortMode,
+  total,
   loading = false,
   onResetAll,
 }: FilterBarProps) => {
@@ -71,7 +73,7 @@ const FilterBar = ({
     const b = priceDraft[1];
     return a <= b ? [a, b] : [b, a];
   }, [priceDraft]);
-
+  
   const span = PRICE_MAX - PRICE_MIN;
 
   const leftPct = ((minV - PRICE_MIN) / span) * 100;
@@ -95,6 +97,7 @@ const FilterBar = ({
     const raw = PRICE_MIN + pct * (PRICE_MAX - PRICE_MIN);
     return clamp(snap(raw), PRICE_MIN, PRICE_MAX);
   };
+  
 
   // Drag handlers on window (mượt + không mất kéo khi ra ngoài)
   useEffect(() => {
@@ -175,7 +178,7 @@ const FilterBar = ({
   };
 
   return (
-    <section className="container mx-auto px-4 py-6 space-y-4">
+    <section className="container mx-auto px-4 py-4 space-y-3">
       {/* Search */}
       <input
         value={search}
@@ -197,9 +200,13 @@ const FilterBar = ({
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "district" ? null : "district"))}
-              className={`px-3 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50 flex items-center gap-2 ${
-                loading ? "opacity-60" : ""
-              }`}
+                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
+    loading ? "opacity-60" : ""
+  } ${
+    openFilter === "district"
+      ? "bg-black text-white border-black"
+      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+  }`}
             >
               Quận
               {selectedDistricts.length > 0 && <span className="text-xs text-gray-500">({selectedDistricts.length})</span>}
@@ -222,16 +229,25 @@ const FilterBar = ({
                   {districts.map((d) => {
                     const checked = selectedDistricts.includes(d);
                     return (
-                      <label key={d} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <label
+                        key={d}
+                        className={`flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-full transition-colors ${
+                          checked ? "bg-black text-white" : "hover:bg-gray-100"
+                        }`}
+                       >
                         <input
                           type="checkbox"
                           checked={checked}
+                          className="accent-black"
                           onChange={() => {
-                            setSelectedDistricts((prev) => (checked ? prev.filter((x) => x !== d) : [...prev, d]));
+                            setSelectedDistricts((prev) =>
+                              checked ? prev.filter((x) => x !== d) : [...prev, d]
+                            );
                           }}
                         />
                         <span>{d}</span>
                       </label>
+
                     );
                   })}
                 </div>
@@ -244,9 +260,14 @@ const FilterBar = ({
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "roomType" ? null : "roomType"))}
-              className={`px-3 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50 flex items-center gap-2 ${
-                loading ? "opacity-60" : ""
-              }`}
+             className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
+    loading ? "opacity-60" : ""
+  } ${
+    openFilter === "roomType"
+      ? "bg-black text-white border-black"
+      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+  }`}
+
             >
               Loại phòng
               {selectedRoomTypes.length > 0 && <span className="text-xs text-gray-500">({selectedRoomTypes.length})</span>}
@@ -269,16 +290,24 @@ const FilterBar = ({
                   {roomTypes.map((t) => {
                     const checked = selectedRoomTypes.includes(t);
                     return (
-                      <label key={t} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            setSelectedRoomTypes((prev) => (checked ? prev.filter((x) => x !== t) : [...prev, t]));
-                          }}
-                        />
-                        <span>{t}</span>
-                      </label>
+                       <label
+                          key={t}
+                          className={`flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-full transition-colors
+                            ${checked ? "bg-black text-white" : "hover:bg-gray-100"}
+                          `}
+                         >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            className="accent-black"
+                            onChange={() => {
+                              setSelectedRoomTypes((prev) =>
+                                checked ? prev.filter((x) => x !== t) : [...prev, t]
+                              );
+                            }}
+                          />
+                          <span>{t}</span>
+                        </label>
                     );
                   })}
                 </div>
@@ -291,9 +320,14 @@ const FilterBar = ({
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
-              className={`px-3 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50 flex items-center gap-2 ${
-                loading ? "opacity-60" : ""
-              }`}
+                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
+    loading ? "opacity-60" : ""
+  } ${
+    openFilter === "move"
+      ? "bg-black text-white border-black"
+      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+  }`}
+
             >
               Di chuyển
               {moveFilter && <span className="text-xs text-gray-500">({moveFilter})</span>}
@@ -331,9 +365,14 @@ const FilterBar = ({
           <button
             type="button"
             onClick={() => setOpenFilter((v) => (v === "sort" ? null : "sort"))}
-            className={`px-3 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50 flex items-center gap-2 ${
-              loading ? "opacity-60" : ""
-            }`}
+            className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
+    loading ? "opacity-60" : ""
+  } ${
+    openFilter === "sort"
+      ? "bg-black text-white border-black"
+      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+  }`}
+
           >
             Sắp xếp
           </button>
@@ -365,7 +404,7 @@ const FilterBar = ({
 
       {/* PRICE (custom slider - luôn kéo được min/max, mobile mượt, chỉ commit khi thả) */}
       <div className="w-full">
-        <div className="grid grid-cols-3 items-center text-sm font-semibold mb-2">
+        <div className="grid grid-cols-3 items-center text-sm font-semibold mb-1">
           <span className="justify-self-start">{fmtVND(minV)} đ</span>
 
           <button
@@ -392,7 +431,7 @@ const FilterBar = ({
           style={{ touchAction: "none" }} // rất quan trọng cho mobile: tránh scroll giành gesture
         >
           {/* base gray line */}
-          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[2px] bg-gray-300 rounded" />
+          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[4px] bg-gray-300 rounded" />
 
           {/* selected black segment */}
           <div
@@ -431,8 +470,19 @@ const FilterBar = ({
           />
         </div>
       </div>
+      {/* ✅ TOTAL ROOMS – đặt ngay dưới slider giá */}
+        {typeof total === "number" && (
+        <div className="mt-1 text-sm text-gray-700 text-center">
+          Tổng:{" "}
+          <span className="font-medium">
+            {total.toLocaleString("vi-VN")}
+          </span>{" "}
+          phòng
+        </div>
+      )}
     </section>
   );
 };
+
 
 export default FilterBar;

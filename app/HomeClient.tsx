@@ -50,6 +50,9 @@ type PersistState = {
   // url signature để chỉ restore khi đúng state
   qs: string;
 
+ // ✅ total rooms
+  total: number | null;
+
   // filters
   search: string;
   priceApplied: [number, number];
@@ -79,12 +82,17 @@ const HomeClient = ({
   initialAdminLevel,
   initialDistricts,
   initialRoomTypes,
+  initialTotal,
 }: InitialProps) => {
+
   const pathname = usePathname();
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const listQsRef = useRef<string>("");        // qs ổn định của list
   const didRestoreFromStorageRef = useRef(false);
-  const [total, setTotal] = useState<number | null>(null);
+
+  const [total, setTotal] = useState<number | null>(
+    typeof initialTotal === "number" ? initialTotal : null
+  );
 
 
     // ================== ROLE ==================
@@ -311,6 +319,9 @@ const persistBlockedRef = useRef(false);
     const payload: PersistState = {
       qs: listQsRef.current,
 
+        // ✅ persist total
+  total: typeof total === "number" ? total : null,
+
       search,
       priceApplied,
       selectedDistricts,
@@ -332,6 +343,7 @@ const persistBlockedRef = useRef(false);
     sessionStorage.setItem(HOME_STATE_KEY, JSON.stringify(payload));
   } catch {}
 }, [
+  total,
   search,
   priceApplied,
   selectedDistricts,
@@ -443,7 +455,6 @@ useEffect(() => {
 
   cursorsRef.current = [null];
   setHasNext(true);
-   setTotal(null);
   setFetchError("");
   setLoading(false);
   setShowSkeleton(true);
@@ -479,12 +490,68 @@ useEffect(() => {
   // giữ qs list ổn định
   listQsRef.current = window.location.search.replace(/^\?/, "");
 
-  // 1) read URL
+   // 1) read URL
   const url = readUrlState();
   console.log("[HOME hydrate] url.qs=", url.qs, "isReload=", isReload);
 
+  // ✅ HARD RESET when reload (F5 / pull-to-refresh)
+  if (isReload) {
+    hydratingFromUrlRef.current = true;
+
+    // drop mọi response cũ (nếu có request đang bay)
+    filtersVersionRef.current += 1;
+
+    // purge persisted state
+    try {
+      sessionStorage.removeItem(HOME_STATE_KEY);
+    } catch {}
+    try {
+      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
+    } catch {}
+
+    // reset filters -> default
+    setSearch("");
+    setPriceDraft(PRICE_DEFAULT);
+    setPriceApplied(PRICE_DEFAULT);
+    setSelectedDistricts([]);
+    setSelectedRoomTypes([]);
+    setMoveFilter(null);
+    setSortMode("updated_desc");
+
+    // reset pagination/cache về page 0
+    setPageIndex(0);
+    setDisplayPageIndex(0);
+
+    if (initialRooms?.length) {
+      pagesRef.current = [initialRooms];
+      setPages([initialRooms]);
+
+      cursorsRef.current = [null, initCursor];
+      setHasNext(Boolean(initCursor));
+      setFetchError("");
+      setLoading(false);
+      setShowSkeleton(false);
+      } else {
+      resetPagination(0);
+    }
+
+    // ✅ clean URL: bỏ toàn bộ query
+    replaceUrlShallow("");
+
+    // reset scroll
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = 0;
+      lastScrollTopRef.current = 0;
+    });
+
+    finishHydrate();
+    return;
+  }
+
   // 2) try restore from sessionStorage (match qs)
   let restored: PersistState | null = null;
+
   try {
     const raw = sessionStorage.getItem(HOME_STATE_KEY);
     if (raw) restored = JSON.parse(raw) as PersistState;
@@ -514,8 +581,8 @@ try {
 } catch {}
 
 
-  // helper: kết thúc hydrate an toàn (2 RAF + mở persist trễ)
-  const finishHydrate = () => {
+    // helper: kết thúc hydrate an toàn (2 RAF + mở persist trễ)
+  function finishHydrate() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setTimeout(() => {
@@ -525,7 +592,7 @@ try {
         endHydrationAfterTwoFrames();
       });
     });
-  };
+  }
 
   // ------------------ RESTORE FROM STORAGE ------------------
   if (match && restored) {
@@ -548,6 +615,8 @@ try {
     setSelectedRoomTypes(restoredTypes);
     setMoveFilter(restoredMove);
     setSortMode(restoredSort);
+    setTotal(typeof rest.total === "number" ? rest.total : null);
+
 
     // ✅ Nếu reload: reset vị trí + trang về 0, GIỮ filter
     // - KHÔNG restore scroll/page
@@ -660,13 +729,13 @@ try {
     if (initialRooms?.length) {
       pagesRef.current = [initialRooms];
       setPages([initialRooms]);
-
       cursorsRef.current = [null, initCursor];
       setHasNext(Boolean(initCursor));
       setFetchError("");
       setLoading(false);
       setShowSkeleton(false);
-       setTotal(null);
+      setTotal(typeof initialTotal === "number" ? initialTotal : null);
+
     } else {
       resetPagination(0);
     }
@@ -737,6 +806,7 @@ useEffect(() => {
       setSelectedRoomTypes(rest.selectedRoomTypes ?? []);
       setMoveFilter(rest.moveFilter ?? null);
       setSortMode(rest.sortMode ?? "updated_desc");
+      setTotal(typeof rest.total === "number" ? rest.total : null);
 
       // restore cache
       pagesRef.current = rest.pages ?? [];
@@ -1275,6 +1345,7 @@ useEffect(() => {
               setMoveFilter={setMoveFilter}
               sortMode={sortMode}
               setSortMode={setSortMode}
+              total={total}
               onResetAll={() => {
                 setSelectedDistricts([]);
                 setSelectedRoomTypes([]);

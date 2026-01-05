@@ -22,9 +22,7 @@ const Pagination = ({
   page = 1,
   pageSize = 20,
 }: PaginationProps) => {
-  const from = total ? (page - 1) * pageSize + 1 : null;
-  const to = total ? Math.min(page * pageSize, total) : null;
-
+  
   return (
     <div className="container mx-auto px-4 pb-10">
       <div className="flex items-center justify-between gap-3">
@@ -38,12 +36,6 @@ const Pagination = ({
         >
           Trang trước
         </button>
-
-        <div className="text-sm text-gray-600 whitespace-nowrap">
-          {typeof total === "number"
-            ? `Tổng: ${total.toLocaleString("vi-VN")} phòng (${from}-${to})`
-            : ""}
-        </div>
 
         <button
           type="button"

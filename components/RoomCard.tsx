@@ -18,7 +18,13 @@ type Room = {
 };
 
 export default function RoomCard(props: { room: Room; adminLevel: number }) {
+
   const { room, adminLevel } = props;
+    const images = room.gallery_urls
+    ? room.gallery_urls.split(",").map((i) => i.trim()).filter(Boolean)
+    : [];
+  const showImages = images.slice(0, 3);
+  const mainImage = images[0] || "/no-image.png";
 
   const title =
   room.room_code ??
@@ -47,37 +53,11 @@ const district =
   (room as any).district_name ??
   "";
 
-  const images = room.gallery_urls
-    ? room.gallery_urls.split(",").map((i) => i.trim())
-    : [];
-
-  const showImages = images.slice(0, 3);
 
  const level = Number(adminLevel) || 0;
 const isAdmin = level === 1 || level === 2;
 // ===== IMAGE SOURCE (from gallery_urls) =====
-const gallery = (() => {
-  const v: any = room.gallery_urls;
 
-  if (!v) return [];
-
-  if (Array.isArray(v)) return v.filter(Boolean);
-
-  if (typeof v === "string") {
-    const s = v.trim();
-    if (!s) return [];
-    try {
-      const parsed = JSON.parse(s);
-      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-    } catch {
-      return s.startsWith("http") ? [s] : [];
-    }
-  }
-
-  return [];
-})();
-
-const mainImage = gallery[0] || "/no-image.png";
 
     return (
     <Link href={`/rooms/${room.id}`} className="block">
@@ -92,10 +72,17 @@ const mainImage = gallery[0] || "/no-image.png";
     
     {/* Ảnh chính */}
     <div className="relative w-full h-full overflow-hidden">
-  <img
-    src={showImages?.[0]}
-    className="w-full h-full object-cover object-[50%_40%]"
-  />
+ <img
+  src={mainImage}
+  alt={room.room_type}
+  className="w-full h-full object-cover object-[50%_40%]"
+  loading="lazy"
+  decoding="async"
+  onError={(e) => {
+    e.currentTarget.src = "/no-image.png";
+  }}
+/>
+
 
   {room.has_video && (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

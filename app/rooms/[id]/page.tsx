@@ -566,20 +566,30 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
       </div>
 
       {isAdmin && (
-        <div className="pt-4 border-t space-y-2">
-          <h2 className="text-lg font-semibold">Chính Sách</h2>
-          <textarea className="w-full min-h-[140px] rounded-xl border p-3" defaultValue={detail?.policy ?? ""} readOnly />
+  <div className="pt-4 border-t space-y-2">
+    <h2 className="text-lg font-semibold">Chính Sách</h2>
+    <textarea
+      className="w-full min-h-[140px] rounded-xl border p-3"
+      defaultValue={room?.chinh_sach ?? ""}
+      readOnly
+    />
 
-          {isAdminL1 && zaloLink && (
-            <div className="text-gray-800">
-              <span className="font-medium">Link Zalo:</span>{" "}
-              <a href={zaloLink} target="_blank" rel="noreferrer" className="text-sky-600 underline break-all">
-                {zaloLink}
-              </a>
-            </div>
-          )}
-        </div>
-      )}
+    {isAdminL1 && zaloLink && (
+      <div className="text-gray-800">
+        <span className="font-medium">Link Zalo:</span>{" "}
+        <a
+          href={zaloLink}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sky-600 underline break-all"
+        >
+          {zaloLink}
+        </a>
+      </div>
+    )}
+  </div>
+)}
+
 
       {viewerOpen && mediaItems.length > 0 && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center" onClick={() => setViewerOpen(false)}>

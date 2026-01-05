@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState, useRef, type CSSProperties } from 'react'
 import type { Room, TabKey, RoomStatus } from '../../types/room'
 import type { RoomForm, RoomDetail } from './types'
 import { supabase } from '@/lib/supabase'
@@ -111,12 +111,13 @@ export default function RoomModal({
     chinh_sach: '',
     
   })
-
+  
   const [detailForm, setDetailForm] = useState<RoomDetail>(defaultDetailForm)
-
+  
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const lastAutofillKeyRef = useRef<string>("");
 
   // ================== UPLOAD FILES ==================
   const handleUploadFiles = async (files: File[]) => {
@@ -148,7 +149,7 @@ export default function RoomModal({
       for (const file of okFiles) {
         const isVideo = file.type.startsWith('video/')
         const folder = isVideo ? 'videos' : 'images'
-
+        
         const ext = (file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg')).toLowerCase()
         const id = crypto.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`
         const filePath = `${folder}/room-${safeRoomCode}/${id}.${ext}`
@@ -159,7 +160,7 @@ export default function RoomModal({
           cacheControl: '3600',
         })
         if (upErr) throw upErr
-
+      
         const { data } = supabase.storage.from('room-images').getPublicUrl(filePath)
         const publicUrl = data?.publicUrl || ''
 
@@ -198,13 +199,14 @@ export default function RoomModal({
     }
   }
 
-  async function tryAutofillByAddress(house: string, addr: string) {
-  // chỉ áp dụng khi thêm mới
-  if (editingRoom?.id) return
+ async function tryAutofillByAddress(house: string, addr: string) {
+  const house_number = house.trim();
+  const address = addr.trim();
+  if (!house_number || !address) return;
 
-  const house_number = house.trim()
-  const address = addr.trim()
-  if (!house_number || !address) return
+  const key = `${house_number}__${address}`;
+  if (lastAutofillKeyRef.current === key) return;
+  lastAutofillKeyRef.current = key;
 
   // 1) tìm phòng mẫu gần nhất
   const { data: roomSample, error } = await supabase
@@ -214,20 +216,11 @@ export default function RoomModal({
     .eq("address", address)
     .order("updated_at", { ascending: false })
     .limit(1)
-    .maybeSingle()
+    .maybeSingle();
 
-  if (error || !roomSample) return
+  if (error || !roomSample) return;
 
-  // 2) autofill rooms (chỉ fill field đang trống)
-  setRoomForm((prev) => ({
-    ...prev,
-    ward: prev.ward?.trim() ? prev.ward : roomSample.ward ?? "",
-    district: prev.district?.trim() ? prev.district : roomSample.district ?? "",
-    link_zalo: prev.link_zalo?.trim() ? prev.link_zalo : roomSample.link_zalo ?? "",
-    chinh_sach: prev.chinh_sach?.trim() ? prev.chinh_sach : roomSample.chinh_sach ?? "",
-  }))
-
-  // 3) lấy room_details của phòng mẫu
+  // 2) lấy room_details của phòng mẫu
   const { data: detailSample } = await supabase
     .from("room_details")
     .select(`
@@ -245,23 +238,31 @@ export default function RoomModal({
       other_amenities
     `)
     .eq("room_id", roomSample.id)
-    .maybeSingle()
+    .maybeSingle();
 
-  if (!detailSample) return
+  // 3) nếu đang edit thì hỏi confirm trước khi overwrite
+  const isEdit = Boolean(editingRoom?.id);
+  if (isEdit) {
+    const ok = window.confirm("Đồng bộ thông tin theo địa chỉ này? (Sẽ ghi đè dữ liệu hiện tại)");
+    if (!ok) return;
+  }
 
-  // 4) autofill room_details (chỉ fill field đang trống)
-  setDetailForm((prev) => ({
+  // 4) OVERWRITE (cách 2)
+  setRoomForm((prev) => ({
     ...prev,
-    ...Object.fromEntries(
-      Object.entries(detailSample).filter(
-        ([key, value]) =>
-          value !== null &&
-          value !== undefined &&
-          (prev as any)[key] === defaultDetailForm[key as keyof typeof defaultDetailForm]
-      )
-    ),
-  }))
- }
+    ward: roomSample.ward ?? "",
+    district: roomSample.district ?? "",
+    link_zalo: roomSample.link_zalo ?? "",
+    chinh_sach: roomSample.chinh_sach ?? "",
+  }));
+
+  if (detailSample) {
+    setDetailForm((prev) => ({
+      ...prev,
+      ...detailSample,
+    }));
+  }
+}
 
   /* ===== LOAD DATA WHEN EDIT ===== */
   useEffect(() => {
