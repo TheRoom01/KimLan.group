@@ -64,6 +64,7 @@ const FilterBar = ({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState<"min" | "max" | null>(null);
   const draggingRef = useRef<"min" | "max" | null>(null);
+  const openPanelRef = useRef<HTMLDivElement | null>(null);
 
   const closeAllFilters = () => setOpenFilter(null);
   const fmtVND = (n: number) => n.toLocaleString("vi-VN");
@@ -146,6 +147,27 @@ const FilterBar = ({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  useEffect(() => {
+  if (openFilter === null) return;
+
+  const onScrollCapture = (e: Event) => {
+    const panel = openPanelRef.current;
+    const target = e.target as Node | null;
+
+    // Nếu scroll bên trong dropdown panel => không đóng
+    if (panel && target && panel.contains(target)) return;
+
+    closeAllFilters();
+  };
+
+  // capture=true để bắt cả scroll event (kể cả khi scroll xảy ra ở element)
+  window.addEventListener("scroll", onScrollCapture, true);
+
+  return () => {
+    window.removeEventListener("scroll", onScrollCapture, true);
+  };
+}, [openFilter]);
+
   const beginDrag = (thumb: "min" | "max") => (e: React.PointerEvent) => {
     if (loading) return;
     e.preventDefault();
@@ -214,6 +236,9 @@ const FilterBar = ({
 
             {openFilter === "district" && (
               <div
+               ref={(el) => {
+      if (openFilter === "district") openPanelRef.current = el;
+    }}
                 className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,420px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
@@ -275,6 +300,9 @@ const FilterBar = ({
 
             {openFilter === "roomType" && (
               <div
+               ref={(el) => {
+      if (openFilter === "roomType") openPanelRef.current = el;
+    }}
                 className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,420px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}

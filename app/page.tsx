@@ -52,8 +52,6 @@ export default async function HomePage() {
       initialRooms={res.data}
       initialNextCursor={res.nextCursor}
       initialAdminLevel={adminLevel}
-      initialDistricts={initialDistricts}
-      initialRoomTypes={initialRoomTypes}
       initialTotal={res.total ?? null}
     />
   );

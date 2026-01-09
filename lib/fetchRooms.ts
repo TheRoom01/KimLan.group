@@ -91,6 +91,57 @@ const ADMIN_L2_KEYS = [
   "room_detail",
 ] as const;
 
+const expandDistrictLegacyValues = (districts?: string[] | null) => {
+  if (!districts || districts.length === 0) return null;
+
+  const out = new Set<string>();
+
+  for (const raw of districts) {
+    const v = String(raw).trim();
+    if (!v) continue;
+
+    // luôn giữ value chuẩn: "Quận 1", "Quận 10", ...
+    out.add(v);
+
+    /**
+     * Match tất cả:
+     * - "Quận 1"  -> 1
+     * - "Quận 10" -> 10
+     * - "Quận 3"  -> 3
+     * - ...
+     */
+    const match = v.match(/(\d+)/);
+    if (match?.[1]) {
+      out.add(match[1]); // số thuần cho DB legacy
+    }
+  }
+
+  return out.size ? Array.from(out) : null;
+};
+
+const expandRoomTypeLegacyValues = (roomTypes?: string[] | null) => {
+  if (!roomTypes || roomTypes.length === 0) return null;
+
+  const out = new Set<string>();
+
+  for (const raw of roomTypes) {
+    const v = String(raw).trim();
+    if (!v) continue;
+
+    // giữ value chuẩn trên UI
+    out.add(v);
+
+    // Mapping legacy: "1 Phòng ngủ" -> "1PN", "2 Phòng ngủ" -> "2PN"
+    if (/^1\s*Phòng ngủ$/i.test(v)) out.add("1PN");
+    if (/^2\s*Phòng ngủ$/i.test(v)) out.add("2PN");
+
+    // (optional) nếu UI có "Studio" mà DB có "STUDIO" hoặc "0PN" thì add thêm ở đây
+  }
+
+  return out.size ? Array.from(out) : null;
+};
+
+
 export async function fetchRooms(
   params: FetchRoomsParams
 ): Promise<{
@@ -145,8 +196,8 @@ export async function fetchRooms(
     p_search: search ?? null,
     p_min_price: minPrice ?? null,
     p_max_price: maxPrice ?? null,
-    p_districts: districts?.length ? districts : null,
-    p_room_types: effectiveRoomTypes.length ? effectiveRoomTypes : null,
+    p_districts: expandDistrictLegacyValues(districts),
+    p_room_types: expandRoomTypeLegacyValues(roomTypes),
     p_move: move ?? null,
     p_sort: sortMode ?? "updated_desc",
   });

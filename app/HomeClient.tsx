@@ -7,13 +7,13 @@ import Pagination from "@/components/Pagination";
 import { fetchRooms, type UpdatedDescCursor } from "@/lib/fetchRooms";
 import { supabase } from "@/lib/supabase";
 import { usePathname } from "next/navigation";
+import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
+
 
 type InitialProps = {
   initialRooms: any[];
   initialNextCursor: string | UpdatedDescCursor | null;
   initialAdminLevel: 0 | 1 | 2;
-  initialDistricts: string[];
-  initialRoomTypes: string[];
   initialTotal?: number | null; // ✅
 };
 
@@ -80,8 +80,6 @@ const HomeClient = ({
   initialRooms,
   initialNextCursor,
   initialAdminLevel,
-  initialDistricts,
-  initialRoomTypes,
   initialTotal,
 }: InitialProps) => {
 
@@ -111,8 +109,9 @@ const HomeClient = ({
     return a <= b ? [a, b] : [b, a];
   }, [priceApplied]);
 
-  const districts = useMemo(() => initialDistricts ?? [], [initialDistricts]);
-  const roomTypes = useMemo(() => initialRoomTypes ?? [], [initialRoomTypes]);
+  const districts = useMemo(() => [...DISTRICT_OPTIONS], []);
+  const roomTypes = useMemo(() => [...ROOM_TYPE_OPTIONS], []);
+
   const filterApplyTimerRef = useRef<number | null>(null);
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
