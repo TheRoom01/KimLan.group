@@ -155,6 +155,170 @@ const [showPlay, setShowPlay] = useState(true)
     return () => sub?.subscription?.unsubscribe?.();
   }, []);
 
+  // ===== SHARE (Chi phí) =====
+type ShareKey = "address" | "code" | "price" | "lift_stairs" | "fees" | "amenities" | "description";
+
+const [shareOpen, setShareOpen] = useState(false);
+const [toast, setToast] = useState<string | null>(null);
+
+const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
+  // ✅ tick sẵn theo yêu cầu + thứ tự build text
+  address: true,
+  code: true,
+  price: true,
+  lift_stairs: true,
+
+  // ❌ không tick sẵn
+  fees: false,
+  amenities: false,
+  description: false,
+});
+
+function showToast(msg: string) {
+  setToast(msg);
+  window.setTimeout(() => setToast(null), 1600);
+}
+
+async function copyText(text: string) {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  // fallback cũ
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function buildShareText() {
+  const lines: string[] = [];
+
+  // 1) 📍 Địa chỉ
+  if (shareSel.address && addressLine) {
+    lines.push(`📍 ${addressLine}`);
+  }
+
+  // 2) (blank line) + Mã | 💰 Giá
+  if (shareSel.code || shareSel.price) {
+    const left = shareSel.code ? `_ Mã: ${roomCode || "—"}` : "";
+    const right = shareSel.price ? `💰 Giá: ${priceText || "—"}` : "";
+    const join = [left, right].filter(Boolean).join(" | ");
+    if (join) {
+      lines.push(join);
+    }
+  }
+
+  // 3) (blank line) + ✅ Thang máy / thang bộ (chỉ hiện cái "có")
+  if (shareSel.lift_stairs) {
+    const hasLift = Boolean(detail?.has_elevator);
+    const hasStairs = Boolean(detail?.has_stairs);
+    const parts = [
+      hasLift ? "Thang máy" : null,
+      hasStairs ? "Thang bộ" : null,
+    ].filter(Boolean) as string[];
+
+    if (parts.length) {
+      lines.push(`✅ ${parts.join(" & ")}`);
+    }
+  }
+
+  // 4) Chi phí (nếu tick)
+  if (shareSel.fees) {
+    lines.push("");
+    lines.push("Chi phí:");
+    if (feeRows.length) {
+      feeRows.forEach((r) => lines.push(` ${r.label}: ${r.value}`));
+    } else {
+      lines.push("- Đang cập nhật");
+    }
+  }
+
+  // 5) Tiện ích (nếu tick) — trừ has_elevator/has_stairs
+  if (shareSel.amenities) {
+    const amen: string[] = [];
+    if (detail?.shared_washer) amen.push("✔️ Máy giặt chung");
+    if (detail?.private_washer) amen.push("✔️ Máy giặt riêng");
+    if (detail?.shared_dryer) amen.push("✔️ Máy sấy chung");
+    if (detail?.private_dryer) amen.push("✔️ Máy sấy riêng");
+    if (detail?.has_parking) amen.push("✔️ Bãi xe");
+    if (detail?.has_basement) amen.push("✔️ Hầm xe");
+    if (detail?.fingerprint_lock) amen.push("✔️ Cửa vân tay");
+    if (detail?.allow_pet) amen.push("✔️ Nuôi thú cưng");
+    if (detail?.allow_cat) amen.push("✔️ Nuôi mèo");
+    if (detail?.allow_dog) amen.push("✔️ Nuôi chó");
+    if (detail?.other_amenities) amen.push(`✔️ ${String(detail.other_amenities)}`);
+
+    lines.push("");
+    lines.push("Tiện ích:");
+    if (amen.length) amen.forEach((x) => lines.push(`- ${x.replace("✔️ ", "")}`));
+    else lines.push("- Đang cập nhật");
+  }
+
+  // 6) Mô tả (nếu tick)
+  if (shareSel.description && descriptionText) {
+    lines.push("");
+    lines.push("Mô tả:");
+    lines.push(String(descriptionText));
+  }
+
+  return lines.join("\n");
+}
+
+function isRealMobile() {
+  // Ưu tiên API mới nếu có
+  // @ts-ignore
+  if (navigator.userAgentData?.mobile !== undefined) {
+    // @ts-ignore
+    return Boolean(navigator.userAgentData.mobile);
+  }
+  // Fallback userAgent (đủ dùng cho case này)
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+async function handleShare() {
+  const text = buildShareText();
+  if (!text.trim()) {
+    showToast("Không có nội dung để chia sẻ");
+    return;
+  }
+
+  // ✅ Desktop / giả mobile trên desktop: luôn copy để tránh “share sheet bật rồi tắt”
+  if (!isRealMobile()) {
+    const ok = await copyText(text);
+    showToast(ok ? "Đã copy nội dung — mở Zalo/Messenger và dán vào" : "Không thể copy — hãy chọn và copy thủ công");
+    return;
+  }
+
+  // ✅ Mobile thật: ưu tiên Web Share
+  try {
+    if (navigator?.share) {
+      await navigator.share({ text });
+      showToast("Đã mở chia sẻ");
+      return;
+    }
+  } catch (e) {
+    // share bị cancel / fail -> fallback copy
+  }
+
+  const ok = await copyText(text);
+  showToast(ok ? "Đã copy nội dung — mở Zalo/Messenger và dán vào" : "Không thể copy — hãy chọn và copy thủ công");
+}
+
+
   useEffect(() => {
     const checkAdmin = async () => {
       if (!user?.id) {
@@ -485,8 +649,25 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
   </div>
 )}
       </div>
+      
+<div className="flex justify-center my-2">
+  <a
+    href={`/api/rooms/${encodeURIComponent(id)}/download-images`}
+    className="
+      inline-flex items-center gap-1
+      rounded-full border border-gray-300
+      px-3 py-1
+      text-xs font-medium
+      text-gray-700
+      hover:bg-gray-100
+      transition
+    "
+  >
+    ⬇️ Tải ảnh
+  </a>
+</div>
 
-      <div className="rounded-xl border p-4 space-y-2">
+  <div className="rounded-xl border p-4 space-y-2">
   {/* Dòng 1: Mã | type  + Badge bên phải */}
   <div className="flex items-center justify-between gap-3">
     <div className="text-gray-800">
@@ -528,9 +709,21 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
   {descriptionText && <div className="text-gray-800 whitespace-pre-line">{descriptionText}</div>}
 </div>
 
-
       <div className="space-y-2 pt-4 border-t">
-        <h2 className="text-lg font-semibold">Chi phí</h2>
+        <div className="flex items-center justify-between">
+  <h2 className="text-lg font-semibold">Chi phí</h2>
+
+  <button
+    type="button"
+    onClick={() => setShareOpen(true)}
+    className="text-sm px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
+    aria-label="Chia sẻ"
+    title="Chia sẻ"
+  >
+    Chia sẻ
+  </button>
+</div>
+
         {feeRows.length > 0 ? (
           <div className="space-y-1">
             {feeRows.map((r) => (
@@ -635,6 +828,136 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
           </div>
         </div>
       )}
+      {/* ===== SHARE MODAL ===== */}
+{shareOpen && (
+  <div
+    className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center"
+    onClick={() => setShareOpen(false)}
+  >
+    <div
+      className="w-full md:max-w-lg bg-white rounded-t-2xl md:rounded-2xl p-4"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-lg font-semibold">Chia sẻ</div>
+        <button
+          type="button"
+          onClick={() => setShareOpen(false)}
+          className="px-3 py-1 rounded-lg hover:bg-gray-100"
+        >
+          Đóng
+        </button>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <div className="text-sm font-semibold text-gray-700">Thông tin nhanh</div>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shareSel.address}
+            onChange={(e) => setShareSel((s) => ({ ...s, address: e.target.checked }))}
+          />
+          <span>Địa chỉ</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shareSel.code}
+            onChange={(e) => setShareSel((s) => ({ ...s, code: e.target.checked }))}
+          />
+          <span>Mã phòng</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shareSel.price}
+            onChange={(e) => setShareSel((s) => ({ ...s, price: e.target.checked }))}
+          />
+          <span>Giá phòng</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shareSel.lift_stairs}
+            onChange={(e) => setShareSel((s) => ({ ...s, lift_stairs: e.target.checked }))}
+          />
+          <span>Thang máy / Thang bộ</span>
+        </label>
+
+        <div className="pt-2 border-t" />
+
+        <div className="text-sm font-semibold text-gray-700">Tuỳ chọn</div>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shareSel.fees}
+            onChange={(e) => setShareSel((s) => ({ ...s, fees: e.target.checked }))}
+          />
+          <span>Chi phí</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shareSel.amenities}
+            onChange={(e) => setShareSel((s) => ({ ...s, amenities: e.target.checked }))}
+          />
+          <span>Tiện ích (trừ thang máy/thang bộ)</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shareSel.description}
+            onChange={(e) => setShareSel((s) => ({ ...s, description: e.target.checked }))}
+          />
+          <span>Mô tả</span>
+        </label>
+
+        <div className="pt-2 border-t" />
+
+        <div className="text-sm font-semibold text-gray-700">Preview</div>
+        <pre className="text-sm whitespace-pre-wrap bg-gray-50 border rounded-xl p-3 max-h-48 overflow-auto">
+          {buildShareText()}
+        </pre>
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={handleShare}
+            className="flex-1 rounded-xl bg-black text-white py-2 font-medium"
+          >
+            Chia sẻ
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const text = buildShareText();
+              const ok = await copyText(text);
+              showToast(ok ? "Đã copy nội dung — mở Zalo/Messenger và dán vào" : "Không thể copy — hãy chọn và copy thủ công");
+            }}
+            className="flex-1 rounded-xl border py-2 font-medium"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ===== TOAST ===== */}
+{toast && (
+  <div className="fixed z-50 bottom-4 left-1/2 -translate-x-1/2 bg-black text-white text-sm px-4 py-2 rounded-full">
+    {toast}
+  </div>
+)}
+
     </div>
   );
 }
