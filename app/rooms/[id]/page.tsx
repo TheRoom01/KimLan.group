@@ -425,7 +425,6 @@ const activeItem = useMemo(() => {
 }, [activeIndex, mediaItems]);
 
 // ===== RENDER GUARD =====
-console.log("STATE", { id, adminLevel, fetchStatus, loading, hasRoom: !!room });
 
 if (!id || fetchStatus === "loading") {
   return (

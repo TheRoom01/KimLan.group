@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 
 type Room = {
   id: string;
@@ -17,14 +18,23 @@ type Room = {
   has_video?: boolean;
 };
 
-export default function RoomCard(props: { room: Room; adminLevel: number }) {
+export default function RoomCard(props: { room: Room; adminLevel: number; index?: number }) {
 
-  const { room, adminLevel } = props;
+  const { room, adminLevel, index = 0 } = props;
     const images = room.gallery_urls
     ? room.gallery_urls.split(",").map((i) => i.trim()).filter(Boolean)
     : [];
+  
   const showImages = images.slice(0, 3);
-  const mainImage = images[0] || "/no-image.png";
+
+  const safeSrc = (src?: string | null) => {
+  const s = (src ?? "").trim();
+      return s ? s : "/no-image.png";
+    };
+
+const mainImage = safeSrc(images[0]);
+const subImage1 = safeSrc(showImages[1]);
+const subImage2 = safeSrc(showImages[2]);
 
   const title =
   room.room_code ??
@@ -67,22 +77,21 @@ const isAdmin = level === 1 || level === 2;
                    transition hover:shadow-xl"
       >
         {/* ================= IMAGE SECTION ================= */}
-        <div className="h-[240px] overflow-hidden">
-  <div className="grid grid-cols-[60%_40%] gap-1 h-full">
+   <div className="h-[240px] overflow-hidden bg-gray-100">
+   <div className="grid grid-cols-[60%_40%] gap-1 h-full">
     
     {/* Ảnh chính */}
     <div className="relative w-full h-full overflow-hidden">
- <img
-  src={mainImage}
-  alt={room.room_type}
-  className="w-full h-full object-cover object-[50%_40%]"
-  loading="lazy"
-  decoding="async"
-  onError={(e) => {
-    e.currentTarget.src = "/no-image.png";
-  }}
-/>
-
+  <Image
+    src={mainImage}
+    alt={room.room_type ?? "Hình phòng"}
+    fill
+    sizes="(max-width: 1024px) 100vw, 60vw"
+    className="object-cover object-[50%_40%]"
+    priority={index < 6}
+    loading={index < 6 ? "eager" : "lazy"}
+    unoptimized
+  />
 
   {room.has_video && (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -91,56 +100,48 @@ const isAdmin = level === 1 || level === 2;
       </div>
     </div>
   )}
-</div>
-
+  </div>
 
            
-            {/* Ảnh phụ */}
-            <div className="grid grid-rows-2 gap-1 relative h-full">
-              {/* Ảnh phụ 1 */}
-              {showImages[1] && (
-                <img
-                  src={showImages[1]}
-                  alt={room.room_type}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                  decoding="async"
-                  fetchPriority="low"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = "/no-image.png";
-                  }}
-                />
-              )}
+ {/* Ảnh phụ */}
+      <div className="grid grid-rows-2 gap-1 relative h-full">
+    {/* Ảnh phụ 1 */}
+      {showImages[1] && (
+  <div className="relative w-full h-full overflow-hidden">
+    <Image
+      src={subImage1}
+      alt={room.room_code ? `Hình phòng ${room.room_code}` : "Hình phòng"}
+      fill
+      sizes="(max-width: 1024px) 100vw, 40vw"
+      className="object-cover"
+      unoptimized
+    />
+  </div>
+  )}
+     {/* Ảnh phụ 2 + overlay */}
+      {showImages[2] && (
+    <div className="relative w-full h-full">
+    <Image
+      src={subImage2}
+      alt={room.room_type}
+      fill
+      sizes="(max-width: 1024px) 100vw, 40vw"
+      className="object-cover"
+      unoptimized
+    />
+      <div className="absolute inset-0 bg-black/30" />
 
-              {/* Ảnh phụ 2 + overlay */}
-              {showImages[2] && (
-                <div className="relative w-full h-full">
-                  <img
-                    src={showImages[2]}
-                    alt={room.room_type}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                    fetchPriority="low"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = "/no-image.png";
-                    }}
-                  />
-
-                  <div className="absolute inset-0 bg-black/30" />
-
-                  {images.length > 3 && (
-                    <div className="absolute inset-0 flex items-center justify-center text-white text-lg font-semibold">
-                      +{images.length - 3}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+        {images.length > 3 && (
+        <div className="absolute inset-0 flex items-center justify-center text-white text-lg font-semibold">
+         +{images.length - 3}
+         </div>
+            )}
+             </div>
+               )}
+           </div>
           </div>
         </div>
         
-
         {/* ================= INFO SECTION ================= */}
         <div className="p-3 flex flex-col gap-2">
           {/* Dòng 1 */}

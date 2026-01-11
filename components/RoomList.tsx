@@ -42,9 +42,10 @@ const RoomList = ({
         </div>
       ) : roomsToRender.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {roomsToRender.map((room) => (
-            <RoomCard key={room.id} room={room} adminLevel={adminLevel} />
+          {roomsToRender.map((room, index) => (
+            <RoomCard key={room.id} room={room} adminLevel={adminLevel} index={index} />
           ))}
+
         </div>
       ) : (
         <div className="py-6 text-gray-600">Không có phòng phù hợp.</div>

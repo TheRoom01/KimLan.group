@@ -101,9 +101,7 @@ const HomeClient = ({
  
   // ================== FILTER ==================
   
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
+    const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
   const [priceApplied, setPriceApplied] = useState<[number, number]>(PRICE_DEFAULT);
 
   const [minPriceApplied, maxPriceApplied] = useMemo(() => {
@@ -137,17 +135,7 @@ const HomeClient = ({
 // Debounce search input để fetch không bị trễ 1 nhịp + không spam request
 const appliedSearch = useDebouncedValue(search, 250);
 
-  // ================== DEBOUNCE SEARCH ==================
-  useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 400);
-    return () => window.clearTimeout(t);
-  }, [search]);
-
-  const effectiveSearch = useMemo(() => {
-    const s = debouncedSearch.trim();
-    return s.length >= 2 ? s : "";
-  }, [debouncedSearch]);
-  
+    
    // ================== PAGINATION (cache) ==================
   const initCursor: string | UpdatedDescCursor | null =
     initialNextCursor && typeof initialNextCursor === "object"
@@ -570,13 +558,12 @@ useEffect(() => {
   }
 
   const ttlOk = restored?.ts ? Date.now() - restored.ts < 30 * 60 * 1000 : false;
-  ("[HOME hydrate] restored.qs=", restored?.qs, "ttlOk=", ttlOk);
-
+  
   const match =
     !!restored &&
     ttlOk &&
     canonicalQs(restored.qs || "") === canonicalQs(url.qs || "");
-  console.log("[HOME hydrate] match=", match);
+  
 
   let isBackFromDetail = false;
 try {
@@ -798,8 +785,7 @@ useEffect(() => {
 
     const url = readUrlState();
     setStatusFilter(url.st ?? null);
-    console.log("[HOME pop] url.qs=", url.qs);
-
+    
     // 1) ưu tiên restore từ sessionStorage
     let restored: PersistState | null = null;
     try {
@@ -810,13 +796,12 @@ useEffect(() => {
     }
 
     const ttlOk = restored?.ts ? Date.now() - restored.ts < 30 * 60 * 1000 : false;
-    console.log("[HOME pop] restored.qs=", restored?.qs, "ttlOk=", ttlOk);
+    
 
     const match =
       !!restored &&
       ttlOk &&
       canonicalQs(restored.qs || "") === canonicalQs(url.qs || "");
-    console.log("[HOME pop] match=", match);
 
     if (match && restored) {
       const rest = restored;
@@ -928,10 +913,14 @@ useEffect(() => {
     // chặn gọi trùng khi đang bay
     if (inFlightRef.current[targetIndex]) return;
     inFlightRef.current[targetIndex] = true;
+    const isVisible = targetIndex === pageIndexRef.current;
 
-    setLoading(true);
-    setShowSkeleton(true);
-    setFetchError("");
+    if (isVisible) {
+      setLoading(true);
+      setShowSkeleton(true);
+      setFetchError("");
+    }
+
 
     try {
       const cursorForThisPage = cursorsRef.current[targetIndex] ?? null;
@@ -977,19 +966,48 @@ useEffect(() => {
       if (targetIndex === pageIndexRef.current) {
         setDisplayPageIndex(targetIndex);
       }
+
+      // ===== Idle prefetch NEXT page (UX nhanh) =====
+      // ❌ đừng prefetch khi vừa reset/filter
+     if (targetIndex !== pageIndexRef.current) return;
+      const shouldPrefetch = Boolean(res.nextCursor) && deduped.length === LIMIT;
+      
+      if (shouldPrefetch) {
+        const nextIdx = targetIndex + 1;
+
+        const notFetchedYet = pagesRef.current[nextIdx] === undefined;
+        const notInFlight = !inFlightRef.current[nextIdx];
+
+        if (notFetchedYet && notInFlight) {
+          const idle = (cb: () => void) => {
+            const ric = (window as any).requestIdleCallback as undefined | ((fn: any) => any);
+            if (ric) ric(cb);
+            else setTimeout(cb, 0);
+          };
+
+          idle(() => {
+            // nếu filter đã đổi thì bỏ
+            if (myVersion !== filtersVersionRef.current) return;
+            fetchPageRef.current(nextIdx);
+          });
+        }
+      }
+
     } catch (e: any) {
-      if (myVersion === filtersVersionRef.current) {
+      if (isVisible && myVersion === filtersVersionRef.current) {
         setFetchError(e?.message ?? "Fetch failed");
       }
+
     } finally {
       inFlightRef.current[targetIndex] = false;
 
       // ✅ tắt skeleton nếu page đã có trạng thái (kể cả [])
       const fetched = pagesRef.current[targetIndex] !== undefined;
-      if (fetched) {
+      if (isVisible && fetched) {
         setLoading(false);
         setShowSkeleton(false);
-          }
+      }
+
     }
   },
   [
@@ -1068,59 +1086,61 @@ const preSearchBaselineRef = useRef<BaselineState | null>(null);
 // ================== FILTER CHANGE ==================
 const lastFilterSigRef = useRef<string>("");
 
-useEffect(() => {
-  console.log("[FILTER EFFECT] fired", {
-  statusFilter,
-  skip: skipNextFilterEffectRef.current,
-  blocked: persistBlockedRef.current,
-});
+const districtsSig = useMemo(
+  () => [...selectedDistricts].sort().join("|"),
+  [selectedDistricts]
+);
 
+const roomTypesSig = useMemo(
+  () => [...selectedRoomTypes].sort().join("|"),
+  [selectedRoomTypes]
+);
+
+const filterSig = useMemo(() => {
+  const applied = appliedSearch.trim();
+  return [
+    applied,
+    String(priceApplied[0]),
+    String(priceApplied[1]),
+    districtsSig,
+    roomTypesSig,
+    moveFilter ?? "",
+    sortMode ?? "",
+    statusFilter ?? "",
+  ].join("~");
+}, [
+  appliedSearch,
+  priceApplied,
+  districtsSig,
+  roomTypesSig,
+  moveFilter,
+  sortMode,
+  statusFilter,
+]);
+
+
+useEffect(() => {
+  
   const applied = appliedSearch.trim();
 
   // ✅ nếu vừa hydrate (initial/popstate/restore) thì bỏ qua 1 nhịp FILTER CHANGE
-  if (skipNextFilterEffectRef.current) {
-        console.log("[FILTER EFFECT] skipped one tick (skipNextFilterEffectRef)");
+ if (skipNextFilterEffectRef.current) {
+  skipNextFilterEffectRef.current = false;
 
-    skipNextFilterEffectRef.current = false;
-
-    const sigNow = [
-      applied,
-      String(priceApplied[0]),
-      String(priceApplied[1]),
-      [...selectedDistricts].sort().join("|"),
-      [...selectedRoomTypes].sort().join("|"),
-      moveFilter ?? "",
-      sortMode ?? "",
-      statusFilter ?? "",
-      ].join("~");
-    lastFilterSigRef.current = sigNow;
-
-    prevAppliedSearchRef.current = applied;
-    return;
-  }
-
+  lastFilterSigRef.current = filterSig;
+  prevAppliedSearchRef.current = appliedSearch.trim();
+  return;
+ }
     if (hydratingFromUrlRef.current) {
-    console.log("[FILTER EFFECT] blocked by hydratingFromUrlRef");
+    
     return;
   }
 
 
   // ✅ normalize filter -> signature primitive để tránh array reference gây reset giả
-  const sig = [
-    applied,
-    String(priceApplied[0]),
-    String(priceApplied[1]),
-    [...selectedDistricts].sort().join("|"),
-    [...selectedRoomTypes].sort().join("|"),
-    moveFilter ?? "",
-    sortMode ?? "",
-    statusFilter ?? "",
-  ].join("~");
-
-  console.log("[FILTER EFFECT] sig", sig);
-console.log("[FILTER EFFECT] last", lastFilterSigRef.current);
-  if (sig === lastFilterSigRef.current) return;
-  lastFilterSigRef.current = sig;
+  
+  if (filterSig === lastFilterSigRef.current) return;
+lastFilterSigRef.current = filterSig;
 
   // ====== Special logic for SEARCH baseline ======
   const prevApplied = prevAppliedSearchRef.current;
@@ -1164,6 +1184,7 @@ console.log("[FILTER EFFECT] last", lastFilterSigRef.current);
       t: selectedRoomTypes,
       m: moveFilter,
       s: sortMode,
+      st: statusFilter,
       p: base.pageIndex,
     });
 
@@ -1207,6 +1228,7 @@ console.log("[FILTER EFFECT] last", lastFilterSigRef.current);
   filterApplyTimerRef.current = window.setTimeout(() => {
     replaceUrlShallow(qs);
     setTotal(null);
+    setDisplayPageIndex(0);
     resetPagination(0);
     fetchPage(0);
     persistSoon();
@@ -1215,14 +1237,11 @@ console.log("[FILTER EFFECT] last", lastFilterSigRef.current);
   return () => {
     if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
   };
+
   }, [
-  appliedSearch, // ✅ dùng debounced
+  filterSig,
+  appliedSearch,
   priceApplied,
-  selectedDistricts,
-  selectedRoomTypes,
-  moveFilter,
-  sortMode,
-  statusFilter,
   buildQs,
   replaceUrlShallow,
   resetPagination,
@@ -1230,7 +1249,7 @@ console.log("[FILTER EFFECT] last", lastFilterSigRef.current);
   fetchPage,
   displayPageIndex,
   hasNext,
-  ]);
+ ]);
 
   // ================== NEXT / PREV ==================
   const goNext = useCallback(() => {
