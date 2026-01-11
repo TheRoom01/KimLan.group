@@ -162,6 +162,7 @@ export async function fetchRooms(
     roomTypes,
     move,
     sortMode,
+    status,
   } = params;
 
   const effectiveRoomTypes =

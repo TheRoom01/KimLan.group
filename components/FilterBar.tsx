@@ -445,23 +445,21 @@ const FilterBar = ({
     ["Đã thuê", "Đã thuê"],
   ] as const
 ).map(([v, label]) => (
-  <label
-    key={label}
-    className="flex items-center gap-2 text-sm cursor-pointer"
-  >
+  <label key={label} className="flex items-center gap-2 text-sm cursor-pointer">
     <input
       type="radio"
       name="statusFilter"
       checked={statusFilter === v}
       onChange={() => {
-        console.log("[UI] status -> Trống");
-    setStatusFilter("Trống");
-    setOpenFilter(null);
+        
+        setStatusFilter(v);
+        setOpenFilter(null);
       }}
     />
     <span>{label}</span>
   </label>
 ))}
+
 
             </div>
           )}

@@ -62,6 +62,7 @@ type PersistState = {
   selectedRoomTypes: string[];
   moveFilter: "elevator" | "stairs" | null;
   sortMode: SortMode;
+  statusFilter: string | null;
 
   // pagination cache
   pageIndex: number;
@@ -147,12 +148,7 @@ const appliedSearch = useDebouncedValue(search, 250);
     return s.length >= 2 ? s : "";
   }, [debouncedSearch]);
   
-  useEffect(() => {
-  console.log("[STATE] statusFilter =", statusFilter);
-}, [statusFilter]);
-
-
-  // ================== PAGINATION (cache) ==================
+   // ================== PAGINATION (cache) ==================
   const initCursor: string | UpdatedDescCursor | null =
     initialNextCursor && typeof initialNextCursor === "object"
       ? { id: initialNextCursor.id, updated_at: initialNextCursor.updated_at }
@@ -260,7 +256,7 @@ const persistBlockedRef = useRef(false);
       setOrDel(QS.t, next.t?.length ? toListParam(next.t) : null);
       setOrDel(QS.m, next.m ? next.m : null);
       setOrDel(QS.s, next.s ? next.s : null);
-      setOrDel(QS.st, next.st ?? null);
+      setOrDel(QS.st, next.st ? encodeURIComponent(next.st) : null);
       return params.toString();
     },
     []
@@ -334,6 +330,7 @@ const persistBlockedRef = useRef(false);
       selectedRoomTypes,
       moveFilter,
       sortMode,
+      statusFilter,
 
       pageIndex: lastPageIndexRef.current,
       displayPageIndex: lastDisplayPageIndexRef.current,
@@ -356,6 +353,7 @@ const persistBlockedRef = useRef(false);
   selectedRoomTypes,
   moveFilter,
   sortMode,
+  statusFilter,
   hasNext,
 ]);
 
@@ -498,8 +496,7 @@ useEffect(() => {
 
    // 1) read URL
   const url = readUrlState();
-  console.log("[HOME hydrate] url.qs=", url.qs, "isReload=", isReload);
-  
+   
   
   // ✅ HARD RESET when reload (F5 / pull-to-refresh)
   if (isReload) {
@@ -573,7 +570,7 @@ useEffect(() => {
   }
 
   const ttlOk = restored?.ts ? Date.now() - restored.ts < 30 * 60 * 1000 : false;
-  console.log("[HOME hydrate] restored.qs=", restored?.qs, "ttlOk=", ttlOk);
+  ("[HOME hydrate] restored.qs=", restored?.qs, "ttlOk=", ttlOk);
 
   const match =
     !!restored &&
@@ -629,7 +626,7 @@ try {
     setMoveFilter(restoredMove);
     setSortMode(restoredSort);
     setTotal(typeof rest.total === "number" ? rest.total : null);
-
+    setStatusFilter(rest.statusFilter ?? null);
 
     // ✅ Nếu reload: reset vị trí + trang về 0, GIỮ filter
     // - KHÔNG restore scroll/page
@@ -661,6 +658,7 @@ try {
         t: restoredTypes,
         m: restoredMove,
         s: restoredSort,
+        st: rest.statusFilter ?? null,
         p: 0,
       });
       replaceUrlShallow(qsNoPage);
@@ -717,6 +715,7 @@ try {
       new URLSearchParams(window.location.search).has(QS.t) ||
       new URLSearchParams(window.location.search).has(QS.m) ||
       new URLSearchParams(window.location.search).has(QS.s) ||
+      new URLSearchParams(window.location.search).has(QS.st) ||
       new URLSearchParams(window.location.search).has(QS.p));
 
   if (!hasAny) {
@@ -833,6 +832,7 @@ useEffect(() => {
       setMoveFilter(rest.moveFilter ?? null);
       setSortMode(rest.sortMode ?? "updated_desc");
       setTotal(typeof rest.total === "number" ? rest.total : null);
+      setStatusFilter(rest.statusFilter ?? null);
 
       // restore cache
       pagesRef.current = rest.pages ?? [];
@@ -875,26 +875,24 @@ useEffect(() => {
   }
 }
 
-    // fallback: hydrate theo URL + fetch
-hydratingFromUrlRef.current = true;
+      // fallback: hydrate theo URL + fetch
+  hydratingFromUrlRef.current = true;
 
-setSearch(url.q);
-setPriceDraft([url.minVal, url.maxVal]);
-setPriceApplied([url.minVal, url.maxVal]);
-setSelectedDistricts(url.d);
-setSelectedRoomTypes(url.t);
-setMoveFilter(url.m);
-setSortMode(url.s);
-setStatusFilter(url.st);
+  setSearch(url.q);
+  setPriceDraft([url.minVal, url.maxVal]);
+  setPriceApplied([url.minVal, url.maxVal]);
+  setSelectedDistricts(url.d);
+  setSelectedRoomTypes(url.t);
+  setMoveFilter(url.m);
+  setSortMode(url.s);
+  setStatusFilter(url.st);
 
-filtersVersionRef.current += 1;
-resetPagination(url.nextPage);
-
-// ✅ QUAN TRỌNG: nhả cờ để FILTER CHANGE không bị block mãi
-queueMicrotask(() => {
-  hydratingFromUrlRef.current = false;
+  filtersVersionRef.current += 1;
   resetPagination(url.nextPage);
-});
+
+  queueMicrotask(() => {
+    hydratingFromUrlRef.current = false;
+  });
 
 
     // pageIndex có thể không đổi -> fetch trực tiếp
@@ -1000,6 +998,7 @@ queueMicrotask(() => {
     minPriceApplied,
     maxPriceApplied,
     sortMode,
+    statusFilter,
     selectedDistricts,
     selectedRoomTypes,
     moveFilter,
@@ -1405,14 +1404,7 @@ useEffect(() => {
               setMoveFilter={setMoveFilter}
 
               statusFilter={statusFilter}
-  setStatusFilter={(v) => {
-    // ✅ ĐÂY LÀ USER ACTION → phải unlock
-    hydratingFromUrlRef.current = false;
-    persistBlockedRef.current = false;
-    skipNextFilterEffectRef.current = false;
-
-    setStatusFilter(v);
-  }}
+              setStatusFilter={setStatusFilter}
 
               sortMode={sortMode}
               setSortMode={setSortMode}
