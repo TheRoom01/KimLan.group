@@ -113,10 +113,9 @@ export default function RoomDetailPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
 
-  const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(0); // public default
+  const [adminLevel, setAdminLevel] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null)
 const [showPlay, setShowPlay] = useState(true)
 
@@ -320,33 +319,33 @@ async function handleShare() {
 
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      if (!user?.id) {
-        setIsAdmin(false);
-        setAdminLevel(0);
-        return;
-      }
+  const checkAdmin = async () => {
+    if (!user?.id) {
+      setAdminLevel(0);
+      return;
+    }
 
-      try {
-        const { data, error } = await supabase
-          .from("admin_users")
-          .select("level")
-          .eq("user_id", user.id)
-          .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from("admin_users")
+        .select("level")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-        const rawLevel = Number(data?.level);
-        const level: 0 | 1 | 2 = rawLevel === 1 || rawLevel === 2 ? rawLevel : 0;
-        setAdminLevel(level);
-        setIsAdmin(level === 1 || level === 2);
-      } catch (e) {
-        console.error("checkAdmin exception:", e);
-        setAdminLevel(0);
-        setIsAdmin(false);
-      }
-    };
+      const rawLevel = Number(data?.level);
+      const level: 0 | 1 | 2 =
+        rawLevel === 1 || rawLevel === 2 ? rawLevel : 0;
 
-    checkAdmin();
-  }, [user?.id]);
+      setAdminLevel(level);
+    } catch (e) {
+      console.error("checkAdmin exception:", e);
+      setAdminLevel(0);
+    }
+  };
+
+  checkAdmin();
+}, [user?.id]);
+
 
 useEffect(() => {
   setFetchStatus("loading");
@@ -369,7 +368,7 @@ useEffect(() => {
     try {
       const role: 0 | 1 | 2 = adminLevel === 1 ? 1 : adminLevel === 2 ? 2 : 0;
 
-      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+         const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
         p_role: role,
         p_id: id,
       });
@@ -382,7 +381,6 @@ useEffect(() => {
         setRoom(null);
         return;
       }
-
       setRoom(data ?? null);
     } catch (e) {
       if (myReq !== roomReqIdRef.current) return;
@@ -455,12 +453,12 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
     "";
 
   const addressLine = joinParts([
-    isAdmin
-      ? [houseNumber, room?.address].filter(Boolean).join(" ")
-      : room?.address,
-    room?.ward,
-    room?.district,
-  ]);
+  adminLevel === 1 || adminLevel === 2
+    ? [houseNumber, room?.address].filter(Boolean).join(" ")
+    : room?.address,
+  room?.ward,
+  room?.district,
+]);
 
   const descriptionText = room?.description ?? detail?.description ?? room?.desc ?? "";
 
@@ -511,7 +509,9 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
     });
   }
 
-  const isAdminL1 = adminLevel === 1;
+  const isAdmin = adminLevel === 1 || adminLevel === 2;
+ const isAdminL1 = adminLevel === 1;
+
   const zaloLink = room?.link_zalo ?? "";
 
   return (
@@ -789,12 +789,14 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
       {isAdmin && (
   <div className="pt-4 border-t space-y-2">
     <h2 className="text-lg font-semibold">Chính Sách</h2>
+
     <textarea
       className="w-full min-h-[140px] rounded-xl border p-3"
       defaultValue={room?.chinh_sach ?? ""}
       readOnly
     />
 
+    {/* ✅ chỉ L1 mới thấy link_zalo */}
     {isAdminL1 && zaloLink && (
       <div className="text-gray-800">
         <span className="font-medium">Link Zalo:</span>{" "}
@@ -810,7 +812,6 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
     )}
   </div>
 )}
-
 
       {viewerOpen && mediaItems.length > 0 && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center" onClick={() => setViewerOpen(false)}>
