@@ -130,7 +130,7 @@ const MESSENGER = "https://www.facebook.com/duongkimlan001";
             <div
         ref={wrapperRef}
         style={{ left: pos.x, top: pos.y }}
-        className="fixed z-50 flex flex-col items-center gap-3 touch-none"
+        className="fixed z-[2147483647] flex flex-col items-center gap-3 touch-none"
         >
 
       {open && (
