@@ -1,6 +1,9 @@
 import HomeClient from "./HomeClient";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
+import ContactFAB from "@/components/ContactFAB";
+
+
 export const dynamic = "force-dynamic";
 export default async function HomePage() {
   
@@ -48,11 +51,17 @@ export default async function HomePage() {
   });
 
   return (
+  <>
     <HomeClient
       initialRooms={res.data}
       initialNextCursor={res.nextCursor}
       initialAdminLevel={adminLevel}
       initialTotal={res.total ?? null}
     />
-  );
+
+    <ContactFAB />
+  </>
+);
+
+  
 }

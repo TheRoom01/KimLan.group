@@ -650,21 +650,49 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
 )}
       </div>
       
+{/* ===== Download badge ===== */}
 <div className="flex justify-center my-2">
-  <a
-    href={`/api/rooms/${encodeURIComponent(id)}/download-images`}
+  <button
+    type="button"
+    onClick={async () => {
+      const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
+
+      const res = await fetch(url);
+      const ct = res.headers.get("content-type") || "";
+
+      if (!res.ok && ct.includes("application/json")) {
+        const j = await res.json();
+        alert(j.message || "Không tải được ảnh");
+        return;
+      }
+
+      if (!res.ok) {
+        alert("Không tải được ảnh");
+        return;
+      }
+
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `room-${id}-images.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    }}
     className="
       inline-flex items-center gap-1
       rounded-full border border-gray-300
-      px-3 py-1
-      text-xs font-medium
+      bg-white
+      px-2 py-[1px]
+      text-[5px] font-medium
       text-gray-700
       hover:bg-gray-100
       transition
     "
   >
     ⬇️ Tải ảnh
-  </a>
+  </button>
 </div>
 
   <div className="rounded-xl border p-4 space-y-2">
