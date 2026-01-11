@@ -178,7 +178,7 @@ useEffect(() => {
   const fetchPageRef = useRef<(targetIndex: number) => void>(() => {});
 
   const requestIdRef = useRef(0);
-  const inFlightRef = useRef<Record<number, boolean>>({});
+  const inFlightRef = useRef<Record<string, boolean>>({});
 
   // ================== GUARDS ==================
   const hydratingFromUrlRef = useRef(false);
@@ -910,9 +910,12 @@ useEffect(() => {
       return;
     }
 
-    // chặn gọi trùng khi đang bay
-    if (inFlightRef.current[targetIndex]) return;
-    inFlightRef.current[targetIndex] = true;
+    const reqKey = `${filterSig}::${targetIndex}`;
+
+// chặn gọi trùng khi đang bay (theo filter + page)
+if (inFlightRef.current[reqKey]) return;
+inFlightRef.current[reqKey] = true;
+
     const isVisible = targetIndex === pageIndexRef.current;
 
     if (isVisible) {
@@ -999,7 +1002,7 @@ useEffect(() => {
       }
 
     } finally {
-      inFlightRef.current[targetIndex] = false;
+      inFlightRef.current[reqKey] = false;
 
       // ✅ tắt skeleton nếu page đã có trạng thái (kể cả [])
       const fetched = pagesRef.current[targetIndex] !== undefined;
