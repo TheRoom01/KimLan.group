@@ -18,6 +18,9 @@ export type FetchRoomsParams = {
   roomTypes?: string[] | null;
   move?: "elevator" | "stairs" | null;
 
+  // ✅ NEW: lọc 1 status (null | "Trống" | "Đã thuê")
+  status?: string | null;
+
   // (server) vẫn có thể truyền sortMode nếu bạn muốn đồng bộ với client
   sortMode?: "updated_desc" | "price_asc" | "price_desc" | null;
 };
@@ -109,6 +112,7 @@ export async function fetchRoomsServer(
     roomType,
     roomTypes,
     move,
+    status, // ✅ NEW
     sortMode,
   } = params;
 
@@ -141,6 +145,9 @@ export async function fetchRoomsServer(
     p_cursor: cursorId, // giữ tương thích cho price_asc/desc + fallback
     p_cursor_id: cursorId,
     p_cursor_updated_at: cursorUpdatedAt,
+
+    // ✅ NEW: server-side status filter
+    p_statuses: status ? [status] : null,
 
     p_search: search ?? null,
     p_min_price: minPrice ?? null,

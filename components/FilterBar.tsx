@@ -27,6 +27,9 @@ type FilterBarProps = {
   sortMode: SortMode;
   setSortMode: React.Dispatch<React.SetStateAction<SortMode>>;
 
+  statusFilter: string | null;
+  setStatusFilter: React.Dispatch<React.SetStateAction<string | null>>;
+
   loading?: boolean;
   onResetAll?: () => void;
 };
@@ -54,6 +57,8 @@ const FilterBar = ({
   setMoveFilter,
   sortMode,
   setSortMode,
+  statusFilter,
+  setStatusFilter,
   total,
   loading = false,
   onResetAll,
@@ -217,34 +222,35 @@ const FilterBar = ({
       {/* HÀNG NÚT */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          {/* QUẬN */}
+{/* QUẬN */}
           <div className="relative z-50">
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "district" ? null : "district"))}
                 className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-    loading ? "opacity-60" : ""
-  } ${
-    openFilter === "district"
-      ? "bg-black text-white border-black"
-      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-  }`}
-            >
-              Quận
-              {selectedDistricts.length > 0 && <span className="text-xs text-gray-500">({selectedDistricts.length})</span>}
-            </button>
+                  loading ? "opacity-60" : ""
+                } ${
+                  openFilter === "district"
+                    ? "bg-black text-white border-black"
+                    : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+                }`}
+                          >
+                            Quận
+                            {selectedDistricts.length > 0 && <span className="text-xs text-gray-500">({selectedDistricts.length})</span>}
+                          </button>
 
-            {openFilter === "district" && (
-              <div
-               ref={(el) => {
-      if (openFilter === "district") openPanelRef.current = el;
-    }}
+                          {openFilter === "district" && (
+                            <div
+                            ref={(el) => {
+                    if (openFilter === "district") openPanelRef.current = el;
+                  }}
                 className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,420px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium">Chọn quận</div>
+                  
                   <button type="button" className="text-xs text-gray-600 hover:text-black" onClick={() => setSelectedDistricts([])}>
                     Clear
                   </button>
@@ -367,8 +373,7 @@ const FilterBar = ({
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="text-sm font-medium">Chọn 1</div>
-
+                
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="radio" name="moveFilter" checked={moveFilter === null} onChange={() => setMoveFilter(null)} />
                   <span>Tất cả</span>
@@ -388,7 +393,7 @@ const FilterBar = ({
           </div>
         </div>
 
-        {/* RIGHT: SẮP XẾP */}
+        {/* RIGHT: BỘ LỌC */}
         <div className="relative z-50 shrink-0">
           <button
             type="button"
@@ -402,7 +407,7 @@ const FilterBar = ({
   }`}
 
           >
-            Sắp xếp
+            Bộ lọc
           </button>
 
           {openFilter === "sort" && (
@@ -411,7 +416,7 @@ const FilterBar = ({
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="text-sm font-medium">Chọn 1</div>
+              <div className="text-sm font-medium">Thứ tự</div>
 
               {(
                 [
@@ -421,10 +426,43 @@ const FilterBar = ({
                 ] as const
               ).map(([v, label]) => (
                 <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="radio" name="sortMode" checked={sortMode === v} onChange={() => setSortMode(v)} />
+                  <input type="radio" name="sortMode" checked={sortMode === v} onChange={() => {
+                    setSortMode(v);
+                    setOpenFilter(null);
+                  }} 
+                  />
                   <span>{label}</span>
                 </label>
               ))}
+              <div className="pt-2 mt-2 border-t" />
+
+<div className="text-sm font-medium">Trạng thái</div>
+
+{(
+  [
+    [null, "Tất cả"],
+    ["Trống", "Trống"],
+    ["Đã thuê", "Đã thuê"],
+  ] as const
+).map(([v, label]) => (
+  <label
+    key={label}
+    className="flex items-center gap-2 text-sm cursor-pointer"
+  >
+    <input
+      type="radio"
+      name="statusFilter"
+      checked={statusFilter === v}
+      onChange={() => {
+        console.log("[UI] status -> Trống");
+    setStatusFilter("Trống");
+    setOpenFilter(null);
+      }}
+    />
+    <span>{label}</span>
+  </label>
+))}
+
             </div>
           )}
         </div>

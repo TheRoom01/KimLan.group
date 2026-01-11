@@ -5,7 +5,13 @@ import ContactFAB from "@/components/ContactFAB";
 
 
 export const dynamic = "force-dynamic";
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = (await searchParams) ?? {};
+
   
   const supabase = await createSupabaseServerClient();
   // 1) Resolve user + admin level on server (so initial render knows role)
@@ -36,6 +42,10 @@ export default async function HomePage() {
     // ignore
   }
 
+  const stRaw = typeof sp.st === "string" ? sp.st : null;
+const status = stRaw ? decodeURIComponent(stRaw) : null;
+
+
   // 3) Fetch page 0 on server using the same RPC as client
   const LIMIT = 20;
   const res = await fetchRoomsServer(supabase, {
@@ -48,6 +58,7 @@ export default async function HomePage() {
     districts: null,
     roomTypes: null,
     move: null,
+    status,
   });
 
   return (

@@ -19,6 +19,7 @@ export type FetchRoomsParams = {
   roomTypes?: string[];
   move?: "elevator" | "stairs";
   sortMode?: "updated_desc" | "price_asc" | "price_desc";
+  status?: string | null;
 };
 
 /**
@@ -192,6 +193,7 @@ export async function fetchRooms(
     p_cursor: cursorId, // giữ tương thích cho price_asc/desc + fallback
     p_cursor_id: cursorId,
     p_cursor_updated_at: cursorUpdatedAt,
+    p_statuses: status ? [status] : null,
 
     p_search: search ?? null,
     p_min_price: minPrice ?? null,
@@ -200,6 +202,7 @@ export async function fetchRooms(
     p_room_types: expandRoomTypeLegacyValues(roomTypes),
     p_move: move ?? null,
     p_sort: sortMode ?? "updated_desc",
+    
   });
 
   if (error) {

@@ -27,6 +27,7 @@ const QS = {
   t: "t",
   m: "m",
   s: "s",
+  st: "st",
   p: "p",
 } as const;
 
@@ -42,6 +43,7 @@ function toListParam(arr: string[]) {
 }
 
 const PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
+
 
 const HOME_BACK_HINT_KEY = "HOME_BACK_HINT_V1";
 const HOME_BACK_HINT_TTL = 15 * 60 * 1000; // 15 phút
@@ -87,7 +89,7 @@ const HomeClient = ({
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const listQsRef = useRef<string>("");        // qs ổn định của list
   const didRestoreFromStorageRef = useRef(false);
-
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(
     typeof initialTotal === "number" ? initialTotal : null
   );
@@ -145,6 +147,10 @@ const appliedSearch = useDebouncedValue(search, 250);
     return s.length >= 2 ? s : "";
   }, [debouncedSearch]);
   
+  useEffect(() => {
+  console.log("[STATE] statusFilter =", statusFilter);
+}, [statusFilter]);
+
 
   // ================== PAGINATION (cache) ==================
   const initCursor: string | UpdatedDescCursor | null =
@@ -237,6 +243,7 @@ const persistBlockedRef = useRef(false);
       t?: string[];
       m?: "elevator" | "stairs" | null;
       s?: SortMode;
+      st?: string | null;
       p?: number;
     }) => {
       const params = new URLSearchParams(window.location.search);
@@ -253,10 +260,7 @@ const persistBlockedRef = useRef(false);
       setOrDel(QS.t, next.t?.length ? toListParam(next.t) : null);
       setOrDel(QS.m, next.m ? next.m : null);
       setOrDel(QS.s, next.s ? next.s : null);
-
-      // p=0 thì bỏ để URL sạch
-      setOrDel(QS.p, typeof next.p === "number" && next.p > 0 ? String(next.p) : null);
-
+      setOrDel(QS.st, next.st ?? null);
       return params.toString();
     },
     []
@@ -301,10 +305,13 @@ const persistBlockedRef = useRef(false);
     const minVal = Number.isFinite(min) ? min : PRICE_DEFAULT[0];
     const maxVal = Number.isFinite(max) ? max : PRICE_DEFAULT[1];
     const nextPage = Number.isFinite(p) && p >= 0 ? p : 0;
-    
+
+    const stRaw = sp.get(QS.st);
+    const st = stRaw ? decodeURIComponent(stRaw) : null;
+   
     const qs = canonicalQs(sp.toString());
 
-    return { qs, q, minVal, maxVal, d, t, m, s, nextPage };
+    return { qs, q, minVal, maxVal, d, t, m, s, st, nextPage };
   }, []);
 
   // ================== PERSIST (sessionStorage) ==================
@@ -492,11 +499,12 @@ useEffect(() => {
    // 1) read URL
   const url = readUrlState();
   console.log("[HOME hydrate] url.qs=", url.qs, "isReload=", isReload);
-
+  
+  
   // ✅ HARD RESET when reload (F5 / pull-to-refresh)
   if (isReload) {
     hydratingFromUrlRef.current = true;
-
+     try {
     // drop mọi response cũ (nếu có request đang bay)
     filtersVersionRef.current += 1;
 
@@ -516,7 +524,8 @@ useEffect(() => {
     setSelectedRoomTypes([]);
     setMoveFilter(null);
     setSortMode("updated_desc");
-
+    setStatusFilter(url.st ?? null);
+ 
     // reset pagination/cache về page 0
     setPageIndex(0);
     setDisplayPageIndex(0);
@@ -546,7 +555,12 @@ useEffect(() => {
 
     finishHydrate();
     return;
+  } finally {
+    queueMicrotask(() => {
+      hydratingFromUrlRef.current = false;
+    });
   }
+}
 
   // 2) try restore from sessionStorage (match qs)
   let restored: PersistState | null = null;
@@ -598,7 +612,7 @@ try {
     const rest = restored;
 
     hydratingFromUrlRef.current = true;
-
+   try {
     // ✅ LUÔN restore FILTER
     const restoredSearch = rest.search ?? "";
     const restoredPrice = rest.priceApplied ?? PRICE_DEFAULT;
@@ -686,7 +700,12 @@ try {
    try { sessionStorage.removeItem(HOME_BACK_HINT_KEY); } catch {}
     finishHydrate();
     return;
+  } finally {
+    queueMicrotask(() => {
+      hydratingFromUrlRef.current = false;
+    });
   }
+}
 
   // ------------------ HYDRATE FROM URL (NO RESTORE) ------------------
   const hasAny =
@@ -708,13 +727,20 @@ try {
 
   hydratingFromUrlRef.current = true;
 
-  setSearch(url.q);
-  setPriceDraft([url.minVal, url.maxVal]);
-  setPriceApplied([url.minVal, url.maxVal]);
-  setSelectedDistricts(url.d);
-  setSelectedRoomTypes(url.t);
-  setMoveFilter(url.m);
-  setSortMode(url.s);
+setSearch(url.q);
+setPriceDraft([url.minVal, url.maxVal]);
+setPriceApplied([url.minVal, url.maxVal]);
+setSelectedDistricts(url.d);
+setSelectedRoomTypes(url.t);
+setMoveFilter(url.m);
+setSortMode(url.s);
+setStatusFilter(url.st);
+
+queueMicrotask(() => {
+  hydratingFromUrlRef.current = false;
+});
+
+
 
   // ✅ reload thì ép page về 0 + scrollTop=0
   const pageFromUrl = isReload ? 0 : url.nextPage;
@@ -772,6 +798,7 @@ useEffect(() => {
     skipNextFilterEffectRef.current = true;
 
     const url = readUrlState();
+    setStatusFilter(url.st ?? null);
     console.log("[HOME pop] url.qs=", url.qs);
 
     // 1) ưu tiên restore từ sessionStorage
@@ -796,7 +823,7 @@ useEffect(() => {
       const rest = restored;
 
       hydratingFromUrlRef.current = true;
-
+      try {
       // restore filters
       setSearch(rest.search ?? "");
       setPriceDraft(rest.priceApplied ?? PRICE_DEFAULT);
@@ -841,21 +868,34 @@ useEffect(() => {
       });
 
       return;
-    }
+     } finally {
+    queueMicrotask(() => {
+      hydratingFromUrlRef.current = false;
+    });
+  }
+}
 
     // fallback: hydrate theo URL + fetch
-    hydratingFromUrlRef.current = true;
+hydratingFromUrlRef.current = true;
 
-    setSearch(url.q);
-    setPriceDraft([url.minVal, url.maxVal]);
-    setPriceApplied([url.minVal, url.maxVal]);
-    setSelectedDistricts(url.d);
-    setSelectedRoomTypes(url.t);
-    setMoveFilter(url.m);
-    setSortMode(url.s);
+setSearch(url.q);
+setPriceDraft([url.minVal, url.maxVal]);
+setPriceApplied([url.minVal, url.maxVal]);
+setSelectedDistricts(url.d);
+setSelectedRoomTypes(url.t);
+setMoveFilter(url.m);
+setSortMode(url.s);
+setStatusFilter(url.st);
 
-    filtersVersionRef.current += 1;
-    resetPagination(url.nextPage);
+filtersVersionRef.current += 1;
+resetPagination(url.nextPage);
+
+// ✅ QUAN TRỌNG: nhả cờ để FILTER CHANGE không bị block mãi
+queueMicrotask(() => {
+  hydratingFromUrlRef.current = false;
+  resetPagination(url.nextPage);
+});
+
 
     // pageIndex có thể không đổi -> fetch trực tiếp
     fetchPageRef.current(url.nextPage);
@@ -906,6 +946,7 @@ useEffect(() => {
         minPrice: minPriceApplied,
         maxPrice: maxPriceApplied,
         sortMode,
+        status: statusFilter,
         districts: selectedDistricts.length ? selectedDistricts : undefined,
         roomTypes: selectedRoomTypes.length ? selectedRoomTypes : undefined,
         move: moveFilter ?? undefined,
@@ -1029,10 +1070,18 @@ const preSearchBaselineRef = useRef<BaselineState | null>(null);
 const lastFilterSigRef = useRef<string>("");
 
 useEffect(() => {
+  console.log("[FILTER EFFECT] fired", {
+  statusFilter,
+  skip: skipNextFilterEffectRef.current,
+  blocked: persistBlockedRef.current,
+});
+
   const applied = appliedSearch.trim();
 
   // ✅ nếu vừa hydrate (initial/popstate/restore) thì bỏ qua 1 nhịp FILTER CHANGE
   if (skipNextFilterEffectRef.current) {
+        console.log("[FILTER EFFECT] skipped one tick (skipNextFilterEffectRef)");
+
     skipNextFilterEffectRef.current = false;
 
     const sigNow = [
@@ -1043,14 +1092,19 @@ useEffect(() => {
       [...selectedRoomTypes].sort().join("|"),
       moveFilter ?? "",
       sortMode ?? "",
-    ].join("~");
+      statusFilter ?? "",
+      ].join("~");
     lastFilterSigRef.current = sigNow;
 
     prevAppliedSearchRef.current = applied;
     return;
   }
 
-  if (hydratingFromUrlRef.current) return;
+    if (hydratingFromUrlRef.current) {
+    console.log("[FILTER EFFECT] blocked by hydratingFromUrlRef");
+    return;
+  }
+
 
   // ✅ normalize filter -> signature primitive để tránh array reference gây reset giả
   const sig = [
@@ -1061,8 +1115,11 @@ useEffect(() => {
     [...selectedRoomTypes].sort().join("|"),
     moveFilter ?? "",
     sortMode ?? "",
+    statusFilter ?? "",
   ].join("~");
 
+  console.log("[FILTER EFFECT] sig", sig);
+console.log("[FILTER EFFECT] last", lastFilterSigRef.current);
   if (sig === lastFilterSigRef.current) return;
   lastFilterSigRef.current = sig;
 
@@ -1142,8 +1199,9 @@ useEffect(() => {
     t: selectedRoomTypes,
     m: moveFilter,
     s: sortMode,
+    st: statusFilter,
     p: 0,
-  });
+    });
 
   if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
 
@@ -1158,13 +1216,14 @@ useEffect(() => {
   return () => {
     if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
   };
-}, [
+  }, [
   appliedSearch, // ✅ dùng debounced
   priceApplied,
   selectedDistricts,
   selectedRoomTypes,
   moveFilter,
   sortMode,
+  statusFilter,
   buildQs,
   replaceUrlShallow,
   resetPagination,
@@ -1172,9 +1231,7 @@ useEffect(() => {
   fetchPage,
   displayPageIndex,
   hasNext,
-]);
-
-
+  ]);
 
   // ================== NEXT / PREV ==================
   const goNext = useCallback(() => {
@@ -1191,6 +1248,7 @@ useEffect(() => {
       t: selectedRoomTypes,
       m: moveFilter,
       s: sortMode,
+      st: statusFilter,
       p: next,
     });
     replaceUrlShallow(qs);
@@ -1225,6 +1283,7 @@ useEffect(() => {
       t: selectedRoomTypes,
       m: moveFilter,
       s: sortMode,
+      st: statusFilter,
       p: next,
     });
     replaceUrlShallow(qs);
@@ -1242,7 +1301,9 @@ useEffect(() => {
     moveFilter,
     sortMode,
     persistSoon,
+    statusFilter,
   ]);
+  
 
  // ================== AUTH CHANGE (KHÔNG refresh tự động) ==================
 const skipFirstAuthEffectRef = useRef(true);
@@ -1342,6 +1403,17 @@ useEffect(() => {
               setSelectedRoomTypes={setSelectedRoomTypes}
               moveFilter={moveFilter}
               setMoveFilter={setMoveFilter}
+
+              statusFilter={statusFilter}
+  setStatusFilter={(v) => {
+    // ✅ ĐÂY LÀ USER ACTION → phải unlock
+    hydratingFromUrlRef.current = false;
+    persistBlockedRef.current = false;
+    skipNextFilterEffectRef.current = false;
+
+    setStatusFilter(v);
+  }}
+
               sortMode={sortMode}
               setSortMode={setSortMode}
               total={total}
