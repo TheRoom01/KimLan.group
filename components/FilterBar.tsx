@@ -203,6 +203,10 @@ const FilterBar = ({
       }
     });
   };
+  
+const chipBtnBase =
+  "h-3 px-1 rounded-full border border-black bg-black/90 text-white text-[6px] leading-none inline-flex items-center gap-[1px]";
+
 
   return (
     <section className="container mx-auto px-4 py-4 space-y-3">
@@ -222,18 +226,12 @@ const FilterBar = ({
       {/* HÀNG NÚT */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-{/* QUẬN */}
+     {/* QUẬN */}
           <div className="relative z-50">
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "district" ? null : "district"))}
-                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-                  loading ? "opacity-60" : ""
-                } ${
-                  openFilter === "district"
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-                }`}
+                className={chipBtnBase}
                           >
                             Quận
                             {selectedDistricts.length > 0 && <span className="text-xs text-gray-500">({selectedDistricts.length})</span>}
@@ -291,13 +289,7 @@ const FilterBar = ({
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "roomType" ? null : "roomType"))}
-             className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-    loading ? "opacity-60" : ""
-  } ${
-    openFilter === "roomType"
-      ? "bg-black text-white border-black"
-      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-  }`}
+     className={chipBtnBase}
 
             >
               Loại phòng
@@ -349,32 +341,24 @@ const FilterBar = ({
             )}
           </div>
 
-          {/* DI CHUYỂN */}
-          <div className="relative z-50">
-            <button
-              type="button"
-              onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
-                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-    loading ? "opacity-60" : ""
-  } ${
-    openFilter === "move"
-      ? "bg-black text-white border-black"
-      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-  }`}
+   {/* DI CHUYỂN */}
+      <div className="relative z-50">
+      <button
+        type="button"
+       onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
+      className={chipBtnBase}
+       >
+        Di chuyển
+        {moveFilter && <span className="text-xs text-gray-500">({moveFilter})</span>}
+        </button>
 
-            >
-              Di chuyển
-              {moveFilter && <span className="text-xs text-gray-500">({moveFilter})</span>}
-            </button>
-
-            {openFilter === "move" && (
-              <div
-                className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
+     {openFilter === "move" && (
+       <div
+        className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="radio" name="moveFilter" checked={moveFilter === null} onChange={() => setMoveFilter(null)} />
                   <span>Tất cả</span>
                 </label>
@@ -473,7 +457,7 @@ const FilterBar = ({
 
           <button
             type="button"
-            className="justify-self-center px-4 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50"
+            className="justify-self-center px-2 py-0.1 rounded-lg border text-sm bg-white hover:bg-gray-50"
             onClick={() => {
               const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
               setPriceDraft(resetVal);
