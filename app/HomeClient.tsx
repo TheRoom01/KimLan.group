@@ -254,6 +254,37 @@ const persistBlockedRef = useRef(false);
     []
   );
 
+  const saveHomeToHistory = () => {
+  const snapshot = {
+    qs: buildQs({
+      q: search.trim(),
+      min: priceApplied[0],
+      max: priceApplied[1],
+      d: selectedDistricts,
+      t: selectedRoomTypes,
+      m: moveFilter,
+      s: sortMode,
+      st: statusFilter,
+      p: pageIndexRef.current,
+    }),
+    search,
+    priceApplied,
+    selectedDistricts,
+    selectedRoomTypes,
+    moveFilter,
+    sortMode,
+    statusFilter,
+    pageIndex: pageIndexRef.current,
+    scrollTop: scrollRef.current?.scrollTop ?? 0,
+  };
+
+  window.history.replaceState(
+    { ...window.history.state, __home: snapshot },
+    ""
+  );
+};
+
+
   function canonicalQs(qs: string) {
   const sp = new URLSearchParams(qs.replace(/^\?/, ""));
   const entries = Array.from(sp.entries());
@@ -495,6 +526,8 @@ const onPointerDownCapture = useCallback((ev: PointerEvent) => {
     { ...window.history.state, __home: snapshot },
     ""
   );
+  saveHomeToHistory();
+
 }, [
   buildQs,
   search,
@@ -1244,6 +1277,7 @@ useEffect(() => {
     raf = requestAnimationFrame(() => {
       raf = 0;
       lastScrollTopRef.current = el.scrollTop;
+      saveHomeToHistory();
       persistSoon();
     });
   };
@@ -1459,7 +1493,7 @@ useEffect(() => {
       p: next,
     });
     replaceUrlShallow(qs);
-
+    saveHomeToHistory();
     persistSoon();
   }, [
     loading,
@@ -1475,6 +1509,7 @@ useEffect(() => {
     sortMode,
     persistSoon,
   ]);
+
 
   const goPrev = useCallback(() => {
     if (loading) return;
@@ -1495,7 +1530,7 @@ useEffect(() => {
       p: next,
     });
     replaceUrlShallow(qs);
-
+    saveHomeToHistory();
     persistSoon();
   }, [
     loading,
