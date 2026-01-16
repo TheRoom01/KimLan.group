@@ -84,7 +84,7 @@ const isAdmin = level === 1 || level === 2;
 
 
     return (
-    <Link href={`/rooms/${room.id}`} className="block">
+    <Link href={`/rooms/${room.id}`} scroll={false} className="block">
       {/* CARD */}
       <div
         className="group rounded-xl border bg-white overflow-hidden
