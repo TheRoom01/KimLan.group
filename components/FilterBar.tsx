@@ -38,6 +38,9 @@ const PRICE_MIN = 3_000_000;
 const PRICE_MAX = 50_000_000;
 const PRICE_STEP = 500_000;
 
+const pillBtnBase =
+  "px-1 py-0.5 rounded-full border text-[10px] flex items-center gap-0.5 transition-colors bg-black text-white hover:bg-gray-700";
+
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const snap = (v: number) => Math.round(v / PRICE_STEP) * PRICE_STEP;
 
@@ -219,22 +222,19 @@ const FilterBar = ({
         <div className="fixed inset-0 z-40" onClick={closeAllFilters} onPointerDown={closeAllFilters} />
       )}
 
-      {/* HÀNG NÚT */}
+   {/* HÀNG NÚT */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-{/* QUẬN */}
-          <div className="relative z-50">
-            <button
-              type="button"
-              onClick={() => setOpenFilter((v) => (v === "district" ? null : "district"))}
-                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-                  loading ? "opacity-60" : ""
-                } ${
-                  openFilter === "district"
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-                }`}
-                          >
+    {/* QUẬN */}
+      <div className="relative z-50">
+        <button
+        type="button"
+        onClick={() => setOpenFilter((v) => (v === "district" ? null : "district"))}
+        className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+          openFilter === "district" ? "border-black" : "border-gray-300"
+        }`}
+      >
+
                             Quận
                             {selectedDistricts.length > 0 && <span className="text-xs text-gray-500">({selectedDistricts.length})</span>}
                           </button>
@@ -286,20 +286,16 @@ const FilterBar = ({
             )}
           </div>
 
-          {/* LOẠI PHÒNG */}
-          <div className="relative z-50">
-            <button
-              type="button"
-              onClick={() => setOpenFilter((v) => (v === "roomType" ? null : "roomType"))}
-             className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-    loading ? "opacity-60" : ""
-  } ${
-    openFilter === "roomType"
-      ? "bg-black text-white border-black"
-      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-  }`}
+     {/* LOẠI PHÒNG */}
+      <div className="relative z-50">
+        <button
+            type="button"
+            onClick={() => setOpenFilter((v) => (v === "roomType" ? null : "roomType"))}
+            className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+              openFilter === "roomType" ? "border-black" : "border-gray-300"
+         }`}
+       >
 
-            >
               Loại phòng
               {selectedRoomTypes.length > 0 && <span className="text-xs text-gray-500">({selectedRoomTypes.length})</span>}
             </button>
@@ -314,7 +310,7 @@ const FilterBar = ({
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">Chọn loại phòng</div>
+                  <div className="text-sm font-medium">Dạng phòng</div>
                   <button type="button" className="text-xs text-gray-600 hover:text-black" onClick={() => setSelectedRoomTypes([])}>
                     Clear
                   </button>
@@ -349,20 +345,16 @@ const FilterBar = ({
             )}
           </div>
 
-          {/* DI CHUYỂN */}
-          <div className="relative z-50">
-            <button
-              type="button"
-              onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
-                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-    loading ? "opacity-60" : ""
-  } ${
-    openFilter === "move"
-      ? "bg-black text-white border-black"
-      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-  }`}
+     {/* DI CHUYỂN */}
+       <div className="relative z-50">
+         <button
+          type="button"
+          onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
+          className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+            openFilter === "move" ? "border-black" : "border-gray-300"
+          }`}
+        >
 
-            >
               Di chuyển
               {moveFilter && <span className="text-xs text-gray-500">({moveFilter})</span>}
             </button>
@@ -393,22 +385,17 @@ const FilterBar = ({
           </div>
         </div>
 
-        {/* RIGHT: BỘ LỌC */}
-        <div className="relative z-50 shrink-0">
-          <button
-            type="button"
-            onClick={() => setOpenFilter((v) => (v === "sort" ? null : "sort"))}
-            className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-    loading ? "opacity-60" : ""
-  } ${
-    openFilter === "sort"
-      ? "bg-black text-white border-black"
-      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-  }`}
-
-          >
-            Bộ lọc
-          </button>
+   {/* RIGHT: BỘ LỌC */}
+    <div className="relative z-50 shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpenFilter((v) => (v === "sort" ? null : "sort"))}
+        className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+          openFilter === "sort" ? "border-black" : "border-gray-300"
+        }`}
+        >
+        Bộ lọc
+      </button>
 
           {openFilter === "sort" && (
             <div className="absolute right-0 mt-2 w-fit min-w-[160px] rounded-xl border bg-white shadow p-3 space-y-2"
@@ -459,8 +446,6 @@ const FilterBar = ({
     <span>{label}</span>
   </label>
 ))}
-
-
             </div>
           )}
         </div>
@@ -473,7 +458,7 @@ const FilterBar = ({
 
           <button
             type="button"
-            className="justify-self-center px-4 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50"
+            className="justify-self-center px-2 py-1 rounded-md border text-xs bg-white hover:bg-gray-100"
             onClick={() => {
               const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
               setPriceDraft(resetVal);

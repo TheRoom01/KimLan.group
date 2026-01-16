@@ -142,9 +142,9 @@ const isAdmin = level === 1 || level === 2;
           </div>
         </div>
         
-        {/* ================= INFO SECTION ================= */}
-        <div className="p-3 flex flex-col gap-2">
-          {/* Dòng 1 */}
+  {/* ================= INFO SECTION ================= */}
+    <div className="p-3 flex flex-col gap-2">
+     {/* Dòng 1 */}
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-[15px] font-medium text-gray-600 leading-6">
               {[
@@ -166,27 +166,28 @@ const isAdmin = level === 1 || level === 2;
             </span>
           </div>
 
-          {/* Dòng 2: Giá (trái) + description (phải, ngay dưới badge) */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="text-[16px] font-semibold text-sky-600 leading-6">
-              Giá: {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
-            </div>
+      {/* Dòng 2: Giá (trái) + description (phải, ngay dưới badge) */}
+          <div className="flex items-start gap-3">
+        <div className="shrink-0 whitespace-nowrap text-[16px] font-semibold text-sky-600 leading-6">
+          Giá: {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
+        </div>
 
-            {room.description ? (
-              <div className="text-[13px] text-gray-800 text-right whitespace-pre-line line-clamp-2">
-                {room.description}
-              </div>
-            ) : null}
+        {room.description ? (
+          <div className="flex-1 text-[13px] text-gray-800 text-right break-words whitespace-pre-line line-clamp-2">
+            {room.description}
           </div>
-                     </div>
+        ) : null}
+        </div>
+       </div>
 
-          {/* Dòng 3: Địa chỉ */}
-          <p className="text-gray-800 font-semibold leading-6 pb-3">
-            📍 {isAdmin && room.house_number && `${room.house_number} `}
-               {address}
-               {ward && `, ${ward}`}
-               {district && `, ${district}`}
-          </p>
+    {/* Dòng 3: Địa chỉ */}
+       <p className="text-gray-800 font-semibold leading-6 pb-3">
+          📍 {isAdmin && room.house_number && `${room.house_number} `}
+            {address}
+            {ward && `, P. ${ward}`}
+            {district && `, ${district}`}
+        </p>
+
         </div>
         </Link>
     );
