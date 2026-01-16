@@ -492,7 +492,7 @@ const FilterBar = ({
             }}
             disabled={loading}
           >
-            Apply
+            Lọc 
           </button>
 
           <span className="justify-self-end">{fmtVND(maxV)} đ</span>

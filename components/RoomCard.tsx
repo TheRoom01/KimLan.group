@@ -180,19 +180,18 @@ const isAdmin = level === 1 || level === 2;
             </span>
           </div>
 
-         {/* Dòng 2: Giá (trái) + description (phải, ngay dưới badge) */}
-<div className="flex flex-wrap items-start gap-3">
-  <div className="text-[16px] font-semibold text-sky-600 leading-6">
-    Giá: {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
-  </div>
+         {/* Dòng 2: Giá + mô tả cùng dòng */}
+        <div className="flex items-start gap-3">
+          {/* Giá */}
+          <div className="text-blue-600 font-semibold whitespace-nowrap">
+            Giá: 12.500.000 đ
+          </div>
 
-  {room.description ? (
-    <div className="w-full text-[13px] text-gray-800 whitespace-pre-line break-words line-clamp-2">
-      {room.description}
-    </div>
-  ) : null}
-</div>
-
+          {/* Mô tả - đẩy sang phải */}
+          <div className="ml-auto text-right text-gray-700 max-w-[60%] break-words">
+            Hđ 1 năm Giá 12 triệu 19/1 trống
+          </div>
+        </div>
 
           {/* Dòng 3: Địa chỉ */}
           <p className="text-gray-800 font-semibold leading-6 pb-3">
