@@ -18,20 +18,6 @@ type Room = {
   has_video?: boolean;
 };
 
-function formatWardToP(input?: string | null) {
-  const raw = (input ?? "").trim();
-  if (!raw) return "";
-
-  // Nếu user đã nhập "P.1", "p1", "p. 2" → chuẩn hoá
-  const noPrefix = raw.replace(/^p\.?\s*/i, "").trim();
-
-  // Nếu user nhập "Phường 1" → bỏ "Phường" rồi lấy phần còn lại
-  const noPhuong = noPrefix.replace(/^phường\s+/i, "").trim();
-
-  // Luôn hiển thị P.<...> cho cả chữ lẫn số
-  return `P.${noPhuong}`;
-}
-
 export default function RoomCard(props: { room: Room; adminLevel: number; index?: number }) {
 
   const { room, adminLevel, index = 0 } = props;
@@ -84,7 +70,7 @@ const isAdmin = level === 1 || level === 2;
 
 
     return (
-    <Link href={`/rooms/${room.id}`} scroll={false} className="block">
+    <Link href={`/rooms/${room.id}`} className="block">
       {/* CARD */}
       <div
         className="group rounded-xl border bg-white overflow-hidden
@@ -180,27 +166,27 @@ const isAdmin = level === 1 || level === 2;
             </span>
           </div>
 
-         {/* Dòng 2: Giá + mô tả cùng dòng */}
-        <div className="flex items-start gap-3">
-          {/* Giá */}
-          <div className="text-blue-600 font-semibold whitespace-nowrap">
-            Giá: 12.500.000 đ
-          </div>
+          {/* Dòng 2: Giá (trái) + description (phải, ngay dưới badge) */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-[16px] font-semibold text-sky-600 leading-6">
+              Giá: {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
+            </div>
 
-          {/* Mô tả - đẩy sang phải */}
-          <div className="ml-auto text-right text-gray-700 max-w-[60%] break-words">
-            Hđ 1 năm Giá 12 triệu 19/1 trống
+            {room.description ? (
+              <div className="text-[13px] text-gray-800 text-right whitespace-pre-line line-clamp-2">
+                {room.description}
+              </div>
+            ) : null}
           </div>
-        </div>
+                     </div>
 
           {/* Dòng 3: Địa chỉ */}
           <p className="text-gray-800 font-semibold leading-6 pb-3">
             📍 {isAdmin && room.house_number && `${room.house_number} `}
                {address}
-               {ward && `, ${formatWardToP(ward)}`}
+               {ward && `, ${ward}`}
                {district && `, ${district}`}
           </p>
-        </div>
         </div>
         </Link>
     );

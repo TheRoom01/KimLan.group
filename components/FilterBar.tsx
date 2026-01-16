@@ -7,33 +7,31 @@ export type SortMode = "updated_desc" | "price_asc" | "price_desc";
 type FilterBarProps = {
   districts: string[];
   roomTypes: string[];
+  total?: number | null;
 
   search: string;
   setSearch: React.Dispatch<React.SetStateAction<string>>;
 
   priceDraft: [number, number];
   setPriceDraft: React.Dispatch<React.SetStateAction<[number, number]>>;
+  setPriceApplied: React.Dispatch<React.SetStateAction<[number, number]>>;
 
-  districtDraft: string[];
-  setDistrictDraft: React.Dispatch<React.SetStateAction<string[]>>;
-
-  roomTypeDraft: string[];
-  setRoomTypeDraft: React.Dispatch<React.SetStateAction<string[]>>;
+  selectedDistricts: string[];
+  setSelectedDistricts: React.Dispatch<React.SetStateAction<string[]>>;
+  selectedRoomTypes: string[];
+  setSelectedRoomTypes: React.Dispatch<React.SetStateAction<string[]>>;
 
   moveFilter: "elevator" | "stairs" | null;
   setMoveFilter: React.Dispatch<React.SetStateAction<"elevator" | "stairs" | null>>;
 
   sortMode: SortMode;
-  onSortChange: (v: SortMode) => void;
+  setSortMode: React.Dispatch<React.SetStateAction<SortMode>>;
 
   statusFilter: string | null;
   setStatusFilter: React.Dispatch<React.SetStateAction<string | null>>;
 
-  onApply: () => void;
-  onResetAll: () => void;
-
-  loading: boolean;
-  total: number | null;
+  loading?: boolean;
+  onResetAll?: () => void;
 };
 
 const PRICE_MIN = 3_000_000;
@@ -50,18 +48,15 @@ const FilterBar = ({
   setSearch,
   priceDraft,
   setPriceDraft,
-
-  districtDraft,
-  setDistrictDraft,
-
-  roomTypeDraft,
-  setRoomTypeDraft,
-
+  setPriceApplied,
+  selectedDistricts,
+  setSelectedDistricts,
+  selectedRoomTypes,
+  setSelectedRoomTypes,
   moveFilter,
   setMoveFilter,
   sortMode,
-  onSortChange,
-  onApply,
+  setSortMode,
   statusFilter,
   setStatusFilter,
   total,
@@ -84,18 +79,17 @@ const FilterBar = ({
     const b = priceDraft[1];
     return a <= b ? [a, b] : [b, a];
   }, [priceDraft]);
-
+  
   const span = PRICE_MAX - PRICE_MIN;
 
   const leftPct = ((minV - PRICE_MIN) / span) * 100;
   const rightPct = ((maxV - PRICE_MIN) / span) * 100;
 
   const commitPrice = () => {
-    setPriceDraft((prev) => {
+    setPriceApplied((prev) => {
       if (prev[0] === priceDraft[0] && prev[1] === priceDraft[1]) return prev;
       return priceDraft;
     });
-    // ✅ IMPORTANT: KHÔNG gọi onApply ở đây nữa
   };
 
   const valueFromClientX = (clientX: number) => {
@@ -109,8 +103,9 @@ const FilterBar = ({
     const raw = PRICE_MIN + pct * (PRICE_MAX - PRICE_MIN);
     return clamp(snap(raw), PRICE_MIN, PRICE_MAX);
   };
+  
 
-  // Drag handlers on window
+  // Drag handlers on window (mượt + không mất kéo khi ra ngoài)
   useEffect(() => {
     if (!dragging) return;
 
@@ -132,7 +127,8 @@ const FilterBar = ({
     const onUp = () => {
       draggingRef.current = null;
       setDragging(null);
-      commitPrice(); // chỉ commit khi thả
+      // chỉ commit khi thả
+      commitPrice();
     };
 
     window.addEventListener("pointermove", onMove, { passive: true });
@@ -145,7 +141,7 @@ const FilterBar = ({
       window.removeEventListener("pointercancel", onUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dragging, minV, maxV]);
+  }, [dragging, minV, maxV]); // minV/maxV để clamp theo giá hiện tại
 
   // ESC để đóng dropdown
   useEffect(() => {
@@ -157,22 +153,25 @@ const FilterBar = ({
   }, []);
 
   useEffect(() => {
-    if (openFilter === null) return;
+  if (openFilter === null) return;
 
-    const onScrollCapture = (e: Event) => {
-      const panel = openPanelRef.current;
-      const target = e.target as Node | null;
+  const onScrollCapture = (e: Event) => {
+    const panel = openPanelRef.current;
+    const target = e.target as Node | null;
 
-      if (panel && target && panel.contains(target)) return;
-      closeAllFilters();
-    };
+    // Nếu scroll bên trong dropdown panel => không đóng
+    if (panel && target && panel.contains(target)) return;
 
-    window.addEventListener("scroll", onScrollCapture, true);
+    closeAllFilters();
+  };
 
-    return () => {
-      window.removeEventListener("scroll", onScrollCapture, true);
-    };
-  }, [openFilter]);
+  // capture=true để bắt cả scroll event (kể cả khi scroll xảy ra ở element)
+  window.addEventListener("scroll", onScrollCapture, true);
+
+  return () => {
+    window.removeEventListener("scroll", onScrollCapture, true);
+  };
+}, [openFilter]);
 
   const beginDrag = (thumb: "min" | "max") => (e: React.PointerEvent) => {
     if (loading) return;
@@ -184,7 +183,7 @@ const FilterBar = ({
 
   const onTrackPointerDown = (e: React.PointerEvent) => {
     if (loading) return;
-
+    // click/tap vào track => chọn thumb gần nhất rồi kéo luôn
     const v = valueFromClientX(e.clientX);
 
     const dMin = Math.abs(v - minV);
@@ -203,85 +202,83 @@ const FilterBar = ({
         setPriceDraft([minV, nextMax]);
       }
     });
-    // ✅ IMPORTANT: KHÔNG gọi onApply
   };
-
-  const chipBtnBase =
-    "h-3 px-1 rounded-full border border-black bg-black/90 text-white text-[6px] leading-none inline-flex items-center gap-[1px]";
 
   return (
     <section className="container mx-auto px-4 py-4 space-y-3">
-      {/* Search (GIỮ auto-fetch qua HomeClient useEffect) */}
+      {/* Search */}
       <input
         value={search}
-        onChange={(e) => setSearch(e.target.value)} // ✅ giữ như cũ, KHÔNG gọi onApply ở đây
+        onChange={(e) => setSearch(e.target.value)}
         placeholder="Tìm theo địa chỉ..."
         className="w-full rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2"
       />
 
+      {/* Overlay bắt click-outside */}
       {openFilter !== null && (
         <div className="fixed inset-0 z-40" onClick={closeAllFilters} onPointerDown={closeAllFilters} />
       )}
 
+      {/* HÀNG NÚT */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          {/* QUẬN */}
+{/* QUẬN */}
           <div className="relative z-50">
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "district" ? null : "district"))}
-              className={chipBtnBase}
-            >
-              Quận
-              {districtDraft.length > 0 && (
-                <span className="text-xs text-gray-500">({districtDraft.length})</span>
-              )}
-            </button>
+                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
+                  loading ? "opacity-60" : ""
+                } ${
+                  openFilter === "district"
+                    ? "bg-black text-white border-black"
+                    : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+                }`}
+                          >
+                            Quận
+                            {selectedDistricts.length > 0 && <span className="text-xs text-gray-500">({selectedDistricts.length})</span>}
+                          </button>
 
-            {openFilter === "district" && (
-              <div
-                ref={(el) => {
-                  if (openFilter === "district") openPanelRef.current = el;
-                }}
+                          {openFilter === "district" && (
+                            <div
+                            ref={(el) => {
+                    if (openFilter === "district") openPanelRef.current = el;
+                  }}
                 className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,420px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium">Chọn quận</div>
-
-                  <button
-                    type="button"
-                    className="text-xs text-gray-600 hover:text-black"
-                    onClick={() => setDistrictDraft([])} // ✅ no apply
-                  >
+                  
+                  <button type="button" className="text-xs text-gray-600 hover:text-black" onClick={() => setSelectedDistricts([])}>
                     Clear
                   </button>
                 </div>
 
                 <div className="max-h-64 overflow-auto space-y-1">
                   {districts.map((d) => {
-                    const checked = districtDraft.includes(d);
+                    const checked = selectedDistricts.includes(d);
                     return (
                       <label
                         key={d}
                         className={`flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-full transition-colors ${
                           checked ? "bg-black text-white" : "hover:bg-gray-100"
                         }`}
-                      >
+                       >
                         <input
                           type="checkbox"
                           checked={checked}
                           className="accent-black"
                           onChange={() => {
-                            setDistrictDraft((prev) =>
+                            setSelectedDistricts((prev) =>
                               checked ? prev.filter((x) => x !== d) : [...prev, d]
                             );
-                            // ✅ IMPORTANT: KHÔNG gọi onApply
                           }}
                         />
                         <span>{d}</span>
                       </label>
+
                     );
                   })}
                 </div>
@@ -294,57 +291,57 @@ const FilterBar = ({
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "roomType" ? null : "roomType"))}
-              className={chipBtnBase}
+             className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
+    loading ? "opacity-60" : ""
+  } ${
+    openFilter === "roomType"
+      ? "bg-black text-white border-black"
+      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+  }`}
+
             >
               Loại phòng
-              {roomTypeDraft.length > 0 && (
-                <span className="text-xs text-gray-500">({roomTypeDraft.length})</span>
-              )}
+              {selectedRoomTypes.length > 0 && <span className="text-xs text-gray-500">({selectedRoomTypes.length})</span>}
             </button>
 
             {openFilter === "roomType" && (
               <div
-                ref={(el) => {
-                  if (openFilter === "roomType") openPanelRef.current = el;
-                }}
+               ref={(el) => {
+      if (openFilter === "roomType") openPanelRef.current = el;
+    }}
                 className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,420px)] rounded-xl border bg-white shadow p-3 space-y-2"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium">Chọn loại phòng</div>
-                  <button
-                    type="button"
-                    className="text-xs text-gray-600 hover:text-black"
-                    onClick={() => setRoomTypeDraft([])} // ✅ no apply
-                  >
+                  <button type="button" className="text-xs text-gray-600 hover:text-black" onClick={() => setSelectedRoomTypes([])}>
                     Clear
                   </button>
                 </div>
 
                 <div className="max-h-64 overflow-auto space-y-1">
                   {roomTypes.map((t) => {
-                    const checked = roomTypeDraft.includes(t);
+                    const checked = selectedRoomTypes.includes(t);
                     return (
-                      <label
-                        key={t}
-                        className={`flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-full transition-colors ${
-                          checked ? "bg-black text-white" : "hover:bg-gray-100"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          className="accent-black"
-                          onChange={() => {
-                            setRoomTypeDraft((prev) =>
-                              checked ? prev.filter((x) => x !== t) : [...prev, t]
-                            );
-                            // ✅ IMPORTANT: KHÔNG gọi onApply
-                          }}
-                        />
-                        <span>{t}</span>
-                      </label>
+                       <label
+                          key={t}
+                          className={`flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-full transition-colors
+                            ${checked ? "bg-black text-white" : "hover:bg-gray-100"}
+                          `}
+                         >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            className="accent-black"
+                            onChange={() => {
+                              setSelectedRoomTypes((prev) =>
+                                checked ? prev.filter((x) => x !== t) : [...prev, t]
+                              );
+                            }}
+                          />
+                          <span>{t}</span>
+                        </label>
                     );
                   })}
                 </div>
@@ -357,7 +354,14 @@ const FilterBar = ({
             <button
               type="button"
               onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
-              className={chipBtnBase}
+                className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
+    loading ? "opacity-60" : ""
+  } ${
+    openFilter === "move"
+      ? "bg-black text-white border-black"
+      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+  }`}
+
             >
               Di chuyển
               {moveFilter && <span className="text-xs text-gray-500">({moveFilter})</span>}
@@ -369,33 +373,19 @@ const FilterBar = ({
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
+                
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="moveFilter"
-                    checked={moveFilter === null}
-                    onChange={() => setMoveFilter(null)} // ✅ no apply
-                  />
+                  <input type="radio" name="moveFilter" checked={moveFilter === null} onChange={() => setMoveFilter(null)} />
                   <span>Tất cả</span>
                 </label>
 
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="moveFilter"
-                    checked={moveFilter === "elevator"}
-                    onChange={() => setMoveFilter("elevator")} // ✅ no apply
-                  />
+                  <input type="radio" name="moveFilter" checked={moveFilter === "elevator"} onChange={() => setMoveFilter("elevator")} />
                   <span>Thang máy</span>
                 </label>
 
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="moveFilter"
-                    checked={moveFilter === "stairs"}
-                    onChange={() => setMoveFilter("stairs")} // ✅ no apply
-                  />
+                  <input type="radio" name="moveFilter" checked={moveFilter === "stairs"} onChange={() => setMoveFilter("stairs")} />
                   <span>Thang bộ</span>
                 </label>
               </div>
@@ -409,19 +399,20 @@ const FilterBar = ({
             type="button"
             onClick={() => setOpenFilter((v) => (v === "sort" ? null : "sort"))}
             className={`px-4 py-2 rounded-full border text-sm flex items-center gap-2 transition-colors ${
-              loading ? "opacity-60" : ""
-            } ${
-              openFilter === "sort"
-                ? "bg-black text-white border-black"
-                : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
-            }`}
+    loading ? "opacity-60" : ""
+  } ${
+    openFilter === "sort"
+      ? "bg-black text-white border-black"
+      : "bg-white text-black hover:bg-black hover:text-white hover:border-black"
+  }`}
+
           >
             Bộ lọc
           </button>
 
           {openFilter === "sort" && (
-            <div
-              className="absolute right-0 mt-2 w-fit min-w-[160px] rounded-xl border bg-white shadow p-3 space-y-2"
+            <div className="absolute right-0 mt-2 w-fit min-w-[160px] rounded-xl border bg-white shadow p-3 space-y-2"
+
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
@@ -435,64 +426,63 @@ const FilterBar = ({
                 ] as const
               ).map(([v, label]) => (
                 <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="sortMode"
-                    checked={sortMode === v}
-                    onChange={() => {
-                      onSortChange(v as SortMode); // ✅ chỉ set sort draft bên Home
-                      setOpenFilter(null);
-                      // ✅ IMPORTANT: KHÔNG gọi onApply
-                    }}
+                  <input type="radio" name="sortMode" checked={sortMode === v} onChange={() => {
+                    setSortMode(v);
+                    setOpenFilter(null);
+                  }} 
                   />
                   <span>{label}</span>
                 </label>
               ))}
-
               <div className="pt-2 mt-2 border-t" />
 
-              <div className="text-sm font-medium">Trạng thái</div>
+<div className="text-sm font-medium">Trạng thái</div>
 
-              {(
-                [
-                  [null, "Tất cả"],
-                  ["Trống", "Trống"],
-                  ["Đã thuê", "Đã thuê"],
-                ] as const
-              ).map(([v, label]) => (
-                <label key={label} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="radio"
-                    name="statusFilter"
-                    checked={statusFilter === v}
-                    onChange={() => {
-                      setStatusFilter(v); // ✅ no apply
-                      setOpenFilter(null);
-                    }}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+{(
+  [
+    [null, "Tất cả"],
+    ["Trống", "Trống"],
+    ["Đã thuê", "Đã thuê"],
+  ] as const
+).map(([v, label]) => (
+  <label key={label} className="flex items-center gap-2 text-sm cursor-pointer">
+    <input
+      type="radio"
+      name="statusFilter"
+      checked={statusFilter === v}
+      onChange={() => {
+        
+        setStatusFilter(v);
+        setOpenFilter(null);
+      }}
+    />
+    <span>{label}</span>
+  </label>
+))}
+
+
             </div>
           )}
         </div>
       </div>
 
-      {/* PRICE */}
+      {/* PRICE (custom slider - luôn kéo được min/max, mobile mượt, chỉ commit khi thả) */}
       <div className="w-full">
         <div className="grid grid-cols-3 items-center text-sm font-semibold mb-1">
           <span className="justify-self-start">{fmtVND(minV)} đ</span>
 
           <button
             type="button"
-            className="justify-self-center px-2 py-0.1 rounded-lg border text-sm bg-white hover:bg-gray-50"
+            className="justify-self-center px-4 py-2 rounded-lg border text-sm bg-white hover:bg-gray-50"
             onClick={() => {
-              onApply(); // ✅ Apply là nơi DUY NHẤT trigger fetch cho filters
-              closeAllFilters(); // ✅ CHANGE: gọi function, không dùng optional
+              const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
+              setPriceDraft(resetVal);
+              setPriceApplied(resetVal);
+              onResetAll?.();
             }}
             disabled={loading}
           >
-            Lọc 
+            Reset
           </button>
 
           <span className="justify-self-end">{fmtVND(maxV)} đ</span>
@@ -502,15 +492,18 @@ const FilterBar = ({
           ref={trackRef}
           className="relative h-8"
           onPointerDown={onTrackPointerDown}
-          style={{ touchAction: "none" }}
+          style={{ touchAction: "none" }} // rất quan trọng cho mobile: tránh scroll giành gesture
         >
+          {/* base gray line */}
           <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[4px] bg-gray-300 rounded" />
 
+          {/* selected black segment */}
           <div
             className="absolute top-1/2 -translate-y-1/2 h-[2px] bg-black rounded"
             style={{ left: `${leftPct}%`, width: `${rightPct - leftPct}%` }}
           />
 
+          {/* THUMB MIN */}
           <div
             role="slider"
             aria-label="Min price"
@@ -519,6 +512,7 @@ const FilterBar = ({
             onPointerDown={beginDrag("min")}
           />
 
+          {/* THUMB MAX */}
           <div
             role="slider"
             aria-label="Max price"
@@ -527,6 +521,7 @@ const FilterBar = ({
             onPointerDown={beginDrag("max")}
           />
 
+          {/* hit-area tăng dễ kéo (mobile) */}
           <div
             className="absolute top-1/2 -translate-y-1/2 h-8"
             style={{ left: `calc(${leftPct}% - 18px)`, width: "36px" }}
@@ -539,14 +534,19 @@ const FilterBar = ({
           />
         </div>
       </div>
-
-      {typeof total === "number" && (
+      {/* ✅ TOTAL ROOMS – đặt ngay dưới slider giá */}
+        {typeof total === "number" && (
         <div className="mt-1 text-sm text-gray-700 text-center">
-          Tổng: <span className="font-medium">{total.toLocaleString("vi-VN")}</span> phòng
+          Tổng:{" "}
+          <span className="font-medium">
+            {total.toLocaleString("vi-VN")}
+          </span>{" "}
+          phòng
         </div>
       )}
     </section>
   );
 };
+
 
 export default FilterBar;
