@@ -300,16 +300,16 @@ onDragOver={e => {
                     ✕
                   </button>
 
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
               
-<img
-  src={url}
-  alt={`room-${idx}`}
-  style={thumbImg}
-  draggable={false}
-  loading="lazy"
-  decoding="async"
-/>
+                <img
+                  src={url}
+                  alt={`room-${idx}`}
+                  style={thumbImg}
+                  draggable={false}
+                  loading="lazy"
+                  decoding="async"
+                />
 
                 </div>
               )
@@ -350,7 +350,6 @@ onDragOver={e => {
     </div>
   ))}
 </div>
-
 
 {/* Link Zalo + SĐT (2 cột, lưu chung vào link_zalo theo 2 dòng) */}
   <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
@@ -553,20 +552,31 @@ function Select({
     <div ref={wrapRef} style={{ position: "relative" }}>
       <label style={labelStyle}>{label}</label>
 
-      <button
-        type="button"
-        style={{
-          ...inputStyle,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          cursor: "pointer",
-        }}
-        onClick={() => setOpen(v => !v)}
-      >
-        <span>{value || "Chọn..."}</span>
-        <span style={{ opacity: 0.6 }}>▾</span>
-      </button>
+     <button
+  type="button"
+  style={{
+    ...inputStyle,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    cursor: "pointer",
+   background:
+    value === "Đã thuê"
+      ? "#374151"   // xám đậm (gần đen)
+      : value === "Trống"
+      ? "#e5e7eb"   // xám vừa
+      : inputStyle.background,
+    color:
+    value === "Đã thuê"
+      ? "#ffffff"   // chữ trắng cho tương phản
+      : "#111827",
+     }}
+
+  onClick={() => setOpen(v => !v)}
+>
+  <span>{value || "Chọn..."}</span>
+  <span style={{ opacity: 0.6 }}>▾</span>
+</button>
 
       {open && (
         <div
@@ -598,7 +608,13 @@ function Select({
                   width: "100%",
                   padding: "10px 12px",
                   textAlign: "left",
-                  background: active ? "#111827" : "transparent",
+                  background: active
+                    ? "#111827"
+                    : o === "Đã thuê"
+                    ? "#f3f4f6"
+                    : o === "Trống"
+                    ? "#f9fafb"
+                    : "transparent",
                   color: active ? "#fff" : "#111827",
                   border: "none",
                   cursor: "pointer",

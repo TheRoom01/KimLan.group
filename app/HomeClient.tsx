@@ -292,6 +292,7 @@ const persistBlockedRef = useRef(false);
       setOrDel(QS.m, next.m ? next.m : null);
       setOrDel(QS.s, next.s ? next.s : null);
       setOrDel(QS.st, next.st ? encodeURIComponent(next.st) : null);
+      setOrDel(QS.p, typeof next.p === "number" ? String(next.p) : null);
       return params.toString();
     },
     []
@@ -500,11 +501,16 @@ const persistNow = useCallback(() => {
   if (persistBlockedRef.current) return;
   if (homePathRef.current && pathname !== homePathRef.current) return;
 
+  // ✅ source-of-truth: qs từ URL thật + canonical để match ổn định
+  const qsRaw = window.location.search.replace(/^\?/, "");
+  const qsCanonical = canonicalQs(qsRaw);
+  listQsRef.current = qsCanonical;
+
   writeLiteNow();
 
   try {
     const payload: PersistState = {
-      qs: listQsRef.current,
+      qs: qsCanonical,
 
       total: typeof total === "number" ? total : null,
 
@@ -542,7 +548,6 @@ const persistNow = useCallback(() => {
   total,
   writeLiteNow,
 ]);
-
 
   const persistSoon = useCallback(() => {
   if (persistRafRef.current) cancelAnimationFrame(persistRafRef.current);
@@ -601,26 +606,30 @@ const onPointerDownCapture = useCallback(
     writeLiteNow();
     persistNow();
 
-    // hint để lần back về restore (đoạn này dùng ở hydrate)
-    // try {
-//   sessionStorage.setItem(
-//     HOME_BACK_HINT_KEY,
-//     JSON.stringify({
-//       ts: Date.now(),
-//       qs: listQsRef.current,
-//     })
-//   );
-// } catch {}
-  },
-  [persistNow, writeLiteNow, writeBackSnapshotNow]
-);
+  // hint để lần back về restore (đoạn này dùng ở hydrate)
+  try {
+    const qsRaw = window.location.search.replace(/^\?/, "");
+    const qsCanonical = canonicalQs(qsRaw);
 
-useEffect(() => {
-  document.addEventListener("pointerdown", onPointerDownCapture, true);
-  return () => {
-    document.removeEventListener("pointerdown", onPointerDownCapture, true);
-  };
-}, [onPointerDownCapture]);
+    sessionStorage.setItem(
+      HOME_BACK_HINT_KEY,
+      JSON.stringify({
+        ts: Date.now(),
+        qs: qsCanonical, // ✅ không dùng listQsRef để tránh stale
+      })
+    );
+  } catch {}
+
+    },
+    [persistNow, writeLiteNow, writeBackSnapshotNow]
+  );
+
+  useEffect(() => {
+    document.addEventListener("pointerdown", onPointerDownCapture, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDownCapture, true);
+    };
+  }, [onPointerDownCapture]);
 
   // ================== RESET PAGINATION ==================
   const resetPagination = useCallback((keepPage: number = 0) => {
@@ -1451,7 +1460,8 @@ inFlightRef.current[reqKey] = true;
         const nextIdx = targetIndex + 1;
 
         const notFetchedYet = pagesRef.current[nextIdx] === undefined;
-        const notInFlight = !inFlightRef.current[nextIdx];
+        const nextReqKey = `${filterSig}::${nextIdx}`;
+        const notInFlight = !inFlightRef.current[nextReqKey];
 
         if (notFetchedYet && notInFlight) {
           const idle = (cb: () => void) => {

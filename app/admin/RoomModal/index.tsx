@@ -525,26 +525,44 @@ export default function RoomModal({
           )}
         </div>
 
-      <div style={footerSticky}>
-        <button onClick={requestClose} style={btnCancel} disabled={saving} type="button">
-          Huỷ
-        </button>
+      <div
+  style={{
+    ...footerSticky,
+    display: "grid",
+    gridTemplateColumns: "1fr auto 1fr",
+    alignItems: "center",
+  }}
+>
+  {/* LEFT */}
+  <div>
+    <button onClick={requestClose} style={btnCancel} disabled={saving} type="button">
+      Huỷ
+    </button>
+  </div>
 
-        <button
-          type="button"
-          disabled={saving}
-          style={btnSync}
-          onClick={() => {
-            tryAutofillByAddress(roomForm.house_number, roomForm.address, { force: true });
-          }}
-        >
-          Đồng bộ nhà
-        </button>
+  {/* CENTER */}
+  <div style={{ display: "flex", justifyContent: "center" }}>
+  <button
+    type="button"
+    style={btnSync}
+    disabled={saving}
+    onClick={() => {
+      tryAutofillByAddress(roomForm.house_number, roomForm.address, { force: true });
+    }}
+  >
+    Đồng bộ nhà
+  </button>
 
-        <button onClick={handleSubmit} style={btnSaveLight} disabled={saving} type="button">
-          {saving ? 'Đang lưu...' : 'Lưu'}
-        </button>
-      </div>
+  </div>
+
+  {/* RIGHT */}
+  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+    <button onClick={handleSubmit} style={btnSaveLight} disabled={saving} type="button">
+      {saving ? "Đang lưu..." : "Lưu"}
+    </button>
+  </div>
+</div>
+
       </div>
     </div>
   )
