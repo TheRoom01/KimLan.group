@@ -24,7 +24,6 @@ type Props = {
   
 }
 
-
 // ✅ Nếu dữ liệu cũ đang có giá trị không nằm trong list,
 // vẫn cho nó xuất hiện để tránh “mất value” khi mở form edit.
 function ensureOption(options: readonly string[], current?: string | null): string[] {
@@ -37,7 +36,6 @@ function ensureOption(options: readonly string[], current?: string | null): stri
   // nếu dữ liệu cũ khác list → đưa lên đầu để không mất giá trị
   return [v, ...options];
 }
-
 
 export default function RoomInfoTab({
   value,
@@ -56,6 +54,20 @@ export default function RoomInfoTab({
   // Drag state (for reorder)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
+
+  const [zaloUrlDraft, setZaloUrlDraft] = useState("");
+const [zaloPhoneDraft, setZaloPhoneDraft] = useState("");
+
+useEffect(() => {
+  const raw = String(value.link_zalo ?? "");
+  const lines = raw.split(/\r?\n/);
+
+  const urlLine = (lines[0] ?? "").trim();
+  const phoneBlock = lines.slice(1).join("\n").trim(); // ✅ giữ nhiều dòng
+
+  setZaloUrlDraft(urlLine);
+  setZaloPhoneDraft(phoneBlock);
+}, [value.link_zalo]);
 
   const imageUrls = useMemo(() => {
     return (value.gallery_urls || '')
@@ -340,14 +352,52 @@ onDragOver={e => {
 </div>
 
 
-      {/* Link Zalo (textarea) - nằm trên mô tả */}
-      <TextArea
-        label="Link Zalo"
-        value={value.link_zalo}
-        onChange={v => onChange({ ...value, link_zalo: v })}
+{/* Link Zalo + SĐT (2 cột, lưu chung vào link_zalo theo 2 dòng) */}
+  <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
+    <TextArea
+      label="Link Zalo"
+      value={zaloUrlDraft}
+      onChange={(v) => {
+        const nextUrl = String(v ?? "");
+        setZaloUrlDraft(nextUrl);
+
+        const next = [nextUrl.trim(), zaloPhoneDraft.trim()]
+        .filter(Boolean)
+        .join("\n");
+        onChange({ ...value, link_zalo: next });
+      }}
+    />
+
+    <div>
+  <label style={labelStyle}>SĐT (có thể nhiều dòng)</label>
+
+      <textarea
+        style={textareaStyle}
+        value={zaloPhoneDraft}
+        onChange={(e) => {
+          const nextPhoneBlock = e.target.value; // ✅ giữ nguyên mọi icon/emoji/ký tự
+          setZaloPhoneDraft(nextPhoneBlock);
+
+          const next = [zaloUrlDraft.trim(), nextPhoneBlock.trim()].filter(Boolean).join("\n");
+          onChange({ ...value, link_zalo: next });
+        }}
+        placeholder={'☎️090 777 3566 A Tú\n☎️0911 555 766 A Cường'}
       />
 
-      {/* Mô tả */}
+      {/* ✅ HIỂN THỊ SỐ ĐÃ LỌC (mỗi dòng -> 1 số) */}
+      <div style={{ marginTop: 6, fontSize: 13, color: "#111827", lineHeight: 1.4 }}>
+        {zaloPhoneDraft
+          .split(/\r?\n/)
+          .map((line) => line.replace(/\D/g, "")) // ✅ chỉ giữ số
+          .filter(Boolean)
+          .map((digits, i) => (
+            <div key={i}>{digits}</div>
+          ))}
+      </div>
+    </div>
+  </div>
+
+ {/* Mô tả */}
       <TextArea
         label="Mô tả"
         value={value.description}

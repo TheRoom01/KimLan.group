@@ -199,24 +199,27 @@ export default function RoomModal({
     }
   }
 
- async function tryAutofillByAddress(house: string, addr: string) {
+ async function tryAutofillByAddress(house: string, addr: string, opts?: { force?: boolean }) {
   const house_number = house.trim();
   const address = addr.trim();
   if (!house_number || !address) return;
 
   const key = `${house_number}__${address}`;
-  if (lastAutofillKeyRef.current === key) return;
+  if (!opts?.force && lastAutofillKeyRef.current === key) return;
   lastAutofillKeyRef.current = key;
 
-  // 1) tìm phòng mẫu gần nhất
-  const { data: roomSample, error } = await supabase
+  // 1) tìm phòng mẫu gần nhất (KHÔNG lấy chính phòng đang edit)
+  let q = supabase
     .from("rooms")
     .select("id, ward, district, link_zalo, chinh_sach")
     .eq("house_number", house_number)
     .eq("address", address)
     .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (editingRoom?.id) q = q.neq("id", editingRoom.id);
+
+  const { data: roomSample, error } = await q.maybeSingle();
 
   if (error || !roomSample) return;
 
@@ -522,14 +525,26 @@ export default function RoomModal({
           )}
         </div>
 
-        <div style={footerSticky}>
-          <button onClick={requestClose} style={btnCancel} disabled={saving} type="button">
-            Huỷ
-          </button>
-          <button onClick={handleSubmit} style={btnSaveLight} disabled={saving} type="button">
-            {saving ? 'Đang lưu...' : 'Lưu'}
-          </button>
-        </div>
+      <div style={footerSticky}>
+        <button onClick={requestClose} style={btnCancel} disabled={saving} type="button">
+          Huỷ
+        </button>
+
+        <button
+          type="button"
+          disabled={saving}
+          style={btnSync}
+          onClick={() => {
+            tryAutofillByAddress(roomForm.house_number, roomForm.address, { force: true });
+          }}
+        >
+          Đồng bộ nhà
+        </button>
+
+        <button onClick={handleSubmit} style={btnSaveLight} disabled={saving} type="button">
+          {saving ? 'Đang lưu...' : 'Lưu'}
+        </button>
+      </div>
       </div>
     </div>
   )
@@ -607,3 +622,14 @@ const btnSaveLight: CSSProperties = {
   cursor: 'pointer',
   fontWeight: 600,
 }
+const btnSync: CSSProperties = {
+  background: '#111827',
+  color: '#fff',
+  border: 'none',
+  padding: '10px 16px',
+  borderRadius: 10,
+  cursor: 'pointer',
+  fontWeight: 600,
+}
+
+

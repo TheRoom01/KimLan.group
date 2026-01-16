@@ -39,7 +39,7 @@ const PRICE_MAX = 50_000_000;
 const PRICE_STEP = 500_000;
 
 const pillBtnBase =
-  "px-1 py-0.5 rounded-full border text-[10px] flex items-center gap-0.5 transition-colors bg-black text-white hover:bg-gray-700";
+  "px-2 py-0.2 rounded-full border text-[10px] flex items-center gap-0.5 transition-colors bg-black text-white hover:bg-gray-700";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const snap = (v: number) => Math.round(v / PRICE_STEP) * PRICE_STEP;

@@ -511,7 +511,19 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   const isAdmin = adminLevel === 1 || adminLevel === 2;
  const isAdminL1 = adminLevel === 1;
 
-  const zaloLink = room?.link_zalo ?? "";
+  const zaloRaw = String(room?.link_zalo ?? "");
+const linkMatch = zaloRaw.match(/https?:\/\/\S+/i);
+const zaloLink = linkMatch?.[0] ?? "";
+
+// ✅ lấy tất cả số theo từng dòng (lọc chỉ còn digits)
+const zaloPhones = zaloRaw
+  .split(/\r?\n/)
+  .filter((line) => !/^https?:\/\//i.test(line.trim())) // ✅ bỏ dòng link
+  .map((line) => line.replace(/\D/g, ""))               // ✅ chỉ giữ số
+  .filter(Boolean);
+
+// (tuỳ chọn) lấy số đầu tiên nếu bạn vẫn cần 1 biến zaloPhone
+const zaloPhone = zaloPhones[0] ?? "";
 
   return (
     <div className="p-6 space-y-6 text-base">
@@ -796,19 +808,42 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
     />
 
     {/* ✅ chỉ L1 mới thấy link_zalo */}
-    {isAdminL1 && zaloLink && (
-      <div className="text-gray-800">
-        <span className="font-medium">Link Zalo:</span>{" "}
-        <a
-          href={zaloLink}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sky-600 underline break-all"
-        >
-          {zaloLink}
-        </a>
-      </div>
-    )}
+      {isAdminL1 && (zaloLink || zaloPhones.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 text-gray-800">
+          {/* LEFT: Link */}
+          <div>
+            <div className="font-medium mb-1">Link Zalo</div>
+            {zaloLink ? (
+              <a
+                href={zaloLink}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-600 underline break-all"
+              >
+                {zaloLink}
+              </a>
+            ) : (
+              <div className="text-gray-500">-</div>
+            )}
+          </div>
+
+          {/* RIGHT: Phones */}
+          <div>
+            <div className="font-medium mb-1">SĐT</div>
+            {zaloPhones.length > 0 ? (
+              <div className="space-y-1">
+                {zaloPhones.map((p, i) => (
+                  <div key={`${p}-${i}`} className="break-all">
+                    {p}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-gray-500">-</div>
+            )}
+          </div>
+        </div>
+      )}
   </div>
 )}
 
