@@ -16,8 +16,29 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KimLan", // đổi lại tên thật nếu muốn
-  description: "KimLan web app", // đổi lại mô tả thật nếu muốn
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app"),
+  title: "The Room",
+  description: "Kim Lân Group",
+  openGraph: {
+    type: "website",
+    url: "/",
+    title: "KimLan",
+    description: "KimLan web app",
+    images: [
+      {
+        url: "/hero.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Căn hộ dịch vụ - KimLan",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "KimLan",
+    description: "KimLan web app",
+    images: ["/hero.jpg"],
+  },
 };
 
 export default function RootLayout({

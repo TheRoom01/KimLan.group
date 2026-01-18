@@ -117,11 +117,40 @@ export default function RoomDetailPage() {
   const [loading, setLoading] = useState(false);
   const [adminLevel, setAdminLevel] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null)
-const [showPlay, setShowPlay] = useState(true)
+  const [showPlay, setShowPlay] = useState(true)
+
+  // overlay (nút giữa) auto-hide khi đang play
+  const [overlayVisible, setOverlayVisible] = useState(true)
+  const overlayTimerRef = useRef<number | null>(null)
+
+  function clearOverlayTimer() {
+    if (overlayTimerRef.current) {
+      window.clearTimeout(overlayTimerRef.current)
+      overlayTimerRef.current = null
+    }
+  }
+
+  function scheduleHideOverlay(ms = 1500) {
+    clearOverlayTimer()
+    overlayTimerRef.current = window.setTimeout(() => {
+      setOverlayVisible(false)
+    }, ms)
+  }
+
+  function showOverlayAndMaybeHide() {
+    setOverlayVisible(true)
+    const v = videoRef.current
+    if (v && !v.paused && !v.ended) scheduleHideOverlay(1500)
+  }
+
+  useEffect(() => {
+    return () => clearOverlayTimer()
+  }, [])
+
 
     const roomReqIdRef = useRef(0);
   const [fetchStatus, setFetchStatus] = useState<"loading" | "done">("loading");
-  
+ const [downloadingImages, setDownloadingImages] = useState(false);
 
   let startX = 0;
   const onTouchStart = (e: any) => {
@@ -155,15 +184,17 @@ const [showPlay, setShowPlay] = useState(true)
   }, []);
 
   // ===== SHARE (Chi phí) =====
-type ShareKey = "address" | "code" | "price" | "lift_stairs" | "fees" | "amenities" | "description";
+type ShareKey = "house_number"|"address" | "code" |"room_type" | "price" | "lift_stairs" | "fees" | "amenities" | "description";
 
 const [shareOpen, setShareOpen] = useState(false);
 const [toast, setToast] = useState<string | null>(null);
 
 const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
   // ✅ tick sẵn theo yêu cầu + thứ tự build text
+  house_number: true,
   address: true,
   code: true,
+  room_type: true,
   price: true,
   lift_stairs: true,
 
@@ -207,21 +238,28 @@ function buildShareText() {
   const lines: string[] = [];
 
   // 1) 📍 Địa chỉ
-  if (shareSel.address && addressLine) {
-    lines.push(`📍 ${addressLine}`);
+  if (shareSel.address || shareSel.house_number) {
+  const parts: string[] = [];
+
+  if (shareSel.house_number && houseNumber) {
+    parts.push(houseNumber);
   }
 
-  // 2) (blank line) + Mã | 💰 Giá
-  if (shareSel.code || shareSel.price) {
-    const left = shareSel.code ? `_ Mã: ${roomCode || "—"}` : "";
-    const right = shareSel.price ? `💰 Giá: ${priceText || "—"}` : "";
-    const join = [left, right].filter(Boolean).join(" | ");
-    if (join) {
-      lines.push(join);
-    }
+  if (shareSel.address) {
+    const addr = joinParts([
+      room?.address,
+      room?.ward,
+      room?.district,
+    ]);
+    if (addr) parts.push(addr);
   }
 
-  // 3) (blank line) + ✅ Thang máy / thang bộ (chỉ hiện cái "có")
+  if (parts.length) {
+    lines.push(`📍 ${parts.join(", ")}`);
+  }
+}
+
+// 4) (blank line) + ✅ Thang máy / thang bộ (chỉ hiện cái "có")
   if (shareSel.lift_stairs) {
     const hasLift = Boolean(detail?.has_elevator);
     const hasStairs = Boolean(detail?.has_stairs);
@@ -266,6 +304,29 @@ function buildShareText() {
     if (amen.length) amen.forEach((x) => lines.push(`- ${x.replace("✔️ ", "")}`));
     else lines.push("- Đang cập nhật");
   }
+
+ // 2) Mã phòng | Loại phòng (chung 1 dòng)
+if (shareSel.code || shareSel.room_type) {
+  const parts: string[] = [];
+
+  if (shareSel.code) {
+    parts.push(`_ Mã: ${roomCode || "—"}`);
+  }
+
+  if (shareSel.room_type && roomType) {
+    parts.push(`Loại phòng: ${roomType}`);
+  }
+
+  if (parts.length) {
+    lines.push(""); 
+    lines.push(parts.join(" | "));
+  }
+}
+
+// 3) Giá (dòng riêng)
+if (shareSel.price) {
+  lines.push(`💰 Giá: ${priceText || "—"}`);
+}
 
   // 6) Mô tả (nếu tick)
   if (shareSel.description && descriptionText) {
@@ -455,7 +516,13 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   adminLevel === 1 || adminLevel === 2
     ? [houseNumber, room?.address].filter(Boolean).join(" ")
     : room?.address,
-  room?.ward,
+  room?.ward
+  ? (() => {
+      const w = String(room.ward).trim().replace(/^P\.?\s*/i, "");
+      return `P.${/^[0-9]/.test(w) ? w : ` ${w}`}`;
+    })()
+  : null,
+
   room?.district,
 ]);
 
@@ -527,37 +594,52 @@ const zaloPhone = zaloPhones[0] ?? "";
 
   return (
     <div className="p-6 space-y-6 text-base">
-      <div className="space-y-3">
+      <div className="space-y-1">
         {mediaItems.length > 0 ? (
   <>
     <div
+     
       className="relative w-full h-[340px] md:h-[440px] rounded-xl overflow-hidden bg-black cursor-pointer"
-      onTouchStart={activeItem?.kind === "video" ? undefined : onTouchStart}
-onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
-
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
       onClick={() => {
-  if (activeItem?.kind !== "video") setViewerOpen(true)
-}}
+      if (activeItem?.kind !== "video") setViewerOpen(true)
+    }}
 
     >
       {activeItem ? (
   activeItem.kind === "video" ? (
     <div
       className="relative w-full h-full"
+      onClick={(e) => {
+        e.stopPropagation()
+        showOverlayAndMaybeHide()
+      }}
     >
       <video
         ref={videoRef}
         src={activeItem.url}
         controls
-        playsInline
         preload="metadata"
+        playsInline
         className="w-full h-full object-contain bg-black"
-        onPlay={() => setShowPlay(false)}
-        onPause={() => setShowPlay(true)}
-        onEnded={() => setShowPlay(true)}
+        onPlay={() => {
+          setShowPlay(false)
+          showOverlayAndMaybeHide()
+        }}
+        onPause={() => {
+          setShowPlay(true)
+          setOverlayVisible(true)
+          clearOverlayTimer()
+        }}
+        onEnded={() => {
+          setShowPlay(true)
+          setOverlayVisible(true)
+          clearOverlayTimer()
+        }}
       />
 
-      {showPlay && (
+      {(overlayVisible || showPlay) && (
         <button
           className="absolute inset-0 m-auto w-16 h-16 rounded-full
                      bg-black/40 text-white text-2xl
@@ -565,10 +647,25 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
                      border border-white/40 backdrop-blur"
           onClick={(e) => {
             e.stopPropagation()
-            videoRef.current?.play()
+            const v = videoRef.current
+            if (!v) return
+
+            setOverlayVisible(true)
+            clearOverlayTimer()
+
+            if (v.paused) {
+              v.play()
+              setShowPlay(false)
+              scheduleHideOverlay(1500)
+            } else {
+              v.pause()
+              setShowPlay(true)
+            }
           }}
+          aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
+          title={showPlay ? "Phát" : "Tạm dừng"}
         >
-          ▶
+          {showPlay ? "▶" : "⏸"}
         </button>
       )}
     </div>
@@ -617,8 +714,64 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
         </button>
       )}
     </div>
+    {isAdmin && (
+  <button
+    type="button"
+    disabled={downloadingImages}
+    onClick={async (e) => {
+      e.stopPropagation();
+      if (downloadingImages) return;
 
-    <div className="flex gap-2 overflow-x-auto pb-1">
+      try {
+        setDownloadingImages(true);
+
+        const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
+        const res = await fetch(url);
+        const ct = res.headers.get("content-type") || "";
+
+        if (!res.ok && ct.includes("application/json")) {
+          const j = await res.json();
+          alert(j.message || "Không tải được ảnh");
+          return;
+        }
+
+        if (!res.ok) {
+          alert("Không tải được ảnh");
+          return;
+        }
+
+        const blob = await res.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `room-${id}-images.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+      } finally {
+        setDownloadingImages(false);
+      }
+    }}
+    className="
+      absolute top-3 right-3 z-10
+      inline-flex items-center gap-1
+      rounded-full border border-gray-300
+      bg-white/90 backdrop-blur
+      px-2 py-[1px]
+      text-[10px] font-medium
+      text-gray-700
+      hover:bg-white
+      transition
+      scale-[0.8] origin-top-right
+      disabled:opacity-60 disabled:cursor-not-allowed
+    "
+    title={downloadingImages ? "Đang chuẩn bị file..." : "Tải ảnh"}
+  >
+    {downloadingImages ? "⏳ Đang chuẩn bị..." : "⬇️ Tải ảnh"}
+  </button>
+)}
+
+    <div className="flex gap-2 overflow-x-auto pb-0">
       {mediaItems.slice(0, 20).map((it, idx) => (
         <button
           key={it.kind + it.url + idx}
@@ -661,73 +814,39 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
 )}
       </div>
       
-{/* ===== Download badge ===== */}
-<div className="flex justify-center my-2">
-  <button
-    type="button"
-    onClick={async () => {
-      const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
-
-      const res = await fetch(url);
-      const ct = res.headers.get("content-type") || "";
-
-      if (!res.ok && ct.includes("application/json")) {
-        const j = await res.json();
-        alert(j.message || "Không tải được ảnh");
-        return;
-      }
-
-      if (!res.ok) {
-        alert("Không tải được ảnh");
-        return;
-      }
-
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `room-${id}-images.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(a.href);
-    }}
-    className="
-      inline-flex items-center gap-1
-      rounded-full border border-gray-300
-      bg-white
-      px-2 py-[1px]
-      text-[5px] font-medium
-      text-gray-700
-      hover:bg-gray-100
-      transition
-    "
-  >
-    ⬇️ Tải ảnh
-  </button>
+{/* ===== Ngày cập nhật ===== */}
+<div className="flex items-center justify-end gap-3 mt-1 mb-0 text-sm text-gray-600">
+  {updatedText && <div>Ngày cập nhật: {updatedText}</div>}
 </div>
 
   <div className="rounded-xl border p-4 space-y-2">
   {/* Dòng 1: Mã | type  + Badge bên phải */}
-  <div className="flex items-center justify-between gap-3">
-    <div className="text-gray-800">
-      <span className="font-medium">Mã:</span> <span>{roomCode || "—"}</span>
-      {roomType && ` | ${roomType}`}
-    </div>
+    <div className="flex items-center justify-between gap-3">
+      <div className="text-gray-800">
+        <span>Mã:</span> <span className="font-semibold">{roomCode || "—"}</span>
+        {roomType && (
+          <>
+            {" | "}
+            <span>Dạng:</span>{" "}
+            <span className="font-semibold">{roomType}</span>
+          </>
+        )}
+      </div>
 
-    {statusText && (
-      <span
-        className={[
-          "text-sm px-2 py-[2px] rounded-full border whitespace-nowrap transition-colors",
+      {statusText && (
+        <span
+         className={[
+          "text-sm px-2 py-[2px] rounded-full whitespace-nowrap",
           statusText === "Còn Trống"
-            ? "bg-white text-gray-800 border-gray-300 hover:bg-green-500 hover:text-white hover:border-green-500"
-            : "bg-white text-gray-800 border-gray-300 hover:bg-red-500 hover:text-white hover:border-red-500",
+            ? "bg-green-500 text-white"
+            : "bg-red-500 text-white",
         ].join(" ")}
-        title={statusText}
-      >
-        {statusText}
-      </span>
-    )}
-  </div>
+          title={statusText}
+        >
+          {statusText}
+        </span>
+      )}
+    </div>
 
   {/* Dòng 2: Giá + updated_at cùng dòng */}
   <div className="flex items-center justify-between gap-3">
@@ -735,13 +854,7 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
       <span className="font-medium">Giá:</span>{" "}
       <span className="font-semibold text-sky-600">{priceText}</span>
     </div>
-
-    {updatedText && (
-      <div className="text-sm text-gray-600 whitespace-nowrap">
-        <span className="font-medium"></span> {updatedText}
-      </div>
-    )}
-  </div>
+     </div>
 
   {addressLine && <div className="text-gray-800 font-semibold">📍 {addressLine}</div>}
 
@@ -752,17 +865,18 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
         <div className="flex items-center justify-between">
   <h2 className="text-lg font-semibold">Chi phí</h2>
 
-  <button
-    type="button"
-    onClick={() => setShareOpen(true)}
-    className="text-sm px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
-    aria-label="Chia sẻ"
-    title="Chia sẻ"
-  >
-    Chia sẻ
-  </button>
+    {(adminLevel === 1 || adminLevel === 2) && (
+    <button
+      type="button"
+      onClick={() => setShareOpen(true)}
+      className="text-sm px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
+      aria-label="Chia sẻ"
+      title="Chia sẻ"
+     >
+      Chia sẻ
+    </button>
+    )}
 </div>
-
         {feeRows.length > 0 ? (
           <div className="space-y-1">
             {feeRows.map((r) => (
@@ -847,32 +961,84 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
   </div>
 )}
 
-      {viewerOpen && mediaItems.length > 0 && (
+  {viewerOpen && mediaItems.length > 0 && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center" onClick={() => setViewerOpen(false)}>
           <div
             className="relative w-full h-full flex items-center justify-center"
-            onTouchStart={activeItem?.kind === "video" ? undefined : onTouchStart}
-onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
-
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
             onClick={(e) => e.stopPropagation()}
           >
-            {activeItem?.kind === "video" ? (
+   {activeItem?.kind === "video" ? (
+  <div className="relative w-full h-full">
+    <div
+  className="relative w-full h-full"
+  onClick={(e) => {
+    e.stopPropagation()
+    showOverlayAndMaybeHide()
+  }}
+>
   <video
+    ref={videoRef}
     src={activeItem.url}
     controls
-    preload="metadata"
     playsInline
-    className="w-full h-full object-contain"
+    preload="metadata"
+    className="w-full h-full object-contain bg-black"
+    onPlay={() => {
+      setShowPlay(false)
+      showOverlayAndMaybeHide()
+    }}
+    onPause={() => {
+      setShowPlay(true)
+      setOverlayVisible(true)
+      clearOverlayTimer()
+    }}
+    onEnded={() => {
+      setShowPlay(true)
+      setOverlayVisible(true)
+      clearOverlayTimer()
+    }}
   />
-) : (
-  <img
-    src={activeItem?.url || ""}
-    alt={room?.title || roomCode || ""}
-    className="w-full h-full object-contain"
-    loading="lazy"
-  />
-)}
 
+  {(overlayVisible || showPlay) && (
+    <button
+      className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/40 text-white text-2xl flex items-center justify-center border border-white/40 backdrop-blur"
+      onClick={(e) => {
+        e.stopPropagation()
+        const v = videoRef.current
+        if (!v) return
+
+        // luôn hiện nút khi user tương tác
+        setOverlayVisible(true)
+        clearOverlayTimer()
+
+        if (v.paused) {
+          v.play()
+          setShowPlay(false)
+          scheduleHideOverlay(1500)
+        } else {
+          v.pause()
+          setShowPlay(true)
+        }
+      }}
+      aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
+      title={showPlay ? "Phát" : "Tạm dừng"}
+    >
+      {showPlay ? "▶" : "⏸"}
+    </button>
+  )}
+</div>
+
+  </div>
+  ) : (
+    <img
+      src={activeItem?.url || ""}
+      alt={room?.title || roomCode || ""}
+      className="w-full h-full object-contain"
+      loading="lazy"
+    />
+  )}
             <button className="absolute top-4 right-4 text-white text-2xl" onClick={() => setViewerOpen(false)}>
               ✕
             </button>
@@ -891,8 +1057,9 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
           </div>
         </div>
       )}
+
       {/* ===== SHARE MODAL ===== */}
-{shareOpen && (
+{(adminLevel === 1 || adminLevel === 2) && shareOpen && (
   <div
     className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center"
     onClick={() => setShareOpen(false)}
@@ -915,6 +1082,20 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
       <div className="mt-3 space-y-3">
         <div className="text-sm font-semibold text-gray-700">Thông tin nhanh</div>
 
+        {(adminLevel === 1 || adminLevel === 2) && (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.house_number}
+              disabled={!shareSel.address}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, house_number: e.target.checked }))
+              }
+            />
+            <span>Số nhà</span>
+          </label>
+        )}
+
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -925,13 +1106,28 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
         </label>
 
         <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={shareSel.code}
-            onChange={(e) => setShareSel((s) => ({ ...s, code: e.target.checked }))}
-          />
-          <span>Mã phòng</span>
-        </label>
+            <input
+              type="checkbox"
+              checked={shareSel.code}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, code: e.target.checked }))
+              }
+            />
+            <span>Mã phòng</span>
+          </label>
+
+          {(adminLevel === 1 || adminLevel === 2) && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={shareSel.room_type}
+                onChange={(e) =>
+                  setShareSel((s) => ({ ...s, room_type: e.target.checked }))
+                }
+              />
+              <span>Loại phòng</span>
+            </label>
+          )}
 
         <label className="flex items-center gap-2">
           <input
@@ -970,7 +1166,7 @@ onTouchEnd={activeItem?.kind === "video" ? undefined : onTouchEnd}
             checked={shareSel.amenities}
             onChange={(e) => setShareSel((s) => ({ ...s, amenities: e.target.checked }))}
           />
-          <span>Tiện ích (trừ thang máy/thang bộ)</span>
+          <span>Tiện ích </span>
         </label>
 
         <label className="flex items-center gap-2">

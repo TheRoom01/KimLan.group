@@ -146,13 +146,16 @@ const isAdmin = level === 1 || level === 2;
     <div className="p-3 flex flex-col gap-2">
      {/* Dòng 1 */}
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[15px] font-medium text-gray-600 leading-6">
-              {[
-                room.room_code ? `Mã: ${room.room_code}` : null,
-                room.room_type,
-              ]
-                .filter(Boolean)
-                .join(" | ")}
+            <h3 className="text-[15px] font-medium text-gray-500 leading-6">
+              {room.room_code ? (
+                <>
+                  <span>Mã: </span>
+                  <span className="font-semibold text-gray-800">{room.room_code}</span>
+                  <span> | </span>
+                </>
+              ) : null}
+              <span>Dạng: </span>
+              <span className="font-semibold text-gray-800">{room.room_type}</span>
             </h3>
 
             <span
@@ -173,7 +176,7 @@ const isAdmin = level === 1 || level === 2;
         </div>
 
         {room.description ? (
-          <div className="flex-1 text-[13px] text-gray-800 text-right break-words whitespace-pre-line line-clamp-2">
+          <div className="flex-1 text-[14px] text-gray-800 text-right break-words whitespace-pre-line line-clamp-2">
             {room.description}
           </div>
         ) : null}
