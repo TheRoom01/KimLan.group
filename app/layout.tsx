@@ -22,21 +22,21 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "/",
-    title: "KimLan",
-    description: "KimLan web app",
+    title: "The Room",
+    description: "Kim Lân Group",
     images: [
       {
         url: "/hero.jpg",
         width: 1200,
         height: 630,
-        alt: "Căn hộ dịch vụ - KimLan",
+        alt: "Căn hộ dịch vụ - KimLanGroup",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "KimLan",
-    description: "KimLan web app",
+    title: "The Room",
+    description: "Kim Lân Group",
     images: ["/hero.jpg"],
   },
 };

@@ -820,46 +820,51 @@ const zaloPhone = zaloPhones[0] ?? "";
 </div>
 
   <div className="rounded-xl border p-4 space-y-2">
-  {/* Dòng 1: Mã | type  + Badge bên phải */}
-    <div className="flex items-center justify-between gap-3">
-      <div className="text-gray-800">
-        <span>Mã:</span> <span className="font-semibold">{roomCode || "—"}</span>
-        {roomType && (
-          <>
-            {" | "}
-            <span>Dạng:</span>{" "}
-            <span className="font-semibold">{roomType}</span>
-          </>
-        )}
-      </div>
+ {/* Dòng 1: Mã | type  + Badge bên phải */}
+<div className="flex items-start justify-between gap-3">
+  <div className="text-gray-800">
+    <span>Mã:</span>{" "}
+    <span className="font-semibold">{roomCode || "—"}</span>
+    {roomType && (
+      <>
+        {" | "}
+        <span>Dạng phòng:</span>{" "}
+        <span className="font-semibold">{roomType}</span>
+      </>
+    )}
+  </div>
 
-      {statusText && (
-        <span
-         className={[
+  <div className="flex flex-col items-end gap-1">
+    {statusText && (
+      <span
+        className={[
           "text-sm px-2 py-[2px] rounded-full whitespace-nowrap",
-          statusText === "Còn Trống"
-            ? "bg-green-500 text-white"
-            : "bg-red-500 text-white",
+          statusText === "Còn Trống" ? "bg-green-500 text-white" : "bg-red-500 text-white",
         ].join(" ")}
-          title={statusText}
-        >
-          {statusText}
-        </span>
-      )}
-    </div>
+        title={statusText}
+      >
+        {statusText}
+      </span>
+    )}
 
-  {/* Dòng 2: Giá + updated_at cùng dòng */}
+   
+  </div>
+</div>
+
+  {/* Dòng 2: Giá + Mô Tả*/}
   <div className="flex items-center justify-between gap-3">
     <div className="text-gray-800">
       <span className="font-medium">Giá:</span>{" "}
       <span className="font-semibold text-sky-600">{priceText}</span>
     </div>
-     </div>
+      <div className="max-w-[50%] text-right text-gray-800 whitespace-pre-line break-words">
+    {descriptionText}
+  </div>
+</div>
 
   {addressLine && <div className="text-gray-800 font-semibold">📍 {addressLine}</div>}
 
-  {descriptionText && <div className="text-gray-800 whitespace-pre-line">{descriptionText}</div>}
-</div>
+  </div>
 
       <div className="space-y-2 pt-4 border-t">
         <div className="flex items-center justify-between">

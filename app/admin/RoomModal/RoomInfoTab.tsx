@@ -368,7 +368,7 @@ onDragOver={e => {
     />
 
     <div>
-  <label style={labelStyle}>SĐT (có thể nhiều dòng)</label>
+  <label style={labelStyle}>SĐT chủ</label>
 
       <textarea
         style={textareaStyle}
