@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -5,10 +6,12 @@ export const dynamic = "force-dynamic";
 function firstImage(gallery: any): string {
   const s = String(gallery || "").trim();
   if (!s) return "";
-  return s
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean)[0] || "";
+  return (
+    s
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)[0] || ""
+  );
 }
 
 function absUrl(base: string, u: string) {
@@ -18,9 +21,14 @@ function absUrl(base: string, u: string) {
   return base.replace(/\/$/, "") + (x.startsWith("/") ? x : `/${x}`);
 }
 
-export default async function Head({ params }: { params: { id: string } }) {
+export async function generateMetadata({
+  params,
+}: {
+  params: { id: string };
+}): Promise<Metadata> {
   const id = params?.id || "";
-  const base = process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app";
+  const base =
+    process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app";
 
   let title = "Chi tiết phòng";
   let desc = "Xem chi tiết phòng";
@@ -31,7 +39,9 @@ export default async function Head({ params }: { params: { id: string } }) {
     const supabase = createSupabaseAdminClient();
     const { data } = await supabase
       .from("rooms")
-      .select("room_code, room_type, price, address, ward, district, house_number, gallery_urls")
+      .select(
+        "room_code, room_type, price, address, ward, district, house_number, gallery_urls"
+      )
       .eq("id", id)
       .maybeSingle();
 
@@ -44,7 +54,8 @@ export default async function Head({ params }: { params: { id: string } }) {
 
     title = roomCode ? `Phòng ${roomCode}` : title;
     if (roomType) title = `${title} - ${roomType}`;
-    if (typeof price === "number") title = `${title} - ${price.toLocaleString("vi-VN")} đ`;
+    if (typeof price === "number")
+      title = `${title} - ${price.toLocaleString("vi-VN")} đ`;
 
     const addr = [
       (data as any)?.house_number,
@@ -61,21 +72,30 @@ export default async function Head({ params }: { params: { id: string } }) {
     // fail-open
   }
 
-  return (
-    <>
-      <title>{title}</title>
-      <meta name="description" content={desc} />
+  return {
+    metadataBase: new URL(base),
+    title,
+    description: desc,
+    openGraph: {
+      type: "website",
+      url,
+      title,
+      description: desc,
+      images: [{ url: image }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: desc,
+      images: [image],
+    },
+  };
+}
 
-      <meta property="og:type" content="website" />
-      <meta property="og:url" content={url} />
-      <meta property="og:title" content={title} />
-      <meta property="og:description" content={desc} />
-      <meta property="og:image" content={image} />
-
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content={title} />
-      <meta name="twitter:description" content={desc} />
-      <meta name="twitter:image" content={image} />
-    </>
-  );
+export default function RoomsIdLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return children;
 }
