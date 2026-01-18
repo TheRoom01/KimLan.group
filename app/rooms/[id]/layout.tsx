@@ -3,16 +3,28 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-function firstImage(gallery: any): string {
+function firstImage(gallery: any, media?: any): string {
+  // 1) ưu tiên gallery_urls (csv string)
   const s = String(gallery || "").trim();
-  if (!s) return "";
-  return (
-    s
+  if (s) {
+    const g = s
       .split(",")
       .map((x) => x.trim())
-      .filter(Boolean)[0] || ""
-  );
+      .filter(Boolean)[0];
+    if (g) return g;
+  }
+
+  // 2) fallback: lấy ảnh đầu tiên từ media
+  if (Array.isArray(media)) {
+    const img = media.find(
+      (m) => m && (m.type === "image" || m.kind === "image") && m.url
+    );
+    if (img?.url) return img.url;
+  }
+
+  return "";
 }
+
 
 function absUrl(base: string, u: string) {
   const x = String(u || "").trim();
@@ -38,19 +50,24 @@ export async function generateMetadata({
   try {
     const supabase = createSupabaseAdminClient();
     const { data } = await supabase
-      .from("rooms")
-      .select(
-        "room_code, room_type, price, address, ward, district, house_number, gallery_urls"
-      )
-      .eq("id", id)
-      .maybeSingle();
+        .from("rooms")
+        .select(
+            "room_code, room_type, price, address, ward, district, house_number, gallery_urls, media"
+        )
+        .eq("id", id)
+        .maybeSingle();
+
 
     const roomCode = (data as any)?.room_code ?? "";
     const roomType = (data as any)?.room_type ?? "";
     const price = (data as any)?.price;
 
-    const img = firstImage((data as any)?.gallery_urls);
+    const img = firstImage(
+    (data as any)?.gallery_urls,
+    (data as any)?.media
+    );
     if (img) image = absUrl(base, img);
+
 
     title = roomCode ? `Phòng ${roomCode}` : title;
     if (roomType) title = `${title} - ${roomType}`;
