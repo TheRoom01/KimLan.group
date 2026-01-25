@@ -301,35 +301,37 @@ const handleUploadFiles = async (files: File[]) => {
 
     })
 
-    // ✅ Fetch media thật từ DB để tránh mất ảnh khi submit (list admin thường không có field media)
-   void (async () => {
-  try {
-    const { data, error } = await supabase
-      .from('rooms')
-      .select('media')
-      .eq('id', editingRoom.id)
-      .single()
+     // ✅ Fetch media thật từ room_media (thay cho rooms.media)
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('room_media')
+          .select('type,url,sort_order,is_cover')
+          .eq('room_id', editingRoom.id)
+          .order('sort_order', { ascending: true })
 
-    if (error) {
-      console.error('fetch rooms.media failed:', error)
-      return
-    }
+        if (error) {
+          console.error('fetch room_media failed:', error)
+          return
+        }
 
+        const dbMedia = (Array.isArray(data) ? data : [])
+          .filter((x: any) => x?.url && (x?.type === 'image' || x?.type === 'video'))
+          .map((x: any) => ({
+            type: x.type,
+            url: x.url,
+            // giữ field path để UI khỏi lỗi nếu chỗ khác đang dùng path
+            path: x.url,
+          }))
 
-    setRoomForm((prev: any) => {
-  const dbMedia = Array.isArray(data?.media) ? data.media : null
-
-    return {
-      ...prev,
-      // ưu tiên DB media; nếu DB không có thì giữ prev
-      media: dbMedia ?? prev.media ?? [],
-    }
-  })
-
-    } catch (e) {
-      console.error('fetch rooms.media exception:', e)
-    }
-  })()
+        setRoomForm((prev: any) => ({
+          ...prev,
+          media: dbMedia,
+        }))
+      } catch (e) {
+        console.error('fetch room_media exception:', e)
+      }
+    })()
 
     ;(async () => {
       const { data, error } = await supabase
@@ -377,84 +379,134 @@ const handleUploadFiles = async (files: File[]) => {
 
   /* ===== SUBMIT ===== */
   async function handleSubmit() {
-    const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
-    const v = validate()
-    if (v) {
-      setErrorMsg(v)
-      return
-    }
+  const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
+  const v = validate()
+  if (v) {
+    setErrorMsg(v)
+    return
+  }
 
-    try {
-      setSaving(true)
-      setErrorMsg(null)
-
-      let roomId = editingRoom?.id
-      let updatedRoom: Room | null = null
-      const isNew = !isEdit
-
-      const payload = {
-        room_code: roomForm.room_code,
-        room_type: roomForm.room_type,
-        house_number: roomForm.house_number,
-        address: roomForm.address,
-        ward: roomForm.ward,
-        district: roomForm.district,
-        price: roomForm.price,
-        status: normalizeStatus(roomForm.status),
-        description: roomForm.description,
-        media,
-        link_zalo: roomForm.link_zalo,
-        chinh_sach: roomForm.chinh_sach,
-      }
-
-      if (isEdit && roomId) {
-        const { data, error } = await supabase.from('rooms').update(payload).eq('id', roomId).select('*').single()
-        if (error) throw error
-        updatedRoom = data as Room
-      } else {
-        const { data, error } = await supabase.from('rooms').insert(payload).select('*').single()
-        if (error) throw error
-        updatedRoom = data as Room
-        roomId = (data as any)?.id
-      }
-
-      if (!roomId || !updatedRoom) throw new Error('Không lấy được dữ liệu phòng sau khi lưu.')
-
-      // ✅ UX: đóng modal ngay, update list ngay
-      setSaving(false)
-      onClose()
-      onNotify?.('Đã lưu phòng. Đang lưu chi tiết...')
-      void onSaved(updatedRoom, { isNew })
-
-      // ✅ Lưu chi tiết chạy ngầm, không chặn UI
-      const detailPayload = {
-  ...detailForm,
-  room_id: roomId,
-} satisfies Partial<RoomDetail> & { room_id: string }
-
-
-      void (async () => {
   try {
-    const { error } = await supabase
-  .from('room_details')
-  .upsert(detailPayload, { onConflict: 'room_id' })
+    setSaving(true)
+    setErrorMsg(null)
 
+    let roomId = editingRoom?.id
+    let updatedRoom: Room | null = null
+    const isNew = !isEdit
 
-    if (error) {
-      console.error(error)
+    // ✅ payload rooms: KHÔNG còn media nữa
+    const payload = {
+      room_code: roomForm.room_code,
+      room_type: roomForm.room_type,
+      house_number: roomForm.house_number,
+      address: roomForm.address,
+      ward: roomForm.ward,
+      district: roomForm.district,
+      price: roomForm.price,
+      status: normalizeStatus(roomForm.status),
+      description: roomForm.description,
+      link_zalo: roomForm.link_zalo,
+      chinh_sach: roomForm.chinh_sach,
     }
-  } catch (err) {
-    console.error(err)
-  }
-})()
 
-    } catch (e: any) {
-      setErrorMsg(e?.message ?? 'Lưu thất bại')
-    } finally {
-      // ✅ phòng trường hợp đã setSaving(false) trước khi onClose()
-      setSaving((s) => (s ? false : s))
+    if (isEdit && roomId) {
+      const { data, error } = await supabase.from('rooms').update(payload).eq('id', roomId).select('*').single()
+      if (error) throw error
+      updatedRoom = data as Room
+    } else {
+      const { data, error } = await supabase.from('rooms').insert(payload).select('*').single()
+      if (error) throw error
+      updatedRoom = data as Room
+      roomId = (data as any)?.id
     }
+
+    if (!roomId || !updatedRoom) throw new Error('Không lấy được dữ liệu phòng sau khi lưu.')
+
+    // =========================
+    // ✅ SYNC room_media (B7.6–B7.7)
+    // =========================
+    const normalized = (Array.isArray(media) ? media : [])
+      .filter((m: any) => m?.url && (m?.type === 'image' || m?.type === 'video'))
+      .map((m: any) => ({
+        type: m.type as 'image' | 'video',
+        url: String(m.url),
+      }))
+
+    const firstImageIndex = normalized.findIndex((m) => m.type === 'image')
+    const coverIndex = firstImageIndex >= 0 ? firstImageIndex : (normalized.length ? 0 : -1)
+
+    const rows = normalized.map((m, idx) => ({
+      room_id: roomId,
+      provider: 'r2',
+      type: m.type,
+      url: m.url,
+      is_cover: idx === coverIndex,
+      sort_order: idx,
+    }))
+
+    // replace-all để đảm bảo sort_order đúng 100%
+    {
+      const del = await supabase.from('room_media').delete().eq('room_id', roomId)
+      if (del.error) throw del.error
+
+      if (rows.length > 0) {
+        const ins = await supabase.from('room_media').insert(rows)
+        if (ins.error) throw ins.error
+      }
+    }
+
+    // ✅ UX: đóng modal ngay, update list ngay
+    setSaving(false)
+    onClose()
+    onNotify?.('Đã lưu phòng. Đang lưu chi tiết...')
+    void onSaved(updatedRoom, { isNew })
+
+    // ✅ Lưu chi tiết chạy ngầm, không chặn UI
+  const detailPayload = {
+    ...detailForm,
+    room_id: roomId,
+  } satisfies Partial<RoomDetail> & { room_id: string }
+
+  void (async () => {
+    try {
+      // 1) check tồn tại
+      const { data: exists, error: selErr } = await supabase
+        .from('room_details')
+        .select('room_id')
+        .eq('room_id', roomId)
+        .maybeSingle()
+
+      if (selErr) {
+        console.error(selErr)
+        return
+      }
+
+      // 2) update hoặc insert
+      if (exists?.room_id) {
+        const { error: upErr } = await supabase
+          .from('room_details')
+          .update(detailPayload)
+          .eq('room_id', roomId)
+
+        if (upErr) console.error(upErr)
+      } else {
+        const { error: insErr } = await supabase
+          .from('room_details')
+          .insert(detailPayload)
+
+        if (insErr) console.error(insErr)
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  })()
+
+  } catch (e: any) {
+    setErrorMsg(e?.message ?? 'Lưu thất bại')
+  } finally {
+    setSaving((s) => (s ? false : s))
   }
+}
 
   /* ================= UI ================= */
 

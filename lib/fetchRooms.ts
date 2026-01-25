@@ -190,25 +190,30 @@ export async function fetchRooms(
 
   const cursorUpdatedAt: string | null = cursorObj?.updated_at ?? null;
 
-  const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
-    p_role: role,
-    p_limit: limit,
+const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
+  // 1) bắt buộc
+  p_role: Number(role) || 0,
+  p_limit: Number(limit) || 20,
 
-    // ✅ quan trọng: updated_desc keyset cursor cần 2 khóa
-    p_cursor: cursorId, // giữ tương thích cho price_asc/desc + fallback
-    p_cursor_id: cursorId,
-    p_cursor_updated_at: cursorUpdatedAt,
-    p_statuses: status ? [status] : null,
+  // 2) cursor (uuid) — dùng cho sort giá + fallback
+  p_cursor: cursorId ? String(cursorId) : null,
 
-    p_search: search ?? null,
-    p_min_price: minPrice ?? null,
-    p_max_price: maxPrice ?? null,
-    p_districts: expandDistrictLegacyValues(districts),
-    p_room_types: expandRoomTypeLegacyValues(roomTypes),
-    p_move: move ?? null,
-    p_sort: sortMode ?? "updated_desc",
-    
-  });
+  // 3) filter/search
+  p_search: (search ?? "").trim() ? String(search).trim() : null,
+  p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
+  p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
+  p_districts: expandDistrictLegacyValues(districts) ?? null,
+  p_room_types: expandRoomTypeLegacyValues(roomTypes) ?? null,
+  p_move: (move ?? "").trim() ? String(move).trim() : null,
+
+  // 4) statuses
+  p_statuses: status ? [String(status)] : null,
+
+  // 5) sort + keyset cursor (updated_desc cần 2 khóa)
+  p_sort: (sortMode ?? "updated_desc") as any,
+  p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
+  p_cursor_id: cursorId ? String(cursorId) : null,
+});
 
   if (error) {
     console.error(error);

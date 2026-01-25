@@ -141,28 +141,30 @@ export async function fetchRoomsServer(
 
   const cursorUpdatedAt: string | null = cursorObj?.updated_at ?? null;
 
-  const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
-    p_role: role,
-    p_limit: limit,
+const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
+  // 1) bắt buộc
+  p_role: Number(role) || 0,
+  p_limit: Number(limit) || 20,
 
-    // ✅ quan trọng: updated_desc keyset cursor cần 2 khóa
-    p_cursor: cursorId, // giữ tương thích cho price_asc/desc + fallback
-    p_cursor_id: cursorId,
-    p_cursor_updated_at: cursorUpdatedAt,
+  // 2) cursor (uuid) — dùng cho sort giá + fallback
+  p_cursor: cursorId ? String(cursorId) : null,
 
-    // ✅ NEW: server-side status filter
-    p_statuses: status ? [status] : null,
+  // 3) filter/search
+  p_search: (search ?? "").trim() ? String(search).trim() : null,
+  p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
+  p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
+  p_districts: Array.isArray(districts) && districts.length ? districts : null,
+  p_room_types: Array.isArray(effectiveRoomTypes) && effectiveRoomTypes.length ? effectiveRoomTypes : null,
+  p_move: (move ?? "").trim() ? String(move).trim() : null,
 
-    p_search: search ?? null,
-    p_min_price: minPrice ?? null,
-    p_max_price: maxPrice ?? null,
-    p_districts: districts?.length ? districts : null,
-    p_room_types: effectiveRoomTypes.length ? effectiveRoomTypes : null,
-    p_move: move ?? null,
+  // 4) statuses
+  p_statuses: status ? [String(status)] : null,
 
-    // ✅ đồng bộ với client nếu có; mặc định updated_desc
-    p_sort: sortMode ?? "updated_desc",
-  });
+  // 5) sort + keyset cursor (updated_desc cần 2 khóa)
+  p_sort: sortMode ?? "updated_desc",
+  p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
+  p_cursor_id: cursorId ? String(cursorId) : null,
+});
 
   if (error) {
     console.error(error);

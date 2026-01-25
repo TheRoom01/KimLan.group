@@ -69,9 +69,14 @@ useEffect(() => {
   setZaloPhoneDraft(phoneBlock);
 }, [value.link_zalo]);
 
- const imageUrls = useMemo(() => {
-  return []
-}, [])
+const imageUrls = useMemo(() => {
+  if (!Array.isArray((value as any)?.media)) return []
+
+  return (value as any).media
+    .filter((m: any) => m?.type === 'image' && m?.url)
+    .map((m: any) => m.url)
+}, [value])
+
 
   const mediaItems = useMemo(() => {
   const arr: any = (value as any).media;
@@ -101,15 +106,43 @@ useEffect(() => {
   }
 
   const moveItem = (from: number, to: number) => {
-    if (from === to) return
-    if (from < 0 || to < 0) return
-    if (from >= imageUrls.length || to >= imageUrls.length) return
+  if (from === to) return
+  if (from < 0 || to < 0) return
 
-    const next = imageUrls.slice()
-    const [item] = next.splice(from, 1)
-    next.splice(to, 0, item)
-    setImageUrls(next)
-  }
+  const media = Array.isArray((value as any)?.media) ? (value as any).media : []
+
+  // tách ảnh
+  const images = media
+    .filter((m: any) => m?.type === 'image' && (m?.url || m?.path))
+    .map((m: any) => ({
+      type: 'image' as const,
+      url: String(m.url ?? m.path),
+    }))
+    .filter((m: any) => /^https?:\/\//.test(m.url))
+
+  // tách video (giữ nguyên thứ tự)
+  const videos = media
+    .filter((m: any) => m?.type === 'video' && (m?.url || m?.path))
+    .map((m: any) => ({
+      type: 'video' as const,
+      url: String(m.url ?? m.path),
+    }))
+    .filter((m: any) => /^https?:\/\//.test(m.url))
+
+  if (from >= images.length || to >= images.length) return
+
+  // reorder ảnh
+  const nextImages = [...images]
+  const [moved] = nextImages.splice(from, 1)
+  nextImages.splice(to, 0, moved)
+
+  // cập nhật NGUỒN THẬT
+  onChange({
+    ...(value as any),
+    media: [...nextImages, ...videos],
+  })
+}
+
 
   const infoGridStyle: React.CSSProperties = isMobile
   ? { ...grid4, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }
@@ -220,132 +253,149 @@ useEffect(() => {
       </div>
 
       {/* Preview ảnh */}
-      {imageUrls.length > 0 && (
-        <div>
-          <label style={labelStyle}>Ảnh đã thêm</label>
+{imageUrls.filter((u: string) => /^https?:\/\//.test(u)).length > 0 && (
+  <div>
+    <label style={labelStyle}>Ảnh đã thêm</label>
 
-          <div
-  style={{
-    ...previewGrid,
-    ...(typeof window !== 'undefined' && window.innerWidth >= 768
-      ? previewGridDesktop
-      : null),
-  }}
->
-            {imageUrls.map((url, idx) => {
-              const isDragging = dragIndex === idx
-              const isOver = overIndex === idx && dragIndex !== null && dragIndex !== idx
-
-              return (
-                <div
-                  key={url}
-                  style={{
-                    ...thumbWrap,
-                    ...(isDragging ? draggingStyle : null),
-                    ...(isOver ? dragOverStyle : null),
-                  }}
-                  title={url}
-                  draggable
-                  onDragStart={e => {
-                    setDragIndex(idx)
-                    setOverIndex(null)
-                    // Required in some browsers to initiate drag
-                    e.dataTransfer.setData('text/plain', String(idx))
-                    e.dataTransfer.effectAllowed = 'move'
-                  }}
-                  onDragEnter={e => {
-  e.preventDefault()
-  setOverIndex(idx)
-}}
-
-onDragOver={e => {
-  e.preventDefault()
-  e.dataTransfer.dropEffect = 'move'
-}}
-
-                  onDrop={e => {
-                    e.preventDefault()
-
-                    // Prefer dragIndex from state; fallback to dataTransfer
-                    const from =
-                      dragIndex ?? Number.parseInt(e.dataTransfer.getData('text/plain') || '', 10)
-                    const to = idx
-
-                    if (Number.isFinite(from) && Number.isFinite(to)) {
-                      moveItem(from, to)
-                    }
-
-                    setDragIndex(null)
-                    setOverIndex(null)
-                  }}
-                  onDragEnd={() => {
-                    setDragIndex(null)
-                    setOverIndex(null)
-                  }}
-                >
-                  <button
-                    type="button"
-                    aria-label="Xoá ảnh"
-                    style={removeBtn}
-                    onClick={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      const next = imageUrls.filter((_, i) => i !== idx)
-                      setImageUrls(next)
-                    }}
-                  >
-                    ✕
-                  </button>
-
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-              
-                <img
-                  src={url}
-                  alt={`room-${idx}`}
-                  style={thumbImg}
-                  draggable={false}
-                  loading="lazy"
-                  decoding="async"
-                />
-
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Preview video */}
-<div className="flex gap-3 overflow-x-auto">
-  {videoItems.map((m: any, idx: number) => (
     <div
-      key={`${m.url}-${idx}`}
-      className="relative w-32 h-24 rounded-lg border bg-black flex-shrink-0"
+      style={{
+        ...previewGrid,
+        ...(typeof window !== 'undefined' && window.innerWidth >= 768
+          ? previewGridDesktop
+          : null),
+      }}
     >
-      {/* ❌ nút xoá */}
-      <button
-        type="button"
-        onClick={() => {
-          // xoá video khỏi media
-          const nextMedia = (value.media || []).filter(
-            (x: any) => x.url !== m.url
-          );
-          onChange({ ...value, media: nextMedia });
-        }}
-        className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-white/90 hover:bg-white flex items-center justify-center"
-      >
-        ✕
-      </button>
+      {imageUrls
+        .filter((u: string) => /^https?:\/\//.test(u))
+        .map((url: string, idx: number) => {
+          const isDragging = dragIndex === idx
+          const isOver = overIndex === idx && dragIndex !== null && dragIndex !== idx
 
-      {/* video preview */}
-      <video
-        src={m.url}
-        className="w-full h-full object-contain rounded-lg"
-        preload="metadata"
-        controls
-      />
+          return (
+            <div
+              key={url}
+              style={{
+                ...thumbWrap,
+                ...(isDragging ? draggingStyle : null),
+                ...(isOver ? dragOverStyle : null),
+              }}
+              title={url}
+              draggable
+              onDragStart={(e) => {
+                setDragIndex(idx)
+                setOverIndex(null)
+                e.dataTransfer.setData('text/plain', String(idx))
+                e.dataTransfer.effectAllowed = 'move'
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault()
+                setOverIndex(idx)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                const from =
+                  dragIndex ??
+                  Number.parseInt(e.dataTransfer.getData('text/plain') || '', 10)
+                const to = idx
+
+                if (Number.isFinite(from) && Number.isFinite(to)) {
+                  moveItem(from, to) // giữ nguyên logic reorder của bạn
+                }
+
+                setDragIndex(null)
+                setOverIndex(null)
+              }}
+              onDragEnd={() => {
+                setDragIndex(null)
+                setOverIndex(null)
+              }}
+            >
+              <button
+                type="button"
+                aria-label="Xoá ảnh"
+                style={removeBtn}
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+
+                  // ✅ XOÁ THẲNG TRONG value.media (nguồn dữ liệu thật)
+                  const current = Array.isArray((value as any)?.media) ? (value as any).media : []
+                  const nextMedia = current.filter((m: any) => {
+                    const u = String(m?.url ?? m?.path ?? '')
+                    // chỉ xoá đúng ảnh này
+                    return !(m?.type === 'image' && u === url)
+                  })
+
+                  onChange({
+                    ...(value as any),
+                    media: nextMedia,
+                  })
+                }}
+              >
+                ✕
+              </button>
+
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={url}
+                alt={`room-${idx}`}
+                style={thumbImg}
+                draggable={false}
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          )
+        })}
     </div>
-  ))}
+  </div>
+)}
+
+{/* Preview video */}
+<div className="flex gap-3 overflow-x-auto">
+  {videoItems.map((m: any, idx: number) => {
+    const videoUrl = String(m?.url ?? m?.path ?? '')
+
+    return (
+      <div
+        key={`${videoUrl}-${idx}`}
+        className="relative w-32 h-24 rounded-lg border bg-black flex-shrink-0"
+      >
+        {/* nút xoá video */}
+        <button
+          type="button"
+          onClick={() => {
+            const current = Array.isArray((value as any)?.media) ? (value as any).media : []
+            const nextMedia = current.filter((x: any) => {
+              const u = String(x?.url ?? x?.path ?? '')
+              // chỉ xoá đúng video này
+              return !(x?.type === 'video' && u === videoUrl)
+            })
+
+            onChange({
+              ...(value as any),
+              media: nextMedia,
+            })
+          }}
+          className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-white/90 hover:bg-white flex items-center justify-center"
+        >
+          ✕
+        </button>
+
+        {/* video preview */}
+        <video
+          src={videoUrl}
+          className="w-full h-full object-contain rounded-lg"
+          preload="metadata"
+          controls
+        />
+      </div>
+    )
+  })}
 </div>
 
 {/* Link Zalo + SĐT (2 cột, lưu chung vào link_zalo theo 2 dòng) */}

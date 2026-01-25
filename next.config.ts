@@ -2,7 +2,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-   images: {
+  images: {
     remotePatterns: [
       {
         protocol: 'https',
@@ -10,6 +10,16 @@ const nextConfig: NextConfig = {
         pathname: '/storage/v1/object/public/**',
       },
     ],
+  },
+
+  experimental: {
+    // ✅ cái đúng theo log của bạn (tăng limit cho request body client -> server)
+    middlewareClientMaxBodySize: '50mb',
+
+    // (không bắt buộc cho route handler, nhưng giữ lại cũng không sao)
+    serverActions: {
+      bodySizeLimit: '50mb',
+    },
   },
 }
 
