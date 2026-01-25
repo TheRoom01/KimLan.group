@@ -25,9 +25,10 @@ function absUrl(base: string, u: string) {
 export async function generateMetadata({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  const id = params?.id || "";
+  const { id } = await params;
+
   const base =
     process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app";
 
@@ -48,17 +49,36 @@ const roomCode = (data as any)?.room_code ?? "";
 const roomType = (data as any)?.room_type ?? "";
 const price = (data as any)?.price;
 
-// lấy cover từ room_media
-const { data: mediaRows } = await supabase
-  .from("room_media")
-  .select("url,is_cover,created_at")
-  .eq("room_id", id)
-  .eq("type", "image")
-  .order("created_at", { ascending: true });
+// ✅ 1) Ưu tiên thumb.webp theo convention R2: rooms/room-{room_code}/images/thumb.webp
+const R2_BASE = (process.env.R2_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "")
+  .toString()
+  .replace(/\/$/, "");
 
-const img = pickCoverUrl(mediaRows as any[]);
+const safeRoomCode =
+  String(roomCode || "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9-_]/g, "") || "";
 
-if (img) image = absUrl(base, img);
+const thumb = R2_BASE && safeRoomCode
+  ? `${R2_BASE}/rooms/room-${safeRoomCode}/images/thumb.webp`
+  : "";
+
+if (thumb) {
+  image = absUrl(base, thumb);
+} else {
+  // ✅ 2) fallback cũ: lấy cover từ room_media
+  const { data: mediaRows } = await supabase
+    .from("room_media")
+    .select("url,is_cover,created_at")
+    .eq("room_id", id)
+    .eq("type", "image")
+    .order("created_at", { ascending: true });
+
+  const img = pickCoverUrl(mediaRows as any[]);
+  if (img) image = absUrl(base, img);
+}
+
 
     title = roomCode ? `Phòng ${roomCode}` : title;
     if (roomType) title = `${title} - ${roomType}`;

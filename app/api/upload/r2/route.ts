@@ -24,16 +24,46 @@ export async function POST(req: Request) {
     const form = await req.formData()
     const file = form.get("file") as File
     const roomId = String(form.get("room_id") || "").trim()
-
+    const fixedName = String(form.get("fixed_name") || "").trim()
+    
     if (!file || !roomId) {
       return NextResponse.json({ error: "Missing file or room_id" }, { status: 400 })
     }
 
-    const ext = file.name.split(".").pop()?.toLowerCase() || "bin"
     const isVideo = file.type.startsWith("video/")
+
+    // ===== ENFORCE VIDEO RULE (BACKEND) =====
+    if (isVideo) {
+      const MAX_VIDEO_MB = 20
+      const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
+
+      if (file.size > MAX_VIDEO_BYTES) {
+        return NextResponse.json(
+          { error: `Video quá lớn. Giới hạn ${MAX_VIDEO_MB}MB` },
+          { status: 400 }
+        )
+      }
+
+      const name = (file.name || "").toLowerCase()
+      const isMp4 = file.type.includes("mp4") || name.endsWith(".mp4")
+      if (!isMp4) {
+        return NextResponse.json({ error: "Chỉ hỗ trợ video mp4" }, { status: 400 })
+      }
+    }
+    // =======================================
+
+    const ext = file.name.split(".").pop()?.toLowerCase() || "bin"
     const folder = isVideo ? "video" : "images"
 
-    const key = `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${ext}`
+    // ✅ cho phép ép tên thumb.webp (chỉ cho ảnh)
+    const allowFixedThumb = !isVideo && fixedName === "thumb.webp"
+    if (allowFixedThumb && file.type !== "image/webp") {
+      return NextResponse.json({ error: "thumb.webp phải là image/webp" }, { status: 400 })
+    }
+
+    const key = allowFixedThumb
+      ? `rooms/${roomId}/${folder}/thumb.webp`
+      : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${ext}`
 
     const buffer = Buffer.from(await file.arrayBuffer())
 

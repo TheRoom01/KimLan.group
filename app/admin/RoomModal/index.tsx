@@ -119,6 +119,90 @@ export default function RoomModal({
   const [uploading, setUploading] = useState(false)
   const lastAutofillKeyRef = useRef<string>("");
 
+  async function fileToImageBitmap(file: File): Promise<ImageBitmap> {
+  // ImageBitmap decode nhanh hơn Image() và hỗ trợ tốt trên Chrome/Edge
+  return await createImageBitmap(file)
+}
+
+async function canvasToWebpFile(
+  canvas: HTMLCanvasElement,
+  fileName: string,
+  quality = 0.82
+): Promise<File> {
+  const blob: Blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('toBlob failed'))),
+      'image/webp',
+      quality
+    )
+  })
+  return new File([blob], fileName, { type: 'image/webp' })
+}
+
+function resizeToCanvas(src: ImageBitmap, maxWidthOrHeight: number): HTMLCanvasElement {
+  const { width, height } = src
+  const scale = Math.min(1, maxWidthOrHeight / Math.max(width, height))
+  const w = Math.max(1, Math.round(width * scale))
+  const h = Math.max(1, Math.round(height * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('No canvas context')
+
+  // chất lượng resize tốt
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(src, 0, 0, w, h)
+
+  return canvas
+}
+
+/**
+ * Resize ảnh về WebP (max 1600px), cố gắng target dung lượng bằng cách giảm quality.
+ * - targetBytes: ví dụ 500KB
+ */
+async function compressImageWebp(
+  file: File,
+  opts: { max: number; targetBytes: number; baseName: string }
+): Promise<File> {
+  const bmp = await fileToImageBitmap(file)
+  const canvas = resizeToCanvas(bmp, opts.max)
+  bmp.close?.()
+
+  // thử quality giảm dần để đạt target
+  const qualities = [0.85, 0.8, 0.75, 0.7, 0.65, 0.6]
+  let out: File | null = null
+
+  for (const q of qualities) {
+    const f = await canvasToWebpFile(canvas, `${opts.baseName}.webp`, q)
+    out = f
+    if (f.size <= opts.targetBytes) break
+  }
+
+  return out!
+}
+
+async function makeThumbWebp(
+  file: File,
+  opts: { max: number; targetBytes: number }
+): Promise<File> {
+  const bmp = await fileToImageBitmap(file)
+  const canvas = resizeToCanvas(bmp, opts.max)
+  bmp.close?.()
+
+  const qualities = [0.85, 0.8, 0.75, 0.7]
+  let out: File | null = null
+  for (const q of qualities) {
+    const f = await canvasToWebpFile(canvas, `thumb.webp`, q)
+    out = f
+    if (f.size <= opts.targetBytes) break
+  }
+  return out!
+}
+
   // ================== UPLOAD FILES ==================
 const handleUploadFiles = async (files: File[]) => {
   if (!files?.length) return
@@ -126,13 +210,76 @@ const handleUploadFiles = async (files: File[]) => {
   const okFiles = files.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
   if (!okFiles.length) return
 
-  for (const f of okFiles) {
-    const maxBytes = f.type.startsWith('video/') ? 300 * 1024 * 1024 : 20 * 1024 * 1024
+ // ===== VIDEO RULE (FRONTEND) =====
+const MAX_VIDEO_MB = 20
+const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
+
+const MAX_VIDEOS_PER_ROOM = 2
+const MAX_VIDEO_SECONDS = 90 // < 1m30s
+
+const existingVideosCount = Array.isArray((roomForm as any)?.media)
+  ? (roomForm as any).media.filter((m: any) => m?.type === 'video').length
+  : 0
+
+const selectedVideos = okFiles.filter((f) => f.type.startsWith('video/'))
+if (existingVideosCount + selectedVideos.length > MAX_VIDEOS_PER_ROOM) {
+  alert(`Mỗi phòng chỉ được upload tối đa ${MAX_VIDEOS_PER_ROOM} video`)
+  return
+}
+
+async function assertVideoDuration(file: File) {
+  await new Promise<void>((resolve, reject) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.src = URL.createObjectURL(file)
+
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src)
+      const d = video.duration
+      if (!Number.isFinite(d)) return reject(new Error('Không đọc được thời lượng video'))
+      if (d >= MAX_VIDEO_SECONDS) {
+        return reject(new Error(`Mỗi video phải ngắn hơn ${MAX_VIDEO_SECONDS} giây (1 phút 30)`))
+      }
+      resolve()
+    }
+
+    video.onerror = () => reject(new Error('Không đọc được video'))
+  })
+}
+// =================================
+
+  // Validate size/type trước khi upload
+for (const f of okFiles) {
+  if (f.type.startsWith('video/')) {
+    // size (<= 20MB)
+    if (f.size > MAX_VIDEO_BYTES) {
+      alert(`Video quá lớn (>${MAX_VIDEO_MB}MB): ${f.name}`)
+      return
+    }
+
+    // mp4 only
+    const isMp4 = f.type.includes('mp4') || f.name.toLowerCase().endsWith('.mp4')
+    if (!isMp4) {
+      alert(`Chỉ hỗ trợ video mp4: ${f.name}`)
+      return
+    }
+
+    // duration < 90s
+    try {
+      await assertVideoDuration(f) // trong assertVideoDuration nhớ dùng điều kiện: if (d >= 90) reject(...)
+    } catch (e: any) {
+      alert(e?.message || `Video không hợp lệ: ${f.name}`)
+      return
+    }
+  } else {
+    // image: tạm giới hạn 20MB cho tới khi làm bước resize/webp
+    const maxBytes = 20 * 1024 * 1024
     if (f.size > maxBytes) {
-      alert(`File quá lớn: ${f.name}`)
+      alert(`Ảnh quá lớn: ${f.name}`)
       return
     }
   }
+}
 
   setUploading(true)
   try {
@@ -147,12 +294,24 @@ const handleUploadFiles = async (files: File[]) => {
 
     for (const file of okFiles) {
       const isVideo = file.type.startsWith('video/')
+      const isImage = file.type.startsWith('image/')
+
+      // Ảnh: convert WebP 1600px, target ~500KB
+      let uploadFile: File = file
+      if (isImage) {
+        const baseName = (file.name || 'image').replace(/\.[^.]+$/, '')
+        uploadFile = await compressImageWebp(file, {
+          max: 1600,
+          targetBytes: 500 * 1024,
+          baseName,
+        })
+      }
 
       // ✅ upload qua API R2 (server) — không dùng supabase.storage nữa
       const fd = new FormData()
       fd.append('room_id', `room-${safeRoomCode}`)
-      fd.append('file', file)
-
+      fd.append('file', uploadFile)
+      
       const res = await fetch('/api/upload/r2', {
         method: 'POST',
         body: fd,
@@ -171,12 +330,37 @@ const handleUploadFiles = async (files: File[]) => {
       const publicUrl = String(j?.url || '').trim()
       if (!publicUrl) throw new Error('Upload failed: missing url')
 
-      // path chỉ để debug/hiển thị; giờ dùng luôn url (hoặc để rỗng)
       uploadedMedia.push({
         type: isVideo ? 'video' : 'image',
         url: publicUrl,
         path: publicUrl,
       })
+
+      // Nếu đây là ảnh đầu tiên của phòng (cover) thì tạo thumb.webp và upload với fixed_name
+      if (isImage) {
+        const existingImagesCount = Array.isArray((roomForm as any)?.media)
+          ? (roomForm as any).media.filter((m: any) => m?.type === 'image').length
+          : 0
+
+        // cover = ảnh đầu tiên (phòng chưa có ảnh và batch này vừa upload ảnh đầu)
+        const uploadedImagesCount = uploadedMedia.filter((m) => m.type === 'image').length
+
+        if (existingImagesCount === 0 && uploadedImagesCount === 1) {
+          const thumbFile = await makeThumbWebp(file, { max: 600, targetBytes: 250 * 1024 })
+
+          const fdThumb = new FormData()
+          fdThumb.append('room_id', `room-${safeRoomCode}`)
+          fdThumb.append('fixed_name', 'thumb.webp')
+          fdThumb.append('file', thumbFile)
+
+          const resThumb = await fetch('/api/upload/r2', { method: 'POST', body: fdThumb })
+          if (!resThumb.ok) {
+            // không chặn toàn bộ flow nếu thumb lỗi, nhưng có log để debug
+            console.warn('Upload thumb.webp failed')
+          }
+        }
+      }
+
     }
 
     setRoomForm((prev: any) => {

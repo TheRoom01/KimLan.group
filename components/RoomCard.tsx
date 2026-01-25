@@ -26,30 +26,62 @@ type Room = {
 export default function RoomCard(props: { room: Room; adminLevel: number; index?: number }) {
   const { room, adminLevel, index = 0 } = props;
 
-  const images = Array.isArray(room.image_urls)
+   const images = Array.isArray(room.image_urls)
     ? room.image_urls.map((x) => String(x ?? "").trim()).filter(Boolean)
     : [];
 
   const showImages = images.slice(0, 3);
 
- const FALLBACK = "/no-image.png";
+  const FALLBACK = "/no-image.png";
 
-const safeSrc = (src?: string | null) => {
-  const s = (src ?? "").trim();
-  return s ? s : FALLBACK;
-};
+  const safeSrc = (src?: string | null) => {
+    const s = (src ?? "").trim();
+    return s ? s : FALLBACK;
+  };
 
-const mainImage = safeSrc(showImages[0]);
-const subImage1 = safeSrc(showImages[1]);
-const subImage2 = safeSrc(showImages[2]);
+  // ✅ build thumb.webp theo convention bạn đang dùng:
+  // rooms/{room_id}/images/thumb.webp  với room_id = `room-${safeRoomCode}`
+  const R2_BASE =
+    (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL ||
+      process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
+      "")?.replace(/\/$/, "") || "";
 
-const [mainOk, setMainOk] = useState(true);
-const [sub1Ok, setSub1Ok] = useState(true);
-const [sub2Ok, setSub2Ok] = useState(true);
+  const safeRoomCode =
+    String(room.room_code || "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9-_]/g, "") || "";
 
-const mainSrc = mainOk ? mainImage : FALLBACK;
-const sub1Src = sub1Ok ? subImage1 : FALLBACK;
-const sub2Src = sub2Ok ? subImage2 : FALLBACK;
+  const thumbUrl =
+    R2_BASE && safeRoomCode
+      ? `${R2_BASE}/rooms/room-${safeRoomCode}/images/thumb.webp`
+      : "";
+
+  // main ưu tiên thumb.webp, fallback qua ảnh đầu
+  const mainPreferred = safeSrc(thumbUrl || showImages[0]);
+
+  const subImage1 = safeSrc(showImages[1]);
+  const subImage2 = safeSrc(showImages[2]);
+
+  // ✅ mainErrorStage:
+  // 0: đang dùng thumb (nếu có)
+  // 1: fallback sang ảnh đầu
+  // 2: fallback no-image
+  const [mainErrorStage, setMainErrorStage] = useState<0 | 1 | 2>(0);
+  const [sub1Ok, setSub1Ok] = useState(true);
+  const [sub2Ok, setSub2Ok] = useState(true);
+
+  const mainFallback1 = safeSrc(showImages[0]);
+  const mainSrc =
+    mainErrorStage === 0
+      ? mainPreferred
+      : mainErrorStage === 1
+      ? mainFallback1
+      : FALLBACK;
+
+  const sub1Src = sub1Ok ? subImage1 : FALLBACK;
+  const sub2Src = sub2Ok ? subImage2 : FALLBACK;
+
 
 
   const totalImages =
@@ -112,7 +144,8 @@ const isAdmin = level === 1 || level === 2;
   priority={index < 6}
   loading={index < 6 ? "eager" : "lazy"}
   unoptimized
-  onError={() => setMainOk(false)}
+  onError={() => setMainErrorStage((s) => (s < 2 ? ((s + 1) as any) : 2))}
+
 />
 
 
