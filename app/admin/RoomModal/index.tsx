@@ -94,7 +94,7 @@ export default function RoomModal({
 }: Props) {
   const isEdit = Boolean(editingRoom?.id)
 
-  const [roomForm, setRoomForm] = useState<RoomForm>({
+   const [roomForm, setRoomForm] = useState<RoomForm>({
     room_code: '',
     room_type: '',
     house_number: '',
@@ -104,13 +104,13 @@ export default function RoomModal({
     price: 0,
     status: 'Trống',
     description: '',
-    gallery_urls: '',
     link_zalo: '',
     // media optional in RoomForm (tùy bạn đã khai báo chưa)
     media: [],
     chinh_sach: '',
     
   })
+
   
   const [detailForm, setDetailForm] = useState<RoomDetail>(defaultDetailForm)
   
@@ -120,84 +120,77 @@ export default function RoomModal({
   const lastAutofillKeyRef = useRef<string>("");
 
   // ================== UPLOAD FILES ==================
-  const handleUploadFiles = async (files: File[]) => {
-    if (!files?.length) return
+const handleUploadFiles = async (files: File[]) => {
+  if (!files?.length) return
 
-    const okFiles = files.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
-    if (!okFiles.length) return
+  const okFiles = files.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
+  if (!okFiles.length) return
 
-    for (const f of okFiles) {
-      const maxBytes = f.type.startsWith('video/') ? 300 * 1024 * 1024 : 20 * 1024 * 1024
-      if (f.size > maxBytes) {
-        alert(`File quá lớn: ${f.name}`)
-        return
-      }
-    }
-
-    setUploading(true)
-    try {
-      // NOTE: patch 2 bạn skip, nên vẫn dùng room_code / unknown
-      const safeRoomCode =
-        (roomForm.room_code || 'unknown')
-          .trim()
-          .replace(/\s+/g, '-')
-          .replace(/[^a-zA-Z0-9-_]/g, '') || 'unknown'
-
-      const uploadedMedia: { type: 'image' | 'video'; url: string; path: string }[] = []
-      const uploadedImageUrls: string[] = []
-
-      for (const file of okFiles) {
-        const isVideo = file.type.startsWith('video/')
-        const folder = isVideo ? 'videos' : 'images'
-        
-        const ext = (file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg')).toLowerCase()
-        const id = crypto.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`
-        const filePath = `${folder}/room-${safeRoomCode}/${id}.${ext}`
-
-        const { error: upErr } = await supabase.storage.from('room-images').upload(filePath, file, {
-          contentType: file.type,
-          upsert: false,
-          cacheControl: '3600',
-        })
-        if (upErr) throw upErr
-      
-        const { data } = supabase.storage.from('room-images').getPublicUrl(filePath)
-        const publicUrl = data?.publicUrl || ''
-
-        uploadedMedia.push({
-          type: isVideo ? 'video' : 'image',
-          url: publicUrl,
-          path: filePath,
-        })
-
-        if (!isVideo) uploadedImageUrls.push(publicUrl)
-      }
-
-      setRoomForm((prev: any) => {
-        const prevMedia = Array.isArray(prev.media) ? prev.media : []
-        const nextMedia = [...prevMedia, ...uploadedMedia]
-
-        const prevGallery = String(prev.gallery_urls || '').trim()
-        const prevGalleryArr = prevGallery
-          ? prevGallery.split(',').map((x: string) => x.trim()).filter(Boolean)
-          : []
-
-        const nextGalleryArr = [...prevGalleryArr, ...uploadedImageUrls]
-        const nextGallery = nextGalleryArr.join(', ')
-
-        return {
-          ...prev,
-          media: nextMedia,
-          gallery_urls: nextGallery,
-        }
-      })
-    } catch (e: any) {
-      console.error('Upload failed:', e)
-      alert(e?.message ?? 'Upload failed')
-    } finally {
-      setUploading(false)
+  for (const f of okFiles) {
+    const maxBytes = f.type.startsWith('video/') ? 300 * 1024 * 1024 : 20 * 1024 * 1024
+    if (f.size > maxBytes) {
+      alert(`File quá lớn: ${f.name}`)
+      return
     }
   }
+
+  setUploading(true)
+  try {
+    // NOTE: patch 2 bạn skip, nên vẫn dùng room_code / unknown
+    const safeRoomCode =
+      (roomForm.room_code || 'unknown')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-zA-Z0-9-_]/g, '') || 'unknown'
+
+    const uploadedMedia: { type: 'image' | 'video'; url: string; path: string }[] = []
+
+    for (const file of okFiles) {
+      const isVideo = file.type.startsWith('video/')
+
+      // ✅ upload qua API R2 (server) — không dùng supabase.storage nữa
+      const fd = new FormData()
+      fd.append('room_id', `room-${safeRoomCode}`)
+      fd.append('file', file)
+
+      const res = await fetch('/api/upload/r2', {
+        method: 'POST',
+        body: fd,
+      })
+
+      if (!res.ok) {
+        let msg = 'Upload failed'
+        try {
+          const j = await res.json()
+          msg = j?.error || j?.message || msg
+        } catch {}
+        throw new Error(msg)
+      }
+
+      const j = await res.json()
+      const publicUrl = String(j?.url || '').trim()
+      if (!publicUrl) throw new Error('Upload failed: missing url')
+
+      // path chỉ để debug/hiển thị; giờ dùng luôn url (hoặc để rỗng)
+      uploadedMedia.push({
+        type: isVideo ? 'video' : 'image',
+        url: publicUrl,
+        path: publicUrl,
+      })
+    }
+
+    setRoomForm((prev: any) => {
+      const prevMedia = Array.isArray(prev.media) ? prev.media : []
+      const nextMedia = [...prevMedia, ...uploadedMedia]
+      return { ...prev, media: nextMedia }
+    })
+  } catch (e: any) {
+    console.error('Upload failed:', e)
+    alert(e?.message ?? 'Upload failed')
+  } finally {
+    setUploading(false)
+  }
+}
 
  async function tryAutofillByAddress(house: string, addr: string, opts?: { force?: boolean }) {
   const house_number = house.trim();
@@ -283,7 +276,6 @@ export default function RoomModal({
         price: 0,
         status: 'Trống',
         description: '',
-        gallery_urls: '',
         link_zalo: '',
         media: [],
         chinh_sach: '',
@@ -303,7 +295,6 @@ export default function RoomModal({
       price: editingRoom.price ?? 0,
       status: normalizeStatus(editingRoom.status),
       description: editingRoom.description ?? '',
-      gallery_urls: editingRoom.gallery_urls ?? '',
       media: Array.isArray((editingRoom as any).media) ? (editingRoom as any).media : [],
       link_zalo: (editingRoom as any).link_zalo ?? '',
       chinh_sach: (editingRoom as any).chinh_sach ?? '',
@@ -315,7 +306,7 @@ export default function RoomModal({
   try {
     const { data, error } = await supabase
       .from('rooms')
-      .select('media, gallery_urls')
+      .select('media')
       .eq('id', editingRoom.id)
       .single()
 
@@ -324,22 +315,21 @@ export default function RoomModal({
       return
     }
 
-    setRoomForm((prev: any) => {
-      const dbMedia = Array.isArray(data?.media) ? data.media : null
-      const dbGallery = typeof data?.gallery_urls === 'string' ? data.gallery_urls : ''
 
-      return {
-        ...prev,
-        // ưu tiên DB media; nếu DB không có thì giữ prev
-        media: dbMedia ?? prev.media ?? [],
-        // nếu prev.gallery_urls rỗng thì lấy từ DB (an toàn)
-        gallery_urls: (prev.gallery_urls && String(prev.gallery_urls).trim()) ? prev.gallery_urls : dbGallery,
-      }
-    })
-  } catch (e) {
-    console.error('fetch rooms.media exception:', e)
-  }
-})()
+    setRoomForm((prev: any) => {
+  const dbMedia = Array.isArray(data?.media) ? data.media : null
+
+    return {
+      ...prev,
+      // ưu tiên DB media; nếu DB không có thì giữ prev
+      media: dbMedia ?? prev.media ?? [],
+    }
+  })
+
+    } catch (e) {
+      console.error('fetch rooms.media exception:', e)
+    }
+  })()
 
     ;(async () => {
       const { data, error } = await supabase
@@ -388,8 +378,6 @@ export default function RoomModal({
   /* ===== SUBMIT ===== */
   async function handleSubmit() {
     const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
-    const galleryCompat = String(roomForm.gallery_urls || '').trim()
-
     const v = validate()
     if (v) {
       setErrorMsg(v)
@@ -415,9 +403,8 @@ export default function RoomModal({
         status: normalizeStatus(roomForm.status),
         description: roomForm.description,
         media,
-        gallery_urls: galleryCompat,
         link_zalo: roomForm.link_zalo,
-         chinh_sach: roomForm.chinh_sach,
+        chinh_sach: roomForm.chinh_sach,
       }
 
       if (isEdit && roomId) {

@@ -45,7 +45,7 @@ const Pagination = ({
             loading || !hasNext ? "opacity-60 cursor-not-allowed" : ""
           }`}
         >
-          Trang kế tiếp
+          Trang Sau
         </button>
       </div>
     </div>

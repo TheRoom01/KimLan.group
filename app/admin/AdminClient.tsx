@@ -77,7 +77,6 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
         "district",
         "room_type",
         "status",
-        "gallery_urls",
         "link_zalo",
         "price",
       ].join(",");
@@ -361,7 +360,7 @@ if (keyword) {
           onNotify={notify}
           onSaved={(updatedRoom: any, opts: any) => {
             cacheRef.current.clear();
-            const patchedRoom = { ...updatedRoom, gallery_urls: (updatedRoom as any).gallery_urls ?? (editingRoom as any)?.gallery_urls ?? "", updated_at: new Date().toISOString(),};
+            const patchedRoom = { ...updatedRoom, updated_at: new Date().toISOString(),};
           
             setRooms((prev) => {
              const without = prev.filter((x: any) => (x as any).id !== patchedRoom.id);

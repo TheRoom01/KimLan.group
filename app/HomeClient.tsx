@@ -31,19 +31,20 @@ const QS = {
   p: "p",
 } as const;
 
+const LIST_SEP = ",";
+
 function parseList(v: string | null) {
   if (!v) return [];
   return v
-    .split(",")
+    .split(LIST_SEP)
     .map((x) => decodeURIComponent(x))
     .filter(Boolean);
 }
+
 function toListParam(arr: string[]) {
-  return arr.map((x) => encodeURIComponent(x)).join(",");
+  return arr.map((x) => encodeURIComponent(x)).join(LIST_SEP);
 }
-
 const PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
-
 
 const HOME_BACK_HINT_KEY = "HOME_BACK_HINT_V1";
 const HOME_BACK_HINT_TTL = 15 * 60 * 1000; // 15 phút

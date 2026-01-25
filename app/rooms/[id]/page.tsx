@@ -22,62 +22,42 @@ function formatVND(value: any) {
   return value ?? "";
 }
 
-function splitGalleryUrls(gallery_urls: any): string[] {
-  if (!gallery_urls) return [];
-  if (Array.isArray(gallery_urls)) return gallery_urls.filter(Boolean);
-  if (typeof gallery_urls === "string") {
-    return gallery_urls
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
+// image_urls đã là array (từ RPC / room_media)
+function normalizeImageUrls(image_urls: any): string[] {
+  if (!Array.isArray(image_urls)) return [];
+  return image_urls.filter((x) => typeof x === "string" && x.trim());
 }
-type MediaItem = { kind: "video" | "image"; url: string };
+
+type MediaItem = {
+  kind: "video" | "image";
+  url: string;
+};
   
-function splitVideoUrls(room: any): string[] {
-  // ưu tiên room.media.video_urls nếu bạn lưu dạng jsonb
-  const v1 = room?.media?.video_urls;
-  if (Array.isArray(v1)) return v1.filter(Boolean);
-
-  // nếu có field video_urls độc lập
-  const v2 = room?.video_urls;
-  if (Array.isArray(v2)) return v2.filter(Boolean);
-
-  // nếu bạn lỡ lưu dạng string csv
-  if (typeof v2 === "string") {
-    return v2
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-
-  return [];
+function normalizeVideoUrls(video_urls: any): string[] {
+  if (!Array.isArray(video_urls)) return [];
+  return video_urls
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean)
+    .slice(0, 2);
 }
 
-function splitMediaVideos(media: any): string[] {
-  if (!media) return [];
-
-  let arr: any = media;
-
-  // nếu media bị lưu dạng string JSON
-  if (typeof arr === "string") {
-    const s = arr.trim();
-    if (!s) return [];
-    try {
-      arr = JSON.parse(s);
-    } catch {
-      return [];
-    }
-  }
-
-  if (!Array.isArray(arr)) return [];
-
-  return arr
-    .filter((m) => m && (m.type === "video" || m.type === "VIDEO"))
-    .map((m) => String(m.url || ""))
-    .filter(Boolean);
+function mediaToVideoUrls(media: any): string[] {
+  if (!Array.isArray(media)) return [];
+  return media
+    .filter(
+      (m) =>
+        m &&
+        (m.type === "video" ||
+          m.type === "VIDEO" ||
+          m.kind === "video" ||
+          m.kind === "VIDEO") &&
+        typeof m.url === "string"
+    )
+    .map((m) => String(m.url).trim())
+    .filter(Boolean)
+    .slice(0, 2);
 }
+
 
 function joinParts(parts: Array<string | null | undefined>) {
   return parts
@@ -102,7 +82,6 @@ function feeUnitLabel(unit: any) {
   if (u === "vehicle" || u === "xe") return "xe";
   return String(unit);
 }
-
 
 /* ================= Page ================= */
 
@@ -459,19 +438,31 @@ useEffect(() => {
 
   const detail = room?.room_detail ?? {};
 
-  const imageUrls = useMemo(() => {
-  const s = String(room?.gallery_urls || "").trim();
-  return s ? s.split(",").map((x: string) => x.trim()).filter(Boolean) : [];
-}, [room?.gallery_urls]);
+const imageUrls = useMemo(() => {
+  // ✅ ưu tiên field chuẩn hoá từ RPC (đọc room_media)
+  const v = normalizeImageUrls(room?.image_urls);
+  if (v.length) return v;
 
-const videoUrls = useMemo(() => {
-  const arr: any = room?.media;
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .filter((m: any) => String(m?.type).toLowerCase() === "video" && m?.url)
+  // ✅ fallback: nếu RPC chưa trả image_urls mà vẫn trả room.media dạng array
+  if (!Array.isArray(room?.media)) return [];
+  return room.media
+    .filter((m: any) => m?.type === "image" && m?.url)
     .map((m: any) => String(m.url))
     .filter(Boolean);
-}, [room?.media]);
+}, [room?.image_urls, room?.media]);
+
+const videoUrls = useMemo(() => {
+  // ✅ ưu tiên field chuẩn hoá từ RPC (đọc room_media)
+  const v = normalizeVideoUrls(room?.video_urls);
+  if (v.length) return v;
+
+  // ✅ fallback: nếu RPC chưa trả video_urls mà vẫn trả room.media dạng array
+  const v2 = mediaToVideoUrls(room?.media);
+  if (v2.length) return v2;
+
+  return [];
+}, [room?.video_urls, room?.media]);
+
 
 const mediaItems: MediaItem[] = useMemo(() => {
   const vids: MediaItem[] = videoUrls.map((url: string) => ({ kind: "video", url }));
@@ -620,7 +611,7 @@ const zaloPhone = zaloPhones[0] ?? "";
         ref={videoRef}
         src={activeItem.url}
         controls
-        preload="metadata"
+        preload="none"
         playsInline
         className="w-full h-full object-contain bg-black"
         onPlay={() => {
@@ -786,7 +777,7 @@ const zaloPhone = zaloPhones[0] ?? "";
             <>
               <video
                 src={it.url}
-                preload="metadata"
+                preload="none"
                 className="w-full h-full object-contain"
               />
               <div className="absolute inset-0 flex items-center justify-center">
@@ -988,7 +979,7 @@ const zaloPhone = zaloPhones[0] ?? "";
     src={activeItem.url}
     controls
     playsInline
-    preload="metadata"
+    preload="none"
     className="w-full h-full object-contain bg-black"
     onPlay={() => {
       setShowPlay(false)

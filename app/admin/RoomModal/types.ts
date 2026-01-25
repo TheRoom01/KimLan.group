@@ -20,7 +20,6 @@ export type RoomForm = {
   price: number
   status: RoomStatus
   description: string
-  gallery_urls: string
   media?: MediaItem[];
   link_zalo: string
   chinh_sach: string

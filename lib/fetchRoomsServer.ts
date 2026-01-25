@@ -44,7 +44,8 @@ const ADMIN_L1_KEYS = [
   "ward",
   "district",
   "status",
-  "gallery_urls",
+  "image_urls",
+  "image_count",
   "has_video",
   "created_at",
   "updated_at",
@@ -63,7 +64,8 @@ const PUBLIC_KEYS = [
   "district",
   "price",
   "status",
-  "gallery_urls",
+  "image_urls",
+  "image_count",
   "has_video",
   "created_at",
   "updated_at",
@@ -80,7 +82,8 @@ const ADMIN_L2_KEYS = [
   "ward",
   "district",
   "status",
-  "gallery_urls",
+  "image_urls",
+  "image_count",
   "has_video",
   "created_at",
   "updated_at",
@@ -88,6 +91,7 @@ const ADMIN_L2_KEYS = [
   "chinh_sach",
   "room_detail",
 ] as const;
+
 
 /**
  * Server-side fetch for initial render (SSR).

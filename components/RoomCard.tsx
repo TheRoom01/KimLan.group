@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useState } from "react";
+
 
 type Room = {
   id: string;
@@ -14,27 +16,47 @@ type Room = {
   price: number;
   description?: string | null;
   status: "Trống" | "Đã thuê" | string;
-  gallery_urls: string | null;
+
+  image_urls?: string[] | null;   // 3 ảnh đầu, đúng thứ tự admin up
+  image_count?: number | null;    // tổng ảnh để hiện +N đúng
+
   has_video?: boolean;
 };
 
 export default function RoomCard(props: { room: Room; adminLevel: number; index?: number }) {
-
   const { room, adminLevel, index = 0 } = props;
-    const images = room.gallery_urls
-    ? room.gallery_urls.split(",").map((i) => i.trim()).filter(Boolean)
+
+  const images = Array.isArray(room.image_urls)
+    ? room.image_urls.map((x) => String(x ?? "").trim()).filter(Boolean)
     : [];
-  
+
   const showImages = images.slice(0, 3);
 
-  const safeSrc = (src?: string | null) => {
-  const s = (src ?? "").trim();
-      return s ? s : "/no-image.png";
-    };
+ const FALLBACK = "/no-image.png";
 
-const mainImage = safeSrc(images[0]);
+const safeSrc = (src?: string | null) => {
+  const s = (src ?? "").trim();
+  return s ? s : FALLBACK;
+};
+
+const mainImage = safeSrc(showImages[0]);
 const subImage1 = safeSrc(showImages[1]);
 const subImage2 = safeSrc(showImages[2]);
+
+const [mainOk, setMainOk] = useState(true);
+const [sub1Ok, setSub1Ok] = useState(true);
+const [sub2Ok, setSub2Ok] = useState(true);
+
+const mainSrc = mainOk ? mainImage : FALLBACK;
+const sub1Src = sub1Ok ? subImage1 : FALLBACK;
+const sub2Src = sub2Ok ? subImage2 : FALLBACK;
+
+
+  const totalImages =
+    typeof room.image_count === "number" && Number.isFinite(room.image_count)
+      ? room.image_count
+      : images.length;
+
 
   const title =
   room.room_code ??
@@ -66,8 +88,7 @@ const district =
 
  const level = Number(adminLevel) || 0;
 const isAdmin = level === 1 || level === 2;
-// ===== IMAGE SOURCE (from gallery_urls) =====
-
+// ===== IMAGE SOURCE (from room_media via image_urls) =====
 
     return (
     <Link href={`/rooms/${room.id}`} className="block">
@@ -83,15 +104,17 @@ const isAdmin = level === 1 || level === 2;
     {/* Ảnh chính */}
     <div className="relative w-full h-full overflow-hidden">
   <Image
-    src={mainImage}
-    alt={room.room_type ?? "Hình phòng"}
-    fill
-    sizes="(max-width: 1024px) 100vw, 60vw"
-    className="object-cover object-[50%_40%]"
-    priority={index < 6}
-    loading={index < 6 ? "eager" : "lazy"}
-    unoptimized
-  />
+  src={mainSrc}
+  alt={room.room_type ?? "Hình phòng"}
+  fill
+  sizes="(max-width: 1024px) 100vw, 60vw"
+  className="object-cover object-[50%_40%]"
+  priority={index < 6}
+  loading={index < 6 ? "eager" : "lazy"}
+  unoptimized
+  onError={() => setMainOk(false)}
+/>
+
 
   {room.has_video && (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -109,33 +132,38 @@ const isAdmin = level === 1 || level === 2;
       {showImages[1] && (
   <div className="relative w-full h-full overflow-hidden">
     <Image
-      src={subImage1}
+      src={sub1Src}
       alt={room.room_code ? `Hình phòng ${room.room_code}` : "Hình phòng"}
       fill
       sizes="(max-width: 1024px) 100vw, 40vw"
       className="object-cover"
       unoptimized
+      onError={() => setSub1Ok(false)}
     />
+
   </div>
   )}
      {/* Ảnh phụ 2 + overlay */}
       {showImages[2] && (
     <div className="relative w-full h-full">
     <Image
-      src={subImage2}
+      src={sub2Src}
       alt={room.room_type}
       fill
       sizes="(max-width: 1024px) 100vw, 40vw"
       className="object-cover"
       unoptimized
+      onError={() => setSub2Ok(false)}
     />
+
       <div className="absolute inset-0 bg-black/30" />
 
-        {images.length > 3 && (
-        <div className="absolute inset-0 flex items-center justify-center text-white text-lg font-semibold">
-         +{images.length - 3}
-         </div>
-            )}
+        {totalImages > 3 && (
+          <div className="absolute inset-0 flex items-center justify-center text-white text-lg font-semibold">
+            +{totalImages - 3}
+          </div>
+        )}
+
              </div>
                )}
            </div>

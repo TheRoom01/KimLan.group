@@ -6,19 +6,14 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-function splitGalleryUrls(gallery_urls: any): string[] {
-  if (!gallery_urls) return [];
-  if (Array.isArray(gallery_urls)) return gallery_urls.filter(Boolean);
-
-  // Trong repo, gallery_urls đang được split bằng dấu "," :contentReference[oaicite:1]{index=1}
-  if (typeof gallery_urls === "string") {
-    return gallery_urls
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
+function extractImageUrlsFromMedia(media: any): string[] {
+  if (!Array.isArray(media)) return [];
+  return media
+    .filter((m) => m && m.type === "image" && m.url)
+    .map((m) => String(m.url))
+    .filter(Boolean);
 }
+
 
 function guessExtFromContentType(ct?: string | null) {
   const s = (ct ?? "").toLowerCase();
@@ -42,23 +37,24 @@ export async function GET(
   const supabase = createSupabaseAdminClient();
 
   const { data, error }: {
-    data: { gallery_urls: string | null } | null;
-    error: any;
-  } = await supabase
-    .from("rooms")
-    .select("gallery_urls")
-    .eq("id", roomId)
-    .maybeSingle();
+  data: { media: any[] | null } | null;
+  error: any;
+} = await supabase
+  .from("rooms")
+  .select("media")
+  .eq("id", roomId)
+  .maybeSingle();
+
 
   if (error) {
     const msg = error?.message ?? "Unknown error";
     return NextResponse.json({ message: msg }, { status: 500 });
   }
 
-  const urls = splitGalleryUrls(data?.gallery_urls);
-  if (!urls.length) {
-    return NextResponse.json({ message: "No images" }, { status: 404 });
-  }
+  const urls = extractImageUrlsFromMedia(data?.media);
+if (!urls.length) {
+  return NextResponse.json({ message: "No images" }, { status: 404 });
+}
 
   const zipStream = new PassThrough();
   const archive = archiver("zip", { zlib: { level: 9 } });

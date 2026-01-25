@@ -69,12 +69,9 @@ useEffect(() => {
   setZaloPhoneDraft(phoneBlock);
 }, [value.link_zalo]);
 
-  const imageUrls = useMemo(() => {
-    return (value.gallery_urls || '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)
-  }, [value.gallery_urls])
+ const imageUrls = useMemo(() => {
+  return []
+}, [])
 
   const mediaItems = useMemo(() => {
   const arr: any = (value as any).media;
@@ -100,7 +97,7 @@ useEffect(() => {
 
 
   const setImageUrls = (urls: string[]) => {
-    onChange({ ...value, gallery_urls: urls.join(', ') })
+    onChange({ ...value })
   }
 
   const moveItem = (from: number, to: number) => {

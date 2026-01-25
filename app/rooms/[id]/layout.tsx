@@ -3,28 +3,17 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-function firstImage(gallery: any, media?: any): string {
-  // 1) ưu tiên gallery_urls (csv string)
-  const s = String(gallery || "").trim();
-  if (s) {
-    const g = s
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean)[0];
-    if (g) return g;
-  }
+function pickCoverUrl(rows?: any[]): string {
+  if (!Array.isArray(rows) || rows.length === 0) return "";
 
-  // 2) fallback: lấy ảnh đầu tiên từ media
-  if (Array.isArray(media)) {
-    const img = media.find(
-      (m) => m && (m.type === "image" || m.kind === "image") && m.url
-    );
-    if (img?.url) return img.url;
-  }
+  // ưu tiên is_cover
+  const cover = rows.find((r) => r && r.is_cover && r.url);
+  if (cover?.url) return cover.url;
 
-  return "";
+  // fallback: row đầu tiên đã được order sẵn từ query
+  const first = rows.find((r) => r && r.url);
+  return first?.url || "";
 }
-
 
 function absUrl(base: string, u: string) {
   const x = String(u || "").trim();
@@ -49,25 +38,27 @@ export async function generateMetadata({
 
   try {
     const supabase = createSupabaseAdminClient();
-    const { data } = await supabase
-        .from("rooms")
-        .select(
-            "room_code, room_type, price, address, ward, district, house_number, gallery_urls, media"
-        )
-        .eq("id", id)
-        .maybeSingle();
+const { data } = await supabase
+  .from("rooms")
+  .select("room_code, room_type, price, address, ward, district, house_number")
+  .eq("id", id)
+  .maybeSingle();
 
+const roomCode = (data as any)?.room_code ?? "";
+const roomType = (data as any)?.room_type ?? "";
+const price = (data as any)?.price;
 
-    const roomCode = (data as any)?.room_code ?? "";
-    const roomType = (data as any)?.room_type ?? "";
-    const price = (data as any)?.price;
+// lấy cover từ room_media
+const { data: mediaRows } = await supabase
+  .from("room_media")
+  .select("url,is_cover,created_at")
+  .eq("room_id", id)
+  .eq("type", "image")
+  .order("created_at", { ascending: true });
 
-    const img = firstImage(
-    (data as any)?.gallery_urls,
-    (data as any)?.media
-    );
-    if (img) image = absUrl(base, img);
+const img = pickCoverUrl(mediaRows as any[]);
 
+if (img) image = absUrl(base, img);
 
     title = roomCode ? `Phòng ${roomCode}` : title;
     if (roomType) title = `${title} - ${roomType}`;
