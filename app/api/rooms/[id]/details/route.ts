@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -12,12 +12,11 @@ const supabaseAdmin =
     : null
 
 export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-
-        // DEBUG: xác nhận có service role không
+    // DEBUG: xác nhận có service role không
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return NextResponse.json(
         { error: 'Missing SUPABASE_SERVICE_ROLE_KEY on server' },
@@ -35,7 +34,7 @@ export async function POST(
       )
     }
 
-    const roomId = params.id
+    const { id: roomId } = await params
     const body = await req.json()
 
     // payload chuẩn hoá: luôn gắn room_id theo URL param
