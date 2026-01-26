@@ -57,43 +57,48 @@ export default function RoomCard(props: { room: Room; adminLevel: number; index?
       ? `${R2_BASE}/rooms/room-${safeRoomCode}/images/thumb.webp`
       : "";
 
-  // main ưu tiên thumb.webp, fallback qua ảnh đầu
-  const mainPreferred = safeSrc(thumbUrl || showImages[0]);
+  // Tổng số ảnh (ưu tiên image_count từ DB)
+const totalImages =
+  typeof room.image_count === "number" && Number.isFinite(room.image_count)
+    ? room.image_count
+    : images.length;
 
-  const subImage1 = safeSrc(showImages[1]);
-  const subImage2 = safeSrc(showImages[2]);
+// ✅ Chỉ coi là "có media thật" khi còn ảnh hoặc có video
+const hasRealMedia = totalImages > 0 || !!room.has_video;
 
-  // ✅ mainErrorStage:
-  // 0: đang dùng thumb (nếu có)
-  // 1: fallback sang ảnh đầu
-  // 2: fallback no-image
-  const [mainErrorStage, setMainErrorStage] = useState<0 | 1 | 2>(0);
-  const [sub1Ok, setSub1Ok] = useState(true);
-  const [sub2Ok, setSub2Ok] = useState(true);
+// ✅ main ưu tiên thumb.webp, fallback qua ảnh đầu
+// Nếu không có media thật => dùng FALLBACK (không lấy thumb.webp)
+const mainPreferred = hasRealMedia
+  ? safeSrc((thumbUrl || showImages[0]) ?? "")
+  : FALLBACK;
 
-  const mainFallback1 = safeSrc(showImages[0]);
-  const mainSrc =
-    mainErrorStage === 0
-      ? mainPreferred
-      : mainErrorStage === 1
-      ? mainFallback1
-      : FALLBACK;
+const subImage1 = safeSrc(showImages[1] ?? "");
+const subImage2 = safeSrc(showImages[2] ?? "");
 
-  const sub1Src = sub1Ok ? subImage1 : FALLBACK;
-  const sub2Src = sub2Ok ? subImage2 : FALLBACK;
+// ✅ mainErrorStage:
+// 0: đang dùng thumb (nếu có và có media thật)
+// 1: fallback sang ảnh đầu
+// 2: fallback no-image
+const [mainErrorStage, setMainErrorStage] = useState<0 | 1 | 2>(0);
+const [sub1Ok, setSub1Ok] = useState(true);
+const [sub2Ok, setSub2Ok] = useState(true);
 
+// fallback sang ảnh đầu (chỉ có ý nghĩa khi showImages[0] tồn tại)
+const mainFallback1 = safeSrc(showImages[0] ?? "");
 
+// chọn main src theo stage
+const mainSrc =
+  mainErrorStage === 0
+    ? mainPreferred
+    : mainErrorStage === 1
+    ? mainFallback1
+    : FALLBACK;
 
-  const totalImages =
-    typeof room.image_count === "number" && Number.isFinite(room.image_count)
-      ? room.image_count
-      : images.length;
+const sub1Src = sub1Ok ? subImage1 : FALLBACK;
+const sub2Src = sub2Ok ? subImage2 : FALLBACK;
 
+const title = room.room_code ?? room.room_type ?? "Phòng cho thuê";
 
-  const title =
-  room.room_code ??
-  room.room_type ??
-  "Phòng cho thuê";
 
 const price =
   (room as any).price ??

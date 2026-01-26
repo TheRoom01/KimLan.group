@@ -220,6 +220,7 @@ useEffect(() => {
     initialRooms?.length ? Boolean(initCursor) : true
   );
    const didHydrateOnceRef = useRef(false);
+   const didApplyBackOnceRef = useRef(false);
     const [loading, setLoading] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [fetchError, setFetchError] = useState<string>("");
@@ -588,6 +589,7 @@ const onVisibility = () => {
   };
 }, [persistNow, writeBackSnapshotNow]);
 
+
 const onPointerDownCapture = useCallback(
   (ev: PointerEvent) => {
     const target = ev.target as HTMLElement | null;
@@ -713,9 +715,16 @@ const onPointerDownCapture = useCallback(
             persistBlockedRef.current = false;
           }, 400);
 
+          // ✅ reset guard để lần back sau vẫn hoạt động
+          setTimeout(() => {
+            didApplyBackOnceRef.current = false;
+          }, 0);
+
           endHydrationAfterTwoFrames();
         });
       });
+
+
     } finally {
       queueMicrotask(() => {
         hydratingFromUrlRef.current = false;
@@ -797,9 +806,10 @@ useEffect(() => {
 
   // ✅ BACK SNAPSHOT restore (khôi phục cấu trúc logic cũ)
 // ưu tiên trước V2/Lite/URL; chỉ áp dụng khi KHÔNG reload
-if (!isReload) {
-  const snap = readBackSnapshot();
-  if (snap) {
+    if (!isReload && !didApplyBackOnceRef.current) {
+      const snap = readBackSnapshot();
+      if (snap) {
+
     // ✅ chặn filter-change reset ngay sau restore
     persistBlockedRef.current = true;
     skipNextFilterEffectRef.current = true;
@@ -1180,8 +1190,12 @@ if (!isReload) {
 // ================== PAGESHOW (bfcache/back) ==================
 useEffect(() => {
   const onPageShow = (ev: PageTransitionEvent) => {
-    // bfcache: trang được restore lại, popstate có thể không đủ tin cậy
+    // chỉ khi BFCache restore (mobile swipe-back)
     if (!ev.persisted) return;
+
+    // tránh apply 2 lần (pageshow + popstate)
+    if (didApplyBackOnceRef.current) return;
+    didApplyBackOnceRef.current = true;
 
     const snap = readBackSnapshot();
     if (!snap) return;
@@ -1194,12 +1208,20 @@ useEffect(() => {
   };
 
   window.addEventListener("pageshow", onPageShow);
-  return () => window.removeEventListener("pageshow", onPageShow);
+  return () => {
+    window.removeEventListener("pageshow", onPageShow);
+    // reset guard khi rời trang (để lần sau back vẫn chạy)
+    didApplyBackOnceRef.current = false;
+  };
 }, [applyBackSnapshot, readBackSnapshot]);
+
 
   // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
+    if (didApplyBackOnceRef.current) return;
+    didApplyBackOnceRef.current = true;
+
   persistBlockedRef.current = true;
   skipNextFilterEffectRef.current = true;
 
