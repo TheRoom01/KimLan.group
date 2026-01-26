@@ -166,6 +166,8 @@ const HomeClient = ({
   const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
+  const lastFilterSigRef = useRef<string>("");
+
   
   //-----------------appliedSearch------------
   const [search, setSearch] = useState("");
@@ -182,6 +184,29 @@ const HomeClient = ({
 
 // Debounce search input để fetch không bị trễ 1 nhịp + không spam request
 const appliedSearch = useDebouncedValue(search, 250);
+
+  // ================== FILTER SIGNATURE ==================
+const filterSig = useMemo(() => {
+  return [
+    appliedSearch.trim(),
+    minPriceApplied,
+    maxPriceApplied,
+    selectedDistricts.join(","),
+    selectedRoomTypes.join(","),
+    moveFilter ?? "",
+    sortMode,
+    statusFilter ?? "",
+  ].join("|");
+}, [
+  appliedSearch,
+  minPriceApplied,
+  maxPriceApplied,
+  selectedDistricts,
+  selectedRoomTypes,
+  moveFilter,
+  sortMode,
+  statusFilter,
+]);
 
     
    // ================== PAGINATION (cache) ==================
@@ -2058,5 +2083,6 @@ useEffect(() => {
 };
 
 export default HomeClient;
+
 
 
