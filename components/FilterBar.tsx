@@ -345,47 +345,85 @@ const FilterBar = ({
             )}
           </div>
 
-     {/* DI CHUYỂN */}
-       <div className="relative z-50">
-         <button
-          type="button"
-          onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
-          className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
-            openFilter === "move" ? "border-black" : "border-gray-300"
-          }`}
-        >
+  {/* DI CHUYỂN */}
+<div className="relative z-50 flex flex-wrap items-start gap-2">
+  <button
+    type="button"
+    onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
+    className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+      openFilter === "move" ? "border-black" : "border-gray-300"
+    }`}
+    disabled={loading}
+  >
+    <span className="flex flex-col items-start text-left leading-tight">
+      <span>Di chuyển</span>
 
-              Di chuyển
-              {moveFilter && <span className="text-xs text-gray-500">({moveFilter})</span>}
-            </button>
+      {moveFilter && (
+        <span className="mt-0.5 text-[10px] text-gray-500 leading-none">
+          (
+          {moveFilter === "elevator"
+            ? "Thang máy"
+            : moveFilter === "stairs"
+            ? "Thang bộ"
+            : "Tất cả"}
+          )
+        </span>
+      )}
+    </span>
+  </button>
 
-            {openFilter === "move" && (
-              <div
-                className="absolute left-0 mt-2 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-              >
-                
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="radio" name="moveFilter" checked={moveFilter === null} onChange={() => setMoveFilter(null)} />
-                  <span>Tất cả</span>
-                </label>
+  {openFilter === "move" && (
+    <div
+      className="absolute left-0 top-full mt-2 z-50 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
+      onPointerDownCapture={(e) => e.stopPropagation()}
+      onClickCapture={(e) => e.stopPropagation()}
+    >
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input
+          type="radio"
+          name="moveFilter"
+          checked={moveFilter === null}
+          onChange={() => {
+            setMoveFilter(null);
+            setOpenFilter(null);
+          }}
+        />
+        <span>Tất cả</span>
+      </label>
 
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="radio" name="moveFilter" checked={moveFilter === "elevator"} onChange={() => setMoveFilter("elevator")} />
-                  <span>Thang máy</span>
-                </label>
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input
+          type="radio"
+          name="moveFilter"
+          checked={moveFilter === "elevator"}
+          onChange={() => {
+            setMoveFilter("elevator");
+            setOpenFilter(null);
+          }}
+        />
+        <span>Thang máy</span>
+      </label>
 
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="radio" name="moveFilter" checked={moveFilter === "stairs"} onChange={() => setMoveFilter("stairs")} />
-                  <span>Thang bộ</span>
-                </label>
-              </div>
-            )}
-          </div>
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input
+          type="radio"
+          name="moveFilter"
+          checked={moveFilter === "stairs"}
+          onChange={() => {
+            setMoveFilter("stairs");
+            setOpenFilter(null);
+          }}
+        />
+        <span>Thang bộ</span>
+      </label>
+    </div>
+  )}
+</div>
+
+
         </div>
 
-   {/* RIGHT: BỘ LỌC */}
+   {/* RIGHT: Sắp Xếp */}
     <div className="relative z-50 shrink-0">
       <button
         type="button"

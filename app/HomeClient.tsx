@@ -151,7 +151,7 @@ const HomeClient = ({
   
     const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
   const [priceApplied, setPriceApplied] = useState<[number, number]>(PRICE_DEFAULT);
-
+  const didHardReloadRef = useRef(false);
   const [minPriceApplied, maxPriceApplied] = useMemo(() => {
     const a = priceApplied[0];
     const b = priceApplied[1];
@@ -185,12 +185,19 @@ const appliedSearch = useDebouncedValue(search, 250);
 
     
    // ================== PAGINATION (cache) ==================
-  const initCursor: string | UpdatedDescCursor | null =
-    initialNextCursor && typeof initialNextCursor === "object"
-      ? { id: initialNextCursor.id, updated_at: initialNextCursor.updated_at }
-      : typeof initialNextCursor === "string"
-        ? initialNextCursor
-        : null;
+ const initCursor: string | UpdatedDescCursor | null =
+  initialNextCursor && typeof initialNextCursor === "object"
+    ? {
+        id: String((initialNextCursor as any).id),
+        updated_at: String((initialNextCursor as any).updated_at),
+        created_at: String(
+          (initialNextCursor as any).created_at ?? (initialNextCursor as any).updated_at
+        ),
+      }
+    : typeof initialNextCursor === "string"
+      ? initialNextCursor
+      : null;
+
 
   // ✅ IMPORTANT: phân biệt "chưa fetch" (undefined) vs "đã fetch nhưng rỗng" ([])
   const [pages, setPages] = useState<any[][]>(() =>
@@ -211,6 +218,11 @@ useEffect(() => {
   pagesRef.current = pages;
 }, [pages]);
 
+useEffect(() => {
+  didHardReloadRef.current = true;
+}, []);
+
+
   
   const cursorsRef = useRef<(string | UpdatedDescCursor | null)[]>(
     initialRooms?.length ? [null, initCursor] : [null]
@@ -225,6 +237,7 @@ useEffect(() => {
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [fetchError, setFetchError] = useState<string>("");
   const fetchPageRef = useRef<(targetIndex: number) => void>(() => {});
+ const isReloadRef = useRef<boolean>(false);
 
   const requestIdRef = useRef(0);
   const inFlightRef = useRef<Record<string, boolean>>({});
@@ -249,7 +262,7 @@ useEffect(() => {
 
   
   // ✅ skip FILTER CHANGE mỗi khi ta "hydrate state" (initial / popstate / restore)
-const skipNextFilterEffectRef = useRef(true);
+  const skipNextFilterEffectRef = useRef(false);
 
   // scroll container
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -383,7 +396,6 @@ const writeLiteNow = useCallback(() => {
     displayPageIndex: lastDisplayPageIndexRef.current,
     hasNext,
     scrollTop: lastScrollTopRef.current,
-
     ts: Date.now(),
   };
 
@@ -749,13 +761,14 @@ useEffect(() => {
   persistBlockedRef.current = true;
 
   // Detect reload (F5 / pull-to-refresh)
-  const navType =
-    (
-      performance.getEntriesByType("navigation")?.[0] as
-        | PerformanceNavigationTiming
-        | undefined
-    )?.type ?? "navigate";
-  const isReload = navType === "reload";
+ const navType =
+  (
+    performance.getEntriesByType("navigation")?.[0] as
+      | PerformanceNavigationTiming
+      | undefined
+  )?.type ?? "navigate";
+
+isReloadRef.current = navType === "reload";
 
   // giữ qs list ổn định
   listQsRef.current = window.location.search.replace(/^\?/, "");
@@ -800,13 +813,15 @@ useEffect(() => {
         }, 400);
 
         endHydrationAfterTwoFrames();
+         // ✅ quan trọng: chỉ coi "reload" đúng cho lần mount đầu tiên
+      isReloadRef.current = false;
       });
     });
   }
 
   // ✅ BACK SNAPSHOT restore (khôi phục cấu trúc logic cũ)
 // ưu tiên trước V2/Lite/URL; chỉ áp dụng khi KHÔNG reload
-    if (!isReload && !didApplyBackOnceRef.current) {
+    if (!isReloadRef.current && !didApplyBackOnceRef.current) {
       const snap = readBackSnapshot();
       if (snap) {
 
@@ -870,13 +885,12 @@ useEffect(() => {
   }
 }
 
-  // ✅ HARD RESET when reload (F5 / pull-to-refresh)
-  if (isReload) {
-
-    hydratingFromUrlRef.current = true;
-    try {
-      // drop mọi response cũ (nếu có request đang bay)
-      filtersVersionRef.current += 1;
+// ✅ HARD RESET when reload (F5 / pull-to-refresh)
+if (isReloadRef.current) {
+  hydratingFromUrlRef.current = true;
+  try {
+    // drop mọi response cũ (nếu có request đang bay)
+    filtersVersionRef.current += 1;
 
     // purge persisted state
     try {
@@ -890,56 +904,58 @@ useEffect(() => {
     try {
       for (let i = sessionStorage.length - 1; i >= 0; i--) {
         const k = sessionStorage.key(i);
-        if (k && k.startsWith("HOME_STATE_LITE_V1::")) sessionStorage.removeItem(k);
+        if (k && k.startsWith("HOME_STATE_LITE_V1::"))
+          sessionStorage.removeItem(k);
       }
     } catch {}
 
+    // reset filters -> default
+    setSearch("");
+    setPriceDraft(PRICE_DEFAULT);
+    setPriceApplied(PRICE_DEFAULT);
+    setSelectedDistricts([]);
+    setSelectedRoomTypes([]);
+    setMoveFilter(null);
+    setSortMode("updated_desc");
+    setStatusFilter(null);
 
-      // reset filters -> default
-      setSearch("");
-      setPriceDraft(PRICE_DEFAULT);
-      setPriceApplied(PRICE_DEFAULT);
-      setSelectedDistricts([]);
-      setSelectedRoomTypes([]);
-      setMoveFilter(null);
-      setSortMode("updated_desc");
-      setStatusFilter(null);
+    // ✅ QUAN TRỌNG: drop SSR cache để bắt buộc fetch lại theo filter mới
+    pagesRef.current = [];
+    setPages([]);
 
-      // reset pagination/cache về page 0
-      setPageIndex(0);
-      setDisplayPageIndex(0);
+    cursorsRef.current = [null];
+    setHasNext(true);
 
-      if (initialRooms?.length) {
-        pagesRef.current = [initialRooms];
-        setPages([initialRooms]);
+    setPageIndex(0);
+    setDisplayPageIndex(0);
 
-        cursorsRef.current = [null, initCursor];
-        setHasNext(Boolean(initCursor));
-        setFetchError("");
-        setLoading(false);
-        setShowSkeleton(false);
-      } else {
-        resetPagination(0);
-      }
+    setFetchError("");
+    setLoading(false);
+    setShowSkeleton(true);
 
-      // ✅ clean URL: bỏ toàn bộ query
-      replaceUrlShallow("");
+    // ✅ clean URL: bỏ toàn bộ query (xóa st/p/...)
+    replaceUrlShallow("");
 
-      // reset scroll
-      requestAnimationFrame(() => {
-        const el = scrollRef.current;
-        if (el) el.scrollTop = 0;
-        lastScrollTopRef.current = 0;
-      });
+    // reset scroll
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = 0;
+      lastScrollTopRef.current = 0;
+    });
 
-      finishHydrate();
-      return;
-    } finally {
-      queueMicrotask(() => {
-        hydratingFromUrlRef.current = false;
-      });
-    }
+    // ✅ fetch lại page 0 (status=null => Tất cả)
+    queueMicrotask(() => {
+      fetchPageRef.current(0);
+    });
+
+    finishHydrate();
+    return;
+  } finally {
+    queueMicrotask(() => {
+      hydratingFromUrlRef.current = false;
+    });
   }
+}
 
   // 2) try restore from sessionStorage (match qs)
   let restored: PersistState | null = null;
@@ -982,12 +998,17 @@ useEffect(() => {
       setMoveFilter(restoredMove);
       setSortMode(restoredSort);
       setTotal(typeof rest.total === "number" ? rest.total : null);
-      setStatusFilter(rest.statusFilter ?? null);
+      if (!isReloadRef.current) {
+        setStatusFilter(rest.statusFilter ?? null);
+      } else {
+        setStatusFilter(null);
+      }
+
 
       // ✅ Nếu reload: reset vị trí + trang về 0, GIỮ filter
       // - KHÔNG restore scroll/page
       // - Ưu tiên dùng SSR initialRooms để khỏi nháy trắng
-      if (isReload && !isBackFromDetail) {
+      if (isReloadRef.current && !isBackFromDetail) {
         setPageIndex(0);
         setDisplayPageIndex(0);
 
@@ -1014,7 +1035,7 @@ useEffect(() => {
           t: restoredTypes,
           m: restoredMove,
           s: restoredSort,
-          st: rest.statusFilter ?? null,
+          st: isReloadRef.current ? null : (rest.statusFilter ?? null),
           p: 0,
         });
         replaceUrlShallow(qsNoPage);
@@ -1080,7 +1101,12 @@ useEffect(() => {
       setMoveFilter(lite.moveFilter ?? null);
       setSortMode(lite.sortMode ?? "updated_desc");
       setTotal(typeof lite.total === "number" ? lite.total : null);
-      setStatusFilter(lite.statusFilter ?? null);
+      if (!isReloadRef.current) {
+        setStatusFilter(lite.statusFilter ?? null);
+      } else {
+        setStatusFilter(null);
+      }
+
 
       const pIdx = lite.pageIndex ?? 0;
       const dIdx = lite.displayPageIndex ?? pIdx;
@@ -1143,18 +1169,17 @@ useEffect(() => {
   setSelectedRoomTypes(url.t);
   setMoveFilter(url.m);
   setSortMode(url.s);
-  setStatusFilter(url.st);
-
+  setStatusFilter(isReloadRef.current ? null : url.st);
   queueMicrotask(() => {
     hydratingFromUrlRef.current = false;
   });
 
   // ✅ reload thì ép page về 0 + scrollTop=0
-  const pageFromUrl = isReload ? 0 : url.nextPage;
+  const pageFromUrl = isReloadRef.current ? 0 : url.nextPage;
 
   filtersVersionRef.current += 1;
 
-  if (isReload) {
+  if (isReloadRef.current) {
     setPageIndex(0);
     setDisplayPageIndex(0);
 
@@ -1247,7 +1272,6 @@ useEffect(() => {
 }
 
   const url = readUrlState();
-  setStatusFilter(url.st ?? null);
 
   // 1) ưu tiên restore từ sessionStorage
     let restored: PersistState | null = null;
@@ -1279,7 +1303,7 @@ useEffect(() => {
       setMoveFilter(rest.moveFilter ?? null);
       setSortMode(rest.sortMode ?? "updated_desc");
       setTotal(typeof rest.total === "number" ? rest.total : null);
-      setStatusFilter(rest.statusFilter ?? null);
+      setStatusFilter(isReloadRef.current ? null : (rest.statusFilter ?? null));
 
       // restore cache
       pagesRef.current = rest.pages ?? [];
@@ -1337,7 +1361,12 @@ if (lite) {
     setMoveFilter(lite.moveFilter ?? null);
     setSortMode(lite.sortMode ?? "updated_desc");
     setTotal(typeof lite.total === "number" ? lite.total : null);
-    setStatusFilter(lite.statusFilter ?? null);
+    if (!isReloadRef.current) {
+      setStatusFilter(lite.statusFilter ?? null);
+    } else {
+      setStatusFilter(null);
+    }
+
 
     const pIdx = lite.pageIndex ?? 0;
     const dIdx = lite.displayPageIndex ?? pIdx;
@@ -1384,7 +1413,7 @@ if (lite) {
   setSelectedRoomTypes(url.t);
   setMoveFilter(url.m);
   setSortMode(url.s);
-  setStatusFilter(url.st);
+  setStatusFilter(isReloadRef.current? null : url.st);
 
   filtersVersionRef.current += 1;
   resetPagination(url.nextPage);
@@ -1635,7 +1664,6 @@ const filterSig = useMemo(() => {
   statusFilter,
 ]);
 
-
 useEffect(() => {
   
   const applied = appliedSearch.trim();
@@ -1648,11 +1676,11 @@ useEffect(() => {
   prevAppliedSearchRef.current = appliedSearch.trim();
   return;
  }
-    if (hydratingFromUrlRef.current) {
-    
-    return;
-  }
-
+   if (hydratingFromUrlRef.current) {
+  lastFilterSigRef.current = filterSig;
+  prevAppliedSearchRef.current = appliedSearch.trim();
+  return;
+}
 
   // ✅ normalize filter -> signature primitive để tránh array reference gây reset giả
   
@@ -1949,6 +1977,7 @@ useEffect(() => {
                 setSelectedDistricts([]);
                 setSelectedRoomTypes([]);
                 setMoveFilter(null);
+                setStatusFilter(null);
                 setSortMode("updated_desc");
                 setSearch("");
               }}
