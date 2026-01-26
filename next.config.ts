@@ -1,20 +1,31 @@
 // next.config.ts
 import type { NextConfig } from 'next'
 
+const r2Base = process.env.R2_PUBLIC_BASE_URL ?? ''
+let r2Hostname = ''
+try {
+  if (r2Base) r2Hostname = new URL(r2Base).hostname
+} catch {}
+
+// ✅ ép kiểu để TS hiểu đúng RemotePattern (protocol phải là literal)
+const dynamicPatterns = r2Hostname
+  ? [
+      {
+        protocol: 'https' as const,
+        hostname: r2Hostname,
+        pathname: '/**',
+      },
+    ]
+  : []
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
-     
-      // ✅ Cloudflare R2 (thêm)
-      {
-        protocol: 'https',
-        hostname: 'rooms-media.be9092fbc5b7c1f70bb28a7dab36f050.r2.cloudflarestorage.com',
-        pathname: '/**',
-      },
+      ...dynamicPatterns,
 
       // (tuỳ chọn) nếu sau này đổi bucket/account mà không muốn sửa code:
       // {
-      //   protocol: 'https',
+      //   protocol: 'https' as const,
       //   hostname: '*.r2.cloudflarestorage.com',
       //   pathname: '/**',
       // },
@@ -30,4 +41,3 @@ const nextConfig: NextConfig = {
 }
 
 export default nextConfig
-

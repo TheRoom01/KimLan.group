@@ -652,48 +652,22 @@ for (const f of okFiles) {
     // ✅ UX: đóng modal ngay, update list ngay
     setSaving(false)
     onClose()
-    onNotify?.('Đã lưu phòng. Đang lưu chi tiết...')
+       onNotify?.('Đã lưu phòng. Đang lưu chi tiết...')
     void onSaved(updatedRoom, { isNew })
+    
+// ✅ Lưu chi tiết qua RPC (chuẩn Supabase, bypass RLS)
+void (async () => {
+  const { error } = await supabase.rpc('save_room_details_v1', {
+    p_room_id: roomId,
+    p_payload: detailForm, // detailForm có thể là object thường, supabase sẽ gửi json
+  })
 
-    // ✅ Lưu chi tiết chạy ngầm, không chặn UI
-  const detailPayload = {
-    ...detailForm,
-    room_id: roomId,
-  } satisfies Partial<RoomDetail> & { room_id: string }
+  if (error) {
+    console.error('save_room_details_v1 failed:', error)
+    alert(`Lưu chi tiết thất bại: ${error.message}`)
+  }
+})()
 
-  void (async () => {
-    try {
-      // 1) check tồn tại
-      const { data: exists, error: selErr } = await supabase
-        .from('room_details')
-        .select('room_id')
-        .eq('room_id', roomId)
-        .maybeSingle()
-
-      if (selErr) {
-        console.error(selErr)
-        return
-      }
-
-      // 2) update hoặc insert
-      if (exists?.room_id) {
-        const { error: upErr } = await supabase
-          .from('room_details')
-          .update(detailPayload)
-          .eq('room_id', roomId)
-
-        if (upErr) console.error(upErr)
-      } else {
-        const { error: insErr } = await supabase
-          .from('room_details')
-          .insert(detailPayload)
-
-        if (insErr) console.error(insErr)
-      }
-    } catch (err) {
-      console.error(err)
-    }
-  })()
 
   } catch (e: any) {
     setErrorMsg(e?.message ?? 'Lưu thất bại')

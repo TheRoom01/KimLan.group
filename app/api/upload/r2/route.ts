@@ -61,11 +61,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "thumb.webp phải là image/webp" }, { status: 400 })
     }
 
-    const key = allowFixedThumb
+        const key = allowFixedThumb
       ? `rooms/${roomId}/${folder}/thumb.webp`
       : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${ext}`
 
     const buffer = Buffer.from(await file.arrayBuffer())
+
+    // ✅ thumb.webp là file "cố định tên", không nên immutable 1 năm vì đổi cover sẽ bị cache rất lâu
+    const isThumb = allowFixedThumb || key.endsWith("/thumb.webp")
+    const cacheControl = isThumb
+      ? "public, max-age=300, must-revalidate" // 5 phút + revalidate
+      : "public, max-age=31536000, immutable" // ảnh/video thường: cache mạnh
 
     await s3.send(
       new PutObjectCommand({
@@ -73,16 +79,18 @@ export async function POST(req: Request) {
         Key: key,
         Body: buffer,
         ContentType: file.type,
-        CacheControl: "public, max-age=31536000, immutable",
+        CacheControl: cacheControl,
       })
     )
 
     const url = `${R2_PUBLIC_BASE_URL}/${key}`
 
     return NextResponse.json({
+      key,
       url,
       type: isVideo ? "video" : "image",
     })
+
   } catch (e: any) {
     console.error("R2 upload error:", e)
     return NextResponse.json({ error: "Upload failed" }, { status: 500 })
