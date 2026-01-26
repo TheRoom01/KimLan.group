@@ -4,19 +4,31 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
+      // Supabase (giữ lại nếu còn dùng)
       {
         protocol: 'https',
         hostname: 'scjzycloubqarxxvqohu.supabase.co',
         pathname: '/storage/v1/object/public/**',
       },
+
+      // ✅ Cloudflare R2 (thêm)
+      {
+        protocol: 'https',
+        hostname: 'rooms-media.be9092fbc5b7c1f70bb28a7dab36f050.r2.cloudflarestorage.com',
+        pathname: '/**',
+      },
+
+      // (tuỳ chọn) nếu sau này đổi bucket/account mà không muốn sửa code:
+      // {
+      //   protocol: 'https',
+      //   hostname: '*.r2.cloudflarestorage.com',
+      //   pathname: '/**',
+      // },
     ],
   },
 
   experimental: {
-    // ✅ cái đúng theo log của bạn (tăng limit cho request body client -> server)
     middlewareClientMaxBodySize: '50mb',
-
-    // (không bắt buộc cho route handler, nhưng giữ lại cũng không sao)
     serverActions: {
       bodySizeLimit: '50mb',
     },
