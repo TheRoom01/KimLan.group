@@ -646,6 +646,36 @@ const onPointerDownCapture = useCallback(
     };
   }, [onPointerDownCapture]);
 
+  useEffect(() => {
+  const onRouteChangeStart = (url: string) => {
+    // chỉ quan tâm khi đi sang detail
+    if (!url.startsWith("/rooms/")) return;
+
+    writeBackSnapshotNow();
+    writeLiteNow();
+    persistNow();
+
+    try {
+      const qsRaw = window.location.search.replace(/^\?/, "");
+      const qsCanonical = canonicalQs(qsRaw);
+
+      sessionStorage.setItem(
+        HOME_BACK_HINT_KEY,
+        JSON.stringify({
+          ts: Date.now(),
+          qs: qsCanonical,
+        })
+      );
+    } catch {}
+  };
+
+  router.events.on("routeChangeStart", onRouteChangeStart);
+  return () => {
+    router.events.off("routeChangeStart", onRouteChangeStart);
+  };
+}, [router, writeBackSnapshotNow, writeLiteNow, persistNow]);
+
+
   // ================== RESET PAGINATION ==================
   const resetPagination = useCallback((keepPage: number = 0) => {
   // ✅ chỉ reset UI/cache, KHÔNG “kill request” bằng requestId
@@ -1630,39 +1660,47 @@ type BaselineState = {
 const preSearchBaselineRef = useRef<BaselineState | null>(null);
 
 // ================== FILTER CHANGE ==================
-const lastFilterSigRef = useRef<string>("");
+useEffect(() => {
+  if (hydratingFromUrlRef.current) return;
+  if (skipNextFilterEffectRef.current) {
+    skipNextFilterEffectRef.current = false;
+    return;
+  }
 
-const districtsSig = useMemo(
-  () => [...selectedDistricts].sort().join("|"),
-  [selectedDistricts]
-);
+  // ✅ 1. RESET PAGINATION + CACHE
+  filtersVersionRef.current += 1; // drop response cũ
+  resetPagination(0);
 
-const roomTypesSig = useMemo(
-  () => [...selectedRoomTypes].sort().join("|"),
-  [selectedRoomTypes]
-);
+  // ✅ 2. UPDATE URL (page = 0)
+  const nextQs = buildQs({
+    q: appliedSearch,
+    min: minPriceApplied,
+    max: maxPriceApplied,
+    d: selectedDistricts,
+    t: selectedRoomTypes,
+    m: moveFilter,
+    s: sortMode,
+    st: statusFilter,
+    p: 0,
+  });
 
-const filterSig = useMemo(() => {
-  const applied = appliedSearch.trim();
-  return [
-    applied,
-    String(priceApplied[0]),
-    String(priceApplied[1]),
-    districtsSig,
-    roomTypesSig,
-    moveFilter ?? "",
-    sortMode ?? "",
-    statusFilter ?? "",
-  ].join("~");
+  replaceUrlShallow(nextQs);
+
+  // ✅ 3. FETCH PAGE 0
+  queueMicrotask(() => {
+    fetchPageRef.current(0);
+  });
 }, [
   appliedSearch,
-  priceApplied,
-  districtsSig,
-  roomTypesSig,
+  minPriceApplied,
+  maxPriceApplied,
+  selectedDistricts,
+  selectedRoomTypes,
   moveFilter,
   sortMode,
   statusFilter,
 ]);
+
 
 useEffect(() => {
   
@@ -2010,3 +2048,4 @@ useEffect(() => {
 };
 
 export default HomeClient;
+
