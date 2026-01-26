@@ -4,13 +4,7 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
-      // Supabase (giữ lại nếu còn dùng)
-      {
-        protocol: 'https',
-        hostname: 'scjzycloubqarxxvqohu.supabase.co',
-        pathname: '/storage/v1/object/public/**',
-      },
-
+     
       // ✅ Cloudflare R2 (thêm)
       {
         protocol: 'https',
@@ -36,3 +30,4 @@ const nextConfig: NextConfig = {
 }
 
 export default nextConfig
+
