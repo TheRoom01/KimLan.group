@@ -1696,17 +1696,27 @@ const preSearchBaselineRef = useRef<BaselineState | null>(null);
 
 // ================== FILTER CHANGE ==================
 useEffect(() => {
-  if (hydratingFromUrlRef.current) return;
+  // 🚫 đang hydrate / vừa restore/back -> không reset page
+  if (
+    hydratingFromUrlRef.current ||
+    didRestoreFromStorageRef.current ||
+    persistBlockedRef.current
+  ) {
+    // nếu có cờ skip thì hạ xuống để lần sau user đổi filter vẫn chạy
+    skipNextFilterEffectRef.current = false;
+    return;
+  }
+
   if (skipNextFilterEffectRef.current) {
     skipNextFilterEffectRef.current = false;
     return;
   }
 
-  // ✅ 1. RESET PAGINATION + CACHE
-  filtersVersionRef.current += 1; // drop response cũ
+  // ✅ 1) reset cache + page về 0 (chỉ khi user đổi filter thật)
+  filtersVersionRef.current += 1;
   resetPagination(0);
 
-  // ✅ 2. UPDATE URL (page = 0)
+  // ✅ 2) update URL page=0
   const nextQs = buildQs({
     q: appliedSearch,
     min: minPriceApplied,
@@ -1721,7 +1731,7 @@ useEffect(() => {
 
   replaceUrlShallow(nextQs);
 
-  // ✅ 3. FETCH PAGE 0
+  // ✅ 3) fetch page 0
   queueMicrotask(() => {
     fetchPageRef.current(0);
   });
@@ -1734,8 +1744,10 @@ useEffect(() => {
   moveFilter,
   sortMode,
   statusFilter,
+  buildQs,
+  replaceUrlShallow,
+  resetPagination,
 ]);
-
 
 useEffect(() => {
   
@@ -2083,6 +2095,7 @@ useEffect(() => {
 };
 
 export default HomeClient;
+
 
 
 
