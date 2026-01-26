@@ -29,11 +29,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
 
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app";
+const base =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app";
 
-  let title = "Chi tiết phòng";
-  let desc = "Xem chi tiết phòng";
+// ✅ mặc định (trước khi query DB)
+let title = "Chi tiết phòng";
+let desc = "Xem chi tiết phòng";
+
   let image = absUrl(base, "/hero.jpg"); // fallback
   const url = `${base.replace(/\/$/, "")}/rooms/${encodeURIComponent(id)}`;
 
@@ -48,6 +50,9 @@ const { data } = await supabase
 const roomCode = (data as any)?.room_code ?? "";
 const roomType = (data as any)?.room_type ?? "";
 const price = (data as any)?.price;
+
+// ✅ nếu không có room -> giữ fallback title/desc + image và thoát try
+if (!data) throw new Error("room_not_found");
 
 // ✅ 1) Ưu tiên thumb.webp theo convention R2: rooms/room-{room_code}/images/thumb.webp
 const R2_BASE = (process.env.R2_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "")
@@ -79,14 +84,13 @@ if (thumb) {
   if (img) image = absUrl(base, img);
 }
 
+    // ✅ Title preview theo format bạn yêu cầu
+  const codeLabel = roomCode ? String(roomCode) : "—";
+  const typeLabel = roomType ? String(roomType) : "Phòng";
+  title = `Mã: ${codeLabel} | Dạng: ${typeLabel}`;
 
-    title = roomCode ? `Phòng ${roomCode}` : title;
-    if (roomType) title = `${title} - ${roomType}`;
-    if (typeof price === "number")
-      title = `${title} - ${price.toLocaleString("vi-VN")} đ`;
-
+    // ✅ Description = địa chỉ KHÔNG có số nhà
     const addr = [
-      (data as any)?.house_number,
       (data as any)?.address,
       (data as any)?.ward ? `P. ${(data as any).ward}` : "",
       (data as any)?.district,
@@ -95,7 +99,10 @@ if (thumb) {
       .filter(Boolean)
       .join(", ");
 
-    if (addr) desc = addr;
+    if (addr) {
+      desc = addr;
+    }
+
   } catch {
     // fail-open
   }

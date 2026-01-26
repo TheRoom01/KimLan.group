@@ -819,7 +819,7 @@ const zaloPhone = zaloPhones[0] ?? "";
     {roomType && (
       <>
         {" | "}
-        <span>Dạng phòng:</span>{" "}
+        <span>Dạng :</span>{" "}
         <span className="font-semibold">{roomType}</span>
       </>
     )}
