@@ -105,6 +105,7 @@ export default function RoomModal({
     status: 'Trống',
     description: '',
     link_zalo: '',
+    zalo_phone: '',
     // media optional in RoomForm (tùy bạn đã khai báo chưa)
     media: [],
     chinh_sach: '',
@@ -461,6 +462,7 @@ for (const f of okFiles) {
         status: 'Trống',
         description: '',
         link_zalo: '',
+         zalo_phone: '',
         media: [],
         chinh_sach: '',
       })
@@ -482,6 +484,13 @@ for (const f of okFiles) {
       media: Array.isArray((editingRoom as any).media) ? (editingRoom as any).media : [],
       link_zalo: (editingRoom as any).link_zalo ?? '',
       chinh_sach: (editingRoom as any).chinh_sach ?? '',
+      zalo_phone:
+      (editingRoom as any).zalo_phone ??
+      (() => {
+        const raw = String((editingRoom as any).link_zalo ?? "");
+        const lines = raw.split(/\r?\n/);
+        return lines.slice(1).join("\n").trim(); // fallback data cũ
+      })(),
 
     })
 
@@ -590,6 +599,7 @@ for (const f of okFiles) {
       status: normalizeStatus(roomForm.status),
       description: roomForm.description,
       link_zalo: roomForm.link_zalo,
+      zalo_phone: roomForm.zalo_phone,
       chinh_sach: roomForm.chinh_sach,
     }
 

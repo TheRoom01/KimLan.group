@@ -394,7 +394,7 @@ const FilterBar = ({
           openFilter === "sort" ? "border-black" : "border-gray-300"
         }`}
         >
-        Bộ lọc
+        Sắp xếp
       </button>
 
           {openFilter === "sort" && (
@@ -467,7 +467,7 @@ const FilterBar = ({
             }}
             disabled={loading}
           >
-            Reset
+            Xoá bộ lọc
           </button>
 
           <span className="justify-self-end">{fmtVND(maxV)} đ</span>

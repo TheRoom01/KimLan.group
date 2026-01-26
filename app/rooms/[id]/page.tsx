@@ -22,6 +22,20 @@ function formatVND(value: any) {
   return value ?? "";
 }
 
+function formatWard(ward: any) {
+  if (!ward) return null;
+
+  // Xóa các dạng "P.", "p.", "P  " ở đầu
+  const w = String(ward).trim().replace(/^P\.?\s*/i, "");
+
+  // Nếu là số (7, 12...) => P.7 / P.12
+  if (/^\d+/.test(w)) return `P.${w}`;
+
+  // Nếu là chữ (VD: "Bến Nghé") => P. Bến Nghé
+  return `P. ${w}`;
+}
+
+
 // image_urls đã là array (từ RPC / room_media)
 function normalizeImageUrls(image_urls: any): string[] {
   if (!Array.isArray(image_urls)) return [];
@@ -227,9 +241,10 @@ function buildShareText() {
   if (shareSel.address) {
     const addr = joinParts([
       room?.address,
-      room?.ward,
+      formatWard(room?.ward),
       room?.district,
     ]);
+
     if (addr) parts.push(addr);
   }
 
@@ -436,9 +451,15 @@ useEffect(() => {
 }, [id, adminLevel]);
 
 
-  const detail = room?.room_detail ?? {};
+ const detail =
+  (room?.room_detail ??
+    room?.room_details ?? // ✅ phòng trường hợp RPC trả key số nhiều
+    room?.detail ??
+    room?.details ??
+    {}) as any;
 
-const imageUrls = useMemo(() => {
+
+  const imageUrls = useMemo(() => {
   // ✅ ưu tiên field chuẩn hoá từ RPC (đọc room_media)
   const v = normalizeImageUrls(room?.image_urls);
   if (v.length) return v;
@@ -709,40 +730,22 @@ const zaloPhone = zaloPhones[0] ?? "";
   <button
     type="button"
     disabled={downloadingImages}
-    onClick={async (e) => {
-      e.stopPropagation();
-      if (downloadingImages) return;
+    onClick={(e) => {
+  e.stopPropagation();
+  if (downloadingImages) return;
 
-      try {
-        setDownloadingImages(true);
+  try {
+    setDownloadingImages(true);
 
-        const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
-        const res = await fetch(url);
-        const ct = res.headers.get("content-type") || "";
+    const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
 
-        if (!res.ok && ct.includes("application/json")) {
-          const j = await res.json();
-          alert(j.message || "Không tải được ảnh");
-          return;
-        }
+    // ✅ Mở tải bằng trình duyệt (UI không phải đợi)
+    window.open(url, "_blank");
+  } finally {
+    setDownloadingImages(false);
+  }
+}}
 
-        if (!res.ok) {
-          alert("Không tải được ảnh");
-          return;
-        }
-
-        const blob = await res.blob();
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `room-${id}-images.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(a.href);
-      } finally {
-        setDownloadingImages(false);
-      }
-    }}
     className="
       absolute top-3 right-3 z-10
       inline-flex items-center gap-1

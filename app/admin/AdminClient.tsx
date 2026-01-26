@@ -78,6 +78,7 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
         "room_type",
         "status",
         "link_zalo",
+        "zalo_phone",
         "price",
       ].join(",");
 
@@ -178,18 +179,26 @@ if (keyword) {
     }
   }, [loadRooms, debouncedSearch]);
 
-  const openZaloUX = useCallback((link?: string | null) => {
-    if (!link) return;
-    if (typeof window === "undefined") return;
-    const ua = navigator.userAgent || "";
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
-    if (isMobile) {
-      window.open(link, "_blank", "noopener,noreferrer");
-      return;
-    }
-    // Desktop: open link new tab (keep your QR modal if you want)
-    window.open(link, "_blank", "noopener,noreferrer");
-  }, []);
+const openZaloUX = useCallback((raw?: string | null) => {
+  if (!raw) return;
+  if (typeof window === "undefined") return;
+
+  const s = String(raw).trim();
+  if (!s) return;
+
+  // 1) Nếu đã là link (https://... hoặc zalo://...) thì mở luôn
+  if (/^https?:\/\//i.test(s) || /^zalo:\/\//i.test(s)) {
+    window.open(s, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  // 2) Nếu chỉ là SĐT (hoặc có ký tự), lọc ra số rồi mở theo zalo.me
+  const digits = s.replace(/\D/g, "");
+  if (!digits) return;
+
+  window.open(`https://zalo.me/${digits}`, "_blank", "noopener,noreferrer");
+}, []);
+
 
   return (
     <main>
@@ -247,7 +256,7 @@ if (keyword) {
     rooms.map((r) => {
       const isRented = normalizeStatus((r as any).status) === "đã thuê";
 
-      const zaloLink = (r as any).link_zalo as string | undefined;
+      const zaloLink = ((r as any).link_zalo || (r as any).zalo_phone) as string | undefined;
 
       const addressText =
         [

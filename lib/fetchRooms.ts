@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 
-export type UpdatedDescCursor = { id: string; updated_at: string };
+export type UpdatedDescCursor = { id: string; updated_at: string; created_at: string };
+
 
 export type FetchRoomsParams = {
   limit: number;
@@ -178,17 +179,20 @@ export async function fetchRooms(
   // - updated_desc dùng {updated_at, id}
   // - price_asc/price_desc/fallback dùng uuid string
   const cursorObj: UpdatedDescCursor | null =
-    cursor && typeof cursor === "object"
-      ? {
-          id: String((cursor as any).id),
-          updated_at: String((cursor as any).updated_at),
-        }
-      : null;
+  cursor && typeof cursor === "object"
+    ? {
+        id: String((cursor as any).id),
+        updated_at: String((cursor as any).updated_at),
+        created_at: String((cursor as any).created_at),
+      }
+    : null;
 
   const cursorId: string | null =
     cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
 
   const cursorUpdatedAt: string | null = cursorObj?.updated_at ?? null;
+  const cursorCreatedAt: string | null = (cursorObj as any)?.created_at ?? null;
+
 
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
@@ -210,9 +214,11 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_statuses: status ? [String(status)] : null,
 
   // 5) sort + keyset cursor (updated_desc cần 2 khóa)
-  p_sort: (sortMode ?? "updated_desc") as any,
-  p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
-  p_cursor_id: cursorId ? String(cursorId) : null,
+ p_sort: (sortMode ?? "updated_desc") as any,
+p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
+p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
+p_cursor_id: cursorId ? String(cursorId) : null,
+
 });
 
   if (error) {
@@ -237,11 +243,16 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   const rawNext = (data as any)?.nextCursor ?? null;
 
   const nextCursor: string | UpdatedDescCursor | null =
-    rawNext && typeof rawNext === "object"
-      ? { id: String((rawNext as any).id), updated_at: String((rawNext as any).updated_at) }
-      : typeof rawNext === "string"
-      ? rawNext
-      : null;
+  rawNext && typeof rawNext === "object"
+    ? {
+        id: String((rawNext as any).id),
+        updated_at: String((rawNext as any).updated_at),
+        created_at: String((rawNext as any).created_at),
+      }
+    : typeof rawNext === "string"
+    ? rawNext
+    : null;
+
 
   // ✅ total_count từ RPC (nếu có)
   const rawTotal = (data as any)?.total_count;

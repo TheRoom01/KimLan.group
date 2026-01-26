@@ -22,6 +22,7 @@ export type RoomForm = {
   description: string
   media?: MediaItem[];
   link_zalo: string
+  zalo_phone: string
   chinh_sach: string
   
 }

@@ -33,7 +33,7 @@ const base =
   process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app";
 
 // ✅ mặc định (trước khi query DB)
-let title = "Chi tiết phòng";
+let title = "The Room";
 let desc = "Xem chi tiết phòng";
 
   let image = absUrl(base, "/hero.jpg"); // fallback

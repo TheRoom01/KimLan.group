@@ -878,13 +878,22 @@ useEffect(() => {
       // drop mọi response cũ (nếu có request đang bay)
       filtersVersionRef.current += 1;
 
-      // purge persisted state
-      try {
-        sessionStorage.removeItem(HOME_STATE_KEY);
-      } catch {}
-      try {
-        sessionStorage.removeItem(HOME_BACK_HINT_KEY);
-      } catch {}
+    // purge persisted state
+    try {
+      sessionStorage.removeItem(HOME_STATE_KEY);
+    } catch {}
+    try {
+      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
+    } catch {}
+
+    // ✅ (B) xoá luôn các state-lite (đỡ bị restore lại sau F5)
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith("HOME_STATE_LITE_V1::")) sessionStorage.removeItem(k);
+      }
+    } catch {}
+
 
       // reset filters -> default
       setSearch("");
@@ -894,7 +903,7 @@ useEffect(() => {
       setSelectedRoomTypes([]);
       setMoveFilter(null);
       setSortMode("updated_desc");
-      setStatusFilter(url.st ?? null);
+      setStatusFilter(null);
 
       // reset pagination/cache về page 0
       setPageIndex(0);

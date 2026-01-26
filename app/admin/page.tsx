@@ -43,6 +43,7 @@ export default async function AdminPage() {
     "room_type",
     "status",
     "link_zalo",
+    "zalo_phone",
     "price",
   ].join(",");
 
