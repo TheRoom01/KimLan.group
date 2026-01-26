@@ -1695,59 +1695,6 @@ type BaselineState = {
 const preSearchBaselineRef = useRef<BaselineState | null>(null);
 
 // ================== FILTER CHANGE ==================
-useEffect(() => {
-  // 🚫 đang hydrate / vừa restore/back -> không reset page
-  if (
-    hydratingFromUrlRef.current ||
-    didRestoreFromStorageRef.current ||
-    persistBlockedRef.current
-  ) {
-    // nếu có cờ skip thì hạ xuống để lần sau user đổi filter vẫn chạy
-    skipNextFilterEffectRef.current = false;
-    return;
-  }
-
-  if (skipNextFilterEffectRef.current) {
-    skipNextFilterEffectRef.current = false;
-    return;
-  }
-
-  // ✅ 1) reset cache + page về 0 (chỉ khi user đổi filter thật)
-  filtersVersionRef.current += 1;
-  resetPagination(0);
-
-  // ✅ 2) update URL page=0
-  const nextQs = buildQs({
-    q: appliedSearch,
-    min: minPriceApplied,
-    max: maxPriceApplied,
-    d: selectedDistricts,
-    t: selectedRoomTypes,
-    m: moveFilter,
-    s: sortMode,
-    st: statusFilter,
-    p: 0,
-  });
-
-  replaceUrlShallow(nextQs);
-
-  // ✅ 3) fetch page 0
-  queueMicrotask(() => {
-    fetchPageRef.current(0);
-  });
-}, [
-  appliedSearch,
-  minPriceApplied,
-  maxPriceApplied,
-  selectedDistricts,
-  selectedRoomTypes,
-  moveFilter,
-  sortMode,
-  statusFilter,
-  buildQs,
-  replaceUrlShallow,
-  resetPagination,
-]);
 
 useEffect(() => {
   
@@ -2095,6 +2042,7 @@ useEffect(() => {
 };
 
 export default HomeClient;
+
 
 
 
