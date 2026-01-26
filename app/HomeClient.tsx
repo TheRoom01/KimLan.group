@@ -646,11 +646,8 @@ const onPointerDownCapture = useCallback(
     };
   }, [onPointerDownCapture]);
 
-  useEffect(() => {
-  const onRouteChangeStart = (url: string) => {
-    // chỉ quan tâm khi đi sang detail
-    if (!url.startsWith("/rooms/")) return;
-
+useEffect(() => {
+  const saveSnapshot = () => {
     writeBackSnapshotNow();
     writeLiteNow();
     persistNow();
@@ -669,12 +666,25 @@ const onPointerDownCapture = useCallback(
     } catch {}
   };
 
-  router.events.on("routeChangeStart", onRouteChangeStart);
-  return () => {
-    router.events.off("routeChangeStart", onRouteChangeStart);
+  // App Router: khi rời trang (router.push, link, back, reload)
+  const onVisibilityChange = () => {
+    if (document.visibilityState === "hidden") {
+      saveSnapshot();
+    }
   };
-}, [router, writeBackSnapshotNow, writeLiteNow, persistNow]);
 
+  const onBeforeUnload = () => {
+    saveSnapshot();
+  };
+
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  window.addEventListener("beforeunload", onBeforeUnload);
+
+  return () => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    window.removeEventListener("beforeunload", onBeforeUnload);
+  };
+}, [writeBackSnapshotNow, writeLiteNow, persistNow]);
 
   // ================== RESET PAGINATION ==================
   const resetPagination = useCallback((keepPage: number = 0) => {
@@ -2048,4 +2058,5 @@ useEffect(() => {
 };
 
 export default HomeClient;
+
 
