@@ -39,25 +39,7 @@ export default function RoomCard(props: { room: Room; adminLevel: number; index?
     return s ? s : FALLBACK;
   };
 
-  // ✅ build thumb.webp theo convention bạn đang dùng:
-  // rooms/{room_id}/images/thumb.webp  với room_id = `room-${safeRoomCode}`
-  const R2_BASE =
-    (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL ||
-      process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
-      "")?.replace(/\/$/, "") || "";
-
-  const safeRoomCode =
-    String(room.room_code || "")
-      .trim()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-zA-Z0-9-_]/g, "") || "";
-
-  const thumbUrl =
-    R2_BASE && safeRoomCode
-      ? `${R2_BASE}/rooms/room-${safeRoomCode}/images/thumb.webp`
-      : "";
-
-  // Tổng số ảnh (ưu tiên image_count từ DB)
+ // Tổng số ảnh (ưu tiên image_count từ DB)
 const totalImages =
   typeof room.image_count === "number" && Number.isFinite(room.image_count)
     ? room.image_count
@@ -66,11 +48,8 @@ const totalImages =
 // ✅ Chỉ coi là "có media thật" khi còn ảnh hoặc có video
 const hasRealMedia = totalImages > 0 || !!room.has_video;
 
-// ✅ main ưu tiên thumb.webp, fallback qua ảnh đầu
-// Nếu không có media thật => dùng FALLBACK (không lấy thumb.webp)
-const mainPreferred = hasRealMedia
-  ? safeSrc((thumbUrl || showImages[0]) ?? "")
-  : FALLBACK;
+// ✅ MAIN: dùng ảnh đầu tiên từ image_urls (không ghép thumb.webp)
+const mainPreferred = hasRealMedia ? safeSrc(showImages[0] ?? "") : FALLBACK;;
 
 const subImage1 = safeSrc(showImages[1] ?? "");
 const subImage2 = safeSrc(showImages[2] ?? "");
@@ -167,8 +146,8 @@ const isAdmin = level === 1 || level === 2;
  {/* Ảnh phụ */}
       <div className="grid grid-rows-2 gap-1 relative h-full">
     {/* Ảnh phụ 1 */}
-      {showImages[1] && (
-  <div className="relative w-full h-full overflow-hidden">
+         {subImage1 !== FALLBACK && (
+    <div className="relative w-full h-full overflow-hidden">
     <Image
       src={sub1Src}
       alt={room.room_code ? `Hình phòng ${room.room_code}` : "Hình phòng"}
@@ -182,8 +161,8 @@ const isAdmin = level === 1 || level === 2;
   </div>
   )}
      {/* Ảnh phụ 2 + overlay */}
-      {showImages[2] && (
-    <div className="relative w-full h-full">
+      {subImage2 !== FALLBACK && (
+  <div className="relative w-full h-full">
     <Image
       src={sub2Src}
       alt={room.room_type}
@@ -260,4 +239,5 @@ const isAdmin = level === 1 || level === 2;
         </div>
         </Link>
     );
+
   }
