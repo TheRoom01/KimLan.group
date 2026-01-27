@@ -638,16 +638,47 @@ for (const f of okFiles) {
       sort_order: idx,
     }))
 
-    // replace-all để đảm bảo sort_order đúng 100%
-    {
-      const del = await supabase.from('room_media').delete().eq('room_id', roomId)
-      if (del.error) throw del.error
+  // replace-all để đảm bảo sort_order đúng 100%
+{
+  const del = await supabase.from('room_media').delete().eq('room_id', roomId)
+  if (del.error) throw del.error
 
-      if (rows.length > 0) {
-        const ins = await supabase.from('room_media').insert(rows)
-        if (ins.error) throw ins.error
-      }
-    }
+  if (rows.length > 0) {
+    const ins = await supabase.from('room_media').insert(rows)
+    if (ins.error) throw ins.error
+  }
+
+  // ✅ PRUNE R2: xoá ảnh đã bị remove khỏi DB + xoá thumb.webp cũ để tránh stale
+  // keep_urls chỉ lấy những ảnh/video còn tồn tại và thuộc R2
+  const keepUrls = (normalized || [])
+    .map((x: any) => String(x?.url || "").trim())
+    .filter(Boolean);
+
+  const roomCodeForR2 = String(updatedRoom?.room_code || roomForm?.room_code || "").trim();
+
+  const pruneResp = await fetch(`/api/rooms/${roomId}/prune-r2`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      room_code: roomCodeForR2,
+      keep_urls: keepUrls,
+    }),
+  });
+
+  if (!pruneResp.ok) {
+    // không throw để tránh “lưu DB ok nhưng prune fail” làm mất dữ liệu UI,
+    // bạn có thể bật throw nếu muốn bắt buộc prune thành công
+    console.warn("prune-r2 failed", await pruneResp.text());
+  }
+} 
+
+// ✅ ĐÁNH DẤU HOME "DIRTY" ĐỂ BACK VỀ HOME KHÔNG RESTORE LIST CŨ (ảnh cũ)
+try {
+  sessionStorage.setItem("HOME_DIRTY_V1", "1")
+  sessionStorage.removeItem("HOME_BACK_SNAPSHOT_V1")
+  sessionStorage.removeItem("HOME_STATE_V2")
+} catch {}
+
 
     // ✅ UX: đóng modal ngay, update list ngay
     setSaving(false)
@@ -667,7 +698,6 @@ void (async () => {
     alert(`Lưu chi tiết thất bại: ${error.message}`)
   }
 })()
-
 
   } catch (e: any) {
     setErrorMsg(e?.message ?? 'Lưu thất bại')
@@ -856,5 +886,4 @@ const btnSync: CSSProperties = {
   cursor: 'pointer',
   fontWeight: 600,
 }
-
 
