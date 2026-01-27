@@ -1447,8 +1447,7 @@ if (lite) {
       return;
     }
 
-    const reqKey = `${filterSig}::${targetIndex}`;
-
+   const reqKey = `${lastFilterSigRef.current ?? ""}::${targetIndex}`;
 // chặn gọi trùng khi đang bay (theo filter + page)
 if (inFlightRef.current[reqKey]) return;
 inFlightRef.current[reqKey] = true;
@@ -1516,7 +1515,7 @@ inFlightRef.current[reqKey] = true;
         const nextIdx = targetIndex + 1;
 
         const notFetchedYet = pagesRef.current[nextIdx] === undefined;
-        const nextReqKey = `${filterSig}::${nextIdx}`;
+       const nextReqKey = `${lastFilterSigRef.current ?? ""}::${nextIdx}`;
         const notInFlight = !inFlightRef.current[nextReqKey];
 
         if (notFetchedYet && notInFlight) {
