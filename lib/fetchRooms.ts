@@ -205,7 +205,10 @@ const toIsoOrNull = (v: unknown): string | null => {
 const cursorUpdatedAt: string | null = toIsoOrNull(cursorObj?.updated_at);
 const cursorCreatedAt: string | null = toIsoOrNull((cursorObj as any)?.created_at);
 
-
+const pMove =
+  move === "elevator" ? "has_elevator" :
+  move === "stairs"   ? "has_stairs"   :
+  null;
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: 0,
@@ -220,7 +223,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
   p_districts: expandDistrictLegacyValues(districts) ?? null,
   p_room_types: expandRoomTypeLegacyValues(roomTypes) ?? null,
-  p_move: move === "elevator" || move === "stairs" ? move : null,
+  p_move: pMove,
 
   // 4) statuses
   p_statuses: status ? [String(status)] : null,

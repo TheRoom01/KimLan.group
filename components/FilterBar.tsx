@@ -360,13 +360,7 @@ const FilterBar = ({
 
       {moveFilter && (
         <span className="mt-0.5 text-[10px] text-gray-500 leading-none">
-          (
-          {moveFilter === "elevator"
-            ? "Thang máy"
-            : moveFilter === "stairs"
-            ? "Thang bộ"
-            : "Tất cả"}
-          )
+          ({moveFilter === "elevator" ? "Thang máy" : "Thang bộ"})
         </span>
       )}
     </span>
@@ -378,6 +372,7 @@ const FilterBar = ({
       onPointerDownCapture={(e) => e.stopPropagation()}
       onClickCapture={(e) => e.stopPropagation()}
     >
+      {/* Tất cả */}
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input
           type="radio"
@@ -387,10 +382,19 @@ const FilterBar = ({
             setMoveFilter(null);
             setOpenFilter(null);
           }}
+          onClick={() => {
+            // bấm lại "Tất cả" khi đang chọn -> ép đổi 2 nhịp để refetch
+            if (moveFilter === null) {
+              setMoveFilter("elevator");
+              queueMicrotask(() => setMoveFilter(null));
+            }
+            setOpenFilter(null);
+          }}
         />
         <span>Tất cả</span>
       </label>
 
+      {/* Thang máy */}
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input
           type="radio"
@@ -400,10 +404,19 @@ const FilterBar = ({
             setMoveFilter("elevator");
             setOpenFilter(null);
           }}
+          onClick={() => {
+            // bấm lại option đang chọn -> ép đổi 2 nhịp để refetch
+            if (moveFilter === "elevator") {
+              setMoveFilter(null);
+              queueMicrotask(() => setMoveFilter("elevator"));
+            }
+            setOpenFilter(null);
+          }}
         />
         <span>Thang máy</span>
       </label>
 
+      {/* Thang bộ */}
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input
           type="radio"
@@ -413,12 +426,21 @@ const FilterBar = ({
             setMoveFilter("stairs");
             setOpenFilter(null);
           }}
+          onClick={() => {
+            // bấm lại option đang chọn -> ép đổi 2 nhịp để refetch
+            if (moveFilter === "stairs") {
+              setMoveFilter(null);
+              queueMicrotask(() => setMoveFilter("stairs"));
+            }
+            setOpenFilter(null);
+          }}
         />
         <span>Thang bộ</span>
       </label>
     </div>
   )}
 </div>
+
         </div>
 
    {/* RIGHT: Sắp Xếp */}
