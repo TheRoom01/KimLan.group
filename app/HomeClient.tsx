@@ -58,6 +58,7 @@ const HOME_STATE_KEY = "HOME_STATE_V2"; // giữ nguyên
 const HOME_STATE_LITE_PREFIX = "HOME_STATE_LITE_V1::"; // ✅ per-qS key
 const HOME_STATE_LITE_TTL = 30 * 60 * 1000; // 30 phút (đồng bộ V2)
 
+
 type BackSnapshot = {
   qs: string;
 
@@ -168,7 +169,6 @@ const HomeClient = ({
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
   const lastFilterSigRef = useRef<string>("");
-
   
   //-----------------appliedSearch------------
   const [search, setSearch] = useState("");
@@ -185,6 +185,28 @@ const HomeClient = ({
 
 // Debounce search input để fetch không bị trễ 1 nhịp + không spam request
 const appliedSearch = useDebouncedValue(search, 250);
+
+const filterSig = useMemo(() => {
+  return [
+    appliedSearch.trim(),
+    minPriceApplied,
+    maxPriceApplied,
+    selectedDistricts.join(","),
+    selectedRoomTypes.join(","),
+    moveFilter ?? "",
+    sortMode,
+    statusFilter ?? "",
+  ].join("|");
+}, [
+  appliedSearch,
+  minPriceApplied,
+  maxPriceApplied,
+  selectedDistricts,
+  selectedRoomTypes,
+  moveFilter,
+  sortMode,
+  statusFilter,
+]);
 
 // ================== PAGINATION (cache) ==================
  const initCursor: string | UpdatedDescCursor | null =
