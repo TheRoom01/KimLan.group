@@ -588,23 +588,36 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   }
 
   const isAdmin = adminLevel === 1 || adminLevel === 2;
- const isAdminL1 = adminLevel === 1;
+  const isAdminL1 = adminLevel === 1;
 
-  const zaloRaw = String(room?.link_zalo ?? "");
-const linkMatch = zaloRaw.match(/https?:\/\/\S+/i);
-const zaloLink = linkMatch?.[0] ?? "";
+  // ✅ Hợp nhất dữ liệu từ link_zalo + zalo_phone
+  const linkRaw = String(room?.link_zalo ?? "");
+  const phoneRaw = String(room?.zalo_phone ?? "");
 
-// ✅ lấy tất cả số theo từng dòng (lọc chỉ còn digits)
-const zaloPhones = zaloRaw
-  .split(/\r?\n/)
-  .filter((line) => !/^https?:\/\//i.test(line.trim())) // ✅ bỏ dòng link
-  .map((line) => line.replace(/\D/g, ""))               // ✅ chỉ giữ số
-  .filter(Boolean);
+  // 1) Link: tìm URL trong link_zalo trước, fallback qua zalo_phone (nếu người nhập dán link vào đó)
+  const linkMatch1 = linkRaw.match(/https?:\/\/\S+/i);
+  const linkMatch2 = phoneRaw.match(/https?:\/\/\S+/i);
+  const zaloLink = (linkMatch1?.[0] ?? linkMatch2?.[0] ?? "").trim();
 
-// (tuỳ chọn) lấy số đầu tiên nếu bạn vẫn cần 1 biến zaloPhone
-const zaloPhone = zaloPhones[0] ?? "";
+  // 2) Phones: gom tất cả text từ cả 2 field, loại dòng link, chỉ giữ digits theo từng dòng
+  const collectPhones = (raw: string) =>
+    raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !/^https?:\/\//i.test(line)) // ✅ bỏ dòng link
+      .map((line) => line.replace(/\D/g, ""))        // ✅ chỉ giữ số
+      .filter(Boolean);
+
+  const zaloPhones = Array.from(
+    new Set([...collectPhones(linkRaw), ...collectPhones(phoneRaw)])
+  );
+
+  // (tuỳ chọn) lấy số đầu tiên nếu bạn vẫn cần 1 biến zaloPhone
+  const zaloPhone = zaloPhones[0] ?? "";
 
   return (
+
     <div className="p-6 space-y-6 text-base">
       <div className="space-y-1">
         {mediaItems.length > 0 ? (

@@ -8,6 +8,7 @@ import { fetchRooms, type UpdatedDescCursor } from "@/lib/fetchRooms";
 import { supabase } from "@/lib/supabase";
 import { usePathname } from "next/navigation";
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
+import LogoIntroButton from "@/components/LogoIntroButton";
 
 
 type InitialProps = {
@@ -56,6 +57,7 @@ const HOME_BACK_SNAPSHOT_TTL = 15 * 60 * 1000;
 const HOME_STATE_KEY = "HOME_STATE_V2"; // giữ nguyên
 const HOME_STATE_LITE_PREFIX = "HOME_STATE_LITE_V1::"; // ✅ per-qS key
 const HOME_STATE_LITE_TTL = 30 * 60 * 1000; // 30 phút (đồng bộ V2)
+
 
 type BackSnapshot = {
   qs: string;
@@ -167,7 +169,6 @@ const HomeClient = ({
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
   const lastFilterSigRef = useRef<string>("");
-
   
   //-----------------appliedSearch------------
   const [search, setSearch] = useState("");
@@ -185,7 +186,6 @@ const HomeClient = ({
 // Debounce search input để fetch không bị trễ 1 nhịp + không spam request
 const appliedSearch = useDebouncedValue(search, 250);
 
-  // ================== FILTER SIGNATURE ==================
 const filterSig = useMemo(() => {
   return [
     appliedSearch.trim(),
@@ -208,8 +208,7 @@ const filterSig = useMemo(() => {
   statusFilter,
 ]);
 
-    
-   // ================== PAGINATION (cache) ==================
+// ================== PAGINATION (cache) ==================
  const initCursor: string | UpdatedDescCursor | null =
   initialNextCursor && typeof initialNextCursor === "object"
     ? {
@@ -222,7 +221,6 @@ const filterSig = useMemo(() => {
     : typeof initialNextCursor === "string"
       ? initialNextCursor
       : null;
-
 
   // ✅ IMPORTANT: phân biệt "chưa fetch" (undefined) vs "đã fetch nhưng rỗng" ([])
   const [pages, setPages] = useState<any[][]>(() =>
@@ -247,8 +245,6 @@ useEffect(() => {
   didHardReloadRef.current = true;
 }, []);
 
-
-  
   const cursorsRef = useRef<(string | UpdatedDescCursor | null)[]>(
     initialRooms?.length ? [null, initCursor] : [null]
   );
@@ -886,69 +882,38 @@ isReloadRef.current = navType === "reload";
 
   // ✅ BACK SNAPSHOT restore (khôi phục cấu trúc logic cũ)
 // ưu tiên trước V2/Lite/URL; chỉ áp dụng khi KHÔNG reload
-    if (!isReloadRef.current && !didApplyBackOnceRef.current) {
-      const snap = readBackSnapshot();
-      if (snap) {
+if (!isReloadRef.current && !didApplyBackOnceRef.current) {
+  // ✅ nếu admin vừa thay đổi media => BỎ restore snapshot, ép fetch lại
+  let forceRefresh = false;
+  try {
+    forceRefresh = Boolean(sessionStorage.getItem("HOME_FORCE_REFRESH_V1"));
+    if (forceRefresh) {
+      sessionStorage.removeItem("HOME_FORCE_REFRESH_V1");
+      sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
+      sessionStorage.removeItem(HOME_STATE_KEY);
 
-    // ✅ chặn filter-change reset ngay sau restore
-    persistBlockedRef.current = true;
-    skipNextFilterEffectRef.current = true;
-    hydratingFromUrlRef.current = true;
-    try {
-      if (snap.qs) replaceUrlShallow(snap.qs);
+      // clear all HOME_STATE_LITE_V1::*
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i) || "";
+        if (k.startsWith(HOME_STATE_LITE_PREFIX)) sessionStorage.removeItem(k);
+      }
+    }
+  } catch {}
 
-      // ✅ restore FILTER
-      setSearch(snap.search ?? "");
-      setPriceDraft(snap.priceApplied ?? PRICE_DEFAULT);
-      setPriceApplied(snap.priceApplied ?? PRICE_DEFAULT);
-      setSelectedDistricts(snap.selectedDistricts ?? []);
-      setSelectedRoomTypes(snap.selectedRoomTypes ?? []);
-      setMoveFilter(snap.moveFilter ?? null);
-      setSortMode(snap.sortMode ?? "updated_desc");
-      setTotal(typeof snap.total === "number" ? snap.total : null);
-      setStatusFilter(snap.statusFilter ?? null);
-
-      // ✅ restore CACHE
-      pagesRef.current = snap.pages ?? [];
-      setPages(snap.pages ?? []);
-      cursorsRef.current = snap.cursors ?? [null];
-      setHasNext(Boolean(snap.hasNext));
-
-      setFetchError("");
-      setLoading(false);
-      setShowSkeleton(false);
-
-      // ✅ restore PAGE
-      setPageIndex(snap.pageIndex ?? 0);
-      setDisplayPageIndex(snap.displayPageIndex ?? snap.pageIndex ?? 0);
-
-      // ✅ để CENTRAL FETCH skip 1 vòng
-      didRestoreFromStorageRef.current = true;
-
-      // ✅ restore SCROLL
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const el = scrollRef.current;
-          if (el && typeof snap.scrollTop === "number") {
-            el.scrollTop = snap.scrollTop;
-            lastScrollTopRef.current = snap.scrollTop;
-          }
-        });
-      });
+  if (!forceRefresh) {
+    const snap = readBackSnapshot();
+    if (snap) {
+      didApplyBackOnceRef.current = true; // ✅ chặn restore trùng
+      applyBackSnapshot(snap);
 
       try {
         sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
       } catch {}
 
-      finishHydrate();
       return;
-    } finally {
-      queueMicrotask(() => {
-        hydratingFromUrlRef.current = false;
-      });
     }
   }
-}
+} 
 
 // ✅ HARD RESET when reload (F5 / pull-to-refresh)
 if (isReloadRef.current) {
@@ -1314,7 +1279,6 @@ useEffect(() => {
   };
 }, [applyBackSnapshot, readBackSnapshot]);
 
-
   // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
@@ -1324,19 +1288,7 @@ useEffect(() => {
   persistBlockedRef.current = true;
   skipNextFilterEffectRef.current = true;
 
-  // ✅ BACK SNAPSHOT restore (ưu tiên cao nhất)
-  const snap = readBackSnapshot();
-  if (snap) {
-  applyBackSnapshot(snap);
-
-  try {
-    sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
-  } catch {}
-
-  return;
-}
-
-  const url = readUrlState();
+    const url = readUrlState();
 
   // 1) ưu tiên restore từ sessionStorage
     let restored: PersistState | null = null;
@@ -1517,8 +1469,7 @@ if (lite) {
       return;
     }
 
-    const reqKey = `${filterSig}::${targetIndex}`;
-
+   const reqKey = `${lastFilterSigRef.current ?? ""}::${targetIndex}`;
 // chặn gọi trùng khi đang bay (theo filter + page)
 if (inFlightRef.current[reqKey]) return;
 inFlightRef.current[reqKey] = true;
@@ -1586,7 +1537,7 @@ inFlightRef.current[reqKey] = true;
         const nextIdx = targetIndex + 1;
 
         const notFetchedYet = pagesRef.current[nextIdx] === undefined;
-        const nextReqKey = `${filterSig}::${nextIdx}`;
+       const nextReqKey = `${lastFilterSigRef.current ?? ""}::${nextIdx}`;
         const notInFlight = !inFlightRef.current[nextReqKey];
 
         if (notFetchedYet && notInFlight) {
@@ -1960,22 +1911,35 @@ useEffect(() => {
   return (
     <div className="flex flex-col h-screen">
       <div ref={scrollRef} className="flex-1 overflow-y-auto pb-24 bg-gray-200">
-        <header className="relative z-50 h-[200px] md:h-[300px]">
+                <header className="relative z-50 h-[140px] sm:h-[160px] md:h-[220px]">
           <div className="absolute inset-0 overflow-hidden">
             <img
               src="/hero.jpg"
-              alt="KL.G"
+              alt="The Room"
               className="absolute inset-0 w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-black/10" />
+            <div className="absolute inset-0 bg-black/30" />
           </div>
 
-          <div className="absolute bottom-4 left-4 md:bottom-8 md:left-8 z-[1000] flex flex-col items-start gap-3">
-            <h1 className="text-4xl md:text-5xl font-bold text-white">KL.G</h1>
+          <div className="absolute left-0 right-0 top-0 z-[1000] pt-0.5 px-2 md:pt-3 md:px-5">
+            <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between">
+              <div className="flex items-center gap-1">
+                <LogoIntroButton logoSrc="/logo.png" />
 
-            {/* anchor cho AuthControls portal */}
-            <div className="relative z-[1000]">
-              <div id="auth-anchor" />
+                <div className="leading-tight text-white">
+                  <div className="text-base md:text-lg font-semibold">
+                    The Room
+                  </div>
+                  <div className="text-xs md:text-sm text-white/85">
+                    Cho thuê căn hộ &amp; phòng trọ tại TP.HCM
+                  </div>
+                </div>
+              </div>
+
+              {/* anchor cho AuthControls portal (GIỮ NGUYÊN) */}
+              <div className="relative z-[1000] whitespace-nowrap">
+                <div id="auth-anchor" />
+              </div>
             </div>
           </div>
         </header>
