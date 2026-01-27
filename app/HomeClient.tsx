@@ -6,7 +6,8 @@ import RoomList from "@/components/RoomList";
 import Pagination from "@/components/Pagination";
 import { fetchRooms, type UpdatedDescCursor } from "@/lib/fetchRooms";
 import { supabase } from "@/lib/supabase";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
 
@@ -34,17 +35,16 @@ const QS = {
 
 const LIST_SEP = ",";
 
+// URLSearchParams đã tự encode/decode rồi => không encode/decode thủ công nữa
 function parseList(v: string | null) {
   if (!v) return [];
-  return v
-    .split(LIST_SEP)
-    .map((x) => decodeURIComponent(x))
-    .filter(Boolean);
+  return v.split(LIST_SEP).map((x) => x.trim()).filter(Boolean);
 }
 
 function toListParam(arr: string[]) {
-  return arr.map((x) => encodeURIComponent(x)).join(LIST_SEP);
+  return arr.map((x) => String(x).trim()).filter(Boolean).join(LIST_SEP);
 }
+
 const PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
 
 const HOME_BACK_HINT_KEY = "HOME_BACK_HINT_V1";
@@ -137,6 +137,8 @@ const HomeClient = ({
 }: InitialProps) => {
 
   const pathname = usePathname();
+  const router = useRouter();
+
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const listQsRef = useRef<string>("");        // qs ổn định của list
   const didRestoreFromStorageRef = useRef(false);
@@ -245,6 +247,7 @@ useEffect(() => {
   didHardReloadRef.current = true;
 }, []);
 
+
   const cursorsRef = useRef<(string | UpdatedDescCursor | null)[]>(
     initialRooms?.length ? [null, initCursor] : [null]
   );
@@ -343,20 +346,21 @@ const persistBlockedRef = useRef(false);
   return out.toString();
 }
 
-  const replaceUrlShallow = useCallback(
+const replaceUrlShallow = useCallback(
   (nextQs: string) => {
     const currentQs = window.location.search.replace(/^\?/, "");
     if (nextQs === currentQs) return;
 
     const url = nextQs ? `${pathname}?${nextQs}` : pathname;
-    window.history.replaceState(window.history.state, "", url);
+
+    // ✅ App Router-safe: để Next cập nhật router state đúng, tránh back bị rớt query
+    router.replace(url, { scroll: false });
 
     // ✅ luôn giữ qs ổn định của Home list
     listQsRef.current = nextQs;
   },
-  [pathname]
+  [pathname, router]
 );
-
 
   const readUrlState = useCallback(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -623,10 +627,21 @@ const onVisibility = () => {
 }, [persistNow, writeBackSnapshotNow]);
 
 
-const onPointerDownCapture = useCallback(
-  (ev: PointerEvent) => {
+const lastNavCaptureTsRef = useRef(0);
+
+const onNavToDetailCapture = useCallback(
+  (ev: Event) => {
+    // ✅ chặn double/triple fire (touchstart + pointerdown + mousedown)
+    const now = Date.now();
+    if (now - lastNavCaptureTsRef.current < 250) return;
+    lastNavCaptureTsRef.current = now;
+
+    // ✅ nếu là MouseEvent: chỉ nhận click chuột trái
+    const me = ev as MouseEvent;
+    if (typeof me.button === "number" && me.button !== 0) return;
+
     const target = ev.target as HTMLElement | null;
-    const a = target?.closest("a");
+    const a = target?.closest?.("a");
     if (!a) return;
 
     const href = a.getAttribute("href");
@@ -642,30 +657,43 @@ const onPointerDownCapture = useCallback(
     writeLiteNow();
     persistNow();
 
-  // hint để lần back về restore (đoạn này dùng ở hydrate)
-  try {
-    const qsRaw = window.location.search.replace(/^\?/, "");
-    const qsCanonical = canonicalQs(qsRaw);
+    // hint để lần back về restore (dùng ở hydrate)
+    try {
+      const qsRaw = window.location.search.replace(/^\?/, "");
+      const qsCanonical = canonicalQs(qsRaw);
 
-    sessionStorage.setItem(
-      HOME_BACK_HINT_KEY,
-      JSON.stringify({
-        ts: Date.now(),
-        qs: qsCanonical, // ✅ không dùng listQsRef để tránh stale
-      })
-    );
-  } catch {}
+      sessionStorage.setItem(
+        HOME_BACK_HINT_KEY,
+        JSON.stringify({
+          ts: Date.now(),
+          qs: qsCanonical, // ✅ không dùng listQsRef để tránh stale
+        })
+      );
+    } catch {}
+  },
+  [persistNow, writeLiteNow, writeBackSnapshotNow]
+);
 
-    },
-    [persistNow, writeLiteNow, writeBackSnapshotNow]
-  );
+useEffect(() => {
+  // ✅ pointerdown là chuẩn (Chrome/Edge/đa số)
+  document.addEventListener("pointerdown", onNavToDetailCapture, true);
 
-  useEffect(() => {
-    document.addEventListener("pointerdown", onPointerDownCapture, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDownCapture, true);
-    };
-  }, [onPointerDownCapture]);
+  // ✅ fallback cho Safari/iOS/webview khi pointer events không ổn định
+  document.addEventListener("mousedown", onNavToDetailCapture, true);
+
+  // ✅ touchstart passive để không ảnh hưởng scroll
+  document.addEventListener("touchstart", onNavToDetailCapture, {
+    capture: true,
+    passive: true,
+  } as AddEventListenerOptions);
+
+  return () => {
+    document.removeEventListener("pointerdown", onNavToDetailCapture, true);
+    document.removeEventListener("mousedown", onNavToDetailCapture, true);
+    document.removeEventListener("touchstart", onNavToDetailCapture, true as any);
+  };
+}, [onNavToDetailCapture]);
+
 
 useEffect(() => {
   const saveSnapshot = () => {
@@ -707,24 +735,74 @@ useEffect(() => {
   };
 }, [writeBackSnapshotNow, writeLiteNow, persistNow]);
 
-  // ================== RESET PAGINATION ==================
+    // ================== RESET PAGINATION ==================
   const resetPagination = useCallback((keepPage: number = 0) => {
-  // ✅ chỉ reset UI/cache, KHÔNG “kill request” bằng requestId
-  inFlightRef.current = {};
+    // ✅ chỉ reset UI/cache, KHÔNG “kill request” bằng requestId
+    inFlightRef.current = {};
 
-  pagesRef.current = [];
-  setPages([]);
+    pagesRef.current = [];
+    setPages([]);
 
-  setPageIndex(keepPage);
-  setDisplayPageIndex(keepPage);
+    setPageIndex(keepPage);
+    setDisplayPageIndex(keepPage);
 
-  cursorsRef.current = [null];
-  setHasNext(true);
-  setFetchError("");
-  setLoading(false);
-  setShowSkeleton(true);
-}, []);
+    cursorsRef.current = [null];
+    setHasNext(true);
+    setFetchError("");
+    setLoading(false);
+    setShowSkeleton(true);
+  }, []);
 
+  // ✅ FILTER CHANGE: mỗi lần đổi filter (bao gồm moveFilter) -> về page 0 + fetch lại
+  useEffect(() => {
+    // skip 1 nhịp sau hydrate/restore/back để khỏi reset nhầm
+    if (skipNextFilterEffectRef.current) {
+      skipNextFilterEffectRef.current = false;
+      lastFilterSigRef.current = filterSig;
+      return;
+    }
+
+    if (filterSig === lastFilterSigRef.current) return;
+    lastFilterSigRef.current = filterSig;
+
+    // bump version để drop response cũ
+    filtersVersionRef.current += 1;
+
+    // reset UI/cache
+    resetPagination(0);
+
+    // sync URL về page 0 (để back/forward chuẩn)
+    const nextQs = buildQs({
+      q: appliedSearch.trim(),
+      min: minPriceApplied,
+      max: maxPriceApplied,
+      d: selectedDistricts,
+      t: selectedRoomTypes,
+      m: moveFilter,
+      s: sortMode,
+      st: statusFilter,
+      p: 0,
+    });
+    replaceUrlShallow(nextQs);
+
+    // fetch page 0
+    queueMicrotask(() => {
+      fetchPageRef.current(0);
+    });
+  }, [
+    filterSig,
+    resetPagination,
+    buildQs,
+    replaceUrlShallow,
+    appliedSearch,
+    minPriceApplied,
+    maxPriceApplied,
+    selectedDistricts,
+    selectedRoomTypes,
+    moveFilter,
+    sortMode,
+    statusFilter,
+  ]);
 
   // helper: end hydration after 2 frames (đảm bảo FILTER CHANGE effect không chạy nhầm)
   const endHydrationAfterTwoFrames = useCallback(() => {
@@ -1482,7 +1560,6 @@ inFlightRef.current[reqKey] = true;
       setFetchError("");
     }
 
-
     try {
       const cursorForThisPage = cursorsRef.current[targetIndex] ?? null;
 
@@ -1911,7 +1988,7 @@ useEffect(() => {
   return (
     <div className="flex flex-col h-screen">
       <div ref={scrollRef} className="flex-1 overflow-y-auto pb-24 bg-gray-200">
-                <header className="relative z-50 h-[140px] sm:h-[160px] md:h-[220px]">
+       <header className="relative z-50 h-[140px] sm:h-[160px] md:h-[220px]">
           <div className="absolute inset-0 overflow-hidden">
             <img
               src="/hero.jpg"
@@ -1921,23 +1998,22 @@ useEffect(() => {
             <div className="absolute inset-0 bg-black/30" />
           </div>
 
-          <div className="absolute left-0 right-0 top-0 z-[1000] pt-0.5 px-2 md:pt-3 md:px-5">
-            <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between">
-              <div className="flex items-center gap-1">
+          <div className="absolute left-0 right-0 top-0 z-[1000] pt-2 px-3 md:pt-4 md:px-8">
+            <div className="mx-auto flex w-full max-w-[1200px] items-start justify-between">
+              <div className="flex items-start gap-2 md:gap-3">
                 <LogoIntroButton logoSrc="/logo.png" />
 
-                <div className="leading-tight text-white">
-                  <div className="text-base md:text-lg font-semibold">
+                <div className="mt-[2px] leading-tight text-white">
+                  <div className="text-base md:text-lg font-semibold whitespace-nowrap">
                     The Room
                   </div>
                   <div className="text-xs md:text-sm text-white/85">
-                    Cho thuê căn hộ &amp; phòng trọ tại TP.HCM
+                    Thuê căn hộ &amp; phòng trọ tại TP.HCM
                   </div>
                 </div>
               </div>
 
-              {/* anchor cho AuthControls portal (GIỮ NGUYÊN) */}
-              <div className="relative z-[1000] whitespace-nowrap">
+              <div className="relative z-[1000] whitespace-nowrap self-start">
                 <div id="auth-anchor" />
               </div>
             </div>

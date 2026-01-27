@@ -18,16 +18,16 @@ export default async function HomePage({
   const { data: userRes } = await supabase.auth.getUser();
   const user = userRes?.user ?? null;
 
-  let adminLevel: 0 | 1 | 2 = 0;
-  if (user?.id) {
-    const { data } = await supabase
-      .from("admin_users")
-      .select("level")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const lvl = Number((data as any)?.level ?? 0);
+    let adminLevel: 0 | 1 | 2 = 0;
+
+  try {
+    const { data: lvlData } = await supabase.rpc("get_my_admin_level");
+    const lvl = Number(lvlData ?? 0);
     adminLevel = (lvl === 2 ? 2 : lvl === 1 ? 1 : 0) as 0 | 1 | 2;
+  } catch {
+    adminLevel = 0;
   }
+
 
   // 2) Fetch filter options on server (optional but faster first paint)
   let initialDistricts: string[] = [];

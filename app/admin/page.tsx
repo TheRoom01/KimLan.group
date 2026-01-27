@@ -16,51 +16,34 @@ export default async function AdminPage() {
   }
 
   // 2) Only level 1 can access /admin
-  const { data: admin, error: adminErr } = await supabase
-    .from("admin_users")
-    .select("level")
-    .eq("user_id", user.id)
-    .maybeSingle();
+ const { data: levelData, error: levelErr } =
+  await supabase.rpc("get_my_admin_level");
 
-  const level = Number((admin as any)?.level ?? 0);
-  if (adminErr || level !== 1) {
-    redirect("/");
-  }
+const level = Number(levelData ?? 0);
+
+if (levelErr || level !== 1) {
+  redirect("/");
+}
 
   // 3) SSR initial table page (page=1, search="")
   const from = 0;
   const to = PAGE_SIZE - 1;
+  const offset = from;
 
-  const selectCols = [
-    "id",
-    "created_at",
-    "updated_at",
-    "room_code",
-    "house_number",
-    "address",
-    "ward",
-    "district",
-    "room_type",
-    "status",
-    "link_zalo",
-    "zalo_phone",
-    "price",
-  ].join(",");
+const { data: rpcData, error: rpcErr } =
+  await supabase.rpc("fetch_admin_rooms_l1_v1", {
+    p_limit: PAGE_SIZE,
+    p_offset: offset,
+  });
 
-  const { data, count, error } = await supabase
-    .from("room_full_admin_l1")
-    .select(selectCols, { count: "exact" })
-    .order("updated_at", { ascending: false })
-    .order("created_at", { ascending: false })
-    .range(from, to);
+if (rpcErr) {
+  console.error("fetch_admin_rooms_l1_v1 error:", rpcErr);
+  return <AdminClient initialRooms={[]} initialTotal={0} />;
+}
 
-  if (error) {
-    // Keep page accessible; show empty list + total 0 on error.
-    return <AdminClient initialRooms={[]} initialTotal={0} />;
-  }
+const rooms = ((rpcData as any)?.data ?? []) as any[];
+const total = Number((rpcData as any)?.total ?? 0);
 
-  const rooms = ((data ?? []) as any) as any[];
-  const total = count ?? 0;
+return <AdminClient initialRooms={rooms} initialTotal={total} />;
 
-  return <AdminClient initialRooms={rooms as any} initialTotal={total} />;
 }

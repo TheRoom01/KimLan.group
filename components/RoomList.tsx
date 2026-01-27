@@ -32,26 +32,27 @@ const RoomList = ({
   // -> RoomList KHÔNG tự suy luận từ `loading && roomsToRender.length===0` nữa để tránh kẹt Skeleton
   const shouldShowSkeleton = showSkeleton;
 
-  return (
-    <main className="container mx-auto px-4 pb-10">
-      {shouldShowSkeleton ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 12 }).map((_, i) => (
-            <RoomCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : roomsToRender.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {roomsToRender.map((room, index) => (
-            <RoomCard key={room.id} room={room} adminLevel={adminLevel} index={index} />
-          ))}
+ return (
+  <main className="w-full max-w-screen-2xl mx-auto px-4 pb-10">
+    {shouldShowSkeleton ? (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        {Array.from({ length: 12 }).map((_, i) => (
+          <RoomCardSkeleton key={i} />
+        ))}
+      </div>
+    ) : roomsToRender.length > 0 ? (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        {roomsToRender.map((room, index) => (
+          <RoomCard key={room.id} room={room} adminLevel={adminLevel} index={index} />
+        ))}
 
-        </div>
-      ) : (
-        <div className="py-6 text-gray-600">Không có phòng phù hợp.</div>
-      )}
-    </main>
-  );
+      </div>
+    ) : (
+      <div className="py-6 text-gray-600">Không có phòng phù hợp.</div>
+    )}
+  </main>
+);
+
 };
 
 export default RoomList;

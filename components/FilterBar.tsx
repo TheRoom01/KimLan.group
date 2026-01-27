@@ -208,14 +208,14 @@ const FilterBar = ({
   };
 
   return (
-    <section className="container mx-auto px-4 py-4 space-y-3">
-      {/* Search */}
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Tìm theo địa chỉ..."
-        className="w-full rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2"
-      />
+  <section className="w-full max-w-screen-2xl mx-auto px-4 py-4 space-y-3">
+    {/* Search */}
+    <input
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+      placeholder="Tìm theo địa chỉ..."
+      className="w-full rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2"
+    />
 
       {/* Overlay bắt click-outside */}
       {openFilter !== null && (
@@ -234,8 +234,7 @@ const FilterBar = ({
           openFilter === "district" ? "border-black" : "border-gray-300"
         }`}
       >
-
-                            Quận
+                               Quận
                             {selectedDistricts.length > 0 && <span className="text-xs text-gray-500">({selectedDistricts.length})</span>}
                           </button>
 
@@ -285,6 +284,7 @@ const FilterBar = ({
               </div>
             )}
           </div>
+    
 
      {/* LOẠI PHÒNG */}
       <div className="relative z-50">
@@ -419,8 +419,6 @@ const FilterBar = ({
     </div>
   )}
 </div>
-
-
         </div>
 
    {/* RIGHT: Sắp Xếp */}
@@ -559,8 +557,8 @@ const FilterBar = ({
       </div>
       {/* ✅ TOTAL ROOMS – đặt ngay dưới slider giá */}
         {typeof total === "number" && (
-        <div className="mt-1 text-sm text-gray-700 text-center">
-          Tổng:{" "}
+        <div className="mt-3 text-sm text-gray-800 text-center">
+          Tổng số phòng:{" "}
           <span className="font-medium">
             {total.toLocaleString("vi-VN")}
           </span>{" "}

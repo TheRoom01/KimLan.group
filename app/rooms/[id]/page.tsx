@@ -381,13 +381,10 @@ async function handleShare() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("admin_users")
-        .select("level")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc("get_my_admin_level");
+      if (error) throw error;
 
-      const rawLevel = Number(data?.level);
+      const rawLevel = Number(data ?? 0);
       const level: 0 | 1 | 2 =
         rawLevel === 1 || rawLevel === 2 ? rawLevel : 0;
 
@@ -420,12 +417,11 @@ useEffect(() => {
   setRoom(null);
 
   (async () => {
-    try {
-      const role: 0 | 1 | 2 = adminLevel === 1 ? 1 : adminLevel === 2 ? 2 : 0;
-
-         const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
-        p_role: role,
+        try {
+      // ✅ Security: role được tính trong RPC theo auth.uid(); FE không gửi role nữa (giữ param để tương thích)
+      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
         p_id: id,
+        p_role: 0,
       });
 
       // ✅ nếu không phải request mới nhất -> bỏ qua
@@ -448,8 +444,7 @@ useEffect(() => {
       }
     }
   })();
-}, [id, adminLevel]);
-
+}, [id]);
 
  const detail =
   (room?.room_detail ??

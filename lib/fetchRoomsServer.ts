@@ -54,6 +54,7 @@ const ADMIN_L1_KEYS = [
   "chinh_sach",
   "room_detail",
   "link_zalo",
+   "zalo_phone",
 ] as const;
 
 const PUBLIC_KEYS = [
@@ -142,13 +143,23 @@ export async function fetchRoomsServer(
   const cursorId: string | null =
     cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
 
-  const cursorUpdatedAt: string | null = cursorObj?.updated_at ?? null;
-  const cursorCreatedAt: string | null = (cursorObj as any)?.created_at ?? null;
+  const toIsoOrNull = (v: unknown): string | null => {
+  if (!v) return null;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "string") {
+    // nếu đã là ISO thì giữ nguyên; nếu là string thường thì cố parse
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+};
 
+const cursorUpdatedAt: string | null = toIsoOrNull(cursorObj?.updated_at);
+const cursorCreatedAt: string | null = toIsoOrNull((cursorObj as any)?.created_at);
 
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
-  p_role: Number(role) || 0,
+  p_role: 0,
   p_limit: Number(limit) || 20,
 
   // 2) cursor (uuid) — dùng cho sort giá + fallback
@@ -160,7 +171,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
   p_districts: Array.isArray(districts) && districts.length ? districts : null,
   p_room_types: Array.isArray(effectiveRoomTypes) && effectiveRoomTypes.length ? effectiveRoomTypes : null,
-  p_move: (move ?? "").trim() ? String(move).trim() : null,
+  p_move: move === "elevator" || move === "stairs" ? move : null,
 
   // 4) statuses
   p_statuses: status ? [String(status)] : null,
@@ -181,14 +192,10 @@ p_cursor_id: cursorId ? String(cursorId) : null,
   // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null, total_count?: number }
   const rows = ((data as any)?.data ?? []) as any[];
 
-  const projected =
-    role === 1
-      ? rows.map((r) => pick(r, ADMIN_L1_KEYS))
-      : role === 2
-      ? rows.map((r) => pick(r, ADMIN_L2_KEYS))
-      : rows.map((r) => pick(r, PUBLIC_KEYS));
-
-  const rawNext = (data as any)?.nextCursor ?? null;
+  // ✅ Cách A: DB/RPC đã tự tính quyền theo auth.uid() rồi,
+// nên không dựa vào adminLevel (tránh bug vừa login vẫn anon)
+const projected = rows;
+ const rawNext = (data as any)?.nextCursor ?? null;
 
  const nextCursor: string | UpdatedDescCursor | null =
   rawNext && typeof rawNext === "object"

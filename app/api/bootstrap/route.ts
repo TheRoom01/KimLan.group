@@ -11,7 +11,7 @@ export async function GET() {
   let adminLevel: 0 | 1 | 2 = 0;
   if (user?.id) {
     const { data } = await supabase
-      .from("admin_users")
+      .rpc("get_my_admin_level")
       .select("level")
       .eq("user_id", user.id)
       .maybeSingle();
