@@ -81,6 +81,11 @@ if (canUseCache) {
       setErrorMsg(null);
 
       const prevCursor = cursorMapRef.current.get(p - 1) ?? null;
+console.log("[ADMIN][REQ]", {
+  page: p,
+  search: q,
+  prevCursor: cursorMapRef.current.get(p - 1),
+});
 
       const res = await supabase.rpc("fetch_admin_rooms_l1_v1", {
         p_search: q.trim() || null,
@@ -117,6 +122,13 @@ if (canUseCache) {
       setRooms(rows);
       setTotal(total);
       cacheRef.current.set(key, { rooms: rows, total });
+
+      console.log("[ADMIN][RES]", {
+  page: p,
+  nextCursor: res.data?.nextCursor,
+  firstRow: res.data?.data?.[0],
+});
+
 
     } catch (e: any) {
       if (mySeq !== reqSeqRef.current) return;
@@ -553,6 +565,7 @@ const linkBtn: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
 };
+
 
 
 
