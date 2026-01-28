@@ -293,84 +293,110 @@ for (const f of okFiles) {
         .replace(/\s+/g, '-')
         .replace(/[^a-zA-Z0-9-_]/g, '') || 'unknown'
 
-    const uploadedMedia: { type: 'image' | 'video'; url: string; path: string }[] = []
+    // ===== helper: run pool concurrency =====
+async function runPool<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+) {
+  const executing = new Set<Promise<void>>()
 
-    for (const file of okFiles) {
-      const isVideo = file.type.startsWith('video/')
-      const isImage = file.type.startsWith('image/')
+  for (const item of items) {
+    const p = worker(item).finally(() => executing.delete(p))
+    executing.add(p)
 
-      // Ảnh: convert WebP 1600px, target ~500KB
-      let uploadFile: File = file
-      if (isImage) {
-        const baseName = (file.name || 'image').replace(/\.[^.]+$/, '')
-        uploadFile = await compressImageWebp(file, {
-          max: 1600,
-          targetBytes: 500 * 1024,
-          baseName,
-        })
-      }
-
-      // ✅ upload qua API R2 (server) — không dùng supabase.storage nữa
-      const fd = new FormData()
-      fd.append('room_id', `room-${safeRoomCode}`)
-      fd.append('file', uploadFile)
-      
-      const res = await fetch('/api/upload/r2', {
-        method: 'POST',
-        body: fd,
-      })
-
-      if (!res.ok) {
-        let msg = 'Upload failed'
-        try {
-          const j = await res.json()
-          msg = j?.error || j?.message || msg
-        } catch {}
-        throw new Error(msg)
-      }
-
-      const j = await res.json()
-      const publicUrl = String(j?.url || '').trim()
-      if (!publicUrl) throw new Error('Upload failed: missing url')
-
-      uploadedMedia.push({
-        type: isVideo ? 'video' : 'image',
-        url: publicUrl,
-        path: publicUrl,
-      })
-
-      // Nếu đây là ảnh đầu tiên của phòng (cover) thì tạo thumb.webp và upload với fixed_name
-      if (isImage) {
-        const existingImagesCount = Array.isArray((roomForm as any)?.media)
-          ? (roomForm as any).media.filter((m: any) => m?.type === 'image').length
-          : 0
-
-        // cover = ảnh đầu tiên (phòng chưa có ảnh và batch này vừa upload ảnh đầu)
-        const uploadedImagesCount = uploadedMedia.filter((m) => m.type === 'image').length
-
-        if (existingImagesCount === 0 && uploadedImagesCount === 1) {
-          const thumbFile = await makeThumbWebp(file, { max: 600, targetBytes: 250 * 1024 })
-
-          const fdThumb = new FormData()
-          fdThumb.append('room_id', `room-${safeRoomCode}`)
-          fdThumb.append('fixed_name', 'thumb.webp')
-          fdThumb.append('file', thumbFile)
-
-          const resThumb = await fetch('/api/upload/r2', { method: 'POST', body: fdThumb })
-          if (!resThumb.ok) {
-            // không chặn toàn bộ flow nếu thumb lỗi, nhưng có log để debug
-            console.warn('Upload thumb.webp failed')
-          }
-        }
-      }
-
+    if (executing.size >= limit) {
+      await Promise.race(executing)
     }
+  }
 
-    setRoomForm((prev: any) => {
-      const prevMedia = Array.isArray(prev.media) ? prev.media : []
-      const nextMedia = [...prevMedia, ...uploadedMedia]
-      return { ...prev, media: nextMedia }
+  await Promise.all(executing)
+}
+
+// ===== compute existing images BEFORE upload (stable) =====
+const existingImagesCount = Array.isArray((roomForm as any)?.media)
+  ? (roomForm as any).media.filter((m: any) => m?.type === 'image').length
+  : 0
+
+// thumb chỉ tạo nếu phòng trước đó chưa có ảnh, và batch này có ít nhất 1 ảnh
+const firstImageFileInBatch = okFiles.find((f) => f.type.startsWith('image/')) ?? null
+const shouldMakeThumb = existingImagesCount === 0 && Boolean(firstImageFileInBatch)
+
+// ===== upload concurrently, update UI incrementally =====
+const CONCURRENCY = 3
+let thumbStarted = false
+
+await runPool(okFiles, CONCURRENCY, async (file) => {
+  const isVideo = file.type.startsWith('video/')
+  const isImage = file.type.startsWith('image/')
+
+  // Ảnh: convert WebP 1600px, target ~500KB
+  let uploadFile: File = file
+  if (isImage) {
+    const baseName = (file.name || 'image').replace(/\.[^.]+$/, '')
+    uploadFile = await compressImageWebp(file, {
+      max: 1600,
+      targetBytes: 500 * 1024,
+      baseName,
     })
+  }
+
+  // ✅ upload qua API R2 (server)
+  const fd = new FormData()
+  fd.append('room_id', `room-${safeRoomCode}`)
+  fd.append('file', uploadFile)
+
+  const res = await fetch('/api/upload/r2', {
+    method: 'POST',
+    body: fd,
+  })
+
+  if (!res.ok) {
+    let msg = 'Upload failed'
+    try {
+      const j = await res.json()
+      msg = j?.error || j?.message || msg
+    } catch {}
+    throw new Error(msg)
+  }
+
+  const j = await res.json()
+  const publicUrl = String(j?.url || '').trim()
+  if (!publicUrl) throw new Error('Upload failed: missing url')
+
+  const mediaItem = {
+    type: isVideo ? 'video' : 'image',
+    url: publicUrl,
+    path: publicUrl,
+  } as const
+
+  // ✅ UI update ngay (không đợi xong hết)
+  setRoomForm((prev: any) => {
+    const prevMedia = Array.isArray(prev.media) ? prev.media : []
+    return { ...prev, media: [...prevMedia, mediaItem] }
+  })
+
+  // ✅ thumb.webp: chỉ 1 lần, và đúng “ảnh đầu tiên của phòng”
+  if (shouldMakeThumb && isImage && file === firstImageFileInBatch && !thumbStarted) {
+    thumbStarted = true
+    try {
+      const thumbFile = await makeThumbWebp(file, { max: 600, targetBytes: 250 * 1024 })
+
+      const fdThumb = new FormData()
+      fdThumb.append('room_id', `room-${safeRoomCode}`)
+      fdThumb.append('fixed_name', 'thumb.webp')
+      fdThumb.append('file', thumbFile)
+
+      const resThumb = await fetch('/api/upload/r2', { method: 'POST', body: fdThumb })
+      if (!resThumb.ok) {
+        console.warn('Upload thumb.webp failed')
+      }
+    } catch (e) {
+      console.warn('Upload thumb.webp failed', e)
+    }
+  }
+})
+
   } catch (e: any) {
     console.error('Upload failed:', e)
     alert(e?.message ?? 'Upload failed')
