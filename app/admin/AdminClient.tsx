@@ -13,12 +13,13 @@ type AdminClientProps = {
   initialTotal: number;
 };
 
+
 export default function AdminClient({ initialRooms, initialTotal }: AdminClientProps) {
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-
+const [debug, setDebug] = useState<any[]>([]);
   const [openModal, setOpenModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
@@ -81,11 +82,18 @@ if (canUseCache) {
       setErrorMsg(null);
 
       const prevCursor = cursorMapRef.current.get(p - 1) ?? null;
-console.log("[ADMIN][REQ]", {
-  page: p,
-  search: q,
-  prevCursor: cursorMapRef.current.get(p - 1),
-});
+setDebug((prev) => [
+  ...prev.slice(-19),
+  {
+    phase: "RES",
+    t: new Date().toISOString(),
+    page: p,
+    nextCursor: payload.nextCursor ?? null,
+    firstRow: rows?.[0] ?? null,
+    rowCount: rows?.length ?? 0,
+    totalCount: total,
+  },
+]);
 
       const res = await supabase.rpc("fetch_admin_rooms_l1_v1", {
         p_search: q.trim() || null,
@@ -123,10 +131,11 @@ console.log("[ADMIN][REQ]", {
       setTotal(total);
       cacheRef.current.set(key, { rooms: rows, total });
 
-      console.log("[ADMIN][RES]", {
+   setDebug({
+  phase: "RES",
   page: p,
-  nextCursor: res.data?.nextCursor,
-  firstRow: res.data?.data?.[0],
+  nextCursor: res.data?.nextCursor ?? null,
+  firstRow: res.data?.data?.[0] ?? null,
 });
 
 
@@ -197,14 +206,13 @@ const openZaloUX = useCallback((raw?: string | null) => {
             placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
             value={search}
             onChange={(e) => {
-              const v = e.target.value;
-             setSearch(v);
-            setPage(1);
-            cursorMapRef.current.clear();
-            cacheRef.current.clear();
-              cursorMapRef.current.clear();   // 🔥 BẮT BUỘC
-              cacheRef.current.clear();       // 🔥 nên clear luôn cho an toàn
-            }}
+  const v = e.target.value;
+  setSearch(v);
+  setPage(1);
+  cursorMapRef.current.clear();
+  cacheRef.current.clear();
+  setDebug([]); // reset log khi đổi search
+}}
 
             style={searchInput}
           />
@@ -394,6 +402,30 @@ const openZaloUX = useCallback((raw?: string | null) => {
           {toast}
         </div>
       )}
+      {debug && (
+  <pre
+    style={{
+      position: "fixed",
+      left: 8,
+      right: 8,
+      bottom: 8,
+      maxHeight: "40vh",
+      overflow: "auto",
+      background: "#000",
+      color: "#0f0",
+      fontSize: 12,
+      padding: 8,
+      zIndex: 9999,
+      borderRadius: 8,
+      whiteSpace: "pre-wrap",
+    }}
+  >
+   {debug.length > 0 && (
+  <pre style={{ /* giữ nguyên style */ }}>
+    {JSON.stringify(debug, null, 2)}
+  </pre>
+)}
+
     </main>
   );
 }
@@ -565,6 +597,7 @@ const linkBtn: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
 };
+
 
 
 
