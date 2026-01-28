@@ -50,6 +50,7 @@ export type RoomDetail = {
   has_elevator: boolean
   has_stairs: boolean
   fingerprint_lock: boolean
+   allow_pet?: boolean
   allow_cat: boolean
   allow_dog: boolean
   has_parking: boolean
@@ -62,4 +63,5 @@ export type RoomDetail = {
   private_dryer: boolean
 
   other_amenities: string
+   detail_json?: any | null
 }

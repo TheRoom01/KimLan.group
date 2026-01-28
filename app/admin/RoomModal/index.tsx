@@ -46,6 +46,7 @@ const defaultDetailForm: RoomDetail = {
   has_elevator: false,
   has_stairs: false,
   fingerprint_lock: false,
+  allow_pet: false,
   allow_cat: false,
   allow_dog: false,
   has_parking: false,
@@ -58,6 +59,7 @@ const defaultDetailForm: RoomDetail = {
   private_dryer: false,
 
   other_amenities: '',
+  detail_json: null,
 }
 
 /* ================= PROPS ================= */
@@ -378,18 +380,33 @@ for (const f of okFiles) {
 }
 
  async function tryAutofillByAddress(house: string, addr: string, opts?: { force?: boolean }) {
-  const house_number = house.trim();
-  const address = addr.trim();
-  if (!house_number || !address) return;
+  const house_number = String(house ?? "").trim();
+  const address = String(addr ?? "").trim();
+  if (!house_number || !address) {
+    if (opts?.force) onNotify?.("Nhập đủ Số nhà + Địa chỉ trước khi đồng bộ.");
+    return;
+  }
 
+  // Auto (blur) tránh sync lại cùng key; nhưng force thì luôn chạy
   const key = `${house_number}__${address}`;
   if (!opts?.force && lastAutofillKeyRef.current === key) return;
   lastAutofillKeyRef.current = key;
 
-  // 1) tìm phòng mẫu gần nhất (KHÔNG lấy chính phòng đang edit)
+  // ✅ Bấm nút Đồng bộ nhà: luôn hỏi confirm (dù thêm mới hay edit)
+  if (opts?.force) {
+    const ok = window.confirm(
+      `Đồng bộ theo nhà này?\nSố nhà: ${house_number}\nĐịa chỉ: ${address}\n\nSẽ ghi đè các field đã chọn theo PHÒNG MỚI NHẤT.`
+    );
+    if (!ok) {
+      onNotify?.("Đã huỷ đồng bộ.");
+      return;
+    }
+  }
+
+  // 1) lấy PHÒNG MỚI NHẤT theo house_number + address (không quan tâm room_details)
   let q = supabase
     .from("rooms")
-    .select("id, ward, district, link_zalo, chinh_sach")
+    .select("id, ward, district, link_zalo, zalo_phone, chinh_sach, updated_at")
     .eq("house_number", house_number)
     .eq("address", address)
     .order("updated_at", { ascending: false })
@@ -397,52 +414,60 @@ for (const f of okFiles) {
 
   if (editingRoom?.id) q = q.neq("id", editingRoom.id);
 
-  const { data: roomSample, error } = await q.maybeSingle();
+  const { data: roomSample, error: roomErr } = await q.maybeSingle();
 
-  if (error || !roomSample) return;
-
-  // 2) lấy room_details của phòng mẫu
-  const { data: detailSample } = await supabase
-    .from("room_details")
-    .select(`
-      electric_fee_value, electric_fee_unit,
-      water_fee_value, water_fee_unit,
-      service_fee_value, service_fee_unit,
-      parking_fee_value, parking_fee_unit,
-      other_fee_value, other_fee_note,
-      has_elevator, has_stairs,
-      shared_washer, private_washer,
-      shared_dryer, private_dryer,
-      has_parking, has_basement,
-      fingerprint_lock,
-      allow_cat, allow_dog,
-      other_amenities
-    `)
-    .eq("room_id", roomSample.id)
-    .maybeSingle();
-
-  // 3) nếu đang edit thì hỏi confirm trước khi overwrite
-  const isEdit = Boolean(editingRoom?.id);
-  if (isEdit) {
-    const ok = window.confirm("Đồng bộ thông tin theo địa chỉ này? (Sẽ ghi đè dữ liệu hiện tại)");
-    if (!ok) return;
+  if (roomErr) {
+    onNotify?.(`Đồng bộ thất bại: ${roomErr.message}`);
+    return;
+  }
+  if (!roomSample) {
+    onNotify?.("Không tìm thấy phòng mới nhất trùng Số nhà + Địa chỉ để đồng bộ.");
+    return;
   }
 
-  // 4) OVERWRITE (cách 2)
+  // 2) lấy room_details của phòng mới nhất qua RPC (bypass RLS)
+const { data: rpcData, error: detailErr } = await supabase.rpc(
+  "fetch_room_detail_full_v1",
+  {
+    p_id: roomSample.id,
+    p_role: 0,
+  }
+)
+
+if (detailErr) {
+  onNotify?.(`Đồng bộ chi phí/tiện ích thất bại: ${detailErr.message}`)
+  // vẫn tiếp tục sync phần "nhà"
+}
+
+// RPC trả "room full", details có thể nằm ở nhiều key khác nhau
+const detailSample =
+  (rpcData as any)?.room_detail ??
+  (rpcData as any)?.room_details ??
+  (rpcData as any)?.detail ??
+  (rpcData as any)?.details ??
+  null
+
+
+  // 3) OVERWRITE theo phòng mới nhất
   setRoomForm((prev) => ({
     ...prev,
-    ward: roomSample.ward ?? "",
-    district: roomSample.district ?? "",
-    link_zalo: roomSample.link_zalo ?? "",
-    chinh_sach: roomSample.chinh_sach ?? "",
+    ward: (roomSample as any).ward ?? "",
+    district: (roomSample as any).district ?? "",
+    link_zalo: (roomSample as any).link_zalo ?? "",
+    zalo_phone: (roomSample as any).zalo_phone ?? "",
+    chinh_sach: (roomSample as any).chinh_sach ?? "",
   }));
 
-  if (detailSample) {
-    setDetailForm((prev) => ({
-      ...prev,
-      ...detailSample,
-    }));
+   // room_details: chỉ overwrite khi RPC không lỗi
+  if (!detailErr) {
+    if (detailSample) {
+      setDetailForm({ ...defaultDetailForm, ...(detailSample as any) });
+    } else {
+      setDetailForm(defaultDetailForm);
+    }
   }
+
+  onNotify?.("✅ Đã đồng bộ theo phòng mới nhất.");
 }
 
   /* ===== LOAD DATA WHEN EDIT ===== */
@@ -599,7 +624,19 @@ for (const f of okFiles) {
       if (error) throw error
       updatedRoom = data as Room
     } else {
-      const { data, error } = await supabase.from('rooms').insert(payload).select('*').single()
+      const newId =
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : undefined
+
+const insertData = newId ? { id: newId, ...payload } : payload
+
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert(insertData)
+    .select('*')
+    .single()
+
       if (error) throw error
       updatedRoom = data as Room
       roomId = (data as any)?.id

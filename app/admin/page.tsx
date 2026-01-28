@@ -34,6 +34,7 @@ const { data: rpcData, error: rpcErr } =
   await supabase.rpc("fetch_admin_rooms_l1_v1", {
     p_limit: PAGE_SIZE,
     p_offset: offset,
+    p_search: null,
   });
 
 if (rpcErr) {
