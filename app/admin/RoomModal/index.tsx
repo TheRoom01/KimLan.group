@@ -494,62 +494,53 @@ for (const f of okFiles) {
 
     })
 
-     // ✅ Fetch media thật từ room_media (thay cho rooms.media)
-    void (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('room_media')
-          .select('type,url,sort_order,is_cover')
-          .eq('room_id', editingRoom.id)
-          .order('sort_order', { ascending: true })
-
-        if (error) {
-          console.error('fetch room_media failed:', error)
-          return
-        }
-
-        const dbMedia = (Array.isArray(data) ? data : [])
-          .filter((x: any) => x?.url && (x?.type === 'image' || x?.type === 'video'))
-          .map((x: any) => ({
-            type: x.type,
-            url: x.url,
-            // giữ field path để UI khỏi lỗi nếu chỗ khác đang dùng path
-            path: x.url,
-          }))
-
-        setRoomForm((prev: any) => ({
-          ...prev,
-          media: dbMedia,
-        }))
-      } catch (e) {
-        console.error('fetch room_media exception:', e)
-      }
-    })()
-
-    ;(async () => {
-      const { data, error } = await supabase
-        .from('room_details')
-        .select('*')
-        .eq('room_id', editingRoom.id)
-        .maybeSingle()
+       // ✅ Load full room data via RPC (bypass RLS like /rooms/[id])
+  void (async () => {
+    try {
+      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+        p_id: editingRoom.id,
+        p_role: 0, // giữ param để tương thích; role thực tế tính theo auth.uid() ở DB
+      });
 
       if (error) {
-        setErrorMsg(error.message)
-        return
+        setErrorMsg(error.message);
+        return;
       }
 
-      if (data) {
-        const d: any = data
+      const room = (data ?? {}) as any;
 
-       setDetailForm({
-  ...defaultDetailForm,
-  ...(d as RoomDetail),
-}) 
-      
-      } else {
-        setDetailForm(defaultDetailForm)
-      }
-    })()
+      // 1) Media: ưu tiên room.media (nếu RPC trả), fallback image_urls
+      const mediaFromRpc = Array.isArray(room?.media)
+        ? room.media
+            .filter((m: any) => m?.url && (m?.type === "image" || m?.type === "video"))
+            .map((m: any) => ({ type: m.type, url: String(m.url), path: String(m.url) }))
+        : [];
+
+      const imageUrlsFallback = Array.isArray(room?.image_urls)
+        ? room.image_urls.map((u: any) => ({ type: "image", url: String(u), path: String(u) }))
+        : [];
+
+      const nextMedia = mediaFromRpc.length ? mediaFromRpc : imageUrlsFallback;
+
+      setRoomForm((prev: any) => ({
+        ...prev,
+        media: nextMedia,
+      }));
+
+      // 2) Detail: ưu tiên room.room_detail / room.room_details (như /rooms/[id])
+      const detail =
+        (room?.room_detail ??
+          room?.room_details ??
+          room?.detail ??
+          room?.details ??
+          null) as any;
+
+      setDetailForm(detail ? { ...defaultDetailForm, ...(detail as RoomDetail) } : defaultDetailForm);
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Load phòng thất bại");
+    }
+  })();
+
   }, [editingRoom])
 
   const requestClose = () => {
@@ -886,4 +877,5 @@ const btnSync: CSSProperties = {
   cursor: 'pointer',
   fontWeight: 600,
 }
+
 
