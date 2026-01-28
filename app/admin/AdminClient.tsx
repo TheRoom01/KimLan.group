@@ -34,6 +34,15 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
   }, []);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+  const cursorMapRef = useRef<
+  Map<number, {
+    cursor: any;
+    cursor_updated_at: string | null;
+    cursor_created_at: string | null;
+    cursor_id: string | null;
+  }>
+>(new Map());
+
 
   // ---- perf: debounce + request guard + cache ----
   const [debouncedSearch, setDebouncedSearch] = useState(search);
@@ -46,7 +55,7 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
   const cacheRef = useRef(new Map<string, { rooms: Room[]; total: number }>());
   const makeCacheKey = (p: number, q: string) => `${q.trim().toLowerCase()}|${p}`;
 
-  const loadRooms = useCallback(
+const loadRooms = useCallback(
   async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean }) => {
     const key = makeCacheKey(p, q);
 
@@ -64,16 +73,17 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
       if (!opts?.silent) setLoading(true);
       setErrorMsg(null);
 
-      const limit = PAGE_SIZE;
-      const search = q.trim() || null;
+      const prevCursor = cursorMapRef.current.get(p - 1) ?? null;
 
       const res = await supabase.rpc("fetch_admin_rooms_l1_v1", {
-        p_search: search,
-        p_limit: limit,
-        p_cursor: null,              // page-based admin: reset cursor
-        p_cursor_updated_at: null,
-        p_cursor_created_at: null,
-        p_cursor_id: null,
+        p_search: q.trim() || null,
+        p_limit: PAGE_SIZE,
+
+        p_cursor: prevCursor?.cursor ?? null,
+        p_cursor_updated_at: prevCursor?.cursor_updated_at ?? null,
+        p_cursor_created_at: prevCursor?.cursor_created_at ?? null,
+        p_cursor_id: prevCursor?.cursor_id ?? null,
+
         p_sort: "updated_desc",
       });
 
@@ -84,9 +94,18 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
         return;
       }
 
-      const data = res.data ?? {};
-      const rows = (data.data ?? []) as Room[];
-      const total = data.total_count ?? 0;
+      const payload = res.data ?? {};
+      const rows = (payload.data ?? []) as Room[];
+      const total = payload.total_count ?? 0;
+      const nextCursor = payload.nextCursor ?? null;
+
+      // lưu cursor cho page hiện tại
+      cursorMapRef.current.set(p, {
+        cursor: typeof nextCursor === "string" ? nextCursor : nextCursor?.id ?? null,
+        cursor_updated_at: nextCursor?.updated_at ?? null,
+        cursor_created_at: nextCursor?.created_at ?? null,
+        cursor_id: nextCursor?.id ?? null,
+      });
 
       setRooms(rows);
       setTotal(total);
@@ -94,7 +113,7 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
 
     } catch (e: any) {
       if (mySeq !== reqSeqRef.current) return;
-      setErrorMsg(e?.message ?? "Đã xảy ra lỗi không xác định");
+      setErrorMsg(e?.message ?? "Đã xảy ra lỗi");
     } finally {
       if (mySeq === reqSeqRef.current && !opts?.silent) setLoading(false);
     }
@@ -159,9 +178,13 @@ const openZaloUX = useCallback((raw?: string | null) => {
             placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
             value={search}
             onChange={(e) => {
-              setSearch(e.target.value);
+              const v = e.target.value;
+              setSearch(v);
               setPage(1);
+              cursorMapRef.current.clear();   // 🔥 BẮT BUỘC
+              cacheRef.current.clear();       // 🔥 nên clear luôn cho an toàn
             }}
+
             style={searchInput}
           />
         </div>
@@ -521,4 +544,5 @@ const linkBtn: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
 };
+
 
