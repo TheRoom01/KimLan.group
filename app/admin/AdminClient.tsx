@@ -46,7 +46,8 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
   const cacheRef = useRef(new Map<string, { rooms: Room[]; total: number }>());
   const makeCacheKey = (p: number, q: string) => `${q.trim().toLowerCase()}|${p}`;
 
-  const loadRooms = useCallback(async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean; }) => {
+  const loadRooms = useCallback(
+  async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean }) => {
     const key = makeCacheKey(p, q);
 
     if (opts?.useCache) {
@@ -63,94 +64,43 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
       if (!opts?.silent) setLoading(true);
       setErrorMsg(null);
 
-      const from = (p - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      const limit = PAGE_SIZE;
+      const search = q.trim() || null;
 
-      const selectCols = [
-        "id",
-        "created_at",
-        "updated_at",
-        "room_code",
-        "house_number",
-        "address",
-        "ward",
-        "district",
-        "room_type",
-        "status",
-        "link_zalo",
-        "zalo_phone",
-        "price",
-      ].join(",");
-
-      let query = supabase
-        .from("room_full_admin_l1")
-        .select(selectCols, { count: "exact" })
-        .order("updated_at", { ascending: false })
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      const keyword = q.trim()
-
-if (keyword) {
-  // tách token: "3A lam Sơn" -> ["3A", "lam", "Sơn"]
-  // (tách cả dấu gạch ngang để "3A-Lam" vẫn ra token đúng)
-  const tokens = keyword
-    .split(/[\s-]+/g)
-    .map((x) => x.trim())
-    .filter(Boolean)
-
-  // Nếu chỉ có 1 token thì giữ logic cũ (đơn giản + nhanh)
-  const norm = (s: string) => s.trim().toLowerCase()
-
- if (tokens.length <= 1) {
-  const k = norm(tokens[0] ?? keyword)
-
-  query = query.or(
-    [
-      `house_number.ilike.%${k}%`,
-      `address.ilike.%${k}%`,
-      `ward.ilike.%${k}%`,
-      `district.ilike.%${k}%`,
-    ].join(',')
-  )
- } else {
-  // N token: AND( OR(fields contain token1), OR(fields contain token2), ... )
-  const parts = tokens.map((t) => {
-    const k = norm(t)
-    return `or(house_number.ilike.%${k}%,address.ilike.%${k}%,ward.ilike.%${k}%,district.ilike.%${k}%)`
-  })
-
-  // PostgREST logic tree
-  const expr = `and(${parts.join(',')})`
-
-  query = query.or(expr)
- }
-}
-
-      const { data, count, error } = await query;
+      const res = await supabase.rpc("fetch_admin_rooms_l1_v1", {
+        p_search: search,
+        p_limit: limit,
+        p_cursor: null,              // page-based admin: reset cursor
+        p_cursor_updated_at: null,
+        p_cursor_created_at: null,
+        p_cursor_id: null,
+        p_sort: "updated_desc",
+      });
 
       if (mySeq !== reqSeqRef.current) return;
 
-      if (error) {
-        setErrorMsg(error.message);
+      if (res.error) {
+        setErrorMsg(res.error.message);
         return;
       }
 
-      const nextRooms = ((data ?? []) as any) as Room[];
-      const nextTotal = count ?? 0;
+      const data = res.data ?? {};
+      const rows = (data.data ?? []) as Room[];
+      const total = data.total_count ?? 0;
 
-      setRooms(nextRooms);
-      setTotal(nextTotal);
-      cacheRef.current.set(key, { rooms: nextRooms, total: nextTotal });
+      setRooms(rows);
+      setTotal(total);
+      cacheRef.current.set(key, { rooms: rows, total });
 
-      
     } catch (e: any) {
       if (mySeq !== reqSeqRef.current) return;
       setErrorMsg(e?.message ?? "Đã xảy ra lỗi không xác định");
     } finally {
       if (mySeq === reqSeqRef.current && !opts?.silent) setLoading(false);
     }
-  }, []);
+  },
+  []
+);
 
   // when page/search changes => reload
   useEffect(() => {
@@ -571,3 +521,4 @@ const linkBtn: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
 };
+
