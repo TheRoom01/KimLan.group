@@ -59,13 +59,20 @@ const loadRooms = useCallback(
   async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean }) => {
     const key = makeCacheKey(p, q);
 
-    if (opts?.useCache) {
-      const cached = cacheRef.current.get(key);
-      if (cached) {
-        setRooms(cached.rooms);
-        setTotal(cached.total);
-      }
-    }
+const canUseCache =
+  opts?.useCache &&
+  (
+    p === 1 ||
+    cursorMapRef.current.has(p - 1)
+  );
+
+if (canUseCache) {
+  const cached = cacheRef.current.get(key);
+  if (cached) {
+    setRooms(cached.rooms);
+    setTotal(cached.total);
+  }
+}
 
     const mySeq = ++reqSeqRef.current;
 
@@ -179,8 +186,10 @@ const openZaloUX = useCallback((raw?: string | null) => {
             value={search}
             onChange={(e) => {
               const v = e.target.value;
-              setSearch(v);
-              setPage(1);
+             setSearch(v);
+            setPage(1);
+            cursorMapRef.current.clear();
+            cacheRef.current.clear();
               cursorMapRef.current.clear();   // 🔥 BẮT BUỘC
               cacheRef.current.clear();       // 🔥 nên clear luôn cho an toàn
             }}
@@ -544,5 +553,6 @@ const linkBtn: React.CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
 };
+
 
 
