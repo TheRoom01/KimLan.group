@@ -13,39 +13,11 @@ type AdminClientProps = {
   initialTotal: number;
 };
 
-type DebugItem =
-  | {
-      phase: "REQ";
-      t: string;
-      page: number;
-      search: string;
-      prevCursor: any;
-      rpcArgs: any;
-    }
-  | {
-      phase: "RES";
-      t: string;
-      page: number;
-      nextCursor: any;
-      firstRow: any;
-      rowCount: number;
-      totalCount: number;
-    }
-  | {
-      phase: "ERR";
-      t: string;
-      page: number;
-      message: string;
-    };
-
 export default function AdminClient({ initialRooms, initialTotal }: AdminClientProps) {
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-
-  // debug log on UI (no DevTools needed)
-  const [debug, setDebug] = useState<DebugItem[]>([]);
 
   const [openModal, setOpenModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
@@ -114,34 +86,13 @@ const rpcArgs = {
   p_search: q.trim() || null,
 };
 
-setDebug((prev) => [
-  ...prev.slice(-19),
-  {
-    phase: "REQ",
-    t: new Date().toISOString(),
-    page: p,
-    search: q,
-    prevCursor: null,
-    rpcArgs,
-  },
-]);
-
 const res = await supabase.rpc("fetch_admin_rooms_l1_v1", rpcArgs);
-        if (mySeq !== reqSeqRef.current) return;
+if (mySeq !== reqSeqRef.current) return;
 
-        if (res.error) {
-          setErrorMsg(res.error.message);
-          setDebug((prev) => [
-            ...prev.slice(-19),
-            {
-              phase: "ERR",
-              t: new Date().toISOString(),
-              page: p,
-              message: res.error.message,
-            },
-          ]);
-          return;
-        }
+if (res.error) {
+  setErrorMsg(res.error.message);
+  return;
+}
 
 const payload: any = res.data ?? {};
 const rows = (payload.data ?? []) as Room[];
@@ -150,33 +101,16 @@ const nextTotal = (payload.total_count ?? payload.total ?? 0) as number;
 // admin offset-based => không dùng cursor map
 cursorMapRef.current.clear();
 
-        setRooms(rows);
-        setTotal(nextTotal);
-        cacheRef.current.set(key, { rooms: rows, total: nextTotal });
+setRooms(rows);
+setTotal(nextTotal);
+cacheRef.current.set(key, { rooms: rows, total: nextTotal });
 
-setDebug((prev) => [
-  ...prev.slice(-19),
-  {
-    phase: "RES",
-    t: new Date().toISOString(),
-    page: p,
-    nextCursor: null,
-    firstRow: rows?.[0] ?? null,
-    rowCount: rows?.length ?? 0,
-    totalCount: nextTotal,
-  },
-]);
       } catch (e: any) {
-        if (mySeq !== reqSeqRef.current) return;
-        const msg = e?.message ?? "Đã xảy ra lỗi";
-        setErrorMsg(msg);
-        setDebug((prev) => [
-          ...prev.slice(-19),
-          { phase: "ERR", t: new Date().toISOString(), page: p, message: msg },
-        ]);
-      } finally {
-        if (mySeq === reqSeqRef.current && !opts?.silent) setLoading(false);
-      }
+  if (mySeq !== reqSeqRef.current) return;
+  setErrorMsg(e?.message ?? "Đã xảy ra lỗi");
+} finally {
+  if (mySeq === reqSeqRef.current && !opts?.silent) setLoading(false);
+}
     },
     []
   );
@@ -244,7 +178,7 @@ setDebug((prev) => [
               setPage(1);
               cursorMapRef.current.clear();
               cacheRef.current.clear();
-              setDebug([]); // reset log khi đổi search
+             
             }}
             style={searchInput}
           />
@@ -436,30 +370,7 @@ setDebug((prev) => [
           {toast}
         </div>
       )}
-
-      {/* DEBUG OVERLAY */}
-      {debug.length > 0 ? (
-        <pre
-          style={{
-            position: "fixed",
-            left: 8,
-            right: 8,
-            bottom: 8,
-            maxHeight: "40vh",
-            overflow: "auto",
-            background: "#000",
-            color: "#0f0",
-            fontSize: 12,
-            padding: 8,
-            zIndex: 9999,
-            borderRadius: 8,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {JSON.stringify(debug, null, 2)}
-        </pre>
-      ) : null}
-    </main>
+       </main>
   );
 }
 
@@ -630,4 +541,5 @@ const linkBtn: CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
 };
+
 
