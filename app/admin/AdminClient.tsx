@@ -90,8 +90,7 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
     async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean }) => {
       const key = makeCacheKey(p, q);
 
-      const canUseCache =
-        !!opts?.useCache && (p === 1 || cursorMapRef.current.has(p - 1));
+  const canUseCache = !!opts?.useCache;
 
       if (canUseCache) {
         const cached = cacheRef.current.get(key);
@@ -107,32 +106,27 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
         if (!opts?.silent) setLoading(true);
         setErrorMsg(null);
 
-        const prevCursor = cursorMapRef.current.get(p - 1) ?? null;
+const offset = (p - 1) * PAGE_SIZE;
 
-        const rpcArgs = {
-          p_search: q.trim() || null,
-          p_limit: PAGE_SIZE,
-          p_cursor: prevCursor?.cursor ?? null,
-          p_cursor_updated_at: prevCursor?.cursor_updated_at ?? null,
-          p_cursor_created_at: prevCursor?.cursor_created_at ?? null,
-          p_cursor_id: prevCursor?.cursor_id ?? null,
-          p_sort: "updated_desc",
-        };
+const rpcArgs = {
+  p_limit: PAGE_SIZE,
+  p_offset: offset,
+  p_search: q.trim() || null,
+};
 
-        setDebug((prev) => [
-          ...prev.slice(-19),
-          {
-            phase: "REQ",
-            t: new Date().toISOString(),
-            page: p,
-            search: q,
-            prevCursor,
-            rpcArgs,
-          },
-        ]);
+setDebug((prev) => [
+  ...prev.slice(-19),
+  {
+    phase: "REQ",
+    t: new Date().toISOString(),
+    page: p,
+    search: q,
+    prevCursor: null,
+    rpcArgs,
+  },
+]);
 
-        const res = await supabase.rpc("fetch_admin_rooms_l1_v1", rpcArgs);
-
+const res = await supabase.rpc("fetch_admin_rooms_l1_v1", rpcArgs);
         if (mySeq !== reqSeqRef.current) return;
 
         if (res.error) {
@@ -149,35 +143,29 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
           return;
         }
 
-        const payload: any = res.data ?? {};
-        const rows = (payload.data ?? []) as Room[];
-        const nextTotal = payload.total_count ?? 0;
-        const nextCursor = payload.nextCursor ?? null;
+const payload: any = res.data ?? {};
+const rows = (payload.data ?? []) as Room[];
+const nextTotal = (payload.total_count ?? payload.total ?? 0) as number;
 
-        // lưu cursor cho page hiện tại
-        cursorMapRef.current.set(p, {
-          cursor: typeof nextCursor === "string" ? nextCursor : nextCursor?.id ?? null,
-          cursor_updated_at: nextCursor?.updated_at ?? null,
-          cursor_created_at: nextCursor?.created_at ?? null,
-          cursor_id: nextCursor?.id ?? null,
-        });
+// admin offset-based => không dùng cursor map
+cursorMapRef.current.clear();
 
         setRooms(rows);
         setTotal(nextTotal);
         cacheRef.current.set(key, { rooms: rows, total: nextTotal });
 
-        setDebug((prev) => [
-          ...prev.slice(-19),
-          {
-            phase: "RES",
-            t: new Date().toISOString(),
-            page: p,
-            nextCursor,
-            firstRow: rows?.[0] ?? null,
-            rowCount: rows?.length ?? 0,
-            totalCount: nextTotal,
-          },
-        ]);
+setDebug((prev) => [
+  ...prev.slice(-19),
+  {
+    phase: "RES",
+    t: new Date().toISOString(),
+    page: p,
+    nextCursor: null,
+    firstRow: rows?.[0] ?? null,
+    rowCount: rows?.length ?? 0,
+    totalCount: nextTotal,
+  },
+]);
       } catch (e: any) {
         if (mySeq !== reqSeqRef.current) return;
         const msg = e?.message ?? "Đã xảy ra lỗi";
@@ -642,3 +630,4 @@ const linkBtn: CSSProperties = {
   fontSize: 14,
   cursor: "pointer",
 };
+
