@@ -366,12 +366,16 @@ const FilterBar = ({
     </span>
   </button>
 
-  {openFilter === "move" && (
-    <div
-      className="absolute left-0 top-full mt-2 z-50 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
-      onPointerDownCapture={(e) => e.stopPropagation()}
-      onClickCapture={(e) => e.stopPropagation()}
-    >
+ {openFilter === "move" && (
+  <div
+    ref={(el) => {
+      if (openFilter === "move") openPanelRef.current = el;
+    }}
+    className="absolute left-0 top-full mt-2 z-50 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
+    onPointerDown={(e) => e.stopPropagation()}
+    onClick={(e) => e.stopPropagation()}
+  >
+
       {/* Tất cả */}
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input
@@ -383,13 +387,13 @@ const FilterBar = ({
             setOpenFilter(null);
           }}
           onClick={() => {
-            // bấm lại "Tất cả" khi đang chọn -> ép đổi 2 nhịp để refetch
-            if (moveFilter === null) {
-              setMoveFilter("elevator");
-              queueMicrotask(() => setMoveFilter(null));
-            }
-            setOpenFilter(null);
-          }}
+          // Chỉ xử lý khi bấm lại option đang chọn (để "refetch")
+          if (moveFilter !== null) return;
+
+          setMoveFilter("elevator");
+          queueMicrotask(() => setMoveFilter(null));
+          setOpenFilter(null);
+        }}
         />
         <span>Tất cả</span>
       </label>
@@ -405,11 +409,11 @@ const FilterBar = ({
             setOpenFilter(null);
           }}
           onClick={() => {
-            // bấm lại option đang chọn -> ép đổi 2 nhịp để refetch
-            if (moveFilter === "elevator") {
-              setMoveFilter(null);
-              queueMicrotask(() => setMoveFilter("elevator"));
-            }
+            // Chỉ xử lý khi bấm lại option đang chọn (để "refetch")
+            if (moveFilter !== "elevator") return;
+
+            setMoveFilter(null);
+            queueMicrotask(() => setMoveFilter("elevator"));
             setOpenFilter(null);
           }}
         />
@@ -427,11 +431,11 @@ const FilterBar = ({
             setOpenFilter(null);
           }}
           onClick={() => {
-            // bấm lại option đang chọn -> ép đổi 2 nhịp để refetch
-            if (moveFilter === "stairs") {
-              setMoveFilter(null);
-              queueMicrotask(() => setMoveFilter("stairs"));
-            }
+            // Chỉ xử lý khi bấm lại option đang chọn (để "refetch")
+            if (moveFilter !== "stairs") return;
+
+            setMoveFilter(null);
+            queueMicrotask(() => setMoveFilter("stairs"));
             setOpenFilter(null);
           }}
         />

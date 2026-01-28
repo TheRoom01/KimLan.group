@@ -157,10 +157,12 @@ export async function fetchRoomsServer(
 const cursorUpdatedAt: string | null = toIsoOrNull(cursorObj?.updated_at);
 const cursorCreatedAt: string | null = toIsoOrNull((cursorObj as any)?.created_at);
 
+// RPC expects: 'elevator' | 'stairs' | null
 const pMove =
-  move === "elevator" ? "has_elevator" :
-  move === "stairs"   ? "has_stairs"   :
+  move === "elevator" ? "elevator" :
+  move === "stairs"   ? "stairs"   :
   null;
+
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: 0,

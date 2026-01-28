@@ -42,9 +42,13 @@ export default async function HomePage({
     // ignore
   }
 
-  const stRaw = typeof sp.st === "string" ? sp.st : null;
-const status = stRaw ? decodeURIComponent(stRaw) : null;
+    const stRaw = typeof sp.st === "string" ? sp.st : null;
+  const status = stRaw ? decodeURIComponent(stRaw) : null;
 
+  // ✅ read move from URL (source of truth)
+  const mRaw = typeof sp.m === "string" ? sp.m : null;
+  const move =
+    mRaw === "elevator" || mRaw === "stairs" ? (mRaw as "elevator" | "stairs") : null;
 
   // 3) Fetch page 0 on server using the same RPC as client
   const LIMIT = 20;
@@ -57,7 +61,7 @@ const status = stRaw ? decodeURIComponent(stRaw) : null;
     maxPrice: 30_000_000,
     districts: null,
     roomTypes: null,
-    move: null,
+    move, // ✅ was null
     status,
   });
 

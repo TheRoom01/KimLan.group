@@ -171,6 +171,8 @@ const HomeClient = ({
   );
   const cursorStackRef = useRef<(UrlCursor)[]>([]);
 const currentCursorRef = useRef<UrlCursor>(null);
+const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
+
 
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
@@ -298,6 +300,17 @@ useEffect(() => {
   // ================== GUARDS ==================
   const hydratingFromUrlRef = useRef(false);
   const filtersVersionRef = useRef(0); // "đợt filter" để drop response cũ
+  const pendingUrlFiltersRef = useRef<{
+  search: string;
+  min: number;
+  max: number;
+  districts: string[];
+  roomTypes: string[];
+  move: "elevator" | "stairs" | null;
+  sort: SortMode;
+  status: string | null;
+} | null>(null);
+
 
 const pageIndexRef = useRef(0);
 useEffect(() => {
@@ -839,72 +852,29 @@ useEffect(() => {
 }, [onNavToDetailCapture]);
 
    // ================== RESET PAGINATION ==================
-  const resetPagination = useCallback((keepPage: number = 0) => {
-    // ✅ chỉ reset UI/cache, KHÔNG “kill request” bằng requestId
-    inFlightRef.current = {};
+ const resetPagination = useCallback((keepPage: number = 0) => {
+  // ✅ chỉ reset UI/cache, KHÔNG “kill request” bằng requestId
+  inFlightRef.current = {};
 
-    pagesRef.current = [];
-    setPages([]);
+  // ✅ IMPORTANT:
+  // fetchPage() uses "!== undefined" to decide if a page was already fetched.
+  // So after reset we must ensure pagesRef slots are truly undefined, not just an empty array
+  // that can later get treated as "already has page 0".
+  const nextPages: any[][] = new Array(keepPage + 1);
+  // leave all entries as undefined
+  pagesRef.current = nextPages;
+  setPages(nextPages);
 
-    setPageIndex(keepPage);
-    setDisplayPageIndex(keepPage);
+  setPageIndex(keepPage);
+  setDisplayPageIndex(keepPage);
 
-    cursorsRef.current = [null];
-    setHasNext(true);
-    setFetchError("");
-    setLoading(false);
-    setShowSkeleton(true);
-  }, []);
+  cursorsRef.current = [null];
+  setHasNext(true);
+  setFetchError("");
+  setLoading(false);
+  setShowSkeleton(true);
+}, []);
 
-  // ✅ FILTER CHANGE: mỗi lần đổi filter (bao gồm moveFilter) -> về page 0 + fetch lại
-  useEffect(() => {
-    // skip 1 nhịp sau hydrate/restore/back để khỏi reset nhầm
-    if (skipNextFilterEffectRef.current) {
-  skipNextFilterEffectRef.current = false;
-  return;
-}
-
-    if (filterSig === lastFilterSigRef.current) return;
-    lastFilterSigRef.current = filterSig;
-
-    // bump version để drop response cũ
-    filtersVersionRef.current += 1;
-
-    // reset UI/cache
-    resetPagination(0);
-
-    // sync URL về page 0 (để back/forward chuẩn)
-    const nextQs = buildQs({
-      q: appliedSearch.trim(),
-      min: minPriceApplied,
-      max: maxPriceApplied,
-      d: selectedDistricts,
-      t: selectedRoomTypes,
-      m: moveFilter,
-      s: sortMode,
-      st: statusFilter,
-      p: 0,
-    });
-    replaceUrlShallow(nextQs);
-
-    // fetch page 0
-    queueMicrotask(() => {
-      fetchPageRef.current(0);
-    });
-  }, [
-    filterSig,
-    resetPagination,
-    buildQs,
-    replaceUrlShallow,
-    appliedSearch,
-    minPriceApplied,
-    maxPriceApplied,
-    selectedDistricts,
-    selectedRoomTypes,
-    moveFilter,
-    sortMode,
-    statusFilter,
-  ]);
 
   // helper: end hydration after 2 frames (đảm bảo FILTER CHANGE effect không chạy nhầm)
 const endHydrationAfterTwoFrames = useCallback(() => {
@@ -1354,19 +1324,29 @@ if (isReloadRef.current) {
     return;
   }
 
-  hydratingFromUrlRef.current = true;
+hydratingFromUrlRef.current = true;
 
-  setSearch(url.q);
-  setPriceDraft([url.minVal, url.maxVal]);
-  setPriceApplied([url.minVal, url.maxVal]);
-  setSelectedDistricts(url.d);
-  setSelectedRoomTypes(url.t);
-  setMoveFilter(url.m);
-  setSortMode(url.s);
-  setStatusFilter(isReloadRef.current ? null : url.st);
-  queueMicrotask(() => {
-    hydratingFromUrlRef.current = false;
-  });
+// ✅ snapshot URL filters để fetch dùng ngay (không phụ thuộc timing setState)
+pendingUrlFiltersRef.current = {
+  search: url.q,
+  min: url.minVal,
+  max: url.maxVal,
+  districts: url.d,
+  roomTypes: url.t,
+  move: url.m,
+  sort: url.s,
+  status: isReloadRef.current ? null : url.st,
+};
+
+setSearch(url.q);
+setPriceDraft([url.minVal, url.maxVal]);
+setPriceApplied([url.minVal, url.maxVal]);
+setSelectedDistricts(url.d);
+setSelectedRoomTypes(url.t);
+setMoveFilter(url.m);
+setSortMode(url.s);
+setStatusFilter(isReloadRef.current ? null : url.st);
+
 
   // ✅ reload thì ép page về 0 + scrollTop=0
   const pageFromUrl = isReloadRef.current ? 0 : url.nextPage;
@@ -1408,14 +1388,19 @@ if (isReloadRef.current) {
       lastScrollTopRef.current = 0;
     });
   } else {
-    resetPagination(pageFromUrl);
-    // ✅ nếu URL có cursor thì dùng cursor đó cho page này
-    cursorsRef.current[pageFromUrl] = url.c ?? null;
+  resetPagination(pageFromUrl);
+  // ✅ nếu URL có cursor thì dùng cursor đó cho page này
+  cursorsRef.current[pageFromUrl] = url.c ?? null;
 
-  }
+  // ✅ IMPORTANT: pageIndex có thể không đổi (thường là 0) => CENTRAL FETCH effect sẽ không chạy
+  // Force fetch đúng page theo URL sau khi reset cache.
+  queueMicrotask(() => {
+    fetchPageRef.current(pageFromUrl);
+  });
+}
 
-  finishHydrate();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+finishHydrate();
+// eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
 // ================== PAGESHOW (bfcache/back) ==================
@@ -1622,19 +1607,37 @@ if (lite) {
   // ================== FETCH PAGE ==================
   const fetchPage = useCallback(
   async (targetIndex: number) => {
-    // ✅ snapshot version tại thời điểm bắt đầu request
     const myVersion = filtersVersionRef.current;
 
-    // ✅ nếu page đã fetch (kể cả rỗng []) thì không fetch lại
+    // 🔎 DEBUG
+    console.log("[fetchPage] enter", {
+      targetIndex,
+      myVersion,
+      pageIndex: pageIndexRef.current,
+      cachedIsUndef: pagesRef.current[targetIndex] === undefined,
+      cachedType: typeof pagesRef.current[targetIndex],
+      cachedLen: Array.isArray(pagesRef.current[targetIndex])
+        ? pagesRef.current[targetIndex]?.length
+        : null,
+      lastFilterSig: lastFilterSigRef.current,
+      hydrating: hydratingFromUrlRef.current,
+    });
+
     if (pagesRef.current[targetIndex] !== undefined) {
+      console.log("[fetchPage] skip: cached page exists", { targetIndex });
       setShowSkeleton(false);
       return;
     }
 
-   const reqKey = `${lastFilterSigRef.current ?? ""}::${targetIndex}`;
-// chặn gọi trùng khi đang bay (theo filter + page)
-if (inFlightRef.current[reqKey]) return;
-inFlightRef.current[reqKey] = true;
+    const reqKey = `${lastFilterSigRef.current ?? ""}::${targetIndex}`;
+
+    if (inFlightRef.current[reqKey]) {
+      console.log("[fetchPage] skip: inFlight", { reqKey });
+      return;
+    }
+
+    inFlightRef.current[reqKey] = true;
+    console.log("[fetchPage] start request", { reqKey });
 
     const isVisible = targetIndex === pageIndexRef.current;
 
@@ -1647,19 +1650,39 @@ inFlightRef.current[reqKey] = true;
     try {
       const cursorForThisPage = cursorsRef.current[targetIndex] ?? null;
 
-      const res = await fetchRooms({
-        limit: LIMIT,
-        cursor: cursorForThisPage,
-        adminLevel,
-        search: appliedSearch.trim() ? appliedSearch.trim() : undefined,
-        minPrice: minPriceApplied,
-        maxPrice: maxPriceApplied,
-        sortMode,
-        status: statusFilter,
-        districts: selectedDistricts.length ? selectedDistricts : undefined,
-        roomTypes: selectedRoomTypes.length ? selectedRoomTypes : undefined,
-        move: moveFilter ?? undefined,
-      });
+      const pending = pendingUrlFiltersRef.current;
+
+const res = await fetchRooms({
+  limit: LIMIT,
+  cursor: cursorForThisPage,
+  adminLevel,
+
+  // ✅ ưu tiên URL snapshot khi đang hydrate-from-URL
+  search: (pending?.search ?? appliedSearch).trim()
+    ? (pending?.search ?? appliedSearch).trim()
+    : undefined,
+
+  minPrice: pending?.min ?? minPriceApplied,
+  maxPrice: pending?.max ?? maxPriceApplied,
+  sortMode: pending?.sort ?? sortMode,
+  status: pending?.status ?? statusFilter,
+
+  districts: (pending?.districts ?? selectedDistricts).length
+    ? (pending?.districts ?? selectedDistricts)
+    : undefined,
+
+  roomTypes: (pending?.roomTypes ?? selectedRoomTypes).length
+    ? (pending?.roomTypes ?? selectedRoomTypes)
+    : undefined,
+
+  move: pending?.move ?? moveFilter ?? undefined,
+});
+
+// ✅ sau lần fetch đầu tiên theo URL snapshot thì clear để các fetch sau dùng state bình thường
+if (pendingUrlFiltersRef.current && targetIndex === pageIndexRef.current) {
+  pendingUrlFiltersRef.current = null;
+}
+
     
        // ✅ drop nếu version đã đổi sau khi request bắt đầu
       if (myVersion !== filtersVersionRef.current) return;
@@ -2223,8 +2246,3 @@ useEffect(() => {
 };
 
 export default HomeClient;
-
-
-
-
-
