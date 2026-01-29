@@ -351,13 +351,32 @@ await runPool(okFiles, CONCURRENCY, async (file) => {
     body: fd,
   })
 
-  if (!res.ok) {
-    let msg = 'Upload failed'
+   if (!res.ok) {
+    const status = res.status
+    const ct = res.headers.get('content-type') || ''
+
+    let rawText = ''
     try {
-      const j = await res.json()
-      msg = j?.error || j?.message || msg
+      rawText = await res.text()
     } catch {}
-    throw new Error(msg)
+
+    // cố parse JSON nếu có
+    let msg = `Upload failed (HTTP ${status})`
+    if (ct.includes('application/json')) {
+      try {
+        const j = JSON.parse(rawText || '{}')
+        msg = String(j?.error || j?.message || msg)
+      } catch {}
+    }
+
+    // show thêm snippet để biết 413/html/…
+    const snippet = (rawText || '').slice(0, 300).trim()
+    const detail =
+      `[upload/r2] status=${status} content-type=${ct}\n` +
+      (snippet ? `response: ${snippet}` : '(no body)')
+
+    console.error(detail)
+    throw new Error(`${msg}\n\n${detail}`)
   }
 
   const j = await res.json()
@@ -388,9 +407,19 @@ await runPool(okFiles, CONCURRENCY, async (file) => {
       fdThumb.append('file', thumbFile)
 
       const resThumb = await fetch('/api/upload/r2', { method: 'POST', body: fdThumb })
-      if (!resThumb.ok) {
-        console.warn('Upload thumb.webp failed')
-      }
+if (!resThumb.ok) {
+  const status = resThumb.status
+  const ct = resThumb.headers.get('content-type') || ''
+  let text = ''
+  try { text = await resThumb.text() } catch {}
+  const snippet = (text || '').slice(0, 300).trim()
+
+  alert(
+    `[thumb.webp] Upload failed\nstatus=${status}\ncontent-type=${ct}\n` +
+    (snippet ? `response=${snippet}` : '(no body)')
+  )
+}
+
     } catch (e) {
       console.warn('Upload thumb.webp failed', e)
     }

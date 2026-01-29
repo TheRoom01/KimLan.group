@@ -21,6 +21,14 @@ const s3 = new S3Client({
 
 export async function POST(req: Request) {
   try {
+
+        if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_PUBLIC_BASE_URL) {
+      return NextResponse.json(
+        { error: "Upload failed: missing R2 env (ACCOUNT_ID/ACCESS_KEY_ID/SECRET_ACCESS_KEY/PUBLIC_BASE_URL)" },
+        { status: 500 }
+      )
+    }
+
     const form = await req.formData()
     const file = form.get("file") as File
     const roomId = String(form.get("room_id") || "").trim()
