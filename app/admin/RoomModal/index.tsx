@@ -342,88 +342,118 @@ await runPool(okFiles, CONCURRENCY, async (file) => {
   }
 
   // ✅ upload qua API R2 (server)
-  const fd = new FormData()
-  fd.append('room_id', `room-${safeRoomCode}`)
-  fd.append('file', uploadFile)
+// =======================
+// NEW: Presign + PUT direct R2 (no /api/upload/r2)
+// =======================
 
-  const res = await fetch('/api/upload/r2', {
+const roomId = `room-${safeRoomCode}`
+
+// helper: xin presign rồi PUT lên R2, trả về publicUrl
+async function presignAndPutToR2(params: {
+  room_id: string
+  file: File
+  fixed_name?: 'thumb.webp'
+}) {
+  const { room_id, file, fixed_name } = params
+
+  const pres = await fetch('/api/upload/r2-presign', {
     method: 'POST',
-    body: fd,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      room_id,
+      fixed_name: fixed_name ?? undefined,
+      file_name: fixed_name ?? file.name ?? 'file.bin',
+      content_type: file.type || (fixed_name ? 'image/webp' : 'application/octet-stream'),
+      size: file.size,
+    }),
   })
 
-   if (!res.ok) {
-    const status = res.status
-    const ct = res.headers.get('content-type') || ''
-
+  if (!pres.ok) {
+    const status = pres.status
+    const ct = pres.headers.get('content-type') || ''
     let rawText = ''
     try {
-      rawText = await res.text()
+      rawText = await pres.text()
     } catch {}
 
-    // cố parse JSON nếu có
-    let msg = `Upload failed (HTTP ${status})`
-    if (ct.includes('application/json')) {
-      try {
-        const j = JSON.parse(rawText || '{}')
-        msg = String(j?.error || j?.message || msg)
-      } catch {}
-    }
-
-    // show thêm snippet để biết 413/html/…
     const snippet = (rawText || '').slice(0, 300).trim()
     const detail =
-      `[upload/r2] status=${status} content-type=${ct}\n` +
+      `[upload/r2-presign] status=${status} content-type=${ct}\n` +
       (snippet ? `response: ${snippet}` : '(no body)')
 
     console.error(detail)
-    throw new Error(`${msg}\n\n${detail}`)
+    throw new Error(`Presign failed (HTTP ${status})\n\n${detail}`)
   }
 
-  const j = await res.json()
-  const publicUrl = String(j?.url || '').trim()
-  if (!publicUrl) throw new Error('Upload failed: missing url')
+  const pj = await pres.json()
+  const uploadUrl = String(pj?.uploadUrl || '').trim()
+  const publicUrl = String(pj?.publicUrl || pj?.url || '').trim()
+  const requiredHeaders = (pj?.requiredHeaders || {}) as Record<string, string>
 
-  const mediaItem = {
-    type: isVideo ? 'video' : 'image',
-    url: publicUrl,
-    path: publicUrl,
-  } as const
+  if (!uploadUrl || !publicUrl) {
+    throw new Error('Presign failed: missing uploadUrl/publicUrl')
+  }
 
-  // ✅ UI update ngay (không đợi xong hết)
-  setRoomForm((prev: any) => {
-    const prevMedia = Array.isArray(prev.media) ? prev.media : []
-    return { ...prev, media: [...prevMedia, mediaItem] }
+  const put = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: requiredHeaders,
+    body: file,
   })
 
-  // ✅ thumb.webp: chỉ 1 lần, và đúng “ảnh đầu tiên của phòng”
-  if (shouldMakeThumb && isImage && file === firstImageFileInBatch && !thumbStarted) {
-    thumbStarted = true
+  if (!put.ok) {
+    const status = put.status
+    const ct = put.headers.get('content-type') || ''
+    let rawText = ''
     try {
-      const thumbFile = await makeThumbWebp(file, { max: 600, targetBytes: 250 * 1024 })
+      rawText = await put.text()
+    } catch {}
 
-      const fdThumb = new FormData()
-      fdThumb.append('room_id', `room-${safeRoomCode}`)
-      fdThumb.append('fixed_name', 'thumb.webp')
-      fdThumb.append('file', thumbFile)
+    const snippet = (rawText || '').slice(0, 300).trim()
+    const detail =
+      `[r2/put] status=${status} content-type=${ct}\n` +
+      (snippet ? `response: ${snippet}` : '(no body)')
 
-      const resThumb = await fetch('/api/upload/r2', { method: 'POST', body: fdThumb })
-if (!resThumb.ok) {
-  const status = resThumb.status
-  const ct = resThumb.headers.get('content-type') || ''
-  let text = ''
-  try { text = await resThumb.text() } catch {}
-  const snippet = (text || '').slice(0, 300).trim()
+    console.error(detail)
+    throw new Error(`R2 PUT failed (HTTP ${status})\n\n${detail}`)
+  }
 
-  alert(
-    `[thumb.webp] Upload failed\nstatus=${status}\ncontent-type=${ct}\n` +
-    (snippet ? `response=${snippet}` : '(no body)')
-  )
+  return { publicUrl }
 }
 
-    } catch (e) {
-      console.warn('Upload thumb.webp failed', e)
-    }
+// ---- main upload (image/video) ----
+const { publicUrl } = await presignAndPutToR2({
+  room_id: roomId,
+  file: uploadFile,
+})
+
+const mediaItem = {
+  type: isVideo ? 'video' : 'image',
+  url: publicUrl,
+  path: publicUrl,
+} as const
+
+// ✅ UI update ngay (không đợi xong hết)
+setRoomForm((prev: any) => {
+  const prevMedia = Array.isArray(prev.media) ? prev.media : []
+  return { ...prev, media: [...prevMedia, mediaItem] }
+})
+
+// ✅ thumb.webp: chỉ 1 lần, và đúng “ảnh đầu tiên của phòng”
+if (shouldMakeThumb && isImage && file === firstImageFileInBatch && !thumbStarted) {
+  thumbStarted = true
+  try {
+    const thumbFile = await makeThumbWebp(file, { max: 600, targetBytes: 250 * 1024 })
+
+    // presign fixed_name=thumb.webp => key cố định rooms/<roomId>/images/thumb.webp
+    await presignAndPutToR2({
+      room_id: roomId,
+      file: thumbFile,
+      fixed_name: 'thumb.webp',
+    })
+  } catch (e) {
+    console.warn('Upload thumb.webp failed', e)
   }
+}
 })
 
   } catch (e: any) {
