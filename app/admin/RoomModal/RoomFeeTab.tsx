@@ -8,30 +8,42 @@ type Props = {
   detailForm: RoomDetail
   onChange: (data: Partial<RoomDetail>) => void
   isNew?: boolean
+  allowAutofill?: boolean
+  onAutofillDone?: () => void
 }
 
-export default function RoomFeeTab({ detailForm, onChange, isNew = false }: Props) {
+export default function RoomFeeTab({
+  detailForm,
+  onChange,
+  isNew = false,
+  allowAutofill = false,
+  onAutofillDone,
+}: Props) {
+
   // Điền sẵn unit + default fee (CHỈ khi thêm mới) nếu DB đang trống/0
-  useEffect(() => {
-    const patch: Partial<RoomDetail> = {}
+ useEffect(() => {
+  if (!(isNew && allowAutofill)) return
 
-    // ===== DEFAULT VALUES (chỉ khi thêm mới) =====
-    if (isNew) {
-      if (!Number(detailForm.electric_fee_value)) patch.electric_fee_value = 4000
-      if (!Number(detailForm.water_fee_value)) patch.water_fee_value = 100000
-      if (!Number(detailForm.service_fee_value)) patch.service_fee_value = 200000
-    }
+  const patch: Partial<RoomDetail> = {}
 
-    // ===== DEFAULT UNITS (chỉ fill khi trống) =====
-    // điện: cố định kWh trong DB (UI hiển thị /kWh)
-    if (!detailForm.electric_fee_unit) patch.electric_fee_unit = 'kWh'
-    if (!detailForm.water_fee_unit) patch.water_fee_unit = 'người/tháng'
-    if (!detailForm.service_fee_unit) patch.service_fee_unit = 'phòng/tháng'
-    if (!detailForm.parking_fee_unit) patch.parking_fee_unit = 'chiếc/tháng'
+  // ===== DEFAULT VALUES: chỉ chạy 1 lần, sau đó user muốn để 0/blank thì giữ nguyên =====
+  if (!Number(detailForm.electric_fee_value)) patch.electric_fee_value = 4000
+  if (!Number(detailForm.water_fee_value)) patch.water_fee_value = 100000
+  if (!Number(detailForm.service_fee_value)) patch.service_fee_value = 200000
 
-    if (Object.keys(patch).length) onChange(patch)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // ===== DEFAULT UNITS: cũng chỉ fill 1 lần =====
+  if (!detailForm.electric_fee_unit) patch.electric_fee_unit = 'kWh'
+  if (!detailForm.water_fee_unit) patch.water_fee_unit = 'người/tháng'
+  if (!detailForm.service_fee_unit) patch.service_fee_unit = 'phòng/tháng'
+  if (!detailForm.parking_fee_unit) patch.parking_fee_unit = 'chiếc/tháng'
+
+  if (Object.keys(patch).length) onChange(patch)
+
+  // đánh dấu đã chạy autofill (kể cả patch rỗng) để không bao giờ tự điền lại
+  onAutofillDone?.()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isNew, allowAutofill])
+
 
   const [isMobile, setIsMobile] = useState(false)
 

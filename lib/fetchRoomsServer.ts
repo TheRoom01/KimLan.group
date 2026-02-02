@@ -163,6 +163,7 @@ const pMove =
   move === "stairs"   ? "stairs"   :
   null;
 
+
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: 0,

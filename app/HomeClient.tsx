@@ -2172,7 +2172,7 @@ useEffect(() => {
                     The Room
                   </div>
                   <div className="text-xs md:text-sm text-white/85">
-                    Thuê căn hộ &amp; phòng trọ tại TP.HCM
+                    Cho thuê chung cư, căn hộ &amp; phòng trọ tại TP.HCM
                   </div>
                 </div>
               </div>

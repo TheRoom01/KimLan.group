@@ -32,10 +32,10 @@ export default function CompanyIntroModal({ open, onClose }: Props) {
 
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold">KIM LÂN GROUP</div>
+            <div className="text-lg font-semibold">The Room team</div>
             <div className="mt-1 space-y-1 text-sm text-black/75">
               <div>Cho thuê căn hộ dịch vụ - Phòng trọ - Chung cư</div>
-              <div>Studio / 1 phòng ngủ / 2 phòng ngủ / Duplex</div>
+              <div>Studio / 1 phòng ngủ / 2 phòng ngủ /3 phòng ngủ / Duplex,...</div>
               <div>Hotline: 0967 467 587 - 0772 339 345</div>
               <div>Địa chỉ: 14/5A5 Kỳ Đồng, Quận 3</div>
             </div>
@@ -51,12 +51,12 @@ export default function CompanyIntroModal({ open, onClose }: Props) {
 
         <div className="mt-4 grid grid-cols-3 gap-2">
           <a
-            href="https://canhodichvu.vercel.app"
+            href="https://www.tiktok.com/@kimlangroup.chdv?_r=1&_t=ZS-93alZMGvdFQ"
             target="_blank"
             rel="noreferrer"
             className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-medium hover:bg-black/5"
           >
-            Website
+            Tiktok
           </a>
           <a
             href="https://www.facebook.com/duongkimlan001"

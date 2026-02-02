@@ -116,6 +116,7 @@ export default function RoomModal({
 
   
   const [detailForm, setDetailForm] = useState<RoomDetail>(defaultDetailForm)
+const [feeAutofillDone, setFeeAutofillDone] = useState(false)
   
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -577,6 +578,7 @@ const detailSample =
         chinh_sach: '',
       })
       setDetailForm(defaultDetailForm)
+      setFeeAutofillDone(false)
       return
     }
 
@@ -856,15 +858,20 @@ void (async () => {
           )}
 
           {/* ===== TAB FEE ===== */}
-            {activeTab === 'fee' && (
-              <RoomFeeTab
-                detailForm={detailForm}
-                onChange={(patch) =>
-                  setDetailForm((prev) => ({ ...prev, ...patch }))
-                }
-                isNew={!editingRoom?.id}
-              />
-            )}
+           {activeTab === 'fee' && (
+            <RoomFeeTab
+              detailForm={detailForm}
+              isNew={!editingRoom?.id}
+              allowAutofill={!feeAutofillDone && !editingRoom?.id}
+              onAutofillDone={() => setFeeAutofillDone(true)}
+              onChange={(patch) => {
+                // user sửa/xoá (kể cả về 0) => coi như đã “touched”, không autofill lại nữa
+                setFeeAutofillDone(true)
+                setDetailForm((prev) => ({ ...prev, ...patch }))
+              }}
+            />
+          )}
+
 
           {/* ===== TAB AMENITY ===== */}
           {activeTab === 'amenity' && (
