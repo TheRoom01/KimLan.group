@@ -403,6 +403,58 @@ useEffect(() => {
   };
 }, [saveScrollToHistory]);
 
+// ================== NAV CAPTURE (save scroll before leaving list) ==================
+const lastNavCaptureTsRef = useRef(0);
+
+const onNavAwayCapture = useCallback(
+  (ev: Event) => {
+    // chống double fire: pointerdown + mousedown + touchstart
+    const now = Date.now();
+    if (now - lastNavCaptureTsRef.current < 250) return;
+    lastNavCaptureTsRef.current = now;
+
+    // chỉ nhận click chuột trái (nếu là MouseEvent)
+    const me = ev as MouseEvent;
+    if (typeof me.button === "number" && me.button !== 0) return;
+
+    const target = ev.target as HTMLElement | null;
+    const a = target?.closest?.("a");
+    if (!a) return;
+
+    const href = a.getAttribute("href");
+    if (!href || href.startsWith("#")) return;
+
+    // chỉ chụp khi rời list sang trang khác (đặc biệt là detail)
+    const isDetailNav = href.startsWith("/rooms/") || href.includes("/rooms/");
+    if (!isDetailNav) return;
+
+    // ✅ chốt scrollTop ngay tại thời điểm click (tránh stale do raf/inertia)
+    const el = scrollRef.current;
+    if (el) lastScrollTopRef.current = el.scrollTop;
+
+    // ✅ lưu scroll vào history.state của entry hiện tại
+    saveScrollToHistory();
+  },
+  [saveScrollToHistory]
+);
+
+useEffect(() => {
+  // pointerdown là chuẩn
+  document.addEventListener("pointerdown", onNavAwayCapture, true);
+  // fallback Safari/iOS
+  document.addEventListener("mousedown", onNavAwayCapture, true);
+  document.addEventListener(
+    "touchstart",
+    onNavAwayCapture,
+    { capture: true, passive: true } as AddEventListenerOptions
+  );
+
+  return () => {
+    document.removeEventListener("pointerdown", onNavAwayCapture, true);
+    document.removeEventListener("mousedown", onNavAwayCapture, true);
+    document.removeEventListener("touchstart", onNavAwayCapture, true as any);
+  };
+}, [onNavAwayCapture]);
 
   // ================== RESET PAGINATION ==================
  const resetPagination = useCallback((keepPage: number = 0) => {
@@ -506,51 +558,57 @@ isReloadRef.current = navType === "reload";
   }
 
   
-// ✅ RELOAD: vẫn tuân theo URL (KHÔNG tự clear URL về "/")
+// ✅ RELOAD (F5 / pull-to-refresh): RESET SẠCH về default + clear query về "/"
 if (isReloadRef.current) {
   hydratingFromUrlRef.current = true;
+  skipNextFilterEffectRef.current = true;
+
   try {
     // drop mọi response cũ (nếu có request đang bay)
     filtersVersionRef.current += 1;
 
-    // ✅ URL là nguồn sự thật: hydrate filter từ URL hiện tại
+    // ✅ URL không còn là source-of-truth khi reload: reset về mặc định
     pendingUrlFiltersRef.current = {
-      search: url.q,
-      min: url.minVal,
-      max: url.maxVal,
-      districts: url.d,
-      roomTypes: url.t,
-      move: url.m,
-      sort: url.s,
-      status: null, // reload: không giữ status nếu bạn muốn, hoặc dùng url.st nếu cần
+      search: "",
+      min: PRICE_DEFAULT[0],
+      max: PRICE_DEFAULT[1],
+      districts: [],
+      roomTypes: [],
+      move: null,
+      sort: "updated_desc",
+      status: null,
     };
 
-    setSearch(url.q);
-    setPriceDraft([url.minVal, url.maxVal]);
-    setPriceApplied([url.minVal, url.maxVal]);
-    setSelectedDistricts(url.d);
-    setSelectedRoomTypes(url.t);
-    setMoveFilter(url.m);
-    setSortMode(url.s);
+    setSearch("");
+    setPriceDraft(PRICE_DEFAULT);
+    setPriceApplied(PRICE_DEFAULT);
+    setSelectedDistricts([]);
+    setSelectedRoomTypes([]);
+    setMoveFilter(null);
+    setSortMode("updated_desc");
     setStatusFilter(null);
 
-    // ✅ page theo URL (hoặc ép 0 nếu bạn muốn)
-    const pIdx = Number.isFinite(url.nextPage) ? url.nextPage : 0;
-    resetPagination(pIdx);
-    cursorsRef.current[pIdx] = url.c ?? null;
-
+    setTotal(null);
     setFetchError("");
     setLoading(false);
     setShowSkeleton(true);
 
-    // reload: scroll về top cho chắc
+    // ✅ reset cache + về page 0
+    resetPagination(0);
+    cursorsRef.current[0] = null;
+
+    // ✅ clear query về "/"
+    replaceUrlShallow("");
+
+    // ✅ scroll top
     requestAnimationFrame(() => {
       const el = scrollRef.current;
       if (el) el.scrollTop = 0;
       lastScrollTopRef.current = 0;
     });
 
-    requestFetchPage(pIdx);
+    // ✅ fetch page 0 (an toàn kể cả khi fetchPageRef chưa sẵn)
+    requestFetchPage(0);
 
     finishHydrate();
     return;
