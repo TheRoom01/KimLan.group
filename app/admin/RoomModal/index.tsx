@@ -122,25 +122,87 @@ const [feeAutofillDone, setFeeAutofillDone] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const lastAutofillKeyRef = useRef<string>("");
+  // ✅ NEW: nhớ danh sách media ban đầu để biết user có thật sự đổi ảnh không
+  const initialMediaSigRef = useRef<string>("");
+
+   async function fileToHTMLImage(file: File): Promise<HTMLImageElement> {
+    const url = URL.createObjectURL(file)
+    try {
+      const img = new Image()
+      img.src = url
+      // @ts-ignore
+      if (img.decode) await img.decode()
+      else {
+        await new Promise<void>((res, rej) => {
+          img.onload = () => res()
+          img.onerror = () => rej(new Error('Image load failed'))
+        })
+      }
+      return img
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  function fillCanvasWhite(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, w, h)
+    ctx.restore()
+  }
 
   async function fileToImageBitmap(file: File): Promise<ImageBitmap> {
-  // ImageBitmap decode nhanh hơn Image() và hỗ trợ tốt trên Chrome/Edge
-  return await createImageBitmap(file)
-}
+    // ✅ ưu tiên ImageBitmap (nhanh)
+    try {
+      const bmp = await createImageBitmap(file)
+      if ((bmp as any)?.width > 0 && (bmp as any)?.height > 0) return bmp
+      try { bmp.close?.() } catch {}
+    } catch {}
+
+    // ✅ fallback decode bằng HTMLImageElement (ổn định hơn cho JPG tải từ Zalo)
+    const img = await fileToHTMLImage(file)
+    const canvas = document.createElement('canvas')
+    const w = Math.max(1, (img as any).naturalWidth || img.width || 1)
+    const h = Math.max(1, (img as any).naturalHeight || img.height || 1)
+    canvas.width = w
+    canvas.height = h
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('No canvas context (fallback)')
+
+    fillCanvasWhite(ctx, w, h)
+    ctx.drawImage(img, 0, 0, w, h)
+
+    const bmp2 = await createImageBitmap(canvas)
+    if ((bmp2 as any)?.width > 0 && (bmp2 as any)?.height > 0) return bmp2
+    try { bmp2.close?.() } catch {}
+    throw new Error('decode_failed_after_fallback')
+  }
 
 async function canvasToWebpFile(
   canvas: HTMLCanvasElement,
   fileName: string,
-  quality = 0.82
+  quality = 0.82,
+  minBytes = 8 * 1024 // ✅ quá nhỏ => thường encode lỗi/đen
 ): Promise<File> {
-  const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('toBlob failed'))),
-      'image/webp',
-      quality
-    )
-  })
-  return new File([blob], fileName, { type: 'image/webp' })
+  const makeBlob = () =>
+    new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('toBlob failed'))),
+        'image/webp',
+        quality
+      )
+    })
+
+  const blob1 = await makeBlob()
+  if (blob1.size >= minBytes) return new File([blob1], fileName, { type: 'image/webp' })
+
+  // ✅ retry 1 lần
+  const blob2 = await makeBlob()
+  if (blob2.size >= minBytes) return new File([blob2], fileName, { type: 'image/webp' })
+
+  throw new Error(`webp_encode_failed_small_blob size=${blob2.size}`)
 }
 
 function resizeToCanvas(src: ImageBitmap, maxWidthOrHeight: number): HTMLCanvasElement {
@@ -157,8 +219,12 @@ function resizeToCanvas(src: ImageBitmap, maxWidthOrHeight: number): HTMLCanvasE
   if (!ctx) throw new Error('No canvas context')
 
   // chất lượng resize tốt
-  ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
+
+  // ✅ chống nền đen do alpha/decoder
+  fillCanvasWhite(ctx, w, h)
+
   ctx.drawImage(src, 0, 0, w, h)
 
   return canvas
@@ -298,6 +364,16 @@ for (const f of okFiles) {
     alert('Thiếu Mã phòng (room_code). Vui lòng nhập mã trước khi upload ảnh/video.')
     return
   }
+  // =======================
+// ✅ NEW: bắt buộc phải có UUID (đã lưu phòng)
+// =======================
+const roomUuid = String(editingRoom?.id || '').trim()
+
+if (!roomUuid) {
+  alert('Vui lòng bấm Lưu phòng trước, sau đó mới upload ảnh/video để tránh nhầm folder.')
+  return
+}
+
 
     // ===== helper: run pool concurrency =====
 async function runPool<T>(
@@ -332,27 +408,43 @@ const shouldMakeThumb = existingImagesCount === 0 && Boolean(firstImageFileInBat
 const CONCURRENCY = 3
 let thumbStarted = false
 
+// ✅ serialize convert ảnh để tránh race/memory pressure trên mobile
+let imageConvertChain = Promise.resolve()
+async function withImageConvertLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = imageConvertChain.then(fn, fn)
+  imageConvertChain = run.then(() => undefined, () => undefined)
+  return run
+}
+
 await runPool(okFiles, CONCURRENCY, async (file) => {
   const isVideo = file.type.startsWith('video/')
   const isImage = file.type.startsWith('image/')
 
   // Ảnh: convert WebP 1600px, target ~500KB
   let uploadFile: File = file
-  if (isImage) {
+    if (isImage) {
     const baseName = (file.name || 'image').replace(/\.[^.]+$/, '')
-    uploadFile = await compressImageWebp(file, {
-      max: 1600,
-      targetBytes: 500 * 1024,
-      baseName,
-    })
+    try {
+      uploadFile = await withImageConvertLock(() =>
+        compressImageWebp(file, {
+          max: 1600,
+          targetBytes: 500 * 1024,
+          baseName,
+        })
+      )
+    } catch (e) {
+      console.warn('compressImageWebp failed, fallback to original', e)
+      uploadFile = file
+    }
   }
+
 
   // ✅ upload qua API R2 (server)
 // =======================
 // NEW: Presign + PUT direct R2 (no /api/upload/r2)
 // =======================
 
-const roomId = `room-${safeRoomCode}`
+const roomId = roomUuid
 
 // helper: xin presign rồi PUT lên R2, trả về publicUrl
 async function presignAndPutToR2(params: {
@@ -586,6 +678,20 @@ const detailSample =
       setFeeAutofillDone(false)
       return
     }
+    // ✅ NEW: snapshot media ban đầu (để save không động ảnh thì không prune)
+    try {
+      const media0 = Array.isArray((editingRoom as any)?.media) ? (editingRoom as any).media : [];
+      const sig0 = JSON.stringify(
+        media0
+          .filter((m: any) => m?.url && (m?.type === "image" || m?.type === "video"))
+          .map((m: any) => `${m.type}:${String(m.url).trim()}`)
+          .sort()
+      );
+      initialMediaSigRef.current = sig0;
+    } catch {
+      initialMediaSigRef.current = "";
+    }
+
 
     // EDIT ROOM
     setRoomForm({
@@ -776,6 +882,27 @@ const insertData = newId ? { id: newId, ...payload } : payload
 
   const roomCodeForR2 = String(updatedRoom?.room_code || roomForm?.room_code || "").trim();
 
+ // ✅ NEW: chỉ prune khi user thật sự thay đổi danh sách media
+let shouldPrune = true;
+try {
+  const sigNow = JSON.stringify(
+    (normalized || [])
+      .map((m: any) => `${m.type}:${String(m.url).trim()}`)
+      .sort()
+  );
+
+  const sig0 = String(initialMediaSigRef.current || "");
+  // nếu đang edit và media không đổi -> không prune
+  if (isEdit && sig0 && sigNow === sig0) shouldPrune = false;
+
+  // safety: nếu vì lý do nào đó media đang rỗng (load lỗi) mà trước đó có sig0 -> không prune
+  if (isEdit && sig0 && (normalized || []).length === 0) shouldPrune = false;
+} catch {
+  // nếu so sánh lỗi thì thôi, đừng prune cho an toàn
+  shouldPrune = false;
+}
+
+if (shouldPrune) {
   const pruneResp = await fetch(`/api/rooms/${roomId}/prune-r2`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -785,12 +912,13 @@ const insertData = newId ? { id: newId, ...payload } : payload
     }),
   });
 
-  if (!pruneResp.ok) {
-    // không throw để tránh “lưu DB ok nhưng prune fail” làm mất dữ liệu UI,
-    // bạn có thể bật throw nếu muốn bắt buộc prune thành công
-    console.warn("prune-r2 failed", await pruneResp.text());
+    if (!pruneResp.ok) {
+      console.warn("prune-r2 failed", await pruneResp.text());
+    }
+  } else {
+    console.log("Skip prune-r2: media not changed (or unsafe to prune)");
   }
-} 
+}
 
 // ✅ ĐÁNH DẤU HOME "DIRTY" ĐỂ BACK VỀ HOME KHÔNG RESTORE LIST CŨ (ảnh cũ)
 try {

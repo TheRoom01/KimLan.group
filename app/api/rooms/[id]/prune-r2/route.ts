@@ -88,10 +88,6 @@ export async function POST(
     ? body.keep_urls.map((x: any) => String(x ?? "").trim()).filter(Boolean)
     : [];
 
-    if (!room_code) {
-      return NextResponse.json({ error: "Missing room_code" }, { status: 400 });
-    }
-
     // Safety: nếu keep_urls rỗng thì KHÔNG prune (tránh xoá nhầm do client bug)
     if (keep_urls.length === 0) {
       return NextResponse.json(
@@ -100,89 +96,130 @@ export async function POST(
       );
     }
 
-    // prefix đúng theo convention bạn đang dùng trong RoomCard
-    const prefix = `rooms/room-${room_code}/images/`;
+   // =======================
+  // ✅ NEW: hỗ trợ BOTH prefix
+  // - NEW (UUID):   rooms/<roomId>/images/
+  // - LEGACY:       rooms/room-<room_code>/images/
+  // =======================
+  const prefixUuid = `rooms/${roomId}/images/`;
+  const prefixLegacy = room_code ? `rooms/room-${room_code}/images/` : "";
 
-    // build keepKeys từ keep_urls (chỉ giữ những url/keys thuộc đúng prefix của room_code hiện tại)
-    const keepKeys = new Set<string>();
-    for (const url of keep_urls) {
-      const k = keyFromPublicUrl(String(url));
-      if (k && k.startsWith(prefix)) keepKeys.add(k);
-    }
+  // helper: đếm keepKeys thuộc prefix
+  function countRealKeysUnder(prefix: string, keys: Set<string>) {
+  let c = 0;
+  for (const k of keys) {
+    if (!k.startsWith(prefix)) continue;
+    if (k.endsWith("/thumb.webp")) continue; // ✅ không tính thumb
+    c++;
+  }
+  return c;
+}
 
-    // Giữ thumb.webp để không gãy cover sau khi edit
-    const thumbKey = `${prefix}thumb.webp`;
-    keepKeys.add(thumbKey);
+// =======================
+// ✅ NEW: keepKeys cho cả UUID prefix và legacy prefix
+// =======================
+const keepKeys = new Set<string>();
+for (const url of keep_urls) {
+  const k = keyFromPublicUrl(String(url));
+  if (!k) continue;
+  if (k.startsWith(prefixUuid) || (prefixLegacy && k.startsWith(prefixLegacy))) keepKeys.add(k);
+}
 
-    // Safety: nếu không giữ được bất kỳ ảnh nào thuộc prefix => KHÔNG prune
-// (tránh trường hợp client gửi URL sai domain/path)
-if (keepKeys.size <= 1) {
+// luôn giữ thumb cho cả 2 prefix (nếu tồn tại)
+keepKeys.add(`${prefixUuid}thumb.webp`);
+if (prefixLegacy) keepKeys.add(`${prefixLegacy}thumb.webp`);
+
+// Safety: nếu keep_urls không map được key nào hợp lệ => KHÔNG prune
+const keepUnderUuid = countRealKeysUnder(prefixUuid, keepKeys);
+const keepUnderLegacy = prefixLegacy ? countRealKeysUnder(prefixLegacy, keepKeys) : 0;
+
+// nếu chỉ có thumb (<=1 key) dưới cả 2 prefix => refuse
+if (keepUnderUuid <= 0 && keepUnderLegacy <= 0) {
   return NextResponse.json(
     {
-      error: "No valid keepKeys under prefix; refuse to prune for safety",
+      error: "No valid keepKeys under uuid/legacy prefixes; refuse to prune for safety",
       room_code,
-      prefix,
+      prefixUuid,
+      prefixLegacy,
       keep_urls_count: keep_urls.length,
     },
     { status: 400 }
   );
 }
 
+  async function prunePrefix(prefix: string) {
+  // chỉ prune prefix này nếu có ít nhất 1 key thật (không tính thumb)
+ const keepCount = countRealKeysUnder(prefix, keepKeys);
+  if (keepCount <= 0) {
+    return {
+      prefix,
+      skipped: true,
+      reason: "no keep keys under this prefix (safety)",
+      toDelete: 0,
+      deleted: 0,
+    };
+  }
 
-    // 1) list all objects trong prefix
-    let continuationToken: string | undefined = undefined;
-    const toDelete: string[] = [];
+  let continuationToken: string | undefined = undefined;
+  const toDelete: string[] = [];
 
-    do {
-      const resp = (await s3.send(
-        new ListObjectsV2Command({
-          Bucket: R2_BUCKET,
-          Prefix: prefix,
-          ContinuationToken: continuationToken,
-        })
-      )) as unknown as ListObjectsV2CommandOutput;
+  do {
+    const resp = (await s3.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      })
+    )) as unknown as ListObjectsV2CommandOutput;
 
-      const contents = resp.Contents ?? [];
-      for (const obj of contents) {
-        const key = obj.Key || "";
-        if (!key) continue;
-
-        // nếu không nằm trong keepKeys => xoá
-        if (!keepKeys.has(key)) {
-          toDelete.push(key);
-        }
-      }
-
-      continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
-    } while (continuationToken);
-
-    // 2) delete theo batch 1000 (giới hạn S3 API)
-    let deleted = 0;
-    for (let i = 0; i < toDelete.length; i += 1000) {
-      const chunk = toDelete.slice(i, i + 1000);
-      const delResp = await s3.send(
-        new DeleteObjectsCommand({
-          Bucket: R2_BUCKET,
-          Delete: {
-            Objects: chunk.map((Key) => ({ Key })),
-            Quiet: true,
-          },
-        })
-      );
-      deleted += (delResp.Deleted || []).length;
+    const contents = resp.Contents ?? [];
+    for (const obj of contents) {
+      const key = obj.Key || "";
+      if (!key) continue;
+      if (!keepKeys.has(key)) toDelete.push(key);
     }
 
-    return NextResponse.json({
-    ok: true,
-    roomId,
-    room_code,
+    continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  let deleted = 0;
+  for (let i = 0; i < toDelete.length; i += 1000) {
+    const chunk = toDelete.slice(i, i + 1000);
+    const delResp = await s3.send(
+      new DeleteObjectsCommand({
+        Bucket: R2_BUCKET,
+        Delete: {
+          Objects: chunk.map((Key) => ({ Key })),
+          Quiet: true,
+        },
+      })
+    );
+    deleted += (delResp.Deleted || []).length;
+  }
+
+  return {
     prefix,
-    keep_count: keepKeys.size,
-    delete_count: toDelete.length,
+    skipped: false,
+    toDelete: toDelete.length,
     deleted,
-    kept_sample: Array.from(keepKeys).slice(0, 10),
-    deleted_sample: toDelete.slice(0, 10), // giúp debug nhanh
-  });
+    deleted_sample: toDelete.slice(0, 10),
+  };
+}
+
+const r1 = await prunePrefix(prefixUuid);
+const r2 = prefixLegacy ? await prunePrefix(prefixLegacy) : { prefix: "", skipped: true, reason: "no room_code", toDelete: 0, deleted: 0 };
+
+   return NextResponse.json({
+  ok: true,
+  roomId,
+  room_code,
+  prefixUuid,
+  prefixLegacy,
+  keep_count_total: keepKeys.size,
+  keep_urls_count: keep_urls.length,
+  results: [r1, r2],
+  kept_sample: Array.from(keepKeys).slice(0, 10),
+});
 
   } catch (err: any) {
     return NextResponse.json(
