@@ -192,6 +192,8 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
   const roomTypes = useMemo(() => [...ROOM_TYPE_OPTIONS], []);
 
   const filterApplyTimerRef = useRef<number | null>(null);
+  // ✅ giữ QS đang chờ apply (do debounce 200ms) để có thể flush ngay khi rời list
+  const pendingFilterApplyQsRef = useRef<string | null>(null);
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
@@ -782,6 +784,25 @@ const onVisibility = () => {
 
 
 const lastNavCaptureTsRef = useRef(0);
+// ✅ nếu URL đang chờ update (debounce 200ms), flush ngay trước khi rời list
+const flushPendingFilterUrlNow = useCallback(() => {
+  const pendingQs = pendingFilterApplyQsRef.current;
+  if (!pendingQs) return;
+
+  // clear timer nếu còn
+  if (filterApplyTimerRef.current) {
+    window.clearTimeout(filterApplyTimerRef.current);
+    filterApplyTimerRef.current = null;
+  }
+
+  pendingFilterApplyQsRef.current = null;
+
+  // ✅ chỉ cập nhật URL + persist (KHÔNG resetPagination/fetch)
+  // để tránh churn khi user sắp rời list sang detail
+  replaceUrlShallow(pendingQs);
+  persistSoon();
+}, [persistSoon, replaceUrlShallow]);
+
 
 const onNavToDetailCapture = useCallback(
   (ev: Event) => {
@@ -803,16 +824,21 @@ const onNavToDetailCapture = useCallback(
 
     // ✅ chỉ chụp snapshot khi đi sang Detail
     const isDetailNav = href.startsWith("/rooms/") || href.includes("/rooms/");
+    
    if (isDetailNav) {
-    // ✅ chốt scrollTop ngay thời điểm click (tránh stale do inertia/raf)
+    // ✅ 1) flush URL pending để back về list không bị “mất filter/page”
+    flushPendingFilterUrlNow();
+
+    // ✅ 2) chốt scrollTop ngay thời điểm click (tránh stale do inertia/raf)
     const el = scrollRef.current;
     if (el) lastScrollTopRef.current = el.scrollTop;
 
-    // ✅ lưu scroll vào history state của entry hiện tại (để popstate restore ổn định)
+    // ✅ 3) lưu scroll vào history state của entry hiện tại
     saveScrollToHistory();
 
+    // ✅ 4) lưu snapshot/cache/scroll fallback
     writeBackSnapshotNow();
-   }
+  }
 
     // hint để lần back về restore (dùng ở hydrate)
     try {
@@ -828,7 +854,7 @@ const onNavToDetailCapture = useCallback(
       );
     } catch {}
   },
-  [persistNow, writeLiteNow, writeBackSnapshotNow]
+  [flushPendingFilterUrlNow, saveScrollToHistory, writeBackSnapshotNow]
 );
 
 useEffect(() => {
@@ -886,28 +912,48 @@ const endHydrationAfterTwoFrames = useCallback(() => {
   });
 }, []);
 
+// ================== DETERMINISTIC SCROLL RESTORE ==================
+// Áp dụng sau khi pages thay đổi (list đã render xong)
+useEffect(() => {
+  if (pendingScrollTopRef.current == null) return;
+
+  const y = pendingScrollTopRef.current;
+  pendingScrollTopRef.current = null;
+
+  const el = scrollRef.current;
+  if (!el) return;
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const target = scrollRef.current;
+      if (!target) return;
+      target.scrollTop = y;
+    });
+  });
+
+}, [pages]);
 
   const applyBackSnapshot = useCallback(
   (snap: BackSnapshot) => {
+    // ✅ URL là source of truth: snapshot chỉ được apply nếu qs KHỚP URL hiện tại
+    const currentQs = canonicalQs(window.location.search.replace(/^\?/, ""));
+    const snapQs = canonicalQs(snap?.qs || "");
+
+    if (snapQs && snapQs !== currentQs) {
+      // snapshot stale / khác URL => bỏ qua hoàn toàn, không overwrite URL/state
+      return false;
+    }
+
     // chặn filter-change effect reset 1 nhịp sau restore
     persistBlockedRef.current = true;
     skipNextFilterEffectRef.current = true;
 
     hydratingFromUrlRef.current = true;
     try {
-      if (snap.qs) replaceUrlShallow(snap.qs);
+      // ❌ KHÔNG replaceUrlShallow từ snapshot nữa (URL phải thắng)
+      // if (snap.qs) replaceUrlShallow(snap.qs);
 
-      // FILTER
-      setSearch(snap.search ?? "");
-      setPriceDraft(snap.priceApplied ?? PRICE_DEFAULT);
-      setPriceApplied(snap.priceApplied ?? PRICE_DEFAULT);
-      setSelectedDistricts(snap.selectedDistricts ?? []);
-      setSelectedRoomTypes(snap.selectedRoomTypes ?? []);
-      setMoveFilter(snap.moveFilter ?? null);
-      setSortMode(snap.sortMode ?? "updated_desc");
-      setTotal(typeof snap.total === "number" ? snap.total : null);
-      setStatusFilter(snap.statusFilter ?? null);
-
+      // ✅ chỉ restore CACHE + SCROLL (không restore FILTER/PAGE)
       // CACHE
       pagesRef.current = snap.pages ?? [];
       setPages(snap.pages ?? []);
@@ -918,16 +964,16 @@ const endHydrationAfterTwoFrames = useCallback(() => {
       setLoading(false);
       setShowSkeleton(false);
 
-      // PAGE
-      const pIdx = snap.pageIndex ?? 0;
-      const dIdx = snap.displayPageIndex ?? pIdx;
-      setPageIndex(pIdx);
-      setDisplayPageIndex(dIdx);
+      // ✅ PAGE không lấy từ snapshot (page phải lấy từ URL param p)
+      // const pIdx = snap.pageIndex ?? 0;
+      // const dIdx = snap.displayPageIndex ?? pIdx;
+      // setPageIndex(pIdx);
+      // setDisplayPageIndex(dIdx);
 
-      // CENTRAL FETCH skip 1 vòng
-      didRestoreFromStorageRef.current = true;
+      // ✅ KHÔNG skip central fetch bằng storage nữa (data phải follow URL)
+      // didRestoreFromStorageRef.current = true;
 
-     // SCROLL (✅ defer until list render)
+      // SCROLL (✅ defer until list render)
       if (typeof snap.scrollTop === "number") {
         pendingScrollTopRef.current = snap.scrollTop;
       }
@@ -936,13 +982,13 @@ const endHydrationAfterTwoFrames = useCallback(() => {
         persistBlockedRef.current = false;
       }, 400);
 
-      // ✅ reset guard để lần back sau vẫn hoạt động
       setTimeout(() => {
         didApplyBackOnceRef.current = false;
       }, 0);
 
       endHydrationAfterTwoFrames();
 
+      return true;
     } finally {
       queueMicrotask(() => {
         hydratingFromUrlRef.current = false;
@@ -958,6 +1004,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
     setFetchError,
   ]
 );
+
  // ================== HYDRATE (ONCE) ==================
 useEffect(() => {
   if (didHydrateOnceRef.current) return;
@@ -1049,14 +1096,53 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     const snap = readBackSnapshot();
     if (snap) {
       didApplyBackOnceRef.current = true; // ✅ chặn restore trùng
+
+      // ✅ URL = source of truth: hydrate FILTER/PAGE từ URL trước khi apply cache/scroll
+      pendingUrlFiltersRef.current = {
+        search: url.q,
+        min: url.minVal,
+        max: url.maxVal,
+        districts: url.d,
+        roomTypes: url.t,
+        move: url.m,
+        sort: url.s,
+        status: isReloadRef.current ? null : url.st,
+      };
+
+      setSearch(url.q);
+      setPriceDraft([url.minVal, url.maxVal]);
+      setPriceApplied([url.minVal, url.maxVal]);
+      setSelectedDistricts(url.d);
+      setSelectedRoomTypes(url.t);
+      setMoveFilter(url.m);
+      setSortMode(url.s);
+      setStatusFilter(isReloadRef.current ? null : url.st);
+
+      const pIdx = Number.isFinite(url.nextPage) ? url.nextPage : 0;
+      setPageIndex(pIdx);
+      setDisplayPageIndex(pIdx);
+
+      // ✅ cursor đang đứng theo URL (nếu có)
+      if (url.c != null) {
+        cursorsRef.current[pIdx] = url.c;
+      }
+
+      // ✅ apply cache + scroll (snapshot) — không overwrite URL/filter/page
       applyBackSnapshot(snap);
+
+      // ✅ nếu page chưa có cache thật (undefined) thì fetch theo URL
+      queueMicrotask(() => {
+        fetchPageRef.current(pIdx);
+      });
 
       try {
         sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
       } catch {}
 
+      finishHydrate();
       return;
     }
+
   }
 } 
 
@@ -1151,101 +1237,67 @@ if (isReloadRef.current) {
     ttlOk &&
     canonicalQs(restored.qs || "") === canonicalQs(url.qs || "");
 
-  // ------------------ RESTORE FROM STORAGE ------------------
+   // ------------------ RESTORE FROM STORAGE ------------------
   if (match && restored) {
     const rest = restored;
 
     hydratingFromUrlRef.current = true;
     try {
-      // ✅ LUÔN restore FILTER
-      const restoredSearch = rest.search ?? "";
-      const restoredPrice = rest.priceApplied ?? PRICE_DEFAULT;
-      const restoredDistricts = rest.selectedDistricts ?? [];
-      const restoredTypes = rest.selectedRoomTypes ?? [];
-      const restoredMove = rest.moveFilter ?? null;
-      const restoredSort = rest.sortMode ?? "updated_desc";
+      // ✅ URL = source of truth:
+      // FILTER luôn lấy từ URL (không lấy từ storage nữa)
+      pendingUrlFiltersRef.current = {
+        search: url.q,
+        min: url.minVal,
+        max: url.maxVal,
+        districts: url.d,
+        roomTypes: url.t,
+        move: url.m,
+        sort: url.s,
+        status: isReloadRef.current ? null : url.st,
+      };
 
-      setSearch(restoredSearch);
-      setPriceDraft(restoredPrice);
-      setPriceApplied(restoredPrice);
-      setSelectedDistricts(restoredDistricts);
-      setSelectedRoomTypes(restoredTypes);
-      setMoveFilter(restoredMove);
-      setSortMode(restoredSort);
+      setSearch(url.q);
+      setPriceDraft([url.minVal, url.maxVal]);
+      setPriceApplied([url.minVal, url.maxVal]);
+      setSelectedDistricts(url.d);
+      setSelectedRoomTypes(url.t);
+      setMoveFilter(url.m);
+      setSortMode(url.s);
+      setStatusFilter(isReloadRef.current ? null : url.st);
+
+      // ✅ total có thể lấy từ storage (chỉ là số hiển thị)
       setTotal(typeof rest.total === "number" ? rest.total : null);
-      if (!isReloadRef.current) {
-        setStatusFilter(rest.statusFilter ?? null);
-      } else {
-        setStatusFilter(null);
-      }
 
+      // ✅ PAGE luôn lấy từ URL
+      const pIdx = Number.isFinite(url.nextPage) ? url.nextPage : 0;
+      setPageIndex(pIdx);
+      setDisplayPageIndex(pIdx);
 
-      // ✅ Nếu reload: reset vị trí + trang về 0, GIỮ filter
-      // - KHÔNG restore scroll/page
-      // - Ưu tiên dùng SSR initialRooms để khỏi nháy trắng
-      if (isReloadRef.current && !isBackFromDetail) {
-        setPageIndex(0);
-        setDisplayPageIndex(0);
-
-        if (initialRooms?.length) {
-          pagesRef.current = [initialRooms];
-          setPages([initialRooms]);
-
-          cursorsRef.current = [null, initCursor];
-          setHasNext(Boolean(initCursor));
-          setFetchError("");
-          setLoading(false);
-          setShowSkeleton(false);
-        } else {
-          filtersVersionRef.current += 1;
-          resetPagination(0);
-          // fetch sẽ tự chạy bởi central fetch effect
-        }
-
-        const qsNoPage = buildQs({
-          q: restoredSearch.trim(),
-          min: restoredPrice[0],
-          max: restoredPrice[1],
-          d: restoredDistricts,
-          t: restoredTypes,
-          m: restoredMove,
-          s: restoredSort,
-          st: isReloadRef.current ? null : (rest.statusFilter ?? null),
-          p: 0,
-        });
-        replaceUrlShallow(qsNoPage);
-
-        requestAnimationFrame(() => {
-          const el = scrollRef.current;
-          if (el) el.scrollTop = 0;
-          lastScrollTopRef.current = 0;
-        });
-
-        try {
-          sessionStorage.removeItem(HOME_BACK_HINT_KEY);
-        } catch {}
-        finishHydrate();
-        return;
-      }
-
-      // (Giữ behavior cũ khi KHÔNG reload)
+      // ✅ storage chỉ restore CACHE để back/load nhanh
       pagesRef.current = rest.pages ?? [];
       setPages(rest.pages ?? []);
+
       cursorsRef.current = rest.cursors ?? [null];
       setHasNext(Boolean(rest.hasNext));
 
-      setPageIndex(rest.pageIndex ?? 0);
-      setDisplayPageIndex(rest.displayPageIndex ?? rest.pageIndex ?? 0);
+      // ✅ cursor đang đứng phải theo URL (nếu URL có c)
+      if (url.c != null) {
+        cursorsRef.current[pIdx] = url.c;
+      }
 
-      didRestoreFromStorageRef.current = true;
-
-     if (typeof rest.scrollTop === "number") {
+      // ✅ scroll: chỉ là UI concern
+      if (typeof rest.scrollTop === "number") {
         pendingScrollTopRef.current = rest.scrollTop;
       }
+
+      setFetchError("");
+      setLoading(false);
+      setShowSkeleton(false);
 
       try {
         sessionStorage.removeItem(HOME_BACK_HINT_KEY);
       } catch {}
+
       finishHydrate();
       return;
     } finally {
@@ -1255,39 +1307,53 @@ if (isReloadRef.current) {
     }
   }
 
-  // ------------------ RESTORE FROM LITE (fallback) ------------------
+    // ------------------ RESTORE FROM LITE (fallback) ------------------
   const effectiveQs = url.qs || backHint?.qs || "";
   const lite = readLiteForQs(effectiveQs);
 
   if (lite) {
     hydratingFromUrlRef.current = true;
     try {
-      setSearch(lite.search ?? "");
-      setPriceDraft(lite.priceApplied ?? PRICE_DEFAULT);
-      setPriceApplied(lite.priceApplied ?? PRICE_DEFAULT);
-      setSelectedDistricts(lite.selectedDistricts ?? []);
-      setSelectedRoomTypes(lite.selectedRoomTypes ?? []);
-      setMoveFilter(lite.moveFilter ?? null);
-      setSortMode(lite.sortMode ?? "updated_desc");
+      // ✅ URL = source of truth: FILTER/PAGE lấy từ URL, KHÔNG lấy từ lite
+      pendingUrlFiltersRef.current = {
+        search: url.q,
+        min: url.minVal,
+        max: url.maxVal,
+        districts: url.d,
+        roomTypes: url.t,
+        move: url.m,
+        sort: url.s,
+        status: isReloadRef.current ? null : url.st,
+      };
+
+      setSearch(url.q);
+      setPriceDraft([url.minVal, url.maxVal]);
+      setPriceApplied([url.minVal, url.maxVal]);
+      setSelectedDistricts(url.d);
+      setSelectedRoomTypes(url.t);
+      setMoveFilter(url.m);
+      setSortMode(url.s);
+      setStatusFilter(isReloadRef.current ? null : url.st);
+
+      // ✅ total/hasNext/scrollTop chỉ là “hint UI”, được phép dùng lite
       setTotal(typeof lite.total === "number" ? lite.total : null);
-      if (!isReloadRef.current) {
-        setStatusFilter(lite.statusFilter ?? null);
-      } else {
-        setStatusFilter(null);
-      }
-
-
-      const pIdx = lite.pageIndex ?? 0;
-      const dIdx = lite.displayPageIndex ?? pIdx;
-
-      setPageIndex(pIdx);
-      setDisplayPageIndex(dIdx);
       setHasNext(Boolean(lite.hasNext));
+
+      // ✅ PAGE theo URL
+      const pIdx = Number.isFinite(url.nextPage) ? url.nextPage : 0;
+      filtersVersionRef.current += 1;
+
+      // reset cache theo page từ URL
+      resetPagination(pIdx);
+
+      // ✅ cursor theo URL (nếu có)
+      cursorsRef.current[pIdx] = url.c ?? null;
 
       setFetchError("");
       setLoading(false);
       setShowSkeleton(true);
 
+      // ✅ scroll fallback (history.state ưu tiên; cái này chỉ set pending)
       if (typeof lite.scrollTop === "number") {
         pendingScrollTopRef.current = lite.scrollTop;
       }
@@ -1295,6 +1361,12 @@ if (isReloadRef.current) {
       try {
         sessionStorage.removeItem(HOME_BACK_HINT_KEY);
       } catch {}
+
+      // ✅ fetch đúng page theo URL (đừng chờ pageIndex effect vì pageIndex có thể không đổi)
+      queueMicrotask(() => {
+        fetchPageRef.current(pIdx);
+      });
+
       finishHydrate();
       return;
     } finally {
@@ -1416,7 +1488,43 @@ useEffect(() => {
     const snap = readBackSnapshot();
     if (!snap) return;
 
+    // ✅ URL = source of truth: hydrate FILTER/PAGE từ URL
+    const url = readUrlState();
+
+    pendingUrlFiltersRef.current = {
+      search: url.q,
+      min: url.minVal,
+      max: url.maxVal,
+      districts: url.d,
+      roomTypes: url.t,
+      move: url.m,
+      sort: url.s,
+      status: isReloadRef.current ? null : url.st,
+    };
+
+    setSearch(url.q);
+    setPriceDraft([url.minVal, url.maxVal]);
+    setPriceApplied([url.minVal, url.maxVal]);
+    setSelectedDistricts(url.d);
+    setSelectedRoomTypes(url.t);
+    setMoveFilter(url.m);
+    setSortMode(url.s);
+    setStatusFilter(isReloadRef.current ? null : url.st);
+
+    const pIdx = Number.isFinite(url.nextPage) ? url.nextPage : 0;
+    setPageIndex(pIdx);
+    setDisplayPageIndex(pIdx);
+
+    if (url.c != null) {
+      cursorsRef.current[pIdx] = url.c;
+    }
+
     applyBackSnapshot(snap);
+
+    // ✅ đảm bảo page đúng theo URL được fetch nếu cache thiếu
+    queueMicrotask(() => {
+      fetchPageRef.current(pIdx);
+    });
 
     try {
       sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
@@ -1429,18 +1537,27 @@ useEffect(() => {
     // reset guard khi rời trang (để lần sau back vẫn chạy)
     didApplyBackOnceRef.current = false;
   };
-}, [applyBackSnapshot, readBackSnapshot]);
+}, [applyBackSnapshot, readBackSnapshot, readUrlState]);
 
   // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
-    if (didApplyBackOnceRef.current) return;
-    didApplyBackOnceRef.current = true;
+  if (didApplyBackOnceRef.current) return;
+  didApplyBackOnceRef.current = true;
+
+  const finishPop = () => {
+    // ✅ mở persist trễ + reset guard để lần pop sau vẫn chạy
+    setTimeout(() => {
+      persistBlockedRef.current = false;
+      didApplyBackOnceRef.current = false;
+    }, 400);
+  };
 
   persistBlockedRef.current = true;
   skipNextFilterEffectRef.current = true;
 
-   const url = readUrlState();
+  const url = readUrlState();
+
 
 // ✅ ưu tiên history scroll (ổn định nhất), snapshot/storage chỉ là fallback
 const restoredByHistory = restoreScrollFromHistory();
@@ -1462,33 +1579,33 @@ const restoredByHistory = restoreScrollFromHistory();
       canonicalQs(restored.qs || "") === canonicalQs(url.qs || "");
 
     if (match && restored) {
-      const rest = restored;
+    const rest = restored;
 
-      hydratingFromUrlRef.current = true;
-      try {
-      // restore filters
-      setSearch(rest.search ?? "");
-      setPriceDraft(rest.priceApplied ?? PRICE_DEFAULT);
-      setPriceApplied(rest.priceApplied ?? PRICE_DEFAULT);
-      setSelectedDistricts(rest.selectedDistricts ?? []);
-      setSelectedRoomTypes(rest.selectedRoomTypes ?? []);
-      setMoveFilter(rest.moveFilter ?? null);
-      setSortMode(rest.sortMode ?? "updated_desc");
+    hydratingFromUrlRef.current = true;
+    try {
+      // ✅ URL = source of truth:
+      // POPSTATE luôn hydrate FILTER/PAGE từ URL, không từ storage nữa
+      setSearch(url.q);
+      setPriceDraft([url.minVal, url.maxVal]);
+      setPriceApplied([url.minVal, url.maxVal]);
+      setSelectedDistricts(url.d);
+      setSelectedRoomTypes(url.t);
+      setMoveFilter(url.m);
+      setSortMode(url.s);
       setTotal(typeof rest.total === "number" ? rest.total : null);
-      setStatusFilter(isReloadRef.current ? null : (rest.statusFilter ?? null));
+      setStatusFilter(isReloadRef.current ? null : url.st);
 
-      // restore cache
+      // ✅ storage chỉ restore CACHE (để back nhanh)
       pagesRef.current = rest.pages ?? [];
       setPages(rest.pages ?? []);
 
       cursorsRef.current = rest.cursors ?? [null];
       setHasNext(Boolean(rest.hasNext));
 
-      const pIdx = rest.pageIndex ?? 0;
-      const dIdx = rest.displayPageIndex ?? pIdx;
-
+      // ✅ PAGE cũng lấy từ URL
+      const pIdx = url.nextPage ?? 0;
       setPageIndex(pIdx);
-      setDisplayPageIndex(dIdx);
+      setDisplayPageIndex(pIdx);
 
       setFetchError("");
       setLoading(false);
@@ -1499,19 +1616,22 @@ const restoredByHistory = restoreScrollFromHistory();
         pendingScrollTopRef.current = rest.scrollTop;
       }
 
-      setTimeout(() => {
-        persistBlockedRef.current = false;
-      }, 400);
-
+      finishPop();
       endHydrationAfterTwoFrames();
+
+      // ✅ nếu page chưa có cache thật (undefined) thì fetch theo URL
+      queueMicrotask(() => {
+        fetchPageRef.current(pIdx);
+      });
 
       return;
 
-     } finally {
-    queueMicrotask(() => {
-      hydratingFromUrlRef.current = false;
-    });
-   }
+    } finally {
+
+      queueMicrotask(() => {
+        hydratingFromUrlRef.current = false;
+      });
+    }
   }
 
 // ------------------ RESTORE FROM LITE (fallback) ------------------
@@ -1521,50 +1641,55 @@ const lite = readLiteForQs(effectiveQs);
 if (lite) {
   hydratingFromUrlRef.current = true;
   try {
-    setSearch(lite.search ?? "");
-    setPriceDraft(lite.priceApplied ?? PRICE_DEFAULT);
-    setPriceApplied(lite.priceApplied ?? PRICE_DEFAULT);
-    setSelectedDistricts(lite.selectedDistricts ?? []);
-    setSelectedRoomTypes(lite.selectedRoomTypes ?? []);
-    setMoveFilter(lite.moveFilter ?? null);
-    setSortMode(lite.sortMode ?? "updated_desc");
+    // ✅ URL = source of truth: FILTER/PAGE lấy từ URL, KHÔNG lấy từ lite
+    setSearch(url.q);
+    setPriceDraft([url.minVal, url.maxVal]);
+    setPriceApplied([url.minVal, url.maxVal]);
+    setSelectedDistricts(url.d);
+    setSelectedRoomTypes(url.t);
+    setMoveFilter(url.m);
+    setSortMode(url.s);
+    setStatusFilter(isReloadRef.current ? null : url.st);
+
+    // ✅ hint UI từ lite
     setTotal(typeof lite.total === "number" ? lite.total : null);
-    if (!isReloadRef.current) {
-      setStatusFilter(lite.statusFilter ?? null);
-    } else {
-      setStatusFilter(null);
-    }
-
-
-    const pIdx = lite.pageIndex ?? 0;
-    const dIdx = lite.displayPageIndex ?? pIdx;
-
-    setPageIndex(pIdx);
-    setDisplayPageIndex(dIdx);
     setHasNext(Boolean(lite.hasNext));
+
+    const pIdx = Number.isFinite(url.nextPage) ? url.nextPage : 0;
+
+    filtersVersionRef.current += 1;
+    resetPagination(pIdx);
+
+    // ✅ cursor theo URL (nếu có)
+    cursorsRef.current[pIdx] = url.c ?? null;
 
     setFetchError("");
     setLoading(false);
     setShowSkeleton(true);
 
-   if (typeof lite.scrollTop === "number") {
+    // ✅ nếu history chưa có scroll thì fallback dùng scrollTop từ lite
+    if (!restoredByHistory && typeof lite.scrollTop === "number") {
       pendingScrollTopRef.current = lite.scrollTop;
     }
 
-    setTimeout(() => {
-      persistBlockedRef.current = false;
-    }, 400);
-
+       finishPop();
     endHydrationAfterTwoFrames();
 
-    return;
-  } finally {
+      // ✅ nếu page chưa có cache thật (undefined) thì fetch theo URL
+      queueMicrotask(() => {
+        fetchPageRef.current(pIdx);
+      });
+
+      return;
+
+    } finally {
+
     queueMicrotask(() => {
       hydratingFromUrlRef.current = false;
     });
   }
 }
-
+//---------------------------------------
  // fallback: hydrate theo URL + fetch
   hydratingFromUrlRef.current = true;
 
@@ -1589,12 +1714,9 @@ if (lite) {
     // pageIndex có thể không đổi -> fetch trực tiếp
     fetchPageRef.current(url.nextPage);
 
-    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        setTimeout(() => {
-          persistBlockedRef.current = false;
-        }, 400);
-
+        finishPop();
         endHydrationAfterTwoFrames();
       });
     });
@@ -1973,8 +2095,16 @@ lastFilterSigRef.current = filterSig;
 
   if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
 
+  // ✅ lưu QS đang pending để có thể flush ngay khi user click vào detail
+  pendingFilterApplyQsRef.current = qs;
+
   filterApplyTimerRef.current = window.setTimeout(() => {
-    replaceUrlShallow(qs);
+    filterApplyTimerRef.current = null;
+
+    const pendingQs = pendingFilterApplyQsRef.current;
+    pendingFilterApplyQsRef.current = null;
+
+    replaceUrlShallow(pendingQs || qs);
     setTotal(null);
     setDisplayPageIndex(0);
     resetPagination(0);
@@ -1984,6 +2114,8 @@ lastFilterSigRef.current = filterSig;
 
   return () => {
     if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
+    filterApplyTimerRef.current = null;
+    pendingFilterApplyQsRef.current = null;
   };
 
   }, [
