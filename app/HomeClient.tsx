@@ -2021,18 +2021,43 @@ console.log("FILTER_CHANGE", {
   const applied = appliedSearch.trim();
 
   // ✅ nếu vừa hydrate (initial/popstate/restore) thì bỏ qua 1 nhịp FILTER CHANGE
- if (skipNextFilterEffectRef.current) {
+  if (skipNextFilterEffectRef.current) {
   skipNextFilterEffectRef.current = false;
 
-  lastFilterSigRef.current = filterSig;
-  prevAppliedSearchRef.current = appliedSearch.trim();
+  // ✅ URL = source of truth: freeze signature theo URL hiện tại
+  const urlNow = readUrlState();
+  lastFilterSigRef.current = [
+    (urlNow.q ?? "").trim(),
+    urlNow.minVal,
+    urlNow.maxVal,
+    (urlNow.d ?? []).join(","),
+    (urlNow.t ?? []).join(","),
+    urlNow.m ?? "",
+    urlNow.s ?? "updated_desc",
+    (isReloadRef.current ? null : (urlNow.st ?? "")) ?? "",
+  ].join("|");
+  prevAppliedSearchRef.current = (urlNow.q ?? "").trim();
+
   return;
  }
-   if (hydratingFromUrlRef.current) {
-  lastFilterSigRef.current = filterSig;
-  prevAppliedSearchRef.current = appliedSearch.trim();
+
+ if (hydratingFromUrlRef.current) {
+  // ✅ URL = source of truth: freeze signature theo URL hiện tại
+  const urlNow = readUrlState();
+  lastFilterSigRef.current = [
+    (urlNow.q ?? "").trim(),
+    urlNow.minVal,
+    urlNow.maxVal,
+    (urlNow.d ?? []).join(","),
+    (urlNow.t ?? []).join(","),
+    urlNow.m ?? "",
+    urlNow.s ?? "updated_desc",
+    (isReloadRef.current ? null : (urlNow.st ?? "")) ?? "",
+  ].join("|");
+  prevAppliedSearchRef.current = (urlNow.q ?? "").trim();
+
   return;
-}
+ }
 
   // ✅ normalize filter -> signature primitive để tránh array reference gây reset giả
   
@@ -2151,6 +2176,7 @@ lastFilterSigRef.current = filterSig;
   fetchPage,
   displayPageIndex,
   hasNext,
+  readUrlState, // ✅ add
  ]);
 
 // ================== NEXT / PREV ==================
