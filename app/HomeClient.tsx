@@ -182,6 +182,7 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
     const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
   const [priceApplied, setPriceApplied] = useState<[number, number]>(PRICE_DEFAULT);
   const didHardReloadRef = useRef(false);
+  const allowClearUrlOnceRef = useRef(false); // ✅ chỉ cho phép clear URL khi ta cố ý
   const [minPriceApplied, maxPriceApplied] = useMemo(() => {
     const a = priceApplied[0];
     const b = priceApplied[1];
@@ -462,6 +463,17 @@ const replaceUrlShallow = useCallback(
   (nextQs: string) => {
     const currentQs = window.location.search.replace(/^\?/, "");
     if (nextQs === currentQs) return;
+
+    // ✅ CHỐNG BUG: không được tự clear URL về "/" ngoài ý muốn
+    // Chỉ cho phép clear khi allowClearUrlOnceRef.current = true (hard reload)
+    if (!nextQs && currentQs && !allowClearUrlOnceRef.current) {
+      return;
+    }
+
+    // nếu đã cho phép clear 1 lần thì reset ngay
+    if (allowClearUrlOnceRef.current) {
+      allowClearUrlOnceRef.current = false;
+    }
 
     const url = nextQs ? `${pathname}?${nextQs}` : pathname;
 
@@ -1195,6 +1207,7 @@ if (isReloadRef.current) {
     setShowSkeleton(true);
 
     // ✅ clean URL: bỏ toàn bộ query (xóa st/p/...)
+    allowClearUrlOnceRef.current = true;
     replaceUrlShallow("");
 
     // reset scroll
