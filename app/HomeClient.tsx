@@ -59,14 +59,31 @@ function encodeCursor(c: UrlCursor): string | null {
 
 function decodeCursor(raw: string | null): UrlCursor {
   if (!raw) return null;
-  const b64 = raw.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((raw.length + 3) % 4);
 
-  const json = typeof window === "undefined"
-    ? Buffer.from(b64, "base64").toString("utf8")
-    : decodeURIComponent(escape(atob(b64)));
+  try {
+    const b64 =
+      raw.replace(/-/g, "+").replace(/_/g, "/") +
+      "===".slice((raw.length + 3) % 4);
 
-  return JSON.parse(json);
+    const json =
+      typeof window === "undefined"
+        ? Buffer.from(b64, "base64").toString("utf8")
+        : decodeURIComponent(escape(atob(b64)));
+
+    const parsed = JSON.parse(json);
+
+    // ✅ accept string or object only
+    if (parsed == null) return null;
+    if (typeof parsed === "string") return parsed;
+    if (typeof parsed === "object") return parsed as UpdatedDescCursor;
+
+    return null;
+  } catch {
+    // ✅ tuyệt đối không để crash hydration/popstate chỉ vì cursor hỏng
+    return null;
+  }
 }
+
 
 const PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
 
@@ -80,7 +97,6 @@ const HomeClient = ({
   const pathname = usePathname();
   const router = useRouter();
 
-  const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const navigatingAwayRef = useRef(false);
   
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -168,15 +184,14 @@ const filterSig = useMemo(() => {
   );
   const pagesRef = useRef<any[][]>(initialRooms?.length ? [initialRooms] : []);
   const [pageIndex, setPageIndex] = useState(0);
-  const [displayPageIndex, setDisplayPageIndex] = useState(0);
-  // ✅ luôn sync pageIndex/displayPageIndex mới nhất vào ref
-useEffect(() => {
-  lastPageIndexRef.current = pageIndex;
-}, [pageIndex]);
+const [displayPageIndex, setDisplayPageIndex] = useState(0);
+
+const lastDisplayPageIndexRef = useRef(0);
 
 useEffect(() => {
   lastDisplayPageIndexRef.current = displayPageIndex;
 }, [displayPageIndex]);
+
 useEffect(() => {
   pagesRef.current = pages;
 }, [pages]);
@@ -197,6 +212,7 @@ useEffect(() => {
   const pendingFetchIndexRef = useRef<number | null>(null); // ✅ đảm bảo fetch không bị noop
 
  const isReloadRef = useRef<boolean>(false);
+const isBackForwardRef = useRef<boolean>(false); // ✅ mount do back/forward (popstate đã xảy ra trước khi effect attach)
 
   const inFlightRef = useRef<Record<string, boolean>>({});
 
@@ -221,10 +237,6 @@ pageIndexRef.current = pageIndex;
 }, [pageIndex]);
 
 // ================== Effect =============
-useEffect(() => {
-  // chỉ set lần đầu
-  if (!homePathRef.current) homePathRef.current = pathname;
-}, []);
   
   // ✅ skip FILTER CHANGE mỗi khi ta "hydrate state" (initial / popstate / restore)
   const skipNextFilterEffectRef = useRef(false);
@@ -232,9 +244,8 @@ useEffect(() => {
   // scroll container
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastScrollTopRef = useRef(0);
-const lastPageIndexRef = useRef(0);
-const lastDisplayPageIndexRef = useRef(0);
 const pendingScrollTopRef = useRef<number | null>(null); // ✅ chờ render xong mới restore
+const isRestoringScrollRef = useRef(false); // ✅ chặn persist ghi đè scroll trong lúc back/restore
 
 // ================== HISTORY SCROLL RESTORE ==================
 const makeListKey = useCallback(() => {
@@ -248,7 +259,10 @@ const makeListKey = useCallback(() => {
   return qs ? `${pathname}?${qs}` : pathname;
 }, [pathname]);
 
-const saveScrollToHistory = useCallback(() => {
+const saveScrollToHistory = useCallback((force: boolean = false) => {
+  // ✅ đang restore => tuyệt đối không persist (tránh ghi đè thành 0)
+  if (!force && isRestoringScrollRef.current) return;
+
   const el = scrollRef.current;
   if (!el) return;
 
@@ -264,10 +278,11 @@ const saveScrollToHistory = useCallback(() => {
     },
   };
 
- // ✅ không dùng window.location.href (tránh đụng router bookkeeping của Next)
-const sameUrl = window.location.pathname + window.location.search + window.location.hash;
-history.replaceState(next, "", sameUrl);
+  // ✅ giữ nguyên router-state của Next, chỉ replace cùng URL hiện tại
+  const sameUrl =
+    window.location.pathname + window.location.search + window.location.hash;
 
+  history.replaceState(next, "", sameUrl);
 }, [makeListKey]);
 
 const restoreScrollFromHistory = useCallback(() => {
@@ -279,7 +294,8 @@ const restoreScrollFromHistory = useCallback(() => {
 
   if (typeof st !== "number") return false;
 
-  pendingScrollTopRef.current = st; // ✅ chỉ lưu pending, apply sau
+  isRestoringScrollRef.current = true;   // ✅ arm lock NGAY
+  pendingScrollTopRef.current = st;      // ✅ chỉ lưu pending, apply sau
   return true;
 
 }, [makeListKey]);
@@ -291,7 +307,7 @@ const restoreScrollFromHistory = useCallback(() => {
   );
 
   // ================== URL helpers (SHALLOW, NO NEXT NAV) ==================
- const buildQs = useCallback(
+const buildQs = useCallback(
   (next: {
     q?: string;
     min?: number;
@@ -304,11 +320,12 @@ const restoreScrollFromHistory = useCallback(() => {
     p?: number;
     c?: UrlCursor; // ✅ thêm cursor
   }) => {
-    const params = new URLSearchParams(window.location.search);
+    // ✅ IMPORTANT: build từ scratch để không "dính" param cũ (p/c/st/...) gây back/forward sai
+    const params = new URLSearchParams();
 
     const setOrDel = (key: string, val: string | null) => {
-      if (val == null || val === "") params.delete(key);
-      else params.set(key, val);
+      if (val == null || val === "") return;
+      params.set(key, val);
     };
 
     setOrDel(QS.q, next.q?.trim() ? next.q.trim() : null);
@@ -318,13 +335,8 @@ const restoreScrollFromHistory = useCallback(() => {
     setOrDel(QS.t, next.t?.length ? toListParam(next.t) : null);
     setOrDel(QS.m, next.m ? next.m : null);
     setOrDel(QS.s, next.s ? next.s : null);
-
-    // ✅ URLSearchParams tự encode
     setOrDel(QS.st, next.st ? next.st : null);
-
     setOrDel(QS.p, typeof next.p === "number" ? String(next.p) : null);
-
-    // ✅ cursor in URL: base64url(JSON)
     setOrDel(QS.c, next.c ? encodeCursor(next.c) : null);
 
     return params.toString();
@@ -342,7 +354,7 @@ const restoreScrollFromHistory = useCallback(() => {
 }
 
 const replaceUrlShallow = useCallback(
-  (nextQsRaw: string) => {
+  (nextQsRaw: string, mode: "replace" | "push" = "replace") => {
     const currentQsRaw = window.location.search.replace(/^\?/, "");
 
     // ✅ normalize để không bị “nhảy URL” do khác thứ tự param
@@ -353,17 +365,12 @@ const replaceUrlShallow = useCallback(
 
     const url = nextQs ? `${pathname}?${nextQs}` : pathname;
 
-    // ✅ URL-only update: KHÔNG trigger Next navigation (tránh race làm mất history entry khi click sang detail)
-    try {
-      history.replaceState(history.state ?? null, "", url);
-    } catch {
-      // fallback hiếm: nếu replaceState fail mới dùng router.replace
-      router.replace(url, { scroll: false });
-    }
+    // ✅ App Router-safe: LUÔN dùng router để Next giữ đúng history stack
+    if (mode === "push") router.push(url, { scroll: false });
+    else router.replace(url, { scroll: false });
   },
   [pathname, router]
 );
-
 
 const readUrlState = useCallback(() => {
   const sp = new URLSearchParams(window.location.search);
@@ -377,9 +384,10 @@ const readUrlState = useCallback(() => {
   const s = (sp.get(QS.s) as SortMode) || "updated_desc";
   const p = Number(sp.get(QS.p) ?? "0");
 
-  // ✅ cursor
+   // ✅ cursor (fail-safe)
   const cRaw = sp.get(QS.c);
-  const c = decodeCursor(cRaw);
+  const c = decodeCursor(cRaw); // decodeCursor đã try/catch nên không crash
+
 
   const minVal = Number.isFinite(min) ? min : PRICE_DEFAULT[0];
   const maxVal = Number.isFinite(max) ? max : PRICE_DEFAULT[1];
@@ -394,11 +402,13 @@ const readUrlState = useCallback(() => {
 
 useEffect(() => {
   const onPageHide = () => {
+    if (isRestoringScrollRef.current) return; // ✅ đừng ghi đè state lúc đang restore
     saveScrollToHistory();
   };
 
   const onVisibility = () => {
     if (document.visibilityState !== "hidden") return;
+    if (isRestoringScrollRef.current) return; // ✅
     saveScrollToHistory();
   };
 
@@ -482,8 +492,16 @@ useEffect(() => {
   setPageIndex(keepPage);
   setDisplayPageIndex(keepPage);
 
-  cursorsRef.current = [null];
-  setHasNext(true);
+ // giữ cursor của keepPage nếu đã có (vd popstate/hydrate set vào)
+const keepCursor = cursorsRef.current[keepPage] ?? null;
+
+// reset cursor array đến keepPage
+const nextCursors: (string | UpdatedDescCursor | null)[] = new Array(keepPage + 1).fill(null);
+nextCursors[keepPage] = keepCursor;
+cursorsRef.current = nextCursors;
+
+setHasNext(true);
+
   setFetchError("");
   setLoading(false);
   setShowSkeleton(true);
@@ -512,19 +530,16 @@ const requestFetchPage = useCallback((idx: number) => {
 }, []);
 
 // ================== DETERMINISTIC SCROLL RESTORE ==================
-// Chỉ apply khi list đã có dữ liệu để không bị clamp về 0
 useEffect(() => {
   if (pendingScrollTopRef.current == null) return;
 
-  // phải có container
   const el = scrollRef.current;
   if (!el) return;
 
-  // ✅ đợi đến khi page hiện tại đã được fetch (cached !== undefined)
   const cached = pagesRef.current[displayPageIndex];
   if (cached === undefined) return;
 
- const y = pendingScrollTopRef.current;
+  const y = pendingScrollTopRef.current;
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -534,11 +549,15 @@ useEffect(() => {
       target.scrollTop = y;
       lastScrollTopRef.current = y;
 
-      // ✅ chỉ clear pending sau khi apply thật
+      // ✅ persist lại đúng scroll sau khi apply (nguồn sự thật)
+      saveScrollToHistory();
+
+      // ✅ clear pending + mở khóa persist
       pendingScrollTopRef.current = null;
+      isRestoringScrollRef.current = false;
     });
   });
-}, [displayPageIndex, roomsToRender.length, pages]);
+}, [displayPageIndex, roomsToRender.length, pages, saveScrollToHistory]);
 
  // ================== HYDRATE (ONCE) ==================
 useEffect(() => {
@@ -548,7 +567,7 @@ useEffect(() => {
   skipNextFilterEffectRef.current = true;
  
   // Detect reload (F5 / pull-to-refresh)
- const navType =
+const navType =
   (
     performance.getEntriesByType("navigation")?.[0] as
       | PerformanceNavigationTiming
@@ -556,24 +575,22 @@ useEffect(() => {
   )?.type ?? "navigate";
 
 isReloadRef.current = navType === "reload";
-
-
+isBackForwardRef.current = navType === "back_forward"; // ✅ QUAN TRỌNG
 
   // 1) read URL
   let url = readUrlState();
 
   // helper: kết thúc hydrate an toàn (2 RAF + mở persist trễ)
   function finishHydrate() {
+  requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        
-        endHydrationAfterTwoFrames();
-         // ✅ quan trọng: chỉ coi "reload" đúng cho lần mount đầu tiên
+      endHydrationAfterTwoFrames();
+      // ✅ quan trọng: chỉ coi "reload" đúng cho lần mount đầu tiên
       isReloadRef.current = false;
-      });
+      isBackForwardRef.current = false; // ✅ clear
     });
-  }
-
+  });
+}
   
 // ✅ RELOAD (F5 / pull-to-refresh): RESET SẠCH về default + clear query về "/"
 if (isReloadRef.current) {
@@ -678,6 +695,11 @@ setSelectedRoomTypes(url.t);
 setMoveFilter(url.m);
 setSortMode(url.s);
 setStatusFilter(isReloadRef.current ? null : url.st);
+// ✅ Nếu đây là lần mount do back/forward (từ detail quay về list),
+// popstate event đã xảy ra trước khi effect attach => phải restore ở đây.
+if (isBackForwardRef.current) {
+  restoreScrollFromHistory();
+}
 
 
   // ✅ reload thì ép page về 0 + scrollTop=0
@@ -962,16 +984,16 @@ setHasNext(Boolean(nextCursor));
       }
 
     } finally {
-      inFlightRef.current[reqKey] = false;
+  inFlightRef.current[reqKey] = false;
 
-      // ✅ tắt skeleton nếu page đã có trạng thái (kể cả [])
-      const fetched = pagesRef.current[targetIndex] !== undefined;
-      if (isVisible && fetched) {
-        setLoading(false);
-        setShowSkeleton(false);
-      }
+  // ✅ nếu request thuộc "đợt filter" hiện tại và đang là page visible,
+  // luôn tắt loading/skeleton (kể cả khi request fail) để UI không bị kẹt disabled
+  if (isVisible && myVersion === filtersVersionRef.current) {
+    setLoading(false);
+    setShowSkeleton(false);
+  }
+}
 
-    }
   },
   [
     adminLevel,
@@ -1014,27 +1036,29 @@ useEffect(() => {
 
   // ================== SCROLL PERSIST (không gây fetch) ==================
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
+  const el = scrollRef.current;
+  if (!el) return;
 
-    let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        lastScrollTopRef.current = el.scrollTop;
+  let raf = 0;
+  const onScroll = () => {
+    // ✅ trong lúc đang restore scroll, đừng persist kẻo overwrite = 0
+    if (isRestoringScrollRef.current) return;
 
-        // ✅ update history scroll (throttle theo raf)
-        saveScrollToHistory();
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      lastScrollTopRef.current = el.scrollTop;
 
-      });
-    };
+      // ✅ update history scroll (throttle theo raf)
+      saveScrollToHistory();
+    });
+  };
 
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
+  el.addEventListener("scroll", onScroll, { passive: true });
+  return () => {
+    el.removeEventListener("scroll", onScroll);
+    if (raf) cancelAnimationFrame(raf);
+  };
 }, [saveScrollToHistory]);
 
   const prevAppliedSearchRef = useRef<string>("");
@@ -1116,7 +1140,7 @@ lastFilterSigRef.current = filterSig;
       pages: pagesRef.current,
       cursors: cursorsRef.current,
       pageIndex: pageIndexRef.current,
-      displayPageIndex: displayPageIndex,
+      displayPageIndex: lastDisplayPageIndexRef.current,
       scrollTop: el ? el.scrollTop : 0,
       hasNext: hasNext,
     };
@@ -1214,9 +1238,10 @@ const goNext = useCallback(() => {
 
   const next = pageIndex + 1;
 
-  // ✅ cursor để fetch trang "next" đã được lưu ở cursorsRef[next]
-  const nextCursor = (cursorsRef.current[next] ?? null) as UrlCursor;
-  if (!nextCursor) return; // chưa có cursor thì chưa cho next (an toàn)
+const nextCursor = (cursorsRef.current[next] ?? null) as UrlCursor;
+
+// ✅ nếu hasNext=true mà cursor chưa kịp set (race), chặn nhẹ (để user bấm lại sau 1 nhịp)
+if (!nextCursor) return;
 
   setPageIndex(next);
 
@@ -1235,7 +1260,7 @@ const qs = buildQs({
   p: next,          // optional: hiển thị page
   c: nextCursor,    // ✅ nguồn sự thật để fetch
 });
-replaceUrlShallow(qs);
+replaceUrlShallow(qs, "push");
 
 }, [
   loading,
@@ -1278,7 +1303,7 @@ const qs = buildQs({
   p: next,
   c: prevCursor,
 });
-replaceUrlShallow(qs);
+replaceUrlShallow(qs, "push");
 
 }, [
   loading,
