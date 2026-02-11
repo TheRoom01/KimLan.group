@@ -288,11 +288,16 @@ for (const f of okFiles) {
   setUploading(true)
   try {
     // NOTE: patch 2 bạn skip, nên vẫn dùng room_code / unknown
-    const safeRoomCode =
-      (roomForm.room_code || 'unknown')
-        .trim()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-zA-Z0-9-_]/g, '') || 'unknown'
+   const safeRoomCode =
+    String(roomForm.room_code || '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9-_]/g, '')
+
+  if (!safeRoomCode) {
+    alert('Thiếu Mã phòng (room_code). Vui lòng nhập mã trước khi upload ảnh/video.')
+    return
+  }
 
     // ===== helper: run pool concurrency =====
 async function runPool<T>(
