@@ -182,7 +182,6 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
     const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
   const [priceApplied, setPriceApplied] = useState<[number, number]>(PRICE_DEFAULT);
   const didHardReloadRef = useRef(false);
-  const allowClearUrlOnceRef = useRef(false); // ✅ chỉ cho phép clear URL khi ta cố ý
   const [minPriceApplied, maxPriceApplied] = useMemo(() => {
     const a = priceApplied[0];
     const b = priceApplied[1];
@@ -460,27 +459,21 @@ const persistBlockedRef = useRef(false);
 }
 
 const replaceUrlShallow = useCallback(
-  (nextQs: string) => {
-    const currentQs = window.location.search.replace(/^\?/, "");
+  (nextQsRaw: string) => {
+    const currentQsRaw = window.location.search.replace(/^\?/, "");
+
+    // ✅ normalize để không bị “nhảy URL” do khác thứ tự param
+    const nextQs = canonicalQs(nextQsRaw || "");
+    const currentQs = canonicalQs(currentQsRaw || "");
+
     if (nextQs === currentQs) return;
-
-    // ✅ CHỐNG BUG: không được tự clear URL về "/" ngoài ý muốn
-    // Chỉ cho phép clear khi allowClearUrlOnceRef.current = true (hard reload)
-    if (!nextQs && currentQs && !allowClearUrlOnceRef.current) {
-      return;
-    }
-
-    // nếu đã cho phép clear 1 lần thì reset ngay
-    if (allowClearUrlOnceRef.current) {
-      allowClearUrlOnceRef.current = false;
-    }
 
     const url = nextQs ? `${pathname}?${nextQs}` : pathname;
 
-    // ✅ App Router-safe: để Next cập nhật router state đúng, tránh back bị rớt query
+    // ✅ App Router-safe
     router.replace(url, { scroll: false });
 
-    // ✅ luôn giữ qs ổn định của Home list
+    // ✅ lưu qs canonical (ổn định)
     listQsRef.current = nextQs;
   },
   [pathname, router]
@@ -1158,68 +1151,63 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   }
 } 
 
-// ✅ HARD RESET when reload (F5 / pull-to-refresh)
+// ✅ RELOAD: vẫn tuân theo URL (KHÔNG tự clear URL về "/")
 if (isReloadRef.current) {
   hydratingFromUrlRef.current = true;
   try {
     // drop mọi response cũ (nếu có request đang bay)
     filtersVersionRef.current += 1;
 
-    // purge persisted state
-    try {
-      sessionStorage.removeItem(HOME_STATE_KEY);
-    } catch {}
-    try {
-      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
-    } catch {}
-
-    // ✅ (B) xoá luôn các state-lite (đỡ bị restore lại sau F5)
+    // purge persisted state (để tránh restore stale)
+    try { sessionStorage.removeItem(HOME_STATE_KEY); } catch {}
+    try { sessionStorage.removeItem(HOME_BACK_HINT_KEY); } catch {}
     try {
       for (let i = sessionStorage.length - 1; i >= 0; i--) {
         const k = sessionStorage.key(i);
-        if (k && k.startsWith("HOME_STATE_LITE_V1::"))
-          sessionStorage.removeItem(k);
+        if (k && k.startsWith("HOME_STATE_LITE_V1::")) sessionStorage.removeItem(k);
       }
     } catch {}
 
-    // reset filters -> default
-    setSearch("");
-    setPriceDraft(PRICE_DEFAULT);
-    setPriceApplied(PRICE_DEFAULT);
-    setSelectedDistricts([]);
-    setSelectedRoomTypes([]);
-    setMoveFilter(null);
-    setSortMode("updated_desc");
+    // ✅ URL là nguồn sự thật: hydrate filter từ URL hiện tại
+    pendingUrlFiltersRef.current = {
+      search: url.q,
+      min: url.minVal,
+      max: url.maxVal,
+      districts: url.d,
+      roomTypes: url.t,
+      move: url.m,
+      sort: url.s,
+      status: null, // reload: không giữ status nếu bạn muốn, hoặc dùng url.st nếu cần
+    };
+
+    setSearch(url.q);
+    setPriceDraft([url.minVal, url.maxVal]);
+    setPriceApplied([url.minVal, url.maxVal]);
+    setSelectedDistricts(url.d);
+    setSelectedRoomTypes(url.t);
+    setMoveFilter(url.m);
+    setSortMode(url.s);
     setStatusFilter(null);
 
-    // ✅ QUAN TRỌNG: drop SSR cache để bắt buộc fetch lại theo filter mới
-    pagesRef.current = [];
-    setPages([]);
-
-    cursorsRef.current = [null];
-    setHasNext(true);
-
-    setPageIndex(0);
-    setDisplayPageIndex(0);
+    // ✅ page theo URL (hoặc ép 0 nếu bạn muốn)
+    const pIdx = Number.isFinite(url.nextPage) ? url.nextPage : 0;
+    resetPagination(pIdx);
+    cursorsRef.current[pIdx] = url.c ?? null;
 
     setFetchError("");
     setLoading(false);
     setShowSkeleton(true);
 
-    // ✅ clean URL: bỏ toàn bộ query (xóa st/p/...)
-    allowClearUrlOnceRef.current = true;
-    replaceUrlShallow("");
-
-    // reset scroll
+    // reload: scroll về top cho chắc
     requestAnimationFrame(() => {
       const el = scrollRef.current;
       if (el) el.scrollTop = 0;
       lastScrollTopRef.current = 0;
     });
 
-    // ✅ fetch lại page 0 (status=null => Tất cả)
+    // ✅ fetch đúng page theo URL
     queueMicrotask(() => {
-      fetchPageRef.current(0);
+      fetchPageRef.current(pIdx);
     });
 
     finishHydrate();
@@ -2091,7 +2079,7 @@ lastFilterSigRef.current = filterSig;
     return;
   }
 
-  // ====== Normal filter change flow (debounced) ======
+    // ====== Normal filter change flow (URL cập nhật NGAY, fetch debounce) ======
   filtersVersionRef.current += 1;
 
   const qs = buildQs({
@@ -2104,20 +2092,16 @@ lastFilterSigRef.current = filterSig;
     s: sortMode,
     st: statusFilter,
     p: 0,
-    });
+  });
+
+  // ✅ URL đổi NGAY để không bao giờ bị “click detail nhanh -> back mất filter/page”
+  replaceUrlShallow(qs);
 
   if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
-
-  // ✅ lưu QS đang pending để có thể flush ngay khi user click vào detail
-  pendingFilterApplyQsRef.current = qs;
 
   filterApplyTimerRef.current = window.setTimeout(() => {
     filterApplyTimerRef.current = null;
 
-    const pendingQs = pendingFilterApplyQsRef.current;
-    pendingFilterApplyQsRef.current = null;
-
-    replaceUrlShallow(pendingQs || qs);
     setTotal(null);
     setDisplayPageIndex(0);
     resetPagination(0);
@@ -2128,7 +2112,6 @@ lastFilterSigRef.current = filterSig;
   return () => {
     if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
     filterApplyTimerRef.current = null;
-    pendingFilterApplyQsRef.current = null;
   };
 
   }, [
