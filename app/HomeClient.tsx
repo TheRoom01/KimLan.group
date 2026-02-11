@@ -81,6 +81,7 @@ const HomeClient = ({
   const router = useRouter();
 
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
+  const navigatingAwayRef = useRef(false);
   
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(
@@ -352,8 +353,13 @@ const replaceUrlShallow = useCallback(
 
     const url = nextQs ? `${pathname}?${nextQs}` : pathname;
 
-    // ✅ App Router-safe
-    router.replace(url, { scroll: false });
+    // ✅ URL-only update: KHÔNG trigger Next navigation (tránh race làm mất history entry khi click sang detail)
+    try {
+      history.replaceState(history.state ?? null, "", url);
+    } catch {
+      // fallback hiếm: nếu replaceState fail mới dùng router.replace
+      router.replace(url, { scroll: false });
+    }
   },
   [pathname, router]
 );
@@ -426,11 +432,13 @@ const onNavAwayCapture = useCallback(
     const href = a.getAttribute("href");
     if (!href || href.startsWith("#")) return;
 
-    // chỉ chụp khi rời list sang trang khác (đặc biệt là detail)
     const isDetailNav = href.startsWith("/rooms/") || href.includes("/rooms/");
     if (!isDetailNav) return;
 
-    // ✅ chốt scrollTop ngay tại thời điểm click (tránh stale do raf/inertia)
+    // ✅ đánh dấu: đang rời list sang detail
+    navigatingAwayRef.current = true;
+
+    // ✅ chốt scrollTop ngay tại thời điểm click
     const el = scrollRef.current;
     if (el) lastScrollTopRef.current = el.scrollTop;
 
@@ -441,9 +449,8 @@ const onNavAwayCapture = useCallback(
 );
 
 useEffect(() => {
-  // pointerdown là chuẩn
+  // capture phase để chạy trước Link navigation
   document.addEventListener("pointerdown", onNavAwayCapture, true);
-  // fallback Safari/iOS
   document.addEventListener("mousedown", onNavAwayCapture, true);
   document.addEventListener(
     "touchstart",
@@ -734,15 +741,18 @@ finishHydrate();
  // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
-    // guard chống double fire
-    if (didApplyBackOnceRef.current) return;
-    didApplyBackOnceRef.current = true;
+  // guard chống double fire
+  if (didApplyBackOnceRef.current) return;
+  didApplyBackOnceRef.current = true;
 
-    // chặn persist + chặn FILTER CHANGE 1 nhịp
-    skipNextFilterEffectRef.current = true;
+  // ✅ quay lại list => mở lại filter/fetch effect bình thường
+  navigatingAwayRef.current = false;
 
-    // 1) URL là nguồn sự thật
-    const url = readUrlState();
+  // chặn persist + chặn FILTER CHANGE 1 nhịp
+  skipNextFilterEffectRef.current = true;
+
+  // 1) URL là nguồn sự thật
+  const url = readUrlState();
 
     // snapshot URL filters để fetch dùng NGAY (không phụ thuộc timing setState)
     pendingUrlFiltersRef.current = {
@@ -1042,6 +1052,8 @@ const preSearchBaselineRef = useRef<BaselineState | null>(null);
 useEffect(() => {
   
    const applied = appliedSearch.trim();
+   // ✅ nếu đang click rời list sang detail thì bỏ qua toàn bộ filter-effect để tránh race
+if (navigatingAwayRef.current) return;
 
   // ✅ nếu vừa hydrate (initial/popstate/restore) thì bỏ qua 1 nhịp FILTER CHANGE
   if (skipNextFilterEffectRef.current) {
