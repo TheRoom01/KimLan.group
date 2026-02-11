@@ -524,10 +524,7 @@ useEffect(() => {
   const cached = pagesRef.current[displayPageIndex];
   if (cached === undefined) return;
 
-  // ✅ đợi skeleton/loading tắt để layout ổn định hơn
-  if (showSkeleton || loading) return;
-
-  const y = pendingScrollTopRef.current;
+ const y = pendingScrollTopRef.current;
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -541,7 +538,7 @@ useEffect(() => {
       pendingScrollTopRef.current = null;
     });
   });
-}, [displayPageIndex, roomsToRender.length, showSkeleton, loading, pages]);
+}, [displayPageIndex, roomsToRender.length, pages]);
 
  // ================== HYDRATE (ONCE) ==================
 useEffect(() => {
@@ -802,6 +799,8 @@ useEffect(() => {
 
       // 5) scroll: CHỈ restore từ history.state
       restoreScrollFromHistory();
+      // ✅ tránh tick scroll persist đầu tiên ghi đè sai trước khi restore apply
+      lastScrollTopRef.current = pendingScrollTopRef.current ?? 0;
 
       // 6) reset cache để tránh hiển thị nhầm page cũ khi URL đổi
       filtersVersionRef.current += 1;
@@ -918,8 +917,12 @@ if (pendingUrlFiltersRef.current && targetIndex === pageIndexRef.current) {
       pagesRef.current = nextPages;
       setPages(nextPages);
 
-      cursorsRef.current[targetIndex + 1] = res.nextCursor ?? null;
-      setHasNext(Boolean(res.nextCursor) && deduped.length === LIMIT);
+      const nextCursor = res.nextCursor ?? null;
+cursorsRef.current[targetIndex + 1] = nextCursor;
+
+// ✅ chỉ cần có cursor là còn trang sau; đừng khóa theo deduped.length vì có thể bị trùng id
+setHasNext(Boolean(nextCursor));
+
 
       // ✅ show ngay page đang đứng
       if (targetIndex === pageIndexRef.current) {
