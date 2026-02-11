@@ -1557,11 +1557,37 @@ useEffect(() => {
   persistBlockedRef.current = true;
   skipNextFilterEffectRef.current = true;
 
-  const url = readUrlState();
+   const url = readUrlState();
 
+  // ✅ POPSTATE: URL là nguồn sự thật -> snapshot filters cho fetch dùng NGAY
+  // + đồng bộ chữ ký filter để FILTER CHANGE không tự rewrite URL sau back
+  pendingUrlFiltersRef.current = {
+    search: url.q,
+    min: url.minVal,
+    max: url.maxVal,
+    districts: url.d,
+    roomTypes: url.t,
+    move: url.m,
+    sort: url.s,
+    status: isReloadRef.current ? null : url.st,
+  };
 
-// ✅ ưu tiên history scroll (ổn định nhất), snapshot/storage chỉ là fallback
-const restoredByHistory = restoreScrollFromHistory();
+  // “đóng băng” signature theo URL (appliedSearch sẽ catch up sau 250ms)
+  lastFilterSigRef.current = [
+    (url.q ?? "").trim(),
+    url.minVal,
+    url.maxVal,
+    (url.d ?? []).join(","),
+    (url.t ?? []).join(","),
+    url.m ?? "",
+    url.s ?? "updated_desc",
+    (isReloadRef.current ? null : (url.st ?? "")) ?? "",
+  ].join("|");
+
+  prevAppliedSearchRef.current = (url.q ?? "").trim();
+
+  // ✅ ưu tiên history scroll (ổn định nhất), snapshot/storage chỉ là fallback
+  const restoredByHistory = restoreScrollFromHistory();
 
   // 1) ưu tiên restore từ sessionStorage
     let restored: PersistState | null = null;
