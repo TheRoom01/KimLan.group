@@ -263,8 +263,10 @@ const saveScrollToHistory = useCallback(() => {
     },
   };
 
-  // replaceState không tạo entry mới, chỉ update state entry hiện tại
-  history.replaceState(next, "", window.location.href);
+ // ✅ không dùng window.location.href (tránh đụng router bookkeeping của Next)
+const sameUrl = window.location.pathname + window.location.search + window.location.hash;
+history.replaceState(next, "", sameUrl);
+
 }, [makeListKey]);
 
 const restoreScrollFromHistory = useCallback(() => {
@@ -503,25 +505,36 @@ const requestFetchPage = useCallback((idx: number) => {
 }, []);
 
 // ================== DETERMINISTIC SCROLL RESTORE ==================
-// Áp dụng sau khi pages thay đổi (list đã render xong)
+// Chỉ apply khi list đã có dữ liệu để không bị clamp về 0
 useEffect(() => {
   if (pendingScrollTopRef.current == null) return;
 
-  const y = pendingScrollTopRef.current;
-  pendingScrollTopRef.current = null;
-
+  // phải có container
   const el = scrollRef.current;
   if (!el) return;
+
+  // ✅ đợi đến khi page hiện tại đã được fetch (cached !== undefined)
+  const cached = pagesRef.current[displayPageIndex];
+  if (cached === undefined) return;
+
+  // ✅ đợi skeleton/loading tắt để layout ổn định hơn
+  if (showSkeleton || loading) return;
+
+  const y = pendingScrollTopRef.current;
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       const target = scrollRef.current;
       if (!target) return;
+
       target.scrollTop = y;
+      lastScrollTopRef.current = y;
+
+      // ✅ chỉ clear pending sau khi apply thật
+      pendingScrollTopRef.current = null;
     });
   });
-
-}, [pages]);
+}, [displayPageIndex, roomsToRender.length, showSkeleton, loading, pages]);
 
  // ================== HYDRATE (ONCE) ==================
 useEffect(() => {
