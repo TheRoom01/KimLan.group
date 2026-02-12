@@ -161,6 +161,7 @@ const HomeClient = ({
 
   const pathname = usePathname();
   const router = useRouter();
+  
 
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const listQsRef = useRef<string>("");        // qs ổn định của list
@@ -172,6 +173,9 @@ const HomeClient = ({
   const cursorStackRef = useRef<(UrlCursor)[]>([]);
 const currentCursorRef = useRef<UrlCursor>(null);
 const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
+  const replaceStateLastTsRef = useRef(0);
+  const replaceStateTimerRef = useRef<number | null>(null);
+
 
 
     // ================== ROLE ==================
@@ -377,8 +381,34 @@ const saveScrollToHistory = useCallback(() => {
     },
   };
 
-  // replaceState không tạo entry mới, chỉ update state entry hiện tại
-  history.replaceState(next, "", window.location.href);
+   // Safari iOS giới hạn replaceState (100 lần / 30s).
+  // Nếu thao tác nhanh sẽ throw SecurityError => crash app.
+  const now = Date.now();
+  const MIN_INTERVAL_MS = 600;
+
+  const doReplace = () => {
+    replaceStateLastTsRef.current = Date.now();
+    try {
+      history.replaceState(next, "", window.location.href);
+    } catch {
+      // bỏ qua nếu Safari đang khóa history tạm thời
+    }
+  };
+
+  // Nếu gọi quá dày, gộp lại thành 1 lần
+  if (now - replaceStateLastTsRef.current < MIN_INTERVAL_MS) {
+    if (replaceStateTimerRef.current) return;
+
+    replaceStateTimerRef.current = window.setTimeout(() => {
+      replaceStateTimerRef.current = null;
+      doReplace();
+    }, MIN_INTERVAL_MS);
+
+    return;
+  }
+
+  doReplace();
+
 }, [makeListKey]);
 
 const restoreScrollFromHistory = useCallback(() => {
@@ -777,6 +807,10 @@ const onVisibility = () => {
   return () => {
     window.removeEventListener("pagehide", onPageHide);
     document.removeEventListener("visibilitychange", onVisibility);
+        if (replaceStateTimerRef.current) {
+      clearTimeout(replaceStateTimerRef.current);
+      replaceStateTimerRef.current = null;
+    }
   };
 }, [persistNow, writeBackSnapshotNow]);
 
