@@ -4,6 +4,8 @@ import Script from "next/script";
 
 import "./globals.css";
 import AuthControls from "@/components/AuthControls";
+import ClientErrorOverlay from './_debug/ClientErrorOverlay';
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -79,6 +81,7 @@ export default function RootLayout({
 
         <AuthControls />
         {children}
+        <ClientErrorOverlay />
       </body>
     </html>
   );
