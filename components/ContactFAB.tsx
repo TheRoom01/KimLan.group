@@ -44,9 +44,14 @@ const MESSENGER = "https://www.facebook.com/duongkimlan001";
     };
   };
 
-  // load pos
+   // load pos
   useEffect(() => {
-    const saved = localStorage.getItem(FAB_KEY);
+    let saved: string | null = null;
+
+    try {
+      saved = localStorage.getItem(FAB_KEY);
+    } catch {}
+
     if (saved) {
       try {
         const p = JSON.parse(saved);
@@ -54,6 +59,7 @@ const MESSENGER = "https://www.facebook.com/duongkimlan001";
         return;
       } catch {}
     }
+
     setPos(
       clamp(
         window.innerWidth - FAB_SIZE - MARGIN,
@@ -64,7 +70,10 @@ const MESSENGER = "https://www.facebook.com/duongkimlan001";
 
   // save pos
   useEffect(() => {
-    if (pos) localStorage.setItem(FAB_KEY, JSON.stringify(pos));
+    if (!pos) return;
+    try {
+      localStorage.setItem(FAB_KEY, JSON.stringify(pos));
+    } catch {}
   }, [pos]);
 
   // click outside => close (CAPTURE)

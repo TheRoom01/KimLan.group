@@ -118,12 +118,30 @@ export default function RoomModal({
   const [detailForm, setDetailForm] = useState<RoomDetail>(defaultDetailForm)
 const [feeAutofillDone, setFeeAutofillDone] = useState(false)
   
-  const [saving, setSaving] = useState(false)
+    const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const lastAutofillKeyRef = useRef<string>("");
+
+  // ✅ NEW: draft room id cho flow "thêm mới + upload ngay"
+  const draftRoomIdRef = useRef<string>("");
+
   // ✅ NEW: nhớ danh sách media ban đầu để biết user có thật sự đổi ảnh không
   const initialMediaSigRef = useRef<string>("");
+
+  function genDraftId(): string {
+    try {
+      // ưu tiên UUID chuẩn nếu có
+      // @ts-ignore
+      if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+        // @ts-ignore
+        return crypto.randomUUID();
+      }
+    } catch {}
+    // fallback đơn giản (vẫn đủ unique cho folder)
+    return `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
 
    async function fileToHTMLImage(file: File): Promise<HTMLImageElement> {
     const url = URL.createObjectURL(file)
@@ -365,15 +383,14 @@ for (const f of okFiles) {
     return
   }
   // =======================
-// ✅ NEW: bắt buộc phải có UUID (đã lưu phòng)
+// ✅ NEW: cho phép thêm mới + upload ngay (dùng draft id)
 // =======================
-const roomUuid = String(editingRoom?.id || '').trim()
+const roomUuid = String(editingRoom?.id || draftRoomIdRef.current || '').trim()
 
 if (!roomUuid) {
-  alert('Vui lòng bấm Lưu phòng trước, sau đó mới upload ảnh/video để tránh nhầm folder.')
+  alert('Không tạo được ID phòng tạm. Vui lòng thử lại hoặc bấm Lưu phòng trước.')
   return
 }
-
 
     // ===== helper: run pool concurrency =====
 async function runPool<T>(
@@ -658,7 +675,10 @@ const detailSample =
     setErrorMsg(null)
 
     // THÊM MỚI
-    if (!editingRoom?.id) {
+   if (!editingRoom?.id) {
+      // ✅ tạo draft id để upload ảnh/video ngay cả khi chưa lưu phòng
+      draftRoomIdRef.current = genDraftId();
+
       setRoomForm({
         room_code: '',
         room_type: '',
@@ -678,6 +698,7 @@ const detailSample =
       setFeeAutofillDone(false)
       return
     }
+
     // ✅ NEW: snapshot media ban đầu (để save không động ảnh thì không prune)
     try {
       const media0 = Array.isArray((editingRoom as any)?.media) ? (editingRoom as any).media : [];
@@ -821,19 +842,21 @@ const detailSample =
       const { data, error } = await supabase.from('rooms').update(payload).eq('id', roomId).select('*').single()
       if (error) throw error
       updatedRoom = data as Room
-    } else {
-      const newId =
-  typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : undefined
+        } else {
+      // ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media
+      const newId = String(draftRoomIdRef.current || "").trim() || (
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : undefined
+      )
 
-const insertData = newId ? { id: newId, ...payload } : payload
+      const insertData = newId ? { id: newId, ...payload } : payload
 
-  const { data, error } = await supabase
-    .from('rooms')
-    .insert(insertData)
-    .select('*')
-    .single()
+      const { data, error } = await supabase
+        .from('rooms')
+        .insert(insertData)
+        .select('*')
+        .single()
 
       if (error) throw error
       updatedRoom = data as Room
