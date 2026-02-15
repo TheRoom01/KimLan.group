@@ -581,6 +581,42 @@ const readUrlState = useCallback(() => {
 
   return { qs, q, minVal, maxVal, d, t, m, s, st, nextPage, c };
 }, []);
+// ================== PATCH D2: RESTORE URL FROM BACK HINT ==================
+const didApplyBackHintUrlRef = useRef(false);
+
+useEffect(() => {
+  // chỉ chạy 1 lần / chỉ áp dụng trên Home path
+  if (didApplyBackHintUrlRef.current) return;
+  if (homePathRef.current && pathname !== homePathRef.current) return;
+
+  const currentQsRaw = window.location.search.replace(/^\?/, "");
+  if (currentQsRaw) return; // URL đã có query thì không đụng
+
+  // nếu URL đang rỗng nhưng back-hint còn hạn => restore query về lại URL
+  try {
+    const raw = sessionStorage.getItem(HOME_BACK_HINT_KEY);
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw) as { ts?: number; qs?: string };
+    const ttlOk = !!parsed?.ts && Date.now() - parsed.ts < HOME_BACK_HINT_TTL;
+    if (!ttlOk) return;
+
+    const hinted = canonicalQs(parsed?.qs || "");
+    if (!hinted) return;
+
+    didApplyBackHintUrlRef.current = true;
+
+    // ✅ set lại URL để readUrlState/hydrate lấy đúng filter/page
+    const url = `${pathname}?${hinted}`;
+    router.replace(url, { scroll: false });
+
+    // ✅ giữ qs ổn định của list
+    listQsRef.current = hinted;
+  } catch {
+    // ignore
+  }
+}, [pathname, router]);
+
 
 // ================== DEBUG OVERLAY (Patch D1) ==================
 const debugEnabled = useMemo(() => {
