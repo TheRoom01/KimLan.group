@@ -486,6 +486,31 @@ const persistBlockedRef = useRef(false);
   return out.toString();
 }
 
+// ================== DEBUG OVERLAY (Patch D1) ==================
+type DebugWrite = {
+  okAt?: number;
+  errAt?: number;
+  errName?: string;
+  errMsg?: string;
+  key?: string;
+  bytes?: number;
+};
+
+function safeJsonParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function approxBytes(str: string) {
+  // rough UTF-8-ish estimate
+  return typeof TextEncoder !== "undefined" ? new TextEncoder().encode(str).length : str.length * 2;
+}
+
+
 const replaceUrlShallow = useCallback(
   (nextQs: string) => {
     const currentQs = window.location.search.replace(/^\?/, "");
@@ -557,6 +582,109 @@ const readUrlState = useCallback(() => {
   return { qs, q, minVal, maxVal, d, t, m, s, st, nextPage, c };
 }, []);
 
+// ================== DEBUG OVERLAY (Patch D1) ==================
+const debugEnabled = useMemo(() => {
+  if (typeof window === "undefined") return false;
+  const sp = new URLSearchParams(window.location.search);
+  return sp.get("debug") === "1";
+}, []);
+
+const debugLastWriteRef = useRef<DebugWrite>({});
+const debugOverlayElRef = useRef<HTMLDivElement | null>(null);
+
+const debugSetItem = useCallback((key: string, value: string) => {
+  // always swallow (like current code), but record what happened
+  try {
+    sessionStorage.setItem(key, value);
+    debugLastWriteRef.current = {
+      okAt: Date.now(),
+      key,
+      bytes: approxBytes(value),
+    };
+    return true;
+  } catch (e: any) {
+    debugLastWriteRef.current = {
+      errAt: Date.now(),
+      errName: e?.name ? String(e.name) : "Error",
+      errMsg: e?.message ? String(e.message) : String(e),
+      key,
+      bytes: approxBytes(value),
+    };
+    return false;
+  }
+}, []);
+
+useEffect(() => {
+  if (!debugEnabled) return;
+
+  // create overlay
+  const el = document.createElement("div");
+  el.id = "home-debug-overlay";
+  el.style.position = "fixed";
+  el.style.left = "8px";
+  el.style.right = "8px";
+  el.style.bottom = "8px";
+  el.style.zIndex = "2147483647";
+  el.style.background = "rgba(0,0,0,0.80)";
+  el.style.color = "white";
+  el.style.padding = "10px 12px";
+  el.style.borderRadius = "10px";
+  el.style.fontSize = "12px";
+  el.style.lineHeight = "1.35";
+  el.style.whiteSpace = "pre-wrap";
+  el.style.wordBreak = "break-word";
+  el.style.pointerEvents = "auto";
+  el.style.userSelect = "text";
+  el.textContent = "HOME DEBUG (starting...)";
+  document.body.appendChild(el);
+  debugOverlayElRef.current = el;
+
+  const render = () => {
+    if (!debugOverlayElRef.current) return;
+
+    // read current keys (best-effort)
+    const homeStateRaw = (() => { try { return sessionStorage.getItem(HOME_STATE_KEY); } catch { return null; } })();
+    const backSnapRaw  = (() => { try { return sessionStorage.getItem(HOME_BACK_SNAPSHOT_KEY); } catch { return null; } })();
+    const backHintRaw  = (() => { try { return sessionStorage.getItem(HOME_BACK_HINT_KEY); } catch { return null; } })();
+
+    const homeState = safeJsonParse<{ ts?: number; qs?: string }>(homeStateRaw);
+    const backSnap  = safeJsonParse<{ ts?: number; qs?: string }>(backSnapRaw);
+    const backHint  = safeJsonParse<{ ts?: number; qs?: string }>(backHintRaw);
+
+    const now = Date.now();
+    const fmtAge = (ts?: number) => (ts ? `${Math.max(0, Math.round((now - ts) / 1000))}s ago` : "n/a");
+
+    const last = debugLastWriteRef.current;
+
+    const lines = [
+      `HOME DEBUG (debug=1)`,
+      `URL: ${window.location.pathname}${window.location.search}`,
+      ``,
+      `Last write:`,
+      last.okAt ? `  OK   ${fmtAge(last.okAt)}  key=${last.key}  bytes=${last.bytes}` : `  OK   n/a`,
+      last.errAt ? `  ERR  ${fmtAge(last.errAt)}  ${last.errName}: ${last.errMsg}  key=${last.key}  bytes=${last.bytes}` : `  ERR  none`,
+      ``,
+      `sessionStorage keys (exists / bytes / age):`,
+      `  HOME_STATE_V2: ${homeStateRaw ? "YES" : "NO"}  bytes=${homeStateRaw ? approxBytes(homeStateRaw) : 0}  age=${fmtAge(homeState?.ts)}`,
+      `  HOME_BACK_SNAPSHOT_V1: ${backSnapRaw ? "YES" : "NO"}  bytes=${backSnapRaw ? approxBytes(backSnapRaw) : 0}  age=${fmtAge(backSnap?.ts)}`,
+      `  HOME_BACK_HINT_V1: ${backHintRaw ? "YES" : "NO"}  bytes=${backHintRaw ? approxBytes(backHintRaw) : 0}  age=${fmtAge(backHint?.ts)}`,
+      ``,
+      `Tip: nếu thấy ERR = QuotaExceededError / SecurityError / null keys sau khi treo tab -> đúng hướng lỗi.`,
+    ];
+
+    debugOverlayElRef.current.textContent = lines.join("\n");
+  };
+
+  render();
+  const t = window.setInterval(render, 800);
+
+  return () => {
+    window.clearInterval(t);
+    try { document.body.removeChild(el); } catch {}
+    debugOverlayElRef.current = null;
+  };
+}, [debugEnabled]);
+
   // ================== PERSIST (sessionStorage) ==================
   const persistRafRef = useRef<number | null>(null);
 
@@ -595,9 +723,10 @@ const writeLiteNow = useCallback(() => {
     ts: Date.now(),
   };
 
-  try {
-    sessionStorage.setItem(liteKeyForQs(qsRaw), JSON.stringify(payload));
-  } catch {}
+ const k = liteKeyForQs(qsRaw);
+const v = JSON.stringify(payload);
+debugSetItem(k, v);
+
 }, [
   hasNext,
   liteKeyForQs,
@@ -675,9 +804,8 @@ const writeBackSnapshotNow = useCallback(() => {
     ts: Date.now(),
   };
 
-  try {
-    sessionStorage.setItem(HOME_BACK_SNAPSHOT_KEY, JSON.stringify(payload));
-  } catch {}
+  debugSetItem(HOME_BACK_SNAPSHOT_KEY, JSON.stringify(payload));
+
 }, [
   hasNext,
   moveFilter,
@@ -718,33 +846,30 @@ const persistNow = useCallback(() => {
 
   writeLiteNow();
 
-  try {
-    const payload: PersistState = {
-      qs: qsCanonical,
+ const payload: PersistState = {
+  qs: qsCanonical,
+  total: typeof total === "number" ? total : null,
 
-      total: typeof total === "number" ? total : null,
+  search,
+  priceApplied,
+  selectedDistricts,
+  selectedRoomTypes,
+  moveFilter,
+  sortMode,
+  statusFilter,
 
-      search,
-      priceApplied,
-      selectedDistricts,
-      selectedRoomTypes,
-      moveFilter,
-      sortMode,
-      statusFilter,
+  pageIndex: lastPageIndexRef.current,
+  displayPageIndex: lastDisplayPageIndexRef.current,
+  pages: pagesRef.current,
+  cursors: cursorsRef.current,
+  hasNext,
 
-      pageIndex: lastPageIndexRef.current,
-      displayPageIndex: lastDisplayPageIndexRef.current,
-      pages: pagesRef.current,
-      cursors: cursorsRef.current,
-      hasNext,
+  scrollTop: lastScrollTopRef.current,
+  ts: Date.now(),
+};
 
-      scrollTop: lastScrollTopRef.current,
+debugSetItem(HOME_STATE_KEY, JSON.stringify(payload));
 
-      ts: Date.now(),
-    };
-
-    sessionStorage.setItem(HOME_STATE_KEY, JSON.stringify(payload));
-  } catch {}
 }, [
   hasNext,
   moveFilter,
@@ -791,14 +916,10 @@ const onVisibility = () => {
   persistNow();
 
   // ✅ back hint cho hydrate/back-from-detail
-  try {
-    const qsRaw = window.location.search.replace(/^\?/, "");
-    const qsCanonical = canonicalQs(qsRaw);
-    sessionStorage.setItem(
-      HOME_BACK_HINT_KEY,
-      JSON.stringify({ ts: Date.now(), qs: qsCanonical })
-    );
-  } catch {}
+  const qsRaw = window.location.search.replace(/^\?/, "");
+const qsCanonical = canonicalQs(qsRaw);
+debugSetItem(HOME_BACK_HINT_KEY, JSON.stringify({ ts: Date.now(), qs: qsCanonical }));
+
 };
 
   window.addEventListener("pagehide", onPageHide);

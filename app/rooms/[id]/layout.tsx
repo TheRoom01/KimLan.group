@@ -54,19 +54,13 @@ const price = (data as any)?.price;
 // ✅ nếu không có room -> giữ fallback title/desc + image và thoát try
 if (!data) throw new Error("room_not_found");
 
-// ✅ 1) Ưu tiên thumb.webp theo convention R2: rooms/room-{room_code}/images/thumb.webp
+// ✅ 1) Ưu tiên thumb.webp theo convention R2 chuẩn UUID: rooms/{id}/images/thumb.webp
 const R2_BASE = (process.env.R2_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "")
   .toString()
   .replace(/\/$/, "");
 
-const safeRoomCode =
-  String(roomCode || "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9-_]/g, "") || "";
-
-const thumb = R2_BASE && safeRoomCode
-  ? `${R2_BASE}/rooms/room-${safeRoomCode}/images/thumb.webp`
+const thumb = R2_BASE && id
+  ? `${R2_BASE}/rooms/${encodeURIComponent(id)}/images/thumb.webp`
   : "";
 
 if (thumb) {

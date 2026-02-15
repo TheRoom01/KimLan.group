@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
-
+import { useEffect, useState } from "react";
 
 type Room = {
   id: string;
@@ -39,18 +38,12 @@ export default function RoomCard(props: { room: Room; adminLevel: number; index?
     return s ? s : FALLBACK;
   };
 
-  // ✅ build thumb.webp theo convention bạn đang dùng:
-  // rooms/{room_id}/images/thumb.webp  với room_id = `room-${safeRoomCode}`
+    // ✅ build thumb.webp theo UUID (room.id) để tránh trùng room_code
+  // rooms/{uuid}/images/thumb.webp
   const R2_BASE =
     (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL ||
       process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
       "")?.replace(/\/$/, "") || "";
-
-  const safeRoomCode =
-    String(room.room_code || "")
-      .trim()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-zA-Z0-9-_]/g, "") || "";
 
   // Tổng số ảnh (ưu tiên image_count từ DB)
   const totalImages =
@@ -67,8 +60,8 @@ export default function RoomCard(props: { room: Room; adminLevel: number; index?
     : "0";
 
   const thumbUrl =
-    R2_BASE && safeRoomCode
-      ? `${R2_BASE}/rooms/room-${safeRoomCode}/images/thumb.webp?v=${encodeURIComponent(
+    R2_BASE && room.id
+      ? `${R2_BASE}/rooms/${room.id}/images/thumb.webp?v=${encodeURIComponent(
           thumbBust
         )}`
       : "";
@@ -89,6 +82,14 @@ const subImage2 = safeSrc(showImages[2] ?? "");
 const [mainErrorStage, setMainErrorStage] = useState<0 | 1 | 2>(0);
 const [sub1Ok, setSub1Ok] = useState(true);
 const [sub2Ok, setSub2Ok] = useState(true);
+
+  // ✅ Reset trạng thái lỗi khi đổi sang phòng khác (tránh reuse state)
+  useEffect(() => {
+    setMainErrorStage(0);
+    setSub1Ok(true);
+    setSub2Ok(true);
+  }, [room.id]);
+
 
 // fallback sang ảnh đầu (chỉ có ý nghĩa khi showImages[0] tồn tại)
 const mainFallback1 = safeSrc(showImages[0] ?? "");
