@@ -605,6 +605,8 @@ useEffect(() => {
     if (!hinted) return;
 
     didApplyBackHintUrlRef.current = true;
+    // ✅ (D1.1) mark overlay biết D2 đã apply
+debugAppliedBackHintRef.current = { at: Date.now(), qs: hinted };
 
     // ✅ set lại URL để readUrlState/hydrate lấy đúng filter/page
     const url = `${pathname}?${hinted}`;
@@ -627,6 +629,7 @@ const debugEnabled = useMemo(() => {
 
 const debugLastWriteRef = useRef<DebugWrite>({});
 const debugOverlayElRef = useRef<HTMLDivElement | null>(null);
+const debugAppliedBackHintRef = useRef<{ at?: number; qs?: string }>({});
 
 const debugSetItem = useCallback((key: string, value: string) => {
   // always swallow (like current code), but record what happened
@@ -691,12 +694,16 @@ useEffect(() => {
     const fmtAge = (ts?: number) => (ts ? `${Math.max(0, Math.round((now - ts) / 1000))}s ago` : "n/a");
 
     const last = debugLastWriteRef.current;
+    const applied = debugAppliedBackHintRef.current;
+    const appliedAge = applied.at ? `${Math.max(0, Math.round((now - applied.at) / 1000))}s ago` : "n/a";
 
-    const lines = [
-      `HOME DEBUG (debug=1)`,
-      `URL: ${window.location.pathname}${window.location.search}`,
-      ``,
-      `Last write:`,
+   const lines = [
+  `HOME DEBUG (debug=1)`,
+  `URL: ${window.location.pathname}${window.location.search}`,
+  `AppliedBackHintUrl: ${applied.at ? "YES" : "NO"}  age=${appliedAge}`,
+  applied.qs ? `RestoredQs: ${applied.qs}` : `RestoredQs: (none)`,
+  ``,
+  `Last write:`,
       last.okAt ? `  OK   ${fmtAge(last.okAt)}  key=${last.key}  bytes=${last.bytes}` : `  OK   n/a`,
       last.errAt ? `  ERR  ${fmtAge(last.errAt)}  ${last.errName}: ${last.errMsg}  key=${last.key}  bytes=${last.bytes}` : `  ERR  none`,
       ``,
