@@ -80,7 +80,8 @@ const HOME_BACK_SNAPSHOT_TTL = 15 * 60 * 1000;
 const HOME_STATE_KEY = "HOME_STATE_V2"; // giữ nguyên
 const HOME_STATE_LITE_PREFIX = "HOME_STATE_LITE_V1::"; // ✅ per-qS key
 const HOME_STATE_LITE_TTL = 30 * 60 * 1000; // 30 phút (đồng bộ V2)
-
+// ✅ nếu có thay đổi dữ liệu quan trọng từ tab khác (/admin) thì Home bỏ restore cache cũ
+const HOME_DIRTY_KEY = "HOME_DIRTY_V1";
 
 type BackSnapshot = {
   qs: string;
@@ -337,6 +338,26 @@ useEffect(() => {
 useEffect(() => {
   // chỉ set lần đầu
   if (!homePathRef.current) homePathRef.current = pathname;
+
+  // ✅ nếu /admin (hoặc tab khác) đã đánh dấu dirty thì clear cache Home để không restore list cũ
+  try {
+    const dirty = sessionStorage.getItem(HOME_DIRTY_KEY);
+    if (dirty) {
+      sessionStorage.removeItem(HOME_DIRTY_KEY);
+
+      // các key Home đang dùng
+      sessionStorage.removeItem(HOME_STATE_KEY);
+      sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
+      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
+
+      // xoá toàn bộ lite cache theo qs
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i) || "";
+        if (k.startsWith(HOME_STATE_LITE_PREFIX)) sessionStorage.removeItem(k);
+      }
+    }
+  } catch {}
+
   // lưu qs hiện tại của Home ngay lúc mount
   listQsRef.current = window.location.search.replace(/^\?/, "");
   // eslint-disable-next-line react-hooks/exhaustive-deps
