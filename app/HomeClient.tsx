@@ -339,12 +339,10 @@ useEffect(() => {
   // chỉ set lần đầu
   if (!homePathRef.current) homePathRef.current = pathname;
 
-  // ✅ nếu /admin (hoặc tab khác) đã đánh dấu dirty thì clear cache Home để không restore list cũ
-  try {
-    const dirty = sessionStorage.getItem(HOME_DIRTY_KEY);
-    if (dirty) {
-      sessionStorage.removeItem(HOME_DIRTY_KEY);
+  const DIRTY_SEEN_KEY = "HOME_DIRTY_SEEN_V1";
 
+  const clearHomeCaches = () => {
+    try {
       // các key Home đang dùng
       sessionStorage.removeItem(HOME_STATE_KEY);
       sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
@@ -355,14 +353,54 @@ useEffect(() => {
         const k = sessionStorage.key(i) || "";
         if (k.startsWith(HOME_STATE_LITE_PREFIX)) sessionStorage.removeItem(k);
       }
+    } catch {}
+  };
+
+  const applyDirtyStamp = (stamp: string) => {
+    try {
+      const seen = sessionStorage.getItem(DIRTY_SEEN_KEY) || "";
+      if (stamp && stamp !== seen) {
+        clearHomeCaches();
+        sessionStorage.setItem(DIRTY_SEEN_KEY, stamp);
+      }
+    } catch {}
+  };
+
+  // ✅ 1) same-tab dirty (đã có sẵn)
+  try {
+    const dirty = sessionStorage.getItem(HOME_DIRTY_KEY);
+    if (dirty) {
+      sessionStorage.removeItem(HOME_DIRTY_KEY);
+      clearHomeCaches();
+      // cũng update seen để khỏi clear lặp
+      sessionStorage.setItem(DIRTY_SEEN_KEY, dirty);
     }
   } catch {}
 
+  // ✅ 2) cross-tab dirty (localStorage)
+  try {
+    const stamp = localStorage.getItem(HOME_DIRTY_KEY) || "";
+    if (stamp) applyDirtyStamp(stamp);
+  } catch {}
+
+  // ✅ 3) nghe storage event để Home tab tự clear ngay khi admin tab save
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== HOME_DIRTY_KEY) return;
+    const stamp = String(e.newValue || "");
+    if (!stamp) return;
+    applyDirtyStamp(stamp);
+  };
+
+  window.addEventListener("storage", onStorage);
+
   // lưu qs hiện tại của Home ngay lúc mount
   listQsRef.current = window.location.search.replace(/^\?/, "");
+
+  return () => {
+    window.removeEventListener("storage", onStorage);
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
-
   
   // ✅ skip FILTER CHANGE mỗi khi ta "hydrate state" (initial / popstate / restore)
   const skipNextFilterEffectRef = useRef(false);

@@ -945,10 +945,16 @@ if (shouldPrune) {
 
 // ✅ ĐÁNH DẤU HOME "DIRTY" ĐỂ BACK VỀ HOME KHÔNG RESTORE LIST CŨ (ảnh cũ)
 try {
-  sessionStorage.setItem("HOME_DIRTY_V1", String(Date.now())) // stamp để debug dễ hơn
-  sessionStorage.removeItem("HOME_BACK_SNAPSHOT_V1")
-  sessionStorage.removeItem("HOME_STATE_V2")
-  sessionStorage.removeItem("HOME_BACK_HINT_V1") // ✅ chặn D2 restore URL từ hint stale
+  const stamp = String(Date.now());
+
+  // same-tab
+  sessionStorage.setItem("HOME_DIRTY_V1", stamp); // stamp để debug dễ hơn
+  sessionStorage.removeItem("HOME_BACK_SNAPSHOT_V1");
+  sessionStorage.removeItem("HOME_STATE_V2");
+  sessionStorage.removeItem("HOME_BACK_HINT_V1"); // ✅ chặn D2 restore URL từ hint stale
+
+  // cross-tab (Home list đang mở ở tab khác)
+  localStorage.setItem("HOME_DIRTY_V1", stamp);
 } catch {}
 
     // ✅ UX: đóng modal ngay, update list ngay

@@ -16,7 +16,12 @@ function randomToken(bytes = 32) {
   crypto.getRandomValues(buf);
   return base64UrlEncode(buf);
 }
-
+function parseValidRpcResult(v: any): boolean {
+  if (typeof v === "boolean") return v;
+  if (Array.isArray(v)) return !!v[0]?.valid;
+  if (v && typeof v === "object") return !!(v as any).valid;
+  return false;
+}
 async function sha256Base64Url(input: string) {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -92,33 +97,38 @@ try {
   const tokenHash = await sha256Base64Url(deviceToken);
 
   // validate current device is still active (also touches last_seen_at)
-  const { data: v1, error: e1 } = await supabase.rpc("validate_device_session", {
+   const { data: v1, error: e1 } = await supabase.rpc("validate_device_session", {
     p_token_hash: tokenHash,
   });
 
-  const valid1 = Array.isArray(v1) ? !!v1[0]?.valid : false;
+  const valid1 = !e1 && parseValidRpcResult(v1);
 
-  if (!e1 && valid1) {
+  if (valid1) {
     // ✅ steady state: no need to call register on every request
     return response;
   }
 
   // If not valid yet: treat as first-seen device -> register (may evict oldest)
-  await supabase.rpc("register_device_session", {
+  const { error: eReg } = await supabase.rpc("register_device_session", {
     p_device_id: deviceId,
     p_token_hash: tokenHash,
     p_max_devices: 2,
     p_evict_oldest: true,
   });
 
+  // ✅ nếu register bị trùng token_hash (23505) => coi như đã register rồi (idempotent)
+  if (eReg && (eReg as any).code !== "23505") {
+    throw eReg;
+  }
+
   // validate again after register
   const { data: v2, error: e2 } = await supabase.rpc("validate_device_session", {
     p_token_hash: tokenHash,
   });
 
-  const valid2 = Array.isArray(v2) ? !!v2[0]?.valid : false;
+  const valid2 = !e2 && parseValidRpcResult(v2);
 
-  if (e2 || !valid2) {
+  if (!valid2) {
     // Kick this device: sign out + clear device cookies + redirect
     try {
       await supabase.auth.signOut();
