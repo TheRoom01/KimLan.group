@@ -58,27 +58,39 @@ export default function AuthControls() {
     };
   }, []);
 
-    // ===== show message when kicked by device limit =====
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (user) return; // đã login thì không mở modal
+    // ===== show message when device limit related redirect =====
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (user) return; // đã login thì không mở modal
 
-    const sp = new URLSearchParams(window.location.search);
-    const kicked = sp.get("auth") === "kicked";
-    if (!kicked) return;
+  const sp = new URLSearchParams(window.location.search);
+  const authType = sp.get("auth");
 
-    // mở modal + show message
-    setAuthView("login");
-    setAuthMsg("Phiên đăng nhập trên thiết bị này đã bị đăng xuất vì tài khoản vượt quá 2 thiết bị.");
-    setAuthOpen(true);
+  if (!authType) return;
 
-    // remove auth param to avoid repeated popup
-    sp.delete("auth");
-    const nextQs = sp.toString();
-    const url = nextQs ? `${pathname}?${nextQs}` : pathname;
-    router.replace(url, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, user]);
+  setAuthView("login");
+
+  if (authType === "kicked") {
+    // Thiết bị này bị đá ra do thiết bị khác login
+    setAuthMsg(
+      "Phiên đăng nhập trên thiết bị này đã bị đăng xuất vì tài khoản vượt quá 2 thiết bị."
+    );
+  } else if (authType === "limit") {
+    // Thiết bị thứ 3 bị chặn login
+    setAuthMsg(
+      "Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục."
+    );
+  }
+
+  setAuthOpen(true);
+
+  // remove auth param to avoid repeated popup
+  sp.delete("auth");
+  const nextQs = sp.toString();
+  const url = nextQs ? `${pathname}?${nextQs}` : pathname;
+  router.replace(url, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [pathname, user]);
 
   // ===== find #auth-anchor (portal target) =====
   useEffect(() => {

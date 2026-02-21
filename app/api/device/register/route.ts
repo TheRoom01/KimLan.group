@@ -78,25 +78,16 @@ export async function POST(req: Request) {
   const status = (Array.isArray(data) && data[0]?.status) || "unknown";
 
   if (status === "limit_reached") {
-    // ✅ nếu chưa confirm thì trả 409 để UI hỏi lại
-    if (!forceEvict) {
-      return NextResponse.json(
-        {
-          ok: false,
-          status,
-          confirm_required: true,
-          message:
-            "Mỗi tài khoản chỉ đăng nhập được 2 thiết bị, tài khoản sẽ tự động đăng xuất khỏi thiết bị cũ nhất.",
-        },
-        { status: 409 }
-      );
-    }
-
-    // forceEvict mà vẫn limit_reached => fallback như cũ
-    cookieStore.set({ name: DEVICE_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
-    cookieStore.set({ name: DEVICE_ID_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
-    return NextResponse.json({ ok: false, status }, { status: 403 });
-  }
-
+  // ❌ Không cho login, không evict, chỉ trả 403
+  return NextResponse.json(
+    {
+      ok: false,
+      status,
+      message:
+        "Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục.",
+    },
+    { status: 403 }
+  );
+}
   return NextResponse.json({ ok: true, status }, { status: 200 });
 }

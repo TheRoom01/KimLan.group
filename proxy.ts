@@ -22,6 +22,12 @@ function parseValidRpcResult(v: any): boolean {
   if (v && typeof v === "object") return !!(v as any).valid;
   return false;
 }
+function parseRegisterStatus(v: any): string {
+  if (Array.isArray(v)) return String(v[0]?.status || "");
+  if (v && typeof v === "object") return String((v as any).status || "");
+  return "";
+}
+
 async function sha256Base64Url(input: string) {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -109,12 +115,13 @@ try {
   }
 
   // If not valid yet: treat as first-seen device -> register (may evict oldest)
-  let { error: eReg } = await supabase.rpc("register_device_session", {
-    p_device_id: deviceId,
-    p_token_hash: tokenHash,
-    p_max_devices: 2,
-    p_evict_oldest: true,
-  });
+  let { data: reg1, error: eReg } = await supabase.rpc("register_device_session", {
+  p_device_id: deviceId,
+  p_token_hash: tokenHash,
+  p_max_devices: 2,
+  p_evict_oldest: false, // ✅ hard limit: never evict here
+});
+let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
 
   // ✅ nếu register bị trùng token_hash (23505)
   // -> deviceToken cũ đã tồn tại trong DB, rotate pp_device để lấy token_hash mới rồi retry 1 lần
@@ -128,14 +135,32 @@ try {
       p_device_id: deviceId,
       p_token_hash: tokenHash,
       p_max_devices: 2,
-      p_evict_oldest: true,
+      p_evict_oldest: false, // ✅ hard limit
     });
 
     eReg = retry.error;
+    regStatus = !eReg ? parseRegisterStatus(retry.data) : "";
   }
 
   if (eReg && (eReg as any).code !== "23505") {
     throw eReg;
+  }
+
+  // ✅ hard limit: device #3 -> block access (do NOT evict others)
+  if (regStatus === "limit_reached") {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // ignore
+    }
+
+    response.cookies.set({ name: DEVICE_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
+    response.cookies.set({ name: DEVICE_ID_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
+
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/";
+    redirectUrl.searchParams.set("auth", "kicked");
+    return NextResponse.redirect(redirectUrl);
   }
 
   // validate again after register (with possibly rotated tokenHash)
@@ -158,7 +183,7 @@ try {
 
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/";
-    redirectUrl.searchParams.set("auth", "kicked");
+    redirectUrl.searchParams.set("auth", "limit");
     return NextResponse.redirect(redirectUrl);
   }
 } catch {
