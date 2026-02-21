@@ -66,38 +66,27 @@ export default function RoomCard(props: { room: Room; adminLevel: number; index?
         )}`
       : "";
 
-// ✅ main ưu tiên thumb.webp, fallback qua ảnh đầu
-// Nếu không có media thật => dùng FALLBACK (không lấy thumb.webp)
-const mainPreferred = hasRealMedia
-  ? safeSrc((thumbUrl || showImages[0]) ?? "")
-  : FALLBACK;
+// ✅ main ưu tiên ảnh theo image_urls[0] (đúng thứ tự admin chọn)
+// fallback 1: thumb.webp (chỉ dùng khi ảnh đầu lỗi hoặc không có ảnh)
+// fallback 2: no-image
+const mainPrimary = hasRealMedia ? safeSrc(showImages[0] ?? null) : FALLBACK;
+const mainFallback1 = hasRealMedia ? safeSrc(thumbUrl ?? null) : FALLBACK;
 
 const subImage1 = safeSrc(showImages[1] ?? "");
 const subImage2 = safeSrc(showImages[2] ?? "");
 
 // ✅ mainErrorStage:
-// 0: đang dùng thumb (nếu có và có media thật)
-// 1: fallback sang ảnh đầu
+// 0: đang dùng image_urls[0]
+// 1: fallback sang thumb.webp
 // 2: fallback no-image
 const [mainErrorStage, setMainErrorStage] = useState<0 | 1 | 2>(0);
 const [sub1Ok, setSub1Ok] = useState(true);
 const [sub2Ok, setSub2Ok] = useState(true);
 
-  // ✅ Reset trạng thái lỗi khi đổi sang phòng khác (tránh reuse state)
-  useEffect(() => {
-    setMainErrorStage(0);
-    setSub1Ok(true);
-    setSub2Ok(true);
-  }, [room.id]);
-
-
-// fallback sang ảnh đầu (chỉ có ý nghĩa khi showImages[0] tồn tại)
-const mainFallback1 = safeSrc(showImages[0] ?? "");
-
 // chọn main src theo stage
 const mainSrc =
   mainErrorStage === 0
-    ? mainPreferred
+    ? mainPrimary
     : mainErrorStage === 1
     ? mainFallback1
     : FALLBACK;

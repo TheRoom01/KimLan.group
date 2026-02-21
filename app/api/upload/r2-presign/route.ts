@@ -66,11 +66,7 @@ export async function POST(req: Request) {
       if (size > MAX_VIDEO_BYTES) {
         return NextResponse.json({ error: `Video quá lớn. Giới hạn ${MAX_VIDEO_MB}MB` }, { status: 400 })
       }
-      const lower = fileName.toLowerCase()
-      const isMp4 = contentType.includes("mp4") || lower.endsWith(".mp4")
-      if (!isMp4) {
-        return NextResponse.json({ error: "Chỉ hỗ trợ video mp4" }, { status: 400 })
-      }
+      // ✅ allow any video/* (no mp4-only restriction)
     }
 
     // chỉ cho fixed thumb.webp đối với ảnh

@@ -357,25 +357,40 @@ useEffect(() => {
   };
 
   const applyDirtyStamp = (stamp: string) => {
-    try {
-      const seen = sessionStorage.getItem(DIRTY_SEEN_KEY) || "";
-      if (stamp && stamp !== seen) {
-        clearHomeCaches();
-        sessionStorage.setItem(DIRTY_SEEN_KEY, stamp);
-      }
-    } catch {}
-  };
+  try {
+    const seen = sessionStorage.getItem(DIRTY_SEEN_KEY) || "";
+    if (!stamp || stamp === seen) return;
 
+    clearHomeCaches();
+    sessionStorage.setItem(DIRTY_SEEN_KEY, stamp);
+
+    // ✅ FORCE REFRESH (client fetch), không dùng SSR cache nữa
+    filtersVersionRef.current += 1;     // drop mọi response cũ
+    resetPagination(0);                // pagesRef[0] => undefined
+    setTotal(null);
+
+    // scroll top (optional nhưng hợp lý)
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = 0;
+      lastScrollTopRef.current = 0;
+    });
+
+    // ✅ fetch lại page 0
+    queueMicrotask(() => {
+      fetchPageRef.current(0);
+    });
+  } catch {}
+
+};
   // ✅ 1) same-tab dirty (đã có sẵn)
   try {
-    const dirty = sessionStorage.getItem(HOME_DIRTY_KEY);
-    if (dirty) {
-      sessionStorage.removeItem(HOME_DIRTY_KEY);
-      clearHomeCaches();
-      // cũng update seen để khỏi clear lặp
-      sessionStorage.setItem(DIRTY_SEEN_KEY, dirty);
-    }
-  } catch {}
+  const dirty = sessionStorage.getItem(HOME_DIRTY_KEY);
+if (dirty) {
+  sessionStorage.removeItem(HOME_DIRTY_KEY);
+  applyDirtyStamp(dirty); // ✅ dùng chung 1 path
+}
+} catch {}
 
   // ✅ 2) cross-tab dirty (localStorage)
   try {

@@ -104,43 +104,32 @@ useEffect(() => {
   }
 
   const moveItem = (from: number, to: number) => {
-  if (from === to) return
-  if (from < 0 || to < 0) return
+  if (from === to) return;
+  if (from < 0 || to < 0) return;
 
-  const media = Array.isArray((value as any)?.media) ? (value as any).media : []
+  const media = Array.isArray((value as any)?.media)
+    ? [...(value as any).media]
+    : [];
 
-  // tách ảnh
-  const images = media
-    .filter((m: any) => m?.type === 'image' && (m?.url || m?.path))
-    .map((m: any) => ({
-      type: 'image' as const,
-      url: String(m.url ?? m.path),
-    }))
-    .filter((m: any) => /^https?:\/\//.test(m.url))
+  // Lấy index thật của các item image trong media (vì media có cả video)
+  const imageIndexes = media
+    .map((m: any, i: number) => (m?.type === "image" ? i : -1))
+    .filter((i: number) => i !== -1);
 
-  // tách video (giữ nguyên thứ tự)
-  const videos = media
-    .filter((m: any) => m?.type === 'video' && (m?.url || m?.path))
-    .map((m: any) => ({
-      type: 'video' as const,
-      url: String(m.url ?? m.path),
-    }))
-    .filter((m: any) => /^https?:\/\//.test(m.url))
+  if (from >= imageIndexes.length || to >= imageIndexes.length) return;
 
-  if (from >= images.length || to >= images.length) return
+  const realFrom = imageIndexes[from];
+  const realTo = imageIndexes[to];
 
-  // reorder ảnh
-  const nextImages = [...images]
-  const [moved] = nextImages.splice(from, 1)
-  nextImages.splice(to, 0, moved)
+  // Move item trong mảng media theo index thật
+  const [moved] = media.splice(realFrom, 1);
+  media.splice(realTo, 0, moved);
 
-  // cập nhật NGUỒN THẬT
   onChange({
     ...(value as any),
-    media: [...nextImages, ...videos],
-  })
-}
-
+    media,
+  });
+};
 
   const infoGridStyle: React.CSSProperties = isMobile
   ? { ...grid4, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }
@@ -218,12 +207,24 @@ useEffect(() => {
   accept="image/*,video/*"
   multiple
   style={{ display: "none" }}
+
   onChange={(e) => {
-    const files = Array.from(e.target.files ?? []);
-    const ok = files.filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
-    if (ok.length) onUploadFiles(ok);
-    e.currentTarget.value = "";
-  }}
+  const files = Array.from(e.target.files ?? []);
+
+  const ok = files
+    .filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"))
+    .map((file, index) => ({
+      file,
+      __order: index, // ✅ giữ thứ tự user chọn
+    }));
+
+  if (ok.length) {
+    // chỉ gửi file theo đúng thứ tự đã map
+    onUploadFiles(ok.map(x => x.file));
+  }
+
+  e.currentTarget.value = "";
+}}
 />
 
 

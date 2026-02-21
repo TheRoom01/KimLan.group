@@ -376,11 +376,18 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
 
 /* ================= HELPERS ================= */
 
+const VI_DATE_FMT = new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+});
+
 function formatDate(input?: string | null) {
   if (!input) return "-";
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("vi-VN");
+  return VI_DATE_FMT.format(d);
 }
 
 function formatPrice(input: any) {

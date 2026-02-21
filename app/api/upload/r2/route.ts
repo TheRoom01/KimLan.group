@@ -52,11 +52,7 @@ export async function POST(req: Request) {
         )
       }
 
-      const name = (file.name || "").toLowerCase()
-      const isMp4 = file.type.includes("mp4") || name.endsWith(".mp4")
-      if (!isMp4) {
-        return NextResponse.json({ error: "Chỉ hỗ trợ video mp4" }, { status: 400 })
-      }
+      // ✅ allow any video/* (no mp4-only restriction)
     }
     // =======================================
 

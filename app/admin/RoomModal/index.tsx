@@ -126,8 +126,11 @@ const [feeAutofillDone, setFeeAutofillDone] = useState(false)
   // ✅ NEW: draft room id cho flow "thêm mới + upload ngay"
   const draftRoomIdRef = useRef<string>("");
 
-  // ✅ NEW: nhớ danh sách media ban đầu để biết user có thật sự đổi ảnh không
+    // ✅ NEW: nhớ danh sách media ban đầu để biết user có thật sự đổi ảnh không
   const initialMediaSigRef = useRef<string>("");
+
+  // ✅ NEW (Patch 2): nhớ cover ban đầu để biết khi nào cần regenerate thumb.webp
+  const initialCoverUrlRef = useRef<string>("");
 
   function genDraftId(): string {
     try {
@@ -303,7 +306,7 @@ const MAX_VIDEO_MB = 20
 const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
 
 const MAX_VIDEOS_PER_ROOM = 2
-const MAX_VIDEO_SECONDS = 90 // < 1m30s
+const MAX_VIDEO_SECONDS = 120 // < 2 phút
 
 const existingVideosCount = Array.isArray((roomForm as any)?.media)
   ? (roomForm as any).media.filter((m: any) => m?.type === 'video').length
@@ -326,7 +329,7 @@ async function assertVideoDuration(file: File) {
       const d = video.duration
       if (!Number.isFinite(d)) return reject(new Error('Không đọc được thời lượng video'))
       if (d >= MAX_VIDEO_SECONDS) {
-        return reject(new Error(`Mỗi video phải ngắn hơn ${MAX_VIDEO_SECONDS} giây (1 phút 30)`))
+        return reject(new Error(`Mỗi video phải ngắn hơn ${MAX_VIDEO_SECONDS} giây (2 phút)`))
       }
       resolve()
     }
@@ -345,14 +348,7 @@ for (const f of okFiles) {
       return
     }
 
-    // mp4 only
-    const isMp4 = f.type.includes('mp4') || f.name.toLowerCase().endsWith('.mp4')
-    if (!isMp4) {
-      alert(`Chỉ hỗ trợ video mp4: ${f.name}`)
-      return
-    }
-
-    // duration < 90s
+    // duration < 2 phút
     try {
       await assertVideoDuration(f) // trong assertVideoDuration nhớ dùng điều kiện: if (d >= 90) reject(...)
     } catch (e: any) {
@@ -509,12 +505,42 @@ async function presignAndPutToR2(params: {
     throw new Error('Presign failed: missing uploadUrl/publicUrl')
   }
 
-  const put = await fetch(uploadUrl, {
+  async function uploadViaServerR2(params: {
+  room_id: string
+  file: File
+  fixed_name?: 'thumb.webp'
+}) {
+  const fd = new FormData()
+  fd.set('room_id', params.room_id)
+  fd.set('file', params.file)
+  if (params.fixed_name) fd.set('fixed_name', params.fixed_name)
+
+  const resp = await fetch('/api/upload/r2', { method: 'POST', body: fd })
+  const ct = resp.headers.get('content-type') || ''
+  const raw = await resp.text().catch(() => '')
+  if (!resp.ok) {
+    throw new Error(`[upload/r2] HTTP ${resp.status} ${ct}\n${raw.slice(0, 300)}`)
+  }
+
+  let j: any = {}
+  try { j = raw ? JSON.parse(raw) : {} } catch {}
+  const publicUrl = String(j?.url || j?.publicUrl || '').trim()
+  if (!publicUrl) throw new Error('[upload/r2] Missing url in response')
+  return { publicUrl }
+}
+
+let put: Response
+try {
+  put = await fetch(uploadUrl, {
     method: 'PUT',
     headers: requiredHeaders,
     body: file,
   })
-
+} catch (e) {
+  // ✅ Browser bị CORS/preflight block => fallback same-origin
+  console.warn('R2 PUT failed (likely CORS). Fallback to /api/upload/r2', e)
+  return await uploadViaServerR2({ room_id, file, fixed_name })
+}
   if (!put.ok) {
     const status = put.status
     const ct = put.headers.get('content-type') || ''
@@ -675,9 +701,12 @@ const detailSample =
     setErrorMsg(null)
 
     // THÊM MỚI
-   if (!editingRoom?.id) {
+      if (!editingRoom?.id) {
       // ✅ tạo draft id để upload ảnh/video ngay cả khi chưa lưu phòng
       draftRoomIdRef.current = genDraftId();
+
+      // ✅ Patch 2: thêm mới thì cover ban đầu rỗng
+      initialCoverUrlRef.current = "";
 
       setRoomForm({
         room_code: '',
@@ -709,8 +738,17 @@ const detailSample =
           .sort()
       );
       initialMediaSigRef.current = sig0;
-    } catch {
+   } catch {
       initialMediaSigRef.current = "";
+    }
+
+    // ✅ Patch 2: snapshot cover ban đầu (ảnh image đầu tiên theo thứ tự hiện có)
+    try {
+      const media0 = Array.isArray((editingRoom as any)?.media) ? (editingRoom as any).media : [];
+      const cover0 = media0.find((m: any) => m?.type === "image" && (m?.url || m?.path));
+      initialCoverUrlRef.current = String(cover0?.url ?? cover0?.path ?? "").trim();
+    } catch {
+      initialCoverUrlRef.current = "";
     }
 
 
@@ -766,6 +804,14 @@ const detailSample =
 
       const nextMedia = mediaFromRpc.length ? mediaFromRpc : imageUrlsFallback;
 
+      // ✅ Patch 2: cover ban đầu phải lấy theo media đã sort đúng từ RPC
+      try {
+        const cover = (nextMedia || []).find((m: any) => m?.type === "image" && m?.url);
+        initialCoverUrlRef.current = String(cover?.url ?? "").trim();
+      } catch {
+        // ignore
+      }
+
       setRoomForm((prev: any) => ({
         ...prev,
         media: nextMedia,
@@ -805,6 +851,99 @@ const detailSample =
     return null
   }
 
+    // =========================
+  // PATCH 2: REGEN THUMB FROM COVER (thumb.webp luôn khớp ảnh cover)
+  // =========================
+  async function uploadThumbFromCover(params: { roomId: string; coverUrl: string }) {
+    const roomId = String(params.roomId || "").trim();
+    const coverUrl = String(params.coverUrl || "").trim();
+    if (!roomId || !coverUrl) return;
+
+    // 1) tải cover về blob
+    let blob: Blob | null = null;
+    try {
+      const resp = await fetch(coverUrl, { cache: "no-store" });
+      if (!resp.ok) throw new Error(`fetch cover failed HTTP ${resp.status}`);
+      blob = await resp.blob();
+      if (!blob || blob.size <= 0) throw new Error("empty blob");
+      // chỉ xử lý ảnh
+      const ct = (blob.type || "").toLowerCase();
+      if (!ct.startsWith("image/")) throw new Error(`cover is not image: ${ct || "unknown"}`);
+    } catch (e) {
+      console.warn("uploadThumbFromCover: cannot fetch cover (CORS?)", e);
+      return;
+    }
+
+    // 2) tạo File từ blob => makeThumbWebp
+    const file = new File([blob], "cover", { type: blob.type || "image/jpeg" });
+
+    let thumbFile: File;
+    try {
+      thumbFile = await makeThumbWebp(file, { max: 600, targetBytes: 250 * 1024 });
+    } catch (e) {
+      console.warn("uploadThumbFromCover: makeThumbWebp failed", e);
+      return;
+    }
+
+    // 3) presign + PUT; nếu PUT bị CORS thì fallback /api/upload/r2
+    async function uploadViaServerR2(p: { room_id: string; file: File; fixed_name: "thumb.webp" }) {
+      const fd = new FormData();
+      fd.set("room_id", p.room_id);
+      fd.set("file", p.file);
+      fd.set("fixed_name", p.fixed_name);
+
+      const resp = await fetch("/api/upload/r2", { method: "POST", body: fd });
+      const ct = resp.headers.get("content-type") || "";
+      const raw = await resp.text().catch(() => "");
+      if (!resp.ok) {
+        throw new Error(`[upload/r2] HTTP ${resp.status} ${ct}\n${raw.slice(0, 300)}`);
+      }
+      return;
+    }
+
+    const pres = await fetch("/api/upload/r2-presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        room_id: roomId,
+        fixed_name: "thumb.webp",
+        file_name: "thumb.webp",
+        content_type: thumbFile.type || "image/webp",
+        size: thumbFile.size,
+      }),
+    });
+
+    if (!pres.ok) {
+      console.warn("uploadThumbFromCover: presign failed", pres.status);
+      return;
+    }
+
+    const pj = await pres.json();
+    const uploadUrl = String(pj?.uploadUrl || "").trim();
+    const requiredHeaders = (pj?.requiredHeaders || {}) as Record<string, string>;
+
+    if (!uploadUrl) {
+      console.warn("uploadThumbFromCover: missing uploadUrl");
+      return;
+    }
+
+    try {
+      const put = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: requiredHeaders,
+        body: thumbFile,
+      });
+      if (!put.ok) throw new Error(`PUT failed HTTP ${put.status}`);
+    } catch (e) {
+      // CORS/preflight blocked => fallback same-origin
+      console.warn("uploadThumbFromCover: PUT failed, fallback /api/upload/r2", e);
+      try {
+        await uploadViaServerR2({ room_id: roomId, file: thumbFile, fixed_name: "thumb.webp" });
+      } catch (e2) {
+        console.warn("uploadThumbFromCover: fallback /api/upload/r2 failed", e2);
+      }
+    }
+  }
   /* ===== SUBMIT ===== */
   async function handleSubmit() {
   const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
@@ -822,7 +961,7 @@ const detailSample =
     let updatedRoom: Room | null = null
     const isNew = !isEdit
 
-    // ✅ payload rooms: KHÔNG còn media nữa
+        // ✅ payload rooms: KHÔNG còn media nữa
     const payload = {
       room_code: roomForm.room_code,
       room_type: roomForm.room_type,
@@ -838,19 +977,27 @@ const detailSample =
       chinh_sach: roomForm.chinh_sach,
     }
 
+    // ✅ CRITICAL: list đang sort/keyset theo updated_at → insert phải có updated_at (DB của bạn không auto set khi insert)
+    const nowIso = new Date().toISOString()
+
     if (isEdit && roomId) {
-      const { data, error } = await supabase.from('rooms').update(payload).eq('id', roomId).select('*').single()
+      const { data, error } = await supabase
+        .from('rooms')
+        .update({ ...payload, updated_at: nowIso })
+        .eq('id', roomId)
+        .select('*')
+        .single()
       if (error) throw error
       updatedRoom = data as Room
-        } else {
+    } else {
       // ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media
-      const newId = String(draftRoomIdRef.current || "").trim() || (
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : undefined
-      )
+      const newId =
+        String(draftRoomIdRef.current || '').trim() ||
+        (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : undefined)
 
-      const insertData = newId ? { id: newId, ...payload } : payload
+      const insertData = newId
+        ? { id: newId, ...payload, updated_at: nowIso }
+        : { ...payload, updated_at: nowIso }
 
       const { data, error } = await supabase
         .from('rooms')
@@ -938,10 +1085,29 @@ if (shouldPrune) {
     if (!pruneResp.ok) {
       console.warn("prune-r2 failed", await pruneResp.text());
     }
-  } else {
+   } else {
     console.log("Skip prune-r2: media not changed (or unsafe to prune)");
   }
 }
+
+    // ✅ Patch 2: nếu cover (ảnh đầu) đổi => regenerate thumb.webp theo cover mới
+    try {
+      const coverUrl = String(
+        normalized.find((m: any) => m?.type === "image" && m?.url)?.url ?? ""
+      ).trim();
+
+      const coverChanged =
+        !!coverUrl &&
+        (isNew || coverUrl !== String(initialCoverUrlRef.current || "").trim());
+
+      if (coverChanged) {
+        // chạy nền, không block UX save
+        void uploadThumbFromCover({ roomId, coverUrl });
+        initialCoverUrlRef.current = coverUrl;
+      }
+    } catch {
+      // ignore
+    }
 
 // ✅ ĐÁNH DẤU HOME "DIRTY" ĐỂ BACK VỀ HOME KHÔNG RESTORE LIST CŨ (ảnh cũ)
 try {
