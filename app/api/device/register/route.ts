@@ -20,10 +20,9 @@ function isProd() {
   return process.env.NODE_ENV === "production";
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
 
-  // 1) Must be logged in (Supabase auth cookies already exist)
   const { data: userRes, error: userErr } = await supabase.auth.getUser();
   const user = userRes?.user ?? null;
 
@@ -31,7 +30,15 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  // 2) Get or create device cookies (httpOnly)
+  // ✅ parse body (forceEvict)
+  let forceEvict = false;
+  try {
+    const body = await req.json().catch(() => ({} as any));
+    forceEvict = !!body?.forceEvict;
+  } catch {
+    forceEvict = false;
+  }
+
   const cookieStore = await cookies();
   let deviceToken = cookieStore.get(DEVICE_COOKIE)?.value || "";
   let deviceId = cookieStore.get(DEVICE_ID_COOKIE)?.value || "";
@@ -41,7 +48,6 @@ export async function POST() {
   if (!deviceToken) deviceToken = randomToken(32);
   if (!deviceId) deviceId = randomToken(12);
 
-  // set/refresh cookie TTL (30 days)
   const cookieOptions = {
     httpOnly: true as const,
     secure: isProd(),
@@ -50,20 +56,19 @@ export async function POST() {
     maxAge: 60 * 60 * 24 * 30,
   };
 
-  // Always ensure cookies exist (if missing we set now)
   if (wasMissing) {
     cookieStore.set({ name: DEVICE_COOKIE, value: deviceToken, ...cookieOptions });
     cookieStore.set({ name: DEVICE_ID_COOKIE, value: deviceId, ...cookieOptions });
   }
 
-  // 3) Register device session in DB (enforce max 2)
   const tokenHash = sha256Base64Url(deviceToken);
 
   const { data, error } = await supabase.rpc("register_device_session", {
     p_device_id: deviceId,
     p_token_hash: tokenHash,
     p_max_devices: 2,
-    p_evict_oldest: true,
+    // ✅ mặc định KHÔNG evict, chỉ evict khi user confirm
+    p_evict_oldest: forceEvict,
   });
 
   if (error) {
@@ -73,10 +78,23 @@ export async function POST() {
   const status = (Array.isArray(data) && data[0]?.status) || "unknown";
 
   if (status === "limit_reached") {
-    // hard safety: clear device cookies so this browser can't keep retrying with a "registered" token
+    // ✅ nếu chưa confirm thì trả 409 để UI hỏi lại
+    if (!forceEvict) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status,
+          confirm_required: true,
+          message:
+            "Mỗi tài khoản chỉ đăng nhập được 2 thiết bị, tài khoản sẽ tự động đăng xuất khỏi thiết bị cũ nhất.",
+        },
+        { status: 409 }
+      );
+    }
+
+    // forceEvict mà vẫn limit_reached => fallback như cũ
     cookieStore.set({ name: DEVICE_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
     cookieStore.set({ name: DEVICE_ID_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
-
     return NextResponse.json({ ok: false, status }, { status: 403 });
   }
 

@@ -94,10 +94,10 @@ export async function proxy(request: NextRequest) {
 
    // 2) Validate first (fast path). Only register on first-seen devices.
 try {
-  const tokenHash = await sha256Base64Url(deviceToken);
+  let tokenHash = await sha256Base64Url(deviceToken);
 
   // validate current device is still active (also touches last_seen_at)
-   const { data: v1, error: e1 } = await supabase.rpc("validate_device_session", {
+  const { data: v1, error: e1 } = await supabase.rpc("validate_device_session", {
     p_token_hash: tokenHash,
   });
 
@@ -109,19 +109,36 @@ try {
   }
 
   // If not valid yet: treat as first-seen device -> register (may evict oldest)
-  const { error: eReg } = await supabase.rpc("register_device_session", {
+  let { error: eReg } = await supabase.rpc("register_device_session", {
     p_device_id: deviceId,
     p_token_hash: tokenHash,
     p_max_devices: 2,
     p_evict_oldest: true,
   });
 
-  // ✅ nếu register bị trùng token_hash (23505) => coi như đã register rồi (idempotent)
+  // ✅ nếu register bị trùng token_hash (23505)
+  // -> deviceToken cũ đã tồn tại trong DB, rotate pp_device để lấy token_hash mới rồi retry 1 lần
+  if (eReg && (eReg as any).code === "23505") {
+    deviceToken = randomToken(32);
+    response.cookies.set(DEVICE_COOKIE, deviceToken, cookieOptions);
+
+    tokenHash = await sha256Base64Url(deviceToken);
+
+    const retry = await supabase.rpc("register_device_session", {
+      p_device_id: deviceId,
+      p_token_hash: tokenHash,
+      p_max_devices: 2,
+      p_evict_oldest: true,
+    });
+
+    eReg = retry.error;
+  }
+
   if (eReg && (eReg as any).code !== "23505") {
     throw eReg;
   }
 
-  // validate again after register
+  // validate again after register (with possibly rotated tokenHash)
   const { data: v2, error: e2 } = await supabase.rpc("validate_device_session", {
     p_token_hash: tokenHash,
   });
