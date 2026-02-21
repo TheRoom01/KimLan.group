@@ -58,6 +58,28 @@ export default function AuthControls() {
     };
   }, []);
 
+    // ===== show message when kicked by device limit =====
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (user) return; // đã login thì không mở modal
+
+    const sp = new URLSearchParams(window.location.search);
+    const kicked = sp.get("auth") === "kicked";
+    if (!kicked) return;
+
+    // mở modal + show message
+    setAuthView("login");
+    setAuthMsg("Phiên đăng nhập trên thiết bị này đã bị đăng xuất vì tài khoản vượt quá 2 thiết bị.");
+    setAuthOpen(true);
+
+    // remove auth param to avoid repeated popup
+    sp.delete("auth");
+    const nextQs = sp.toString();
+    const url = nextQs ? `${pathname}?${nextQs}` : pathname;
+    router.replace(url, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, user]);
+
   // ===== find #auth-anchor (portal target) =====
   useEffect(() => {
     let raf = 0;
@@ -122,26 +144,53 @@ export default function AuthControls() {
 
   // ===== login/logout/reset =====
   const handleLogin = async () => {
-    if (!canLogin) return;
+  if (!canLogin) return;
 
-    setAuthLoading(true);
-    setAuthMsg("");
+  setAuthLoading(true);
+  setAuthMsg("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password: password.trim(),
-    });
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password: password.trim(),
+  });
 
+  if (error) {
     setAuthLoading(false);
+    setAuthMsg(error.message);
+    return;
+  }
 
-    if (error) {
-      setAuthMsg(error.message);
+  // 2) Register this browser as a "device" (enforce max 2 devices)
+  try {
+    const r = await fetch("/api/device/register", { method: "POST" });
+
+    if (r.status === 403) {
+      // limit reached / got kicked: logout immediately
+      await supabase.auth.signOut();
+      setAuthLoading(false);
+      setAuthMsg("Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục.");
       return;
     }
 
-    // ✅ KHÔNG router.refresh() để tránh remount -> trắng/skeleton
-    closeAuth();
-  };
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({} as any));
+      await supabase.auth.signOut();
+      setAuthLoading(false);
+      setAuthMsg(body?.error || "Không thể đăng ký thiết bị. Vui lòng thử lại.");
+      return;
+    }
+  } catch {
+    await supabase.auth.signOut();
+    setAuthLoading(false);
+    setAuthMsg("Không thể đăng ký thiết bị (lỗi mạng). Vui lòng thử lại.");
+    return;
+  }
+
+  setAuthLoading(false);
+
+  // ✅ KHÔNG router.refresh() để tránh remount -> trắng/skeleton
+  closeAuth();
+};
 
   const handleLogout = async () => {
     // ✅ KHÔNG router.refresh() để tránh remount -> trắng/skeleton
