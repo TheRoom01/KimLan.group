@@ -92,6 +92,8 @@ const ADMIN_L2_KEYS = [
   "description",
   "chinh_sach",
   "room_detail",
+  "link_zalo",
+  "zalo_phone",
 ] as const;
 
 

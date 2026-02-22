@@ -114,14 +114,45 @@ export default function RoomModal({
     
   })
 
-  
   const [detailForm, setDetailForm] = useState<RoomDetail>(defaultDetailForm)
-const [feeAutofillDone, setFeeAutofillDone] = useState(false)
-  
-    const [saving, setSaving] = useState(false)
+  const [feeAutofillDone, setFeeAutofillDone] = useState(false)
+
+  const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  // ✅ NEW: dùng để chọn RPC L1/L2 khi cần fallback (bypass RLS)
+  const [adminLevel, setAdminLevel] = useState<number | null>(null)
+
   const lastAutofillKeyRef = useRef<string>("");
+
+  // ✅ NEW: load admin level 1 lần (giống AdminClient)
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const { data: levelData, error: levelErr } = await supabase.rpc("get_my_admin_level");
+        if (!alive) return;
+
+        if (levelErr) {
+          console.warn("get_my_admin_level failed", levelErr);
+          setAdminLevel(null);
+          return;
+        }
+
+        const lvl = Number(levelData ?? 0);
+        setAdminLevel(Number.isFinite(lvl) ? lvl : null);
+      } catch (e) {
+        console.warn("get_my_admin_level exception", e);
+        if (alive) setAdminLevel(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // ✅ NEW: draft room id cho flow "thêm mới + upload ngay"
   const draftRoomIdRef = useRef<string>("");
@@ -629,7 +660,53 @@ if (shouldMakeThumb && isImage && file === firstImageFileInBatch && !thumbStarte
     }
   }
 
-  // 1) lấy PHÒNG MỚI NHẤT theo house_number + address (không quan tâm room_details)
+   // 1) lấy PHÒNG MỚI NHẤT theo house_number + address (không quan tâm room_details)
+  //    - ưu tiên query trực tiếp (nhanh)
+  //    - nếu bị RLS chặn (thường gặp ở admin L2) => fallback qua RPC fetch_admin_rooms_*_v1
+  const norm = (s: any) => String(s ?? "").trim().toLowerCase();
+
+  async function findLatestRoomByAddressFallback(): Promise<any | null> {
+    // Chỉ fallback nếu biết level là 1/2
+    const lvl = adminLevel;
+    const rpcName =
+      lvl === 1 ? "fetch_admin_rooms_l1_v1" : lvl === 2 ? "fetch_admin_rooms_l2_v1" : null;
+
+    if (!rpcName) return null;
+
+    // thử 2 kiểu search để tăng tỉ lệ hit (tùy backend search đang match field nào)
+    const searches = [`${house_number} ${address}`, address];
+
+    for (const q of searches) {
+      const res = await supabase.rpc(rpcName as any, {
+        p_limit: 50,
+        p_offset: 0,
+        p_search: q.trim() || null,
+      });
+
+      if (res.error) continue;
+
+      const rows = ((res.data as any)?.data ?? []) as any[];
+      const matched = rows
+        .filter((r) => {
+          if (!r) return false;
+          if (editingRoom?.id && String(r.id) === String(editingRoom.id)) return false;
+          return norm(r.house_number) === norm(house_number) && norm(r.address) === norm(address);
+        })
+        .sort((a, b) => {
+          const ta = new Date(a?.updated_at ?? 0).getTime();
+          const tb = new Date(b?.updated_at ?? 0).getTime();
+          return tb - ta;
+        });
+
+      if (matched.length) return matched[0];
+    }
+
+    return null;
+  }
+
+  let roomSample: any | null = null;
+
+  // --- attempt direct query ---
   let q = supabase
     .from("rooms")
     .select("id, ward, district, link_zalo, zalo_phone, chinh_sach, updated_at")
@@ -640,10 +717,22 @@ if (shouldMakeThumb && isImage && file === firstImageFileInBatch && !thumbStarte
 
   if (editingRoom?.id) q = q.neq("id", editingRoom.id);
 
-  const { data: roomSample, error: roomErr } = await q.maybeSingle();
+  const { data: directRoom, error: roomErr } = await q.maybeSingle();
 
   if (roomErr) {
-    onNotify?.(`Đồng bộ thất bại: ${roomErr.message}`);
+    // --- fallback for L2 (RLS) ---
+    const fb = await findLatestRoomByAddressFallback();
+    if (!fb) {
+      onNotify?.(`Đồng bộ thất bại: ${roomErr.message}`);
+      return;
+    }
+    roomSample = fb;
+  } else {
+    roomSample = directRoom as any;
+  }
+
+  if (!roomSample) {
+    onNotify?.("Không tìm thấy phòng mới nhất trùng Số nhà + Địa chỉ để đồng bộ.");
     return;
   }
   if (!roomSample) {

@@ -583,7 +583,6 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   }
 
   const isAdmin = adminLevel === 1 || adminLevel === 2;
-  const isAdminL1 = adminLevel === 1;
 
   // ✅ Hợp nhất dữ liệu từ link_zalo + zalo_phone
   const linkRaw = String(room?.link_zalo ?? "");
@@ -928,8 +927,8 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
       readOnly
     />
 
-    {/* ✅ chỉ L1 mới thấy link_zalo */}
-      {isAdminL1 && (zaloLink || zaloPhones.length > 0) && (
+    {/* ✅ L1 + L2 đều thấy link_zalo + zalo_phone */}
+      {isAdmin && (zaloLink || zaloPhones.length > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 text-gray-800">
           {/* LEFT: Link */}
           <div>
