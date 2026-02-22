@@ -961,56 +961,38 @@ const detailSample =
     let updatedRoom: Room | null = null
     const isNew = !isEdit
 
-        // ✅ payload rooms: KHÔNG còn media nữa
-    const payload = {
-      room_code: roomForm.room_code,
-      room_type: roomForm.room_type,
-      house_number: roomForm.house_number,
-      address: roomForm.address,
-      ward: roomForm.ward,
-      district: roomForm.district,
-      price: roomForm.price,
-      status: normalizeStatus(roomForm.status),
-      description: roomForm.description,
-      link_zalo: roomForm.link_zalo,
-      zalo_phone: roomForm.zalo_phone,
-      chinh_sach: roomForm.chinh_sach,
-    }
+    // ✅ payload rooms: KHÔNG còn media nữa
+const payload = {
+  room_code: roomForm.room_code,
+  room_type: roomForm.room_type,
+  house_number: roomForm.house_number,
+  address: roomForm.address,
+  ward: roomForm.ward,
+  district: roomForm.district,
+  price: roomForm.price,
+  status: normalizeStatus(roomForm.status),
+  description: roomForm.description,
+  link_zalo: roomForm.link_zalo,
+  zalo_phone: roomForm.zalo_phone,
+  chinh_sach: roomForm.chinh_sach,
+}
 
-    // ✅ CRITICAL: list đang sort/keyset theo updated_at → insert phải có updated_at (DB của bạn không auto set khi insert)
-    const nowIso = new Date().toISOString()
+// ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media
+const desiredId =
+  (isEdit ? String(roomId || '') : String(draftRoomIdRef.current || '')).trim() || null
 
-    if (isEdit && roomId) {
-      const { data, error } = await supabase
-        .from('rooms')
-        .update({ ...payload, updated_at: nowIso })
-        .eq('id', roomId)
-        .select('*')
-        .single()
-      if (error) throw error
-      updatedRoom = data as Room
-    } else {
-      // ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media
-      const newId =
-        String(draftRoomIdRef.current || '').trim() ||
-        (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : undefined)
+// ✅ SAVE qua RPC (L1/L2 đều được). DB tự set updated_at = now()
+const up = await supabase.rpc('admin_upsert_room_v1', {
+  p_room_id: desiredId,
+  p_payload: payload,
+})
 
-      const insertData = newId
-        ? { id: newId, ...payload, updated_at: nowIso }
-        : { ...payload, updated_at: nowIso }
+if (up.error) throw up.error
 
-      const { data, error } = await supabase
-        .from('rooms')
-        .insert(insertData)
-        .select('*')
-        .single()
+updatedRoom = up.data as Room
+roomId = String((updatedRoom as any)?.id || '').trim()
 
-      if (error) throw error
-      updatedRoom = data as Room
-      roomId = (data as any)?.id
-    }
-
-    if (!roomId || !updatedRoom) throw new Error('Không lấy được dữ liệu phòng sau khi lưu.')
+if (!roomId || !updatedRoom) throw new Error('Không lấy được dữ liệu phòng sau khi lưu.')
 
     // =========================
     // ✅ SYNC room_media (B7.6–B7.7)
