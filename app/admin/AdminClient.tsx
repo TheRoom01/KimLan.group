@@ -25,6 +25,7 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [adminLevel, setAdminLevel] = useState<number | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
   const notify = useCallback((msg: string) => {
@@ -53,6 +54,35 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
     const t = window.setTimeout(() => setDebouncedSearch(search), 300);
     return () => window.clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+  let alive = true;
+
+  (async () => {
+    try {
+      const { data: levelData, error: levelErr } =
+        await supabase.rpc("get_my_admin_level");
+
+      if (!alive) return;
+
+      if (levelErr) {
+        console.warn("get_my_admin_level failed", levelErr);
+        setAdminLevel(null);
+        return;
+      }
+
+      const lvl = Number(levelData ?? 0);
+      setAdminLevel(Number.isFinite(lvl) ? lvl : null);
+    } catch (e) {
+      console.warn("get_my_admin_level exception", e);
+      if (alive) setAdminLevel(null);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, []);
 
   const reqSeqRef = useRef(0);
   const cacheRef = useRef(new Map<string, { rooms: Room[]; total: number }>());
@@ -86,7 +116,19 @@ const rpcArgs = {
   p_search: q.trim() || null,
 };
 
-const res = await supabase.rpc("fetch_admin_rooms_l1_v1", rpcArgs);
+const rpcName =
+  adminLevel === 1
+    ? "fetch_admin_rooms_l1_v1"
+    : adminLevel === 2
+    ? "fetch_admin_rooms_l2_v1"
+    : null;
+console.log("admin rpc:", rpcName, "level:", adminLevel); // 👈 THÊM DÒNG NÀY
+if (!rpcName) {
+  setErrorMsg("Không có quyền truy cập trang admin.");
+  return;
+}
+
+const res = await supabase.rpc(rpcName as any, rpcArgs);
 if (mySeq !== reqSeqRef.current) return;
 
 if (res.error) {
@@ -112,20 +154,45 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
   if (mySeq === reqSeqRef.current && !opts?.silent) setLoading(false);
 }
     },
-    []
+    [adminLevel]
   );
 
   // when page/search changes => reload
   useEffect(() => {
-    loadRooms(page, debouncedSearch, { useCache: true });
-  }, [page, debouncedSearch, loadRooms]);
+  if (adminLevel !== 1 && adminLevel !== 2) return;
+  loadRooms(page, debouncedSearch, { useCache: true });
+}, [page, debouncedSearch, loadRooms, adminLevel]);
 
   const deleteRoom = useCallback(
-    async (id: string) => {
-      if (!confirm("Xoá phòng này?")) return;
-      try {
-        setLoading(true);
-        setErrorMsg(null);
+  async (id: string) => {
+    try {
+      setLoading(true);
+      setErrorMsg(null);
+
+      // ---- L2: Ẩn phòng (không xoá DB/R2) + remove khỏi list ngay ----
+      if (adminLevel === 2) {
+        const ok = confirm("Xoá phòng này");
+        if (!ok) return;
+
+        const res = await supabase.rpc("hide_room", { p_room_id: id });
+        if (res.error) {
+          setErrorMsg(res.error.message);
+          return;
+        }
+
+        // UX: “xoá ở UI” => biến mất khỏi bảng L2
+        setRooms((prev) => prev.filter((x: any) => (x as any).id !== id));
+        setTotal((t) => Math.max(0, t - 1));
+
+        cacheRef.current.clear();
+        cursorMapRef.current.clear();
+        return;
+      }
+
+      // ---- L1: Xoá thật ----
+      if (adminLevel === 1) {
+        const ok = confirm("Xoá phòng này? (Sẽ xoá DB và có thể xoá media)");
+        if (!ok) return;
 
         const res = await supabase.rpc("admin_l1_delete_room", { p_room_id: id });
         if (res.error) {
@@ -137,15 +204,18 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
         cursorMapRef.current.clear();
         setPage(1);
         await loadRooms(1, debouncedSearch, { useCache: false });
-      } catch (e: any) {
-        setErrorMsg(e?.message ?? "Xoá thất bại");
-      } finally {
-        setLoading(false);
+        return;
       }
-    },
-    [loadRooms, debouncedSearch]
-  );
 
+      setErrorMsg("Không có quyền thao tác.");
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? "Xoá/Ẩn thất bại");
+    } finally {
+      setLoading(false);
+    }
+  },
+  [loadRooms, debouncedSearch, adminLevel]
+);
   const openZaloUX = useCallback((raw?: string | null) => {
     if (!raw) return;
     if (typeof window === "undefined") return;
@@ -224,6 +294,8 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
             ) : (
               rooms.map((r) => {
                 const isRented = normalizeStatus((r as any).status) === "đã thuê";
+                const isHidden = Boolean((r as any).is_hidden);
+
                 const zaloLink = ((r as any).link_zalo || (r as any).zalo_phone) as
                   | string
                   | undefined;
@@ -269,9 +341,15 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
                     </td>
 
                     <td style={td}>
-                      <span style={{ ...badge, ...(isRented ? badgeRed : badgeGreen) }}>
-                        {(r as any).status ?? "Trống"}
-                      </span>
+                      {adminLevel === 1 && isHidden ? (
+                        <span style={{ ...badge, ...badgeHidden }}>
+                          Đã ẩn
+                        </span>
+                      ) : (
+                        <span style={{ ...badge, ...(isRented ? badgeRed : badgeGreen) }}>
+                          {(r as any).status ?? "Trống"}
+                        </span>
+                      )}
                     </td>
 
                     <td style={{ ...td, textAlign: "right" }}>
@@ -531,6 +609,11 @@ const badgeGreen: CSSProperties = {
   background: "#ecfdf5",
   borderColor: "#a7f3d0",
   color: "#065f46",
+};
+const badgeHidden: CSSProperties = {
+  background: "#f3f4f6",
+  borderColor: "#e5e7eb",
+  color: "#6b7280",
 };
 
 const badgeRed: CSSProperties = {

@@ -15,13 +15,13 @@ export default async function AdminPage() {
     redirect("/");
   }
 
-  // 2) Only level 1 can access /admin
- const { data: levelData, error: levelErr } =
+  // 2) Only level 1 or 2 can access /admin
+const { data: levelData, error: levelErr } =
   await supabase.rpc("get_my_admin_level");
 
 const level = Number(levelData ?? 0);
 
-if (levelErr || level !== 1) {
+if (levelErr || (level !== 1 && level !== 2)) {
   redirect("/");
 }
 
@@ -30,8 +30,10 @@ if (levelErr || level !== 1) {
   const to = PAGE_SIZE - 1;
   const offset = from;
 
+const rpcName = level === 2 ? "fetch_admin_rooms_l2_v1" : "fetch_admin_rooms_l1_v1";
+
 const { data: rpcData, error: rpcErr } =
-  await supabase.rpc("fetch_admin_rooms_l1_v1", {
+  await supabase.rpc(rpcName as any, {
     p_limit: PAGE_SIZE,
     p_offset: offset,
     p_search: null,
