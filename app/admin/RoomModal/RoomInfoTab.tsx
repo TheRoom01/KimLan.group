@@ -582,15 +582,30 @@ function Select({
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
-  useEffect(() => {
+    useEffect(() => {
     if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) {
+
+    const onDown = (e: Event) => {
+      const target = e.target as Node | null
+      if (!target) return
+      if (!wrapRef.current?.contains(target)) {
         setOpen(false)
       }
     }
-    window.addEventListener("mousedown", onDown)
-    return () => window.removeEventListener("mousedown", onDown)
+
+    // ✅ mobile + desktop
+    // - pointerdown: cover hầu hết (mouse/touch/pen)
+    // - touchstart: fallback cho iOS cũ
+    // - mousedown: fallback
+    window.addEventListener("pointerdown", onDown, true)
+    window.addEventListener("touchstart", onDown, { capture: true, passive: true } as any)
+    window.addEventListener("mousedown", onDown, true)
+
+    return () => {
+      window.removeEventListener("pointerdown", onDown, true)
+      window.removeEventListener("touchstart", onDown, true)
+      window.removeEventListener("mousedown", onDown, true)
+    }
   }, [open])
 
   return (

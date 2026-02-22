@@ -1222,9 +1222,33 @@ void (async () => {
 
   /* ================= UI ================= */
 
+    const lastBackdropCloseAtRef = useRef<number>(0)
+
+  const handleBackdropDown = () => {
+    const now = Date.now()
+    // ✅ chống trigger 2 lần (pointer + mouse / touch)
+    if (now - lastBackdropCloseAtRef.current < 80) return
+    lastBackdropCloseAtRef.current = now
+    requestClose()
+  }
+
+  const stopBackdropEvents = (e: any) => {
+    e.stopPropagation?.()
+  }
+
   return (
-    <div style={overlay} onMouseDown={requestClose}>
-      <div style={modal} onMouseDown={(e) => e.stopPropagation()}>
+    <div
+      style={overlay}
+      onPointerDown={handleBackdropDown}
+      onMouseDown={handleBackdropDown}   // fallback
+      onTouchStart={handleBackdropDown}  // fallback
+    >
+      <div
+        style={modal}
+        onPointerDown={stopBackdropEvents}
+        onMouseDown={stopBackdropEvents}
+        onTouchStart={stopBackdropEvents}
+      >
         <div style={modalBody}>
           <h3>{isEdit ? 'Chỉnh sửa phòng' : 'Thêm phòng mới'}</h3>
 

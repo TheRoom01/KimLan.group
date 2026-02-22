@@ -453,6 +453,61 @@ useEffect(() => {
     room?.details ??
     {}) as any;
 
+// ✅ Patch 4: nếu RPC không trả link_zalo / zalo_phone cho admin => fallback đọc thẳng từ rooms
+useEffect(() => {
+  const level = Number(adminLevel) || 0;
+  const isAdmin = level === 1 || level === 2;
+
+  // Chỉ admin mới cần 2 field này
+  if (!isAdmin) return;
+
+  // Chưa có room thì thôi
+  if (!room?.id) return;
+
+  // Nếu đã có rồi thì không fetch nữa
+  const hasAny =
+    String(room?.link_zalo ?? "").trim() || String(room?.zalo_phone ?? "").trim();
+  if (hasAny) return;
+
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const { data, error } = await supabase
+        .from("rooms")
+        .select("link_zalo, zalo_phone, is_hidden")
+        .eq("id", room.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) return;
+
+      // Nếu là phòng hidden mà lỡ vào được, không show (an toàn)
+      if ((data as any)?.is_hidden) return;
+
+      const link_zalo = (data as any)?.link_zalo ?? null;
+      const zalo_phone = (data as any)?.zalo_phone ?? null;
+
+      if (link_zalo || zalo_phone) {
+        setRoom((prev: any) =>
+          prev
+            ? {
+                ...prev,
+                link_zalo: prev?.link_zalo ?? link_zalo,
+                zalo_phone: prev?.zalo_phone ?? zalo_phone,
+              }
+            : prev
+        );
+      }
+    } catch {
+      // ignore
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [adminLevel, room?.id, room?.link_zalo, room?.zalo_phone]);
 
   const imageUrls = useMemo(() => {
   // ✅ ưu tiên field chuẩn hoá từ RPC (đọc room_media)
@@ -927,43 +982,43 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
       readOnly
     />
 
-    {/* ✅ L1 + L2 đều thấy link_zalo + zalo_phone */}
-      {isAdmin && (zaloLink || zaloPhones.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 text-gray-800">
-          {/* LEFT: Link */}
-          <div>
-            <div className="font-medium mb-1">Link Zalo</div>
-            {zaloLink ? (
-              <a
-                href={zaloLink}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sky-600 underline break-all"
-              >
-                {zaloLink}
-              </a>
-            ) : (
-              <div className="text-gray-500">-</div>
-            )}
-          </div>
-
-          {/* RIGHT: Phones */}
-          <div>
-            <div className="font-medium mb-1">SĐT</div>
-            {zaloPhones.length > 0 ? (
-              <div className="space-y-1">
-                {zaloPhones.map((p, i) => (
-                  <div key={`${p}-${i}`} className="break-all">
-                    {p}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-gray-500">-</div>
-            )}
-          </div>
-        </div>
+    {/* ✅ L1 + L2 luôn thấy link_zalo + zalo_phone (kể cả rỗng) */}
+{isAdmin && (
+  <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 text-gray-800">
+    {/* LEFT: Link */}
+    <div>
+      <div className="font-medium mb-1">Link Zalo</div>
+      {zaloLink ? (
+        <a
+          href={zaloLink}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sky-600 underline break-all"
+        >
+          {zaloLink}
+        </a>
+      ) : (
+        <div className="text-gray-500">-</div>
       )}
+    </div>
+
+    {/* RIGHT: Phones */}
+    <div>
+      <div className="font-medium mb-1">SĐT</div>
+      {zaloPhones.length > 0 ? (
+        <div className="space-y-1">
+          {zaloPhones.map((p, i) => (
+            <div key={`${p}-${i}`} className="break-all">
+              {p}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-gray-500">-</div>
+      )}
+    </div>
+  </div>
+)}
   </div>
 )}
 
