@@ -204,11 +204,18 @@ useEffect(() => {
   closeAuth();
 };
 
-  const handleLogout = async () => {
-    // ✅ KHÔNG router.refresh() để tránh remount -> trắng/skeleton
-    await supabase.auth.signOut();
-    setMenuOpen(false);
-  };
+ const handleLogout = async () => {
+  // 1) revoke device session + clear httpOnly device cookies
+  try {
+    await fetch("/api/device/logout", { method: "POST" });
+  } catch {
+    // ignore
+  }
+
+  // 2) logout Supabase auth
+  await supabase.auth.signOut();
+  setMenuOpen(false);
+};
 
   const handleSendReset = async () => {
     const target = (forgotEmail || email).trim();
