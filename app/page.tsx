@@ -3,8 +3,37 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
 import ContactFAB from "@/components/ContactFAB";
 
+function firstString(v: string | string[] | undefined): string | null {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  return null;
+}
 
-export const dynamic = "force-dynamic";
+function parseCsv(v: string | null): string[] | null {
+  if (!v) return null;
+
+  const arr = v
+    .split(",")
+    .map((s) => decodeURIComponent(s).trim())
+    .filter(Boolean);
+
+  return arr.length ? arr : null;
+}
+
+function parseNumberSafe(v: string | null, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function parseSortMode(
+  v: string | null
+): "updated_desc" | "price_asc" | "price_desc" {
+  if (v === "price_asc" || v === "price_desc" || v === "updated_desc") {
+    return v;
+  }
+  return "updated_desc";
+}
+
 export default async function HomePage({
   searchParams,
 }: {
@@ -12,13 +41,13 @@ export default async function HomePage({
 }) {
   const sp = (await searchParams) ?? {};
 
-  
   const supabase = await createSupabaseServerClient();
-  // 1) Resolve user + admin level on server (so initial render knows role)
+
+  // 1) Resolve user + admin level on server
   const { data: userRes } = await supabase.auth.getUser();
   const user = userRes?.user ?? null;
 
-    let adminLevel: 0 | 1 | 2 = 0;
+  let adminLevel: 0 | 1 | 2 = 0;
 
   try {
     const { data: lvlData } = await supabase.rpc("get_my_admin_level");
@@ -27,7 +56,6 @@ export default async function HomePage({
   } catch {
     adminLevel = 0;
   }
-
 
   // 2) Fetch filter options on server (optional but faster first paint)
   let initialDistricts: string[] = [];
@@ -42,41 +70,59 @@ export default async function HomePage({
     // ignore
   }
 
-    const stRaw = typeof sp.st === "string" ? sp.st : null;
+  // 3) Read filters from URL (SSR must match client URL state)
+  const qRaw = firstString(sp.q);
+  const minRaw = firstString(sp.min);
+  const maxRaw = firstString(sp.max);
+  const dRaw = firstString(sp.d);
+  const rtRaw = firstString(sp.rt);
+  const stRaw = firstString(sp.st);
+  const mRaw = firstString(sp.m);
+  const sRaw = firstString(sp.s);
+
+  const search = qRaw ? decodeURIComponent(qRaw).trim() : null;
+
+  const minPrice = parseNumberSafe(minRaw, 3_000_000);
+  const maxPrice = parseNumberSafe(maxRaw, 30_000_000);
+
+  const districts = parseCsv(dRaw);
+  const roomTypes = parseCsv(rtRaw);
+
   const status = stRaw ? decodeURIComponent(stRaw) : null;
 
-  // ✅ read move from URL (source of truth)
-  const mRaw = typeof sp.m === "string" ? sp.m : null;
   const move =
-    mRaw === "elevator" || mRaw === "stairs" ? (mRaw as "elevator" | "stairs") : null;
+    mRaw === "elevator" || mRaw === "stairs"
+      ? (mRaw as "elevator" | "stairs")
+      : null;
 
-  // 3) Fetch page 0 on server using the same RPC as client
+  const sortMode = parseSortMode(sRaw);
+
+  // 4) Fetch first page on server using URL-derived filters
   const LIMIT = 20;
   const res = await fetchRoomsServer(supabase, {
     limit: LIMIT,
     cursor: null,
     adminLevel,
-    search: null,
-    minPrice: 3_000_000,
-    maxPrice: 30_000_000,
-    districts: null,
-    roomTypes: null,
-    move, // ✅ was null
+    search,
+    minPrice,
+    maxPrice,
+    districts,
+    roomTypes,
+    move,
     status,
+    sortMode,
   });
 
   return (
-  <>
-    <HomeClient
-      initialRooms={res.data}
-      initialNextCursor={res.nextCursor}
-      initialAdminLevel={adminLevel}
-      initialTotal={res.total ?? null}
-    />
+    <>
+      <HomeClient
+        initialRooms={res.data}
+        initialNextCursor={res.nextCursor}
+        initialAdminLevel={adminLevel}
+        initialTotal={res.total ?? null}
+      />
 
-    <ContactFAB />
-  </>
-);
-
-  
+      <ContactFAB />
+    </>
+  );
 }

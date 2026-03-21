@@ -215,7 +215,7 @@ const pMove =
 
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
-  p_role: 0,
+  p_role: role,
   p_limit: Number(limit) || 20,
 
   // 2) cursor (uuid) — dùng cho sort giá + fallback
