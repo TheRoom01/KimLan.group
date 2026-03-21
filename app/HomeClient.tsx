@@ -1296,6 +1296,15 @@ isReloadRef.current = navType === "reload";
       });
     });
   }
+    // ✅ Home mặc định "/" => ưu tiên SSR, không restore cache nặng từ sessionStorage
+  if (!url.qs && !isBackFromDetail) {
+    try {
+      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
+    } catch {}
+
+    finishHydrate();
+    return;
+  }
 
   // ✅ BACK SNAPSHOT restore (khôi phục cấu trúc logic cũ)
 // ưu tiên trước V2/Lite/URL; chỉ áp dụng khi KHÔNG reload
@@ -1404,7 +1413,7 @@ if (isReloadRef.current) {
   }
 }
 
-  // 2) try restore from sessionStorage (match qs)
+    // 2) try restore from sessionStorage (match qs)
   let restored: PersistState | null = null;
 
   try {
@@ -1418,10 +1427,21 @@ if (isReloadRef.current) {
     ? Date.now() - restored.ts < 30 * 60 * 1000
     : false;
 
+  const currentQs = canonicalQs(url.qs || "");
+  const restoredQs = canonicalQs(restored?.qs || "");
+
+  // ✅ Quan trọng:
+  // - URL rỗng ("/") thì KHÔNG restore full HOME_STATE_V2
+  // - tránh mở web lần đầu bị render lại pages stale từ sessionStorage
+  // - default Home nên ưu tiên SSR initialRooms
+  const allowHeavyRestore =
+    currentQs.length > 0 || isBackFromDetail;
+
   const match =
     !!restored &&
     ttlOk &&
-    canonicalQs(restored.qs || "") === canonicalQs(url.qs || "");
+    allowHeavyRestore &&
+    restoredQs === currentQs;
 
   // ------------------ RESTORE FROM STORAGE ------------------
   if (match && restored) {
@@ -1529,7 +1549,13 @@ if (isReloadRef.current) {
 
   // ------------------ RESTORE FROM LITE (fallback) ------------------
   const effectiveQs = url.qs || backHint?.qs || "";
-  const lite = readLiteForQs(effectiveQs);
+
+  // ✅ URL rỗng khi mở Home mới thì cũng không restore lite,
+  // để ưu tiên SSR initialRooms thay vì cache cũ
+  const lite =
+    effectiveQs && (effectiveQs.length > 0 || isBackFromDetail)
+      ? readLiteForQs(effectiveQs)
+      : null;
 
   if (lite) {
     hydratingFromUrlRef.current = true;
