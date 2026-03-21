@@ -12,6 +12,7 @@ type RoomListProps = {
   hasNext: boolean;
   goPrev: () => void;
   goNext: () => void;
+  onNavigate: (href: string) => void;
 };
 
 const RoomList = ({
@@ -19,6 +20,7 @@ const RoomList = ({
   showSkeleton,
   roomsToRender,
   adminLevel,
+  onNavigate,
 }: RoomListProps) => {
   if (fetchError) {
     return (
@@ -43,7 +45,13 @@ const RoomList = ({
     ) : roomsToRender.length > 0 ? (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {roomsToRender.map((room, index) => (
-          <RoomCard key={room.id} room={room} adminLevel={adminLevel} index={index} />
+          <RoomCard
+          key={room.id}
+          room={room}
+          adminLevel={adminLevel}
+          index={index}
+          onNavigate={onNavigate}
+        />
         ))}
 
       </div>

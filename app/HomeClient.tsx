@@ -2392,6 +2392,28 @@ useEffect(() => {
   };
 }, [resetPagination, pageIndex, persistSoon]);
 
+const handleNavigateToRoom = useCallback((href: string) => {
+  try {
+    const el = scrollRef.current;
+    if (el) lastScrollTopRef.current = el.scrollTop;
+
+    saveScrollToHistory();
+    writeBackSnapshotNow();
+
+    const qsRaw = window.location.search.replace(/^\?/, "");
+    const qsCanonical = canonicalQs(qsRaw);
+
+    sessionStorage.setItem(
+      HOME_BACK_HINT_KEY,
+      JSON.stringify({
+        ts: Date.now(),
+        qs: qsCanonical,
+      })
+    );
+  } catch {}
+
+  router.push(href);
+}, [router, writeBackSnapshotNow, saveScrollToHistory]);
 
   // ================== RENDER ==================
   return (
@@ -2464,9 +2486,10 @@ useEffect(() => {
               }}
             />
           </div>
-        </div>
 
-        <RoomList
+      
+        </div>
+          <RoomList
           fetchError={fetchError}
           showSkeleton={showSkeleton}
           roomsToRender={roomsToRender}
@@ -2476,6 +2499,7 @@ useEffect(() => {
           hasNext={hasNext}
           goPrev={goPrev}
           goNext={goNext}
+           onNavigate={handleNavigateToRoom}
         />
       </div>
 
