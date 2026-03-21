@@ -216,6 +216,47 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
   },
   [loadRooms, debouncedSearch, adminLevel]
 );
+
+const toggleRoomStatus = useCallback(
+  async (room: any) => {
+    try {
+      const current = normalizeStatus(room.status);
+      const next = current === "đã thuê" ? "Trống" : "Đã thuê";
+
+      const ok = confirm(`Chuyển trạng thái sang "${next}"?`);
+      if (!ok) return;
+
+      // 👉 optimistic update (đổi ngay UI)
+      setRooms((prev) =>
+        prev.map((r: any) =>
+          r.id === room.id ? { ...r, status: next } : r
+        )
+      );
+
+      // 👉 gọi RPC update DB (bạn cần có function này)
+      const res = await supabase.rpc("update_room_status", {
+        p_room_id: room.id,
+        p_status: next,
+      });
+
+      if (res.error) {
+        throw new Error(res.error.message);
+      }
+
+      notify("Đã cập nhật trạng thái");
+    } catch (e: any) {
+      // rollback nếu lỗi
+      setRooms((prev) =>
+        prev.map((r: any) =>
+          r.id === room.id ? { ...r, status: room.status } : r
+        )
+      );
+
+      alert(e?.message || "Cập nhật thất bại");
+    }
+  },
+  [notify]
+);
   const openZaloUX = useCallback((raw?: string | null) => {
     if (!raw) return;
     if (typeof window === "undefined") return;
@@ -341,16 +382,24 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
                     </td>
 
                     <td style={td}>
-                      {adminLevel === 1 && isHidden ? (
-                        <span style={{ ...badge, ...badgeHidden }}>
-                          Đã ẩn
-                        </span>
-                      ) : (
-                        <span style={{ ...badge, ...(isRented ? badgeRed : badgeGreen) }}>
-                          {(r as any).status ?? "Trống"}
-                        </span>
-                      )}
-                    </td>
+                    {adminLevel === 1 && isHidden ? (
+                      <span style={{ ...badge, ...badgeHidden }}>
+                        Đã ẩn
+                      </span>
+                    ) : (
+                      <button
+                        style={{
+                          ...badge,
+                          ...(isRented ? badgeRed : badgeGreen),
+                          cursor: "pointer",
+                        }}
+                        onClick={() => toggleRoomStatus(r)}
+                        title="Click để đổi trạng thái"
+                      >
+                        {(r as any).status ?? "Trống"}
+                      </button>
+                    )}
+                  </td>
 
                     <td style={{ ...td, textAlign: "right" }}>
                       <button

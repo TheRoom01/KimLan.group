@@ -178,7 +178,7 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
   const replaceStateLastTsRef = useRef(0);
   const replaceStateTimerRef = useRef<number | null>(null);
 
-
+ 
 
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
@@ -296,6 +296,7 @@ useEffect(() => {
    const didApplyBackOnceRef = useRef(false);
     const [loading, setLoading] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string>("");
   const fetchPageRef = useRef<(targetIndex: number) => void>(() => {});
  const isReloadRef = useRef<boolean>(false);
@@ -1075,15 +1076,9 @@ useEffect(() => {
 
    // ================== RESET PAGINATION ==================
  const resetPagination = useCallback((keepPage: number = 0) => {
-  // ✅ chỉ reset UI/cache, KHÔNG “kill request” bằng requestId
   inFlightRef.current = {};
 
-  // ✅ IMPORTANT:
-  // fetchPage() uses "!== undefined" to decide if a page was already fetched.
-  // So after reset we must ensure pagesRef slots are truly undefined, not just an empty array
-  // that can later get treated as "already has page 0".
   const nextPages: any[][] = new Array(keepPage + 1);
-  // leave all entries as undefined
   pagesRef.current = nextPages;
   setPages(nextPages);
 
@@ -1094,7 +1089,10 @@ useEffect(() => {
   setHasNext(true);
   setFetchError("");
   setLoading(false);
-  setShowSkeleton(true);
+
+  // chỉ reset trạng thái, chưa quyết định hiện skeleton hay không ở đây
+  setShowSkeleton(false);
+  setIsRefreshing(false);
 }, []);
 
 
@@ -1875,6 +1873,21 @@ useEffect(() => {
       const cursorForThisPage = cursorsRef.current[targetIndex] ?? null;
 
       const pending = pendingUrlFiltersRef.current;
+      const visiblePage = pagesRef.current[targetIndex] as any[] | undefined;
+
+      const hasVisibleData = Array.isArray(visiblePage) && visiblePage.length > 0;
+
+if (isVisible) {
+  setLoading(true);
+
+  if (hasVisibleData) {
+    setIsRefreshing(true);
+    setShowSkeleton(false);
+  } else {
+    setIsRefreshing(false);
+    setShowSkeleton(true);
+  }
+}
 
 const res = await fetchRooms({
   limit: LIMIT,
@@ -1906,7 +1919,6 @@ const res = await fetchRooms({
 if (pendingUrlFiltersRef.current && targetIndex === pageIndexRef.current) {
   pendingUrlFiltersRef.current = null;
 }
-
     
        // ✅ drop nếu version đã đổi sau khi request bắt đầu
       if (myVersion !== filtersVersionRef.current) return;
@@ -1964,20 +1976,20 @@ if (pendingUrlFiltersRef.current && targetIndex === pageIndexRef.current) {
       }
 
     } catch (e: any) {
-      if (isVisible && myVersion === filtersVersionRef.current) {
-        setFetchError(e?.message ?? "Fetch failed");
+      if (isVisible) {
+        setFetchError(e?.message ?? "Tải dữ liệu thất bại");
+        setLoading(false);
+        setShowSkeleton(false);
+        setIsRefreshing(false);
       }
-
     } finally {
       inFlightRef.current[reqKey] = false;
 
-      // ✅ tắt skeleton nếu page đã có trạng thái (kể cả [])
-      const fetched = pagesRef.current[targetIndex] !== undefined;
-      if (isVisible && fetched) {
+      if (isVisible) {
         setLoading(false);
         setShowSkeleton(false);
+        setIsRefreshing(false);
       }
-
     }
   },
   [
@@ -2460,6 +2472,7 @@ const handleNavigateToRoom = useCallback((href: string) => {
               search={search}
               setSearch={setSearch}
               priceDraft={priceDraft}
+              priceApplied={priceApplied}
               setPriceDraft={setPriceDraft}
               setPriceApplied={setPriceApplied}
               selectedDistricts={selectedDistricts}
@@ -2498,14 +2511,20 @@ const handleNavigateToRoom = useCallback((href: string) => {
           hasNext={hasNext}
           goPrev={goPrev}
           goNext={goNext}
-           onNavigate={handleNavigateToRoom}
+          onNavigate={handleNavigateToRoom}
+          isRefreshing={isRefreshing}
         />
       </div>
 
-      <div className="shrink-0 border-t bg-white">
-        <Pagination goNext={goNext} goPrev={goPrev} hasNext={hasNext} loading={loading}
-        total={typeof total === "number" ? total : undefined} />
-      </div>
+      <div className="sticky bottom-0 z-[950] shrink-0 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+            <Pagination
+              goNext={goNext}
+              goPrev={goPrev}
+              hasNext={hasNext}
+              loading={loading}
+              total={typeof total === "number" ? total : undefined}
+            />
+       </div>
 
       {/* portal root nếu bạn đang dùng */}
       <div id="portal-root" className="fixed inset-0 pointer-events-none z-[9999]" />

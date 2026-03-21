@@ -8,6 +8,7 @@ type FilterBarProps = {
   districts: string[];
   roomTypes: string[];
   total?: number | null;
+  priceApplied: [number, number];
 
   search: string;
   setSearch: React.Dispatch<React.SetStateAction<string>>;
@@ -36,13 +37,23 @@ type FilterBarProps = {
 
 const PRICE_MIN = 3_000_000;
 const PRICE_MAX = 30_000_000;
-const PRICE_STEP = 500_000;
+const PRICE_STEP = 1_000_000;
 
 const pillBtnBase =
   "px-2 py-0.2 rounded-full border text-[10px] flex items-center gap-0.5 transition-colors bg-black text-white hover:bg-gray-700";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const floorPrice = (v: number) => Math.floor(v / PRICE_STEP) * PRICE_STEP;
+const ceilPrice = (v: number) => Math.ceil(v / PRICE_STEP) * PRICE_STEP;
 const snap = (v: number) => Math.round(v / PRICE_STEP) * PRICE_STEP;
+const parseMoneyInput = (raw: string) => {
+  const digits = raw.replace(/\D/g, "");
+  return digits ? Number(digits) : 0;
+};
+
+const formatMoneyInput = (n: number) => n.toLocaleString("vi-VN");
+const floorMillion = (v: number) => Math.floor(v / 1000000) * 1000000;
+const ceilMillion = (v: number) => Math.ceil(v / 1000000) * 1000000;
 
 const FilterBar = ({
   districts,
@@ -50,6 +61,7 @@ const FilterBar = ({
   search,
   setSearch,
   priceDraft,
+  priceApplied,
   setPriceDraft,
   setPriceApplied,
   selectedDistricts,
@@ -67,6 +79,16 @@ const FilterBar = ({
   onResetAll,
 }: FilterBarProps) => {
   const [openFilter, setOpenFilter] = useState<"district" | "roomType" | "move" | "sort" | null>(null);
+ const [minInput, setMinInput] = useState(formatMoneyInput(priceDraft[0]));
+const [maxInput, setMaxInput] = useState(formatMoneyInput(priceDraft[1]));
+
+useEffect(() => {
+  setMinInput(String(priceDraft[0]));
+}, [priceDraft[0]]);
+
+useEffect(() => {
+  setMaxInput(String(priceDraft[1]));
+}, [priceDraft[1]]);
 
   // ===== PRICE SLIDER (custom 2 thumbs) =====
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -77,11 +99,19 @@ const FilterBar = ({
   const closeAllFilters = () => setOpenFilter(null);
   const fmtVND = (n: number) => n.toLocaleString("vi-VN");
 
+  
+
   const [minV, maxV] = useMemo(() => {
     const a = priceDraft[0];
     const b = priceDraft[1];
     return a <= b ? [a, b] : [b, a];
   }, [priceDraft]);
+
+  const formatMoneyDisplay = (raw: string) => {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("vi-VN");
+};
   
   const span = PRICE_MAX - PRICE_MIN;
 
@@ -184,6 +214,11 @@ const FilterBar = ({
     setDragging(thumb);
   };
 
+  const formatMillionLabel = (v: number) => {
+  if (!v) return "";
+  return `~${(v / 1000000).toFixed(0)} triệu`;
+};
+
   const onTrackPointerDown = (e: React.PointerEvent) => {
     if (loading) return;
     // click/tap vào track => chọn thumb gần nhất rồi kéo luôn
@@ -210,12 +245,26 @@ const FilterBar = ({
   return (
   <section className="w-full max-w-screen-2xl mx-auto px-4 py-4 space-y-3">
     {/* Search */}
-    <input
-      value={search}
-      onChange={(e) => setSearch(e.target.value)}
-      placeholder="Tìm theo địa chỉ..."
-      className="w-full rounded-xl border px-4 py-3 text-sm outline-none focus:ring-2"
-    />
+    <div className="relative">
+  <input
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+    placeholder="Tìm theo địa chỉ..."
+    className="w-full rounded-xl border px-4 py-3 pr-12 text-sm outline-none focus:ring-2"
+  />
+
+  {search.trim() !== "" && (
+    <button
+      type="button"
+      aria-label="Xoá tìm kiếm"
+      title="Xoá tìm kiếm"
+      onClick={() => setSearch("")}
+      className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-500 hover:text-black hover:border-black"
+    >
+      ×
+    </button>
+  )}
+</div>
 
       {/* Overlay bắt click-outside */}
       {openFilter !== null && (
@@ -513,74 +562,148 @@ const FilterBar = ({
         </div>
       </div>
 
-      {/* PRICE (custom slider - luôn kéo được min/max, mobile mượt, chỉ commit khi thả) */}
-      <div className="w-full">
-        <div className="grid grid-cols-3 items-center text-sm font-semibold mb-1">
-          <span className="justify-self-start">{fmtVND(minV)} đ</span>
-
-          <button
-            type="button"
-            className="justify-self-center px-2 py-1 rounded-md border text-xs bg-white hover:bg-gray-100"
-            onClick={() => {
-              const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
-              setPriceDraft(resetVal);
-              setPriceApplied(resetVal);
-              onResetAll?.();
-            }}
-            disabled={loading}
-          >
-            Xoá bộ lọc
-          </button>
-
-          <span className="justify-self-end">{fmtVND(maxV)} đ</span>
-        </div>
-
-        <div
-          ref={trackRef}
-          className="relative h-8"
-          onPointerDown={onTrackPointerDown}
-          style={{ touchAction: "none" }} // rất quan trọng cho mobile: tránh scroll giành gesture
-        >
-          {/* base gray line */}
-          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[4px] bg-gray-300 rounded" />
-
-          {/* selected black segment */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 h-[2px] bg-black rounded"
-            style={{ left: `${leftPct}%`, width: `${rightPct - leftPct}%` }}
-          />
-
-          {/* THUMB MIN */}
-          <div
-            role="slider"
-            aria-label="Min price"
-            className="absolute top-1/2 -translate-y-1/2 w-[14px] h-[14px] rounded-full bg-black cursor-pointer"
-            style={{ left: `calc(${leftPct}% - 7px)` }}
-            onPointerDown={beginDrag("min")}
-          />
-
-          {/* THUMB MAX */}
-          <div
-            role="slider"
-            aria-label="Max price"
-            className="absolute top-1/2 -translate-y-1/2 w-[14px] h-[14px] rounded-full bg-black cursor-pointer"
-            style={{ left: `calc(${rightPct}% - 7px)` }}
-            onPointerDown={beginDrag("max")}
-          />
-
-          {/* hit-area tăng dễ kéo (mobile) */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 h-8"
-            style={{ left: `calc(${leftPct}% - 18px)`, width: "36px" }}
-            onPointerDown={beginDrag("min")}
-          />
-          <div
-            className="absolute top-1/2 -translate-y-1/2 h-8"
-            style={{ left: `calc(${rightPct}% - 18px)`, width: "36px" }}
-            onPointerDown={beginDrag("max")}
-          />
-        </div>
+       {/* PRICE */}
+<div className="w-full space-y-3">
+  <div className="flex w-full items-end justify-between gap-3">
+    <div className="w-fit shrink-0">
+      <div className="mb-1 text-xs text-gray-500">
+        {formatMillionLabel(priceApplied[0])}
       </div>
+
+      <input
+        inputMode="numeric"
+        value={minInput}
+        onChange={(e) => {
+          const rawText = e.target.value.replace(/\D/g, "");
+          setMinInput(rawText);
+
+          const rawNumber = rawText ? Number(rawText) : 0;
+          if (!rawNumber) return;
+
+          setPriceDraft([rawNumber, priceDraft[1]]);
+        }}
+        onFocus={() => {
+          setMinInput((prev) => prev.replace(/\D/g, ""));
+        }}
+        onBlur={() => {
+          const rawNumber = parseMoneyInput(minInput);
+
+          const safeRaw = Math.max(
+            PRICE_MIN,
+            Math.min(rawNumber || PRICE_MIN, priceDraft[1] - 1000000)
+          );
+
+          const appliedMin = floorMillion(safeRaw);
+
+          setPriceDraft([safeRaw, priceDraft[1]]);
+          setPriceApplied([appliedMin, priceApplied[1]]);
+          setMinInput(formatMoneyDisplay(String(safeRaw)));
+        }}
+        className="w-[120px] rounded-xl border px-2 py-2 text-sm text-center outline-none focus:ring-2 whitespace-nowrap"
+        placeholder="3000000"
+      />
+    </div>
+
+    <div className="shrink-0">
+      <button
+        type="button"
+        className="w-[110px] px-3 py-2 rounded-xl border text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 whitespace-nowrap"
+        onClick={() => {
+          const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
+          setPriceDraft(resetVal);
+          setPriceApplied(resetVal);
+          setMinInput(formatMoneyInput(resetVal[0]));
+          setMaxInput(formatMoneyInput(resetVal[1]));
+          onResetAll?.();
+        }}
+        disabled={loading}
+      >
+        Xoá bộ lọc
+      </button>
+    </div>
+
+    <div className="w-fit shrink-0 text-right">
+      <div className="mb-1 text-xs text-gray-500 text-right">
+        {formatMillionLabel(priceApplied[1])}
+      </div>
+
+      <input
+        inputMode="numeric"
+        value={maxInput}
+        onChange={(e) => {
+          const rawText = e.target.value.replace(/\D/g, "");
+          setMaxInput(rawText);
+
+          const rawNumber = rawText ? Number(rawText) : 0;
+          if (!rawNumber) return;
+
+          setPriceDraft([priceDraft[0], rawNumber]);
+        }}
+        onFocus={() => {
+          setMaxInput((prev) => prev.replace(/\D/g, ""));
+        }}
+        onBlur={() => {
+          const rawNumber = parseMoneyInput(maxInput);
+
+          const safeRaw = Math.max(
+            priceDraft[0] + 1000000,
+            Math.min(rawNumber || PRICE_MAX, PRICE_MAX)
+          );
+
+          const appliedMax = ceilMillion(safeRaw);
+
+          setPriceDraft([priceDraft[0], safeRaw]);
+          setPriceApplied([priceApplied[0], appliedMax]);
+          setMaxInput(formatMoneyDisplay(String(safeRaw)));
+        }}
+        className="w-[128px] ml-auto rounded-xl border px-2 py-2 text-sm text-center outline-none focus:ring-2 whitespace-nowrap"
+        placeholder="30000000"
+      />
+    </div>
+  </div>
+
+  <div
+    ref={trackRef}
+    className="relative h-6 px-3 md:px-1"
+    onPointerDown={onTrackPointerDown}
+    style={{ touchAction: "none" }}
+  >
+    <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] bg-gray-400 rounded-full" />
+
+    <div
+      className="absolute top-1/2 -translate-y-1/2 h-[3px] bg-black rounded-full"
+      style={{ left: `${leftPct}%`, width: `${rightPct - leftPct}%` }}
+    />
+
+    <div
+      role="slider"
+      aria-label="Min price"
+      className="absolute top-1/2 -translate-y-1/2 w-[20px] h-[20px] rounded-full bg-black cursor-pointer shadow"
+      style={{ left: `calc(${leftPct}% - 10px)` }}
+      onPointerDown={beginDrag("min")}
+    />
+
+    <div
+      role="slider"
+      aria-label="Max price"
+      className="absolute top-1/2 -translate-y-1/2 w-[20px] h-[20px] rounded-full bg-black cursor-pointer shadow"
+      style={{ left: `calc(${rightPct}% - 10px)` }}
+      onPointerDown={beginDrag("max")}
+    />
+
+    <div
+      className="absolute top-1/2 -translate-y-1/2 h-10"
+      style={{ left: `calc(${leftPct}% - 22px)`, width: "44px" }}
+      onPointerDown={beginDrag("min")}
+    />
+    <div
+      className="absolute top-1/2 -translate-y-1/2 h-10"
+      style={{ left: `calc(${rightPct}% - 22px)`, width: "44px" }}
+      onPointerDown={beginDrag("max")}
+    />
+  </div>
+</div>
+
       {/* ✅ TOTAL ROOMS – đặt ngay dưới slider giá */}
         {typeof total === "number" && (
         <div className="mt-3 text-sm text-gray-800 text-center">

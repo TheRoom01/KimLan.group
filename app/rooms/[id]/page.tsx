@@ -97,6 +97,14 @@ function feeUnitLabel(unit: any) {
   return String(unit);
 }
 
+function compactShareHouseNumber(input: any) {
+  const s = String(input ?? "").trim();
+  if (!s) return "";
+
+  // Lấy cụm số ở đầu, và giữ "/" nếu ngay sau cụm số đó có slash
+  const m = s.match(/^(\d+\/?)/);
+  return m?.[1] ?? s;
+}
 /* ================= Page ================= */
 
 export default function RoomDetailPage() {
@@ -235,8 +243,8 @@ function buildShareText() {
   const parts: string[] = [];
 
   if (shareSel.house_number && houseNumber) {
-    parts.push(houseNumber);
-  }
+  parts.push(compactShareHouseNumber(houseNumber));
+}
 
   if (shareSel.address) {
     const addr = joinParts([
@@ -249,8 +257,22 @@ function buildShareText() {
   }
 
   if (parts.length) {
-    lines.push(`📍 ${parts.join(", ")}`);
+  let firstLine = "";
+
+  if (parts.length >= 2) {
+    // 👇 phần đầu: KHÔNG dấu phẩy
+    firstLine = `${parts[0]} ${parts[1]}`;
+
+    // 👇 phần sau vẫn có dấu phẩy
+    if (parts.length > 2) {
+      firstLine += ", " + parts.slice(2).join(", ");
+    }
+  } else {
+    firstLine = parts[0];
   }
+
+  lines.push(`📍 ${firstLine}`);
+}
 }
 
 // 4) (blank line) + ✅ Thang máy / thang bộ (chỉ hiện cái "có")
