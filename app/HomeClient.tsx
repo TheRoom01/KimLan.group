@@ -592,13 +592,13 @@ const replaceUrlShallow = useCallback(
 
     const url = nextQs ? `${pathname}?${nextQs}` : pathname;
 
-    // ✅ App Router-safe: để Next cập nhật router state đúng, tránh back bị rớt query
-    router.replace(url, { scroll: false });
+    // ✅ chỉ cập nhật URL của entry hiện tại, không trigger route navigation của Next
+    window.history.replaceState(window.history.state, "", url);
 
     // ✅ luôn giữ qs ổn định của Home list
     listQsRef.current = nextQs;
   },
-  [pathname, router]
+  [pathname]
 );
 
 const syncPageToUrl = useCallback(
@@ -655,44 +655,6 @@ const readUrlState = useCallback(() => {
 
   return { qs, q, minVal, maxVal, d, t, m, s, st, nextPage, c };
 }, []);
-// ================== PATCH D2: RESTORE URL FROM BACK HINT ==================
-const didApplyBackHintUrlRef = useRef(false);
-
-useEffect(() => {
-  // chỉ chạy 1 lần / chỉ áp dụng trên Home path
-  if (didApplyBackHintUrlRef.current) return;
-  if (homePathRef.current && pathname !== homePathRef.current) return;
-
-  const currentQsRaw = window.location.search.replace(/^\?/, "");
-  if (currentQsRaw) return; // URL đã có query thì không đụng
-
-  // nếu URL đang rỗng nhưng back-hint còn hạn => restore query về lại URL
-  try {
-    const raw = sessionStorage.getItem(HOME_BACK_HINT_KEY);
-    if (!raw) return;
-
-    const parsed = JSON.parse(raw) as { ts?: number; qs?: string };
-    const ttlOk = !!parsed?.ts && Date.now() - parsed.ts < HOME_BACK_HINT_TTL;
-    if (!ttlOk) return;
-
-    const hinted = canonicalQs(parsed?.qs || "");
-    if (!hinted) return;
-
-    didApplyBackHintUrlRef.current = true;
-    // ✅ (D1.1) mark overlay biết D2 đã apply
-debugAppliedBackHintRef.current = { at: Date.now(), qs: hinted };
-
-    // ✅ set lại URL để readUrlState/hydrate lấy đúng filter/page
-    const url = `${pathname}?${hinted}`;
-    router.replace(url, { scroll: false });
-
-    // ✅ giữ qs ổn định của list
-    listQsRef.current = hinted;
-  } catch {
-    // ignore
-  }
-}, [pathname, router]);
-
 
 // ================== DEBUG OVERLAY (Patch D1) ==================
 const debugEnabled = useMemo(() => {
@@ -1208,9 +1170,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
       }
 
       // mở lại persist sau 1 nhịp
-      setTimeout(() => {
-        persistBlockedRef.current = false;
-      }, 400);
+     persistBlockedRef.current = false;
 
       // reset guard để lần back sau vẫn hoạt động
       setTimeout(() => {
@@ -1273,36 +1233,37 @@ isReloadRef.current = navType === "reload";
     }
   } catch {}
 
-  // ✅ nếu back từ detail mà Home URL đang rỗng query -> sync lại từ backHint trước khi match/restore
-  if ((!url.qs || url.qs.length === 0) && backHint?.qs) {
-    replaceUrlShallow(backHint.qs);
-    url = readUrlState();
+  // ✅ nếu back từ detail mà Home URL đang rỗng query -> dùng backHint làm nguồn sự thật ngay
+if ((!url.qs || url.qs.length === 0) && backHint?.qs) {
+  isBackFromDetail = true;
+  replaceUrlShallow(backHint.qs);
 
-    try {
-      const qsOk =
-        canonicalQs(backHint.qs || "") === canonicalQs(url.qs || "");
-      if (qsOk) isBackFromDetail = true;
-    } catch {}
-  }
+  // dùng luôn qs của hint cho lượt hydrate này,
+  // không phụ thuộc việc router/readUrlState có cập nhật kịp ngay hay không
+  url = {
+    ...readUrlState(),
+    qs: backHint.qs,
+  };
+}
 
   // helper: kết thúc hydrate an toàn (2 RAF + mở persist trễ)
   function finishHydrate() {
+  requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          persistBlockedRef.current = false;
-        }, 400);
+      // ✅ mở persist sớm hơn để user thao tác ngay sau reload không bị nuốt
+      persistBlockedRef.current = false;
 
-        endHydrationAfterTwoFrames();
-         // ✅ quan trọng: chỉ coi "reload" đúng cho lần mount đầu tiên
+      endHydrationAfterTwoFrames();
+
+      // ✅ chỉ coi "reload" đúng cho lần mount đầu tiên
       isReloadRef.current = false;
-      });
     });
-  }
+  });
+}
   
    // ✅ Home mặc định "/" => KHÔNG restore cache cũ và KHÔNG tin tuyệt đối SSR list
 // Nếu initialRooms bị stale thì ép client fetch lại page 0
-if (!url.qs && !isBackFromDetail) {
+if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
   hydratingFromUrlRef.current = true;
 
   try {
@@ -1390,33 +1351,16 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
 // => quay về đúng trạng thái như lúc mở web lần đầu
 if (isReloadRef.current) {
   hydratingFromUrlRef.current = true;
+
   try {
-    // drop mọi response cũ
     filtersVersionRef.current += 1;
 
-    // ✅ xoá toàn bộ persisted state
-    try {
-      sessionStorage.removeItem(HOME_STATE_KEY);
-    } catch {}
-
-    try {
-      sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
-    } catch {}
-
+     // ✅ reload là một phiên Home mới
+    // xóa back-hint cũ để tránh hydrate sau đó hiểu nhầm là back từ detail
     try {
       sessionStorage.removeItem(HOME_BACK_HINT_KEY);
     } catch {}
 
-    try {
-      for (let i = sessionStorage.length - 1; i >= 0; i--) {
-        const k = sessionStorage.key(i) || "";
-        if (k.startsWith(HOME_STATE_LITE_PREFIX)) {
-          sessionStorage.removeItem(k);
-        }
-      }
-    } catch {}
-
-    // ✅ reset filter về mặc định như lúc mở web lần đầu
     setSearch("");
     setPriceDraft(PRICE_DEFAULT);
     setPriceApplied(PRICE_DEFAULT);
@@ -1427,7 +1371,6 @@ if (isReloadRef.current) {
     setStatusFilter(null);
     setTotal(null);
 
-    // ✅ sync lại signature mặc định để FILTER_CHANGE không reset giả
     const defaultSig = [
       "",
       PRICE_DEFAULT[0],
@@ -1443,7 +1386,7 @@ if (isReloadRef.current) {
     prevAppliedSearchRef.current = "";
     skipNextFilterEffectRef.current = true;
 
-    // ✅ xoá cache list/page
+    // reset pagination + list UI
     pagesRef.current = [];
     setPages([]);
 
@@ -1457,24 +1400,30 @@ if (isReloadRef.current) {
     setLoading(false);
     setShowSkeleton(true);
 
-    // ✅ reset scroll về đầu
     pendingScrollTopRef.current = 0;
+
     requestAnimationFrame(() => {
       const el = scrollRef.current;
       if (el) el.scrollTop = 0;
       lastScrollTopRef.current = 0;
     });
 
-    // ✅ reset các ref page
     lastPageIndexRef.current = 0;
     lastDisplayPageIndexRef.current = 0;
 
-    // ✅ clean URL về mặc định
+    // ✅ Có thể giữ URL Home mặc định sạch
+    // nhưng KHÔNG được xoá snapshot/hint/lite như code cũ
     replaceUrlShallow("");
 
-    // ✅ fetch lại page 0 như lúc mở lần đầu
     queueMicrotask(() => {
       fetchPageRef.current(0);
+    });
+
+    // ✅ tạo lại persisted state mới cho "phiên sau reload"
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        persistSoon();
+      });
     });
 
     finishHydrate();
@@ -2147,12 +2096,12 @@ useEffect(() => {
   const applied = appliedSearch.trim();
 
   // ✅ nếu vừa restore/back/hydrate thì chỉ đồng bộ signature, KHÔNG reset
-  if (skipNextFilterEffectRef.current || hydratingFromUrlRef.current || persistBlockedRef.current) {
-    skipNextFilterEffectRef.current = false;
-    lastFilterSigRef.current = filterSig;
-    prevAppliedSearchRef.current = applied;
-    return;
-  }
+  if (skipNextFilterEffectRef.current || hydratingFromUrlRef.current) {
+  skipNextFilterEffectRef.current = false;
+  lastFilterSigRef.current = filterSig;
+  prevAppliedSearchRef.current = applied;
+  return;
+}
 
   // ✅ không đổi filter thật sự -> không làm gì
   if (filterSig === lastFilterSigRef.current) return;
