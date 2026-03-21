@@ -1297,15 +1297,56 @@ isReloadRef.current = navType === "reload";
     });
   }
   
-    // ✅ Home mặc định "/" => ưu tiên SSR, không restore cache nặng từ sessionStorage
-  if (!url.qs && !isBackFromDetail) {
-    try {
-      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
-    } catch {}
+   // ✅ Home mặc định "/" => KHÔNG restore cache cũ và KHÔNG tin tuyệt đối SSR list
+// Nếu initialRooms bị stale thì ép client fetch lại page 0
+if (!url.qs && !isBackFromDetail) {
+  hydratingFromUrlRef.current = true;
 
-    finishHydrate();
-    return;
-  }
+  try {
+    sessionStorage.removeItem(HOME_BACK_HINT_KEY);
+  } catch {}
+
+  // reset filter về default
+  setSearch("");
+  setPriceDraft(PRICE_DEFAULT);
+  setPriceApplied(PRICE_DEFAULT);
+  setSelectedDistricts([]);
+  setSelectedRoomTypes([]);
+  setMoveFilter(null);
+  setSortMode("updated_desc");
+  setStatusFilter(null);
+
+  // ❗ bỏ page 0 từ SSR để CENTRAL FETCH phải fetch lại
+  pagesRef.current = [];
+  setPages([]);
+
+  cursorsRef.current = [null];
+  setHasNext(true);
+
+  setPageIndex(0);
+  setDisplayPageIndex(0);
+
+  setFetchError("");
+  setLoading(false);
+  setShowSkeleton(true);
+  setTotal(null);
+
+  // clean URL
+  replaceUrlShallow("");
+
+  requestAnimationFrame(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = 0;
+    lastScrollTopRef.current = 0;
+  });
+
+  queueMicrotask(() => {
+    fetchPageRef.current(0);
+  });
+
+  finishHydrate();
+  return;
+}
 
   // ✅ BACK SNAPSHOT restore (khôi phục cấu trúc logic cũ)
 // ưu tiên trước V2/Lite/URL; chỉ áp dụng khi KHÔNG reload
