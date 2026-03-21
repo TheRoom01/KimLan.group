@@ -885,7 +885,6 @@ const writeBackSnapshotNow = useCallback(() => {
   const qsRaw = qsStable || qsFromUrl || "";
   const nextQs = canonicalQs(qsRaw);
 
-  // ✅ CHỐNG overwrite snapshot tốt bằng snapshot rỗng/default
   try {
     const raw = sessionStorage.getItem(HOME_BACK_SNAPSHOT_KEY);
     if (raw) {
@@ -894,7 +893,6 @@ const writeBackSnapshotNow = useCallback(() => {
         !!prev?.ts && Date.now() - prev.ts < HOME_BACK_SNAPSHOT_TTL;
       const prevQs = canonicalQs(prev?.qs || "");
 
-      // nếu snapshot trước còn hạn + có qs, mà lần này qs rỗng => không ghi đè
       if (prevTtlOk && prevQs && !nextQs) return;
     }
   } catch {}
@@ -911,21 +909,22 @@ const writeBackSnapshotNow = useCallback(() => {
     sortMode,
     statusFilter,
 
-    pageIndex: lastPageIndexRef.current,
-    displayPageIndex: lastDisplayPageIndexRef.current,
+    pageIndex,
+    displayPageIndex,
     pages: pagesRef.current,
     cursors: cursorsRef.current,
     hasNext,
 
-    scrollTop: lastScrollTopRef.current,
+    scrollTop: scrollRef.current?.scrollTop ?? lastScrollTopRef.current,
     ts: Date.now(),
   };
 
   debugSetItem(HOME_BACK_SNAPSHOT_KEY, JSON.stringify(payload));
-
 }, [
+  displayPageIndex,
   hasNext,
   moveFilter,
+  pageIndex,
   priceApplied,
   search,
   selectedDistricts,
@@ -2435,7 +2434,11 @@ useEffect(() => {
 const handleNavigateToRoom = useCallback((href: string) => {
   try {
     const el = scrollRef.current;
+
+    // ✅ đồng bộ ref ngay trước khi snapshot
     if (el) lastScrollTopRef.current = el.scrollTop;
+    lastPageIndexRef.current = pageIndex;
+    lastDisplayPageIndexRef.current = displayPageIndex;
 
     saveScrollToHistory();
     writeBackSnapshotNow();
@@ -2453,7 +2456,13 @@ const handleNavigateToRoom = useCallback((href: string) => {
   } catch {}
 
   router.push(href);
-}, [router, writeBackSnapshotNow, saveScrollToHistory]);
+}, [
+  router,
+  writeBackSnapshotNow,
+  saveScrollToHistory,
+  pageIndex,
+  displayPageIndex,
+]);
 
   // ================== RENDER ==================
   return (
