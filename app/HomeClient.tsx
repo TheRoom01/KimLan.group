@@ -1296,6 +1296,7 @@ isReloadRef.current = navType === "reload";
       });
     });
   }
+  
     // ✅ Home mặc định "/" => ưu tiên SSR, không restore cache nặng từ sessionStorage
   if (!url.qs && !isBackFromDetail) {
     try {
@@ -1594,6 +1595,7 @@ if (isReloadRef.current) {
         sessionStorage.removeItem(HOME_BACK_HINT_KEY);
       } catch {}
       finishHydrate();
+      didApplyBackOnceRef.current = true;
       return;
     } finally {
       queueMicrotask(() => {
@@ -1704,16 +1706,13 @@ finishHydrate();
 // ================== PAGESHOW (bfcache/back) ==================
 useEffect(() => {
   const onPageShow = (ev: PageTransitionEvent) => {
-    // chỉ khi BFCache restore (mobile swipe-back)
     if (!ev.persisted) return;
-
-    // tránh apply 2 lần (pageshow + popstate)
     if (didApplyBackOnceRef.current) return;
-    didApplyBackOnceRef.current = true;
 
     const snap = readBackSnapshot();
     if (!snap) return;
 
+    didApplyBackOnceRef.current = true;
     applyBackSnapshot(snap);
 
     try {
@@ -1724,7 +1723,6 @@ useEffect(() => {
   window.addEventListener("pageshow", onPageShow);
   return () => {
     window.removeEventListener("pageshow", onPageShow);
-    // reset guard khi rời trang (để lần sau back vẫn chạy)
     didApplyBackOnceRef.current = false;
   };
 }, [applyBackSnapshot, readBackSnapshot]);
@@ -1732,8 +1730,7 @@ useEffect(() => {
   // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
-    if (didApplyBackOnceRef.current) return;
-    didApplyBackOnceRef.current = true;
+   if (didApplyBackOnceRef.current) return;
 
     persistBlockedRef.current = true;
     skipNextFilterEffectRef.current = true;
@@ -1747,6 +1744,7 @@ useEffect(() => {
     const snap = readBackSnapshot();
     if (snap) {
       applyBackSnapshot(snap);
+      didApplyBackOnceRef.current = true;   
 
       try {
         sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
@@ -1757,7 +1755,8 @@ useEffect(() => {
 
     // ================== 2) FALLBACK: LITE STATE THEO QS ==================
     const effectiveQs = url.qs || "";
-    const lite = readLiteForQs(effectiveQs);
+    const lite =
+    effectiveQs.length > 0 ? readLiteForQs(effectiveQs) : null;
 
     if (lite) {
       hydratingFromUrlRef.current = true;
@@ -1795,7 +1794,7 @@ useEffect(() => {
         setTimeout(() => {
           persistBlockedRef.current = false;
         }, 400);
-
+        didApplyBackOnceRef.current = true;
         endHydrationAfterTwoFrames();
         return;
       } finally {
@@ -1826,6 +1825,7 @@ useEffect(() => {
     });
 
     fetchPageRef.current(url.nextPage);
+    didApplyBackOnceRef.current = true; 
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
