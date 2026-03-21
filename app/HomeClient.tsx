@@ -47,6 +47,7 @@ function toListParam(arr: string[]) {
 }
 
 type UrlCursor = string | UpdatedDescCursor | null;
+let didConsumeDocumentReload = false;
 
 function encodeCursor(c: UrlCursor): string | null {
   if (!c) return null;
@@ -1209,7 +1210,9 @@ useEffect(() => {
       | undefined
   )?.type ?? "navigate";
 
-isReloadRef.current = navType === "reload";
+// ✅ chỉ coi là reload ở lần mount Home đầu tiên của document hiện tại
+isReloadRef.current = !didConsumeDocumentReload && navType === "reload";
+didConsumeDocumentReload = true;
 
   // giữ qs list ổn định
   listQsRef.current = window.location.search.replace(/^\?/, "");
@@ -1270,7 +1273,6 @@ if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
     sessionStorage.removeItem(HOME_BACK_HINT_KEY);
   } catch {}
 
-  // reset filter về default
   setSearch("");
   setPriceDraft(PRICE_DEFAULT);
   setPriceApplied(PRICE_DEFAULT);
@@ -1280,7 +1282,6 @@ if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
   setSortMode("updated_desc");
   setStatusFilter(null);
 
-  // ❗ bỏ page 0 từ SSR để CENTRAL FETCH phải fetch lại
   pagesRef.current = [];
   setPages([]);
 
@@ -1295,8 +1296,8 @@ if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
   setShowSkeleton(true);
   setTotal(null);
 
-  // clean URL
-  replaceUrlShallow("");
+  // ❌ không force clean URL ở đây nữa
+  // vì nếu flow back/hydrate bị lệch nhịp, dòng này sẽ kéo URL filtered về "/"
 
   requestAnimationFrame(() => {
     const el = scrollRef.current;
@@ -1410,10 +1411,6 @@ if (isReloadRef.current) {
 
     lastPageIndexRef.current = 0;
     lastDisplayPageIndexRef.current = 0;
-
-    // ✅ Có thể giữ URL Home mặc định sạch
-    // nhưng KHÔNG được xoá snapshot/hint/lite như code cũ
-    replaceUrlShallow("");
 
     queueMicrotask(() => {
       fetchPageRef.current(0);
