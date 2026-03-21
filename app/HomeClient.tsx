@@ -1383,41 +1383,26 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   }
 } 
 
-// ✅ HARD RESET when reload (F5 / pull-to-refresh)
+// ✅ RELOAD (F5 / pull-to-refresh):
+// giữ filter hiện tại theo URL, chỉ reset cache/page rồi fetch lại
 if (isReloadRef.current) {
   hydratingFromUrlRef.current = true;
   try {
-    // drop mọi response cũ (nếu có request đang bay)
+    // drop mọi response cũ
     filtersVersionRef.current += 1;
 
-    // purge persisted state
-    try {
-      sessionStorage.removeItem(HOME_STATE_KEY);
-    } catch {}
-    try {
-      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
-    } catch {}
+    // GIỮ filter từ URL hiện tại
+    setSearch(url.q);
+    setPriceDraft([url.minVal, url.maxVal]);
+    setPriceApplied([url.minVal, url.maxVal]);
+    setSelectedDistricts(url.d);
+    setSelectedRoomTypes(url.t);
+    setMoveFilter(url.m);
+    setSortMode(url.s);
+    setStatusFilter(url.st);
+    setTotal(null);
 
-    // ✅ (B) xoá luôn các state-lite (đỡ bị restore lại sau F5)
-    try {
-      for (let i = sessionStorage.length - 1; i >= 0; i--) {
-        const k = sessionStorage.key(i);
-        if (k && k.startsWith("HOME_STATE_LITE_V1::"))
-          sessionStorage.removeItem(k);
-      }
-    } catch {}
-
-    // reset filters -> default
-    setSearch("");
-    setPriceDraft(PRICE_DEFAULT);
-    setPriceApplied(PRICE_DEFAULT);
-    setSelectedDistricts([]);
-    setSelectedRoomTypes([]);
-    setMoveFilter(null);
-    setSortMode("updated_desc");
-    setStatusFilter(null);
-
-    // ✅ QUAN TRỌNG: drop SSR cache để bắt buộc fetch lại theo filter mới
+    // chỉ reset cache/page, KHÔNG xóa hint/lite
     pagesRef.current = [];
     setPages([]);
 
@@ -1431,17 +1416,27 @@ if (isReloadRef.current) {
     setLoading(false);
     setShowSkeleton(true);
 
-    // ✅ clean URL: bỏ toàn bộ query (xóa st/p/...)
-    replaceUrlShallow("");
+    // giữ query filter, chỉ bỏ page/cursor cũ
+    const qsNoPage = buildQs({
+      q: url.q.trim(),
+      min: url.minVal,
+      max: url.maxVal,
+      d: url.d,
+      t: url.t,
+      m: url.m,
+      s: url.s,
+      st: url.st,
+      p: 0,
+      c: null,
+    });
+    replaceUrlShallow(qsNoPage);
 
-    // reset scroll
     requestAnimationFrame(() => {
       const el = scrollRef.current;
       if (el) el.scrollTop = 0;
       lastScrollTopRef.current = 0;
     });
 
-    // ✅ fetch lại page 0 (status=null => Tất cả)
     queueMicrotask(() => {
       fetchPageRef.current(0);
     });
@@ -1747,7 +1742,10 @@ finishHydrate();
 // ================== PAGESHOW (bfcache/back) ==================
 useEffect(() => {
   const onPageShow = (ev: PageTransitionEvent) => {
+    // chỉ khi BFCache restore (mobile swipe-back)
     if (!ev.persisted) return;
+
+    // tránh apply 2 lần (pageshow + popstate)
     if (didApplyBackOnceRef.current) return;
 
     const snap = readBackSnapshot();
@@ -1764,6 +1762,7 @@ useEffect(() => {
   window.addEventListener("pageshow", onPageShow);
   return () => {
     window.removeEventListener("pageshow", onPageShow);
+    // reset guard khi rời trang (để lần sau back vẫn chạy)
     didApplyBackOnceRef.current = false;
   };
 }, [applyBackSnapshot, readBackSnapshot]);

@@ -35,7 +35,7 @@ type FilterBarProps = {
 };
 
 const PRICE_MIN = 3_000_000;
-const PRICE_MAX = 50_000_000;
+const PRICE_MAX = 30_000_000;
 const PRICE_STEP = 500_000;
 
 const pillBtnBase =
