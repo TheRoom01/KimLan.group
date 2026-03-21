@@ -122,7 +122,7 @@ export default async function HomePage({
         initialTotal={res.total ?? null}
       />
 
-      <ContactFAB />
+      {false && <ContactFAB />}
     </>
   );
 }

@@ -79,23 +79,38 @@ if (thumb) {
 }
 
     // ✅ Title preview theo format bạn yêu cầu
-  const codeLabel = roomCode ? String(roomCode) : "—";
-  const typeLabel = roomType ? String(roomType) : "Phòng";
-  title = `Mã: ${codeLabel} | Dạng: ${typeLabel}`;
+  const formatVND = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? `${n.toLocaleString("vi-VN")} đ` : "";
+};
 
-    // ✅ Description = địa chỉ KHÔNG có số nhà
-    const addr = [
-      (data as any)?.address,
-      (data as any)?.ward ? `P. ${(data as any).ward}` : "",
-      (data as any)?.district,
-    ]
-      .map((x) => String(x || "").trim())
-      .filter(Boolean)
-      .join(", ");
+const rawWard = String((data as any)?.ward || "").trim().replace(/^P\.?\s*/i, "");
+const wardLabel = rawWard ? (/^\d+$/.test(rawWard) ? `P.${rawWard}` : `P. ${rawWard}`) : "";
 
-    if (addr) {
-      desc = addr;
-    }
+const addr = [
+  (data as any)?.address,
+  wardLabel,
+  (data as any)?.district,
+]
+  .map((x) => String(x || "").trim())
+  .filter(Boolean)
+  .join(", ");
+
+const priceLabel = formatVND(price);
+const typeLabel = roomType ? String(roomType).trim() : "";
+const codeLabel = roomCode ? String(roomCode).trim() : "";
+
+// Dòng đậm khi share: ưu tiên địa chỉ
+title = addr || "Chi tiết phòng";
+
+// Dòng mô tả: ưu tiên giá, rồi thêm loại phòng + mã phòng
+desc = [
+  priceLabel,
+  typeLabel,
+  codeLabel ? `Mã ${codeLabel}` : "",
+]
+  .filter(Boolean)
+  .join(" • ");
 
   } catch {
     // fail-open
