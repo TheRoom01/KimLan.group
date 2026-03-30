@@ -75,7 +75,7 @@ export default async function HomePage({
   const minRaw = firstString(sp.min);
   const maxRaw = firstString(sp.max);
   const dRaw = firstString(sp.d);
-  const rtRaw = firstString(sp.rt);
+  const rtRaw = firstString(sp.t) ?? firstString(sp.rt);
   const stRaw = firstString(sp.st);
   const mRaw = firstString(sp.m);
   const sRaw = firstString(sp.s);

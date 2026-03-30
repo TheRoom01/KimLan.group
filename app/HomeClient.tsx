@@ -71,6 +71,27 @@ function decodeCursor(raw: string | null): UrlCursor {
 
 const PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
 
+function makeFilterSigValue(args: {
+  search: string;
+  priceApplied: [number, number];
+  selectedDistricts: string[];
+  selectedRoomTypes: string[];
+  moveFilter: "elevator" | "stairs" | null;
+  sortMode: SortMode;
+  statusFilter: string | null;
+}) {
+  return [
+    args.search.trim(),
+    args.priceApplied[0],
+    args.priceApplied[1],
+    args.selectedDistricts.join(","),
+    args.selectedRoomTypes.join(","),
+    args.moveFilter ?? "",
+    args.sortMode,
+    args.statusFilter ?? "",
+  ].join("|");
+}
+
 const HOME_BACK_HINT_KEY = "HOME_BACK_HINT_V1";
 const HOME_BACK_HINT_TTL = 15 * 60 * 1000; // 15 phút
 
@@ -149,6 +170,7 @@ type PersistLiteState = {
   displayPageIndex: number;
   hasNext: boolean;
   scrollTop: number;
+  currentCursor: UrlCursor;
 
   // guard
   ts: number;
@@ -203,6 +225,23 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
   const lastFilterSigRef = useRef<string>("");
+  const prevAppliedSearchRef = useRef<string>("");
+  const pendingRestoredFilterSigRef = useRef<string | null>(null);
+
+  const armRestoredFilterSig = useCallback((next: {
+    search: string;
+    priceApplied: [number, number];
+    selectedDistricts: string[];
+    selectedRoomTypes: string[];
+    moveFilter: "elevator" | "stairs" | null;
+    sortMode: SortMode;
+    statusFilter: string | null;
+  }) => {
+    const sig = makeFilterSigValue(next);
+    pendingRestoredFilterSigRef.current = sig;
+    lastFilterSigRef.current = sig;
+    prevAppliedSearchRef.current = next.search.trim();
+  }, []);
 
   useEffect(() => {
   console.log("MOVE_FILTER_STATE =", moveFilter);
@@ -785,7 +824,7 @@ const writeLiteNow = useCallback(() => {
 
   const qs = canonicalQs(qsRaw);
 
-  const payload = {
+  const payload: PersistLiteState = {
     qs,
     total: typeof total === "number" ? total : null,
 
@@ -801,6 +840,7 @@ const writeLiteNow = useCallback(() => {
     displayPageIndex: lastDisplayPageIndexRef.current,
     hasNext,
     scrollTop: lastScrollTopRef.current,
+    currentCursor: (cursorsRef.current[lastPageIndexRef.current] ?? null) as UrlCursor,
     ts: Date.now(),
   };
 
@@ -1128,21 +1168,15 @@ const endHydrationAfterTwoFrames = useCallback(() => {
       setTotal(typeof snap.total === "number" ? snap.total : null);
       setStatusFilter(snap.statusFilter ?? null);
 
-      // ✅ QUAN TRỌNG: sync lại filter signature để KHÔNG bị reset về p=0
-      const restoredApplied = (snap.search ?? "").trim();
-      const restoredSig = [
-        restoredApplied,
-        (snap.priceApplied ?? PRICE_DEFAULT)[0],
-        (snap.priceApplied ?? PRICE_DEFAULT)[1],
-        (snap.selectedDistricts ?? []).join(","),
-        (snap.selectedRoomTypes ?? []).join(","),
-        snap.moveFilter ?? "",
-        snap.sortMode ?? "updated_desc",
-        snap.statusFilter ?? "",
-      ].join("|");
-
-      lastFilterSigRef.current = restoredSig;
-      prevAppliedSearchRef.current = restoredApplied;
+      armRestoredFilterSig({
+        search: snap.search ?? "",
+        priceApplied: snap.priceApplied ?? PRICE_DEFAULT,
+        selectedDistricts: snap.selectedDistricts ?? [],
+        selectedRoomTypes: snap.selectedRoomTypes ?? [],
+        moveFilter: snap.moveFilter ?? null,
+        sortMode: snap.sortMode ?? "updated_desc",
+        statusFilter: snap.statusFilter ?? null,
+      });
 
       // ================== CACHE ==================
       pagesRef.current = snap.pages ?? [];
@@ -1482,11 +1516,19 @@ if (isReloadRef.current) {
       setMoveFilter(restoredMove);
       setSortMode(restoredSort);
       setTotal(typeof rest.total === "number" ? rest.total : null);
-      if (!isReloadRef.current) {
-        setStatusFilter(rest.statusFilter ?? null);
-      } else {
-        setStatusFilter(null);
-      }
+
+      const restoredStatus = !isReloadRef.current ? rest.statusFilter ?? null : null;
+      setStatusFilter(restoredStatus);
+
+      armRestoredFilterSig({
+        search: restoredSearch,
+        priceApplied: restoredPrice,
+        selectedDistricts: restoredDistricts,
+        selectedRoomTypes: restoredTypes,
+        moveFilter: restoredMove,
+        sortMode: restoredSort,
+        statusFilter: restoredStatus,
+      });
 
       // (Giữ behavior cũ khi KHÔNG reload)
       pagesRef.current = rest.pages ?? [];
@@ -1528,23 +1570,39 @@ if (isReloadRef.current) {
   if (lite) {
     hydratingFromUrlRef.current = true;
     try {
-      setSearch(lite.search ?? "");
-      setPriceDraft(lite.priceApplied ?? PRICE_DEFAULT);
-      setPriceApplied(lite.priceApplied ?? PRICE_DEFAULT);
-      setSelectedDistricts(lite.selectedDistricts ?? []);
-      setSelectedRoomTypes(lite.selectedRoomTypes ?? []);
-      setMoveFilter(lite.moveFilter ?? null);
-      setSortMode(lite.sortMode ?? "updated_desc");
-      setTotal(typeof lite.total === "number" ? lite.total : null);
-      if (!isReloadRef.current) {
-        setStatusFilter(lite.statusFilter ?? null);
-      } else {
-        setStatusFilter(null);
-      }
+      const liteSearch = lite.search ?? "";
+      const litePrice = lite.priceApplied ?? PRICE_DEFAULT;
+      const liteDistricts = lite.selectedDistricts ?? [];
+      const liteTypes = lite.selectedRoomTypes ?? [];
+      const liteMove = lite.moveFilter ?? null;
+      const liteSort = lite.sortMode ?? "updated_desc";
+      const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
 
+      setSearch(liteSearch);
+      setPriceDraft(litePrice);
+      setPriceApplied(litePrice);
+      setSelectedDistricts(liteDistricts);
+      setSelectedRoomTypes(liteTypes);
+      setMoveFilter(liteMove);
+      setSortMode(liteSort);
+      setTotal(typeof lite.total === "number" ? lite.total : null);
+      setStatusFilter(liteStatus);
+
+      armRestoredFilterSig({
+        search: liteSearch,
+        priceApplied: litePrice,
+        selectedDistricts: liteDistricts,
+        selectedRoomTypes: liteTypes,
+        moveFilter: liteMove,
+        sortMode: liteSort,
+        statusFilter: liteStatus,
+      });
 
       const pIdx = lite.pageIndex ?? 0;
       const dIdx = lite.displayPageIndex ?? pIdx;
+
+      cursorsRef.current = [null];
+      cursorsRef.current[pIdx] = (lite.currentCursor ?? null) as UrlCursor;
 
       setPageIndex(pIdx);
       setDisplayPageIndex(dIdx);
@@ -1605,14 +1663,27 @@ pendingUrlFiltersRef.current = {
   status: isReloadRef.current ? null : url.st,
 };
 
+const urlPrice: [number, number] = [url.minVal, url.maxVal];
+const urlStatus = isReloadRef.current ? null : url.st;
+
 setSearch(url.q);
-setPriceDraft([url.minVal, url.maxVal]);
-setPriceApplied([url.minVal, url.maxVal]);
+setPriceDraft(urlPrice);
+setPriceApplied(urlPrice);
 setSelectedDistricts(url.d);
 setSelectedRoomTypes(url.t);
 setMoveFilter(url.m);
 setSortMode(url.s);
-setStatusFilter(isReloadRef.current ? null : url.st);
+setStatusFilter(urlStatus);
+
+armRestoredFilterSig({
+  search: url.q,
+  priceApplied: urlPrice,
+  selectedDistricts: url.d,
+  selectedRoomTypes: url.t,
+  moveFilter: url.m,
+  sortMode: url.s,
+  statusFilter: urlStatus,
+});
 
 const pageFromUrl = url.nextPage;
 
@@ -1694,39 +1765,36 @@ useEffect(() => {
     if (lite) {
   hydratingFromUrlRef.current = true;
   try {
-    setSearch(lite.search ?? "");
-    setPriceDraft(lite.priceApplied ?? PRICE_DEFAULT);
-    setPriceApplied(lite.priceApplied ?? PRICE_DEFAULT);
-    setSelectedDistricts(lite.selectedDistricts ?? []);
-    setSelectedRoomTypes(lite.selectedRoomTypes ?? []);
-    setMoveFilter(lite.moveFilter ?? null);
-    setSortMode(lite.sortMode ?? "updated_desc");
-    setTotal(typeof lite.total === "number" ? lite.total : null);
+     const liteSearch = lite.search ?? "";
+    const litePrice = lite.priceApplied ?? PRICE_DEFAULT;
+    const liteDistricts = lite.selectedDistricts ?? [];
+    const liteTypes = lite.selectedRoomTypes ?? [];
+    const liteMove = lite.moveFilter ?? null;
+    const liteSort = lite.sortMode ?? "updated_desc";
+    const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
 
-    if (!isReloadRef.current) {
-      setStatusFilter(lite.statusFilter ?? null);
-    } else {
-      setStatusFilter(null);
-    }
+    setSearch(liteSearch);
+    setPriceDraft(litePrice);
+    setPriceApplied(litePrice);
+    setSelectedDistricts(liteDistricts);
+    setSelectedRoomTypes(liteTypes);
+    setMoveFilter(liteMove);
+    setSortMode(liteSort);
+    setTotal(typeof lite.total === "number" ? lite.total : null);
+    setStatusFilter(liteStatus);
 
     const pIdx = lite.pageIndex ?? 0;
     const dIdx = lite.displayPageIndex ?? pIdx;
 
-    // ✅ sync signature để FILTER_CHANGE không reset giả
-    const restoredApplied = (lite.search ?? "").trim();
-    const restoredSig = [
-      restoredApplied,
-      (lite.priceApplied ?? PRICE_DEFAULT)[0],
-      (lite.priceApplied ?? PRICE_DEFAULT)[1],
-      (lite.selectedDistricts ?? []).join(","),
-      (lite.selectedRoomTypes ?? []).join(","),
-      lite.moveFilter ?? "",
-      lite.sortMode ?? "updated_desc",
-      (!isReloadRef.current ? lite.statusFilter : null) ?? "",
-    ].join("|");
-
-    lastFilterSigRef.current = restoredSig;
-    prevAppliedSearchRef.current = restoredApplied;
+    armRestoredFilterSig({
+      search: liteSearch,
+      priceApplied: litePrice,
+      selectedDistricts: liteDistricts,
+      selectedRoomTypes: liteTypes,
+      moveFilter: liteMove,
+      sortMode: liteSort,
+      statusFilter: liteStatus,
+    });
     skipNextFilterEffectRef.current = true;
 
     // ✅ QUAN TRỌNG: clear cache cũ để tránh UI đúng nhưng list sai
@@ -1734,6 +1802,7 @@ useEffect(() => {
     setPages([]);
 
     cursorsRef.current = [null];
+    cursorsRef.current[pIdx] = (lite.currentCursor ?? null) as UrlCursor;
     setHasNext(Boolean(lite.hasNext));
 
     setPageIndex(pIdx);
@@ -1784,14 +1853,27 @@ useEffect(() => {
     // ================== 3) CUỐI CÙNG: HYDRATE THEO URL + FETCH ==================
     hydratingFromUrlRef.current = true;
 
+     const urlPrice: [number, number] = [url.minVal, url.maxVal];
+    const urlStatus = isReloadRef.current ? null : url.st;
+
     setSearch(url.q);
-    setPriceDraft([url.minVal, url.maxVal]);
-    setPriceApplied([url.minVal, url.maxVal]);
+    setPriceDraft(urlPrice);
+    setPriceApplied(urlPrice);
     setSelectedDistricts(url.d);
     setSelectedRoomTypes(url.t);
     setMoveFilter(url.m);
     setSortMode(url.s);
-    setStatusFilter(isReloadRef.current ? null : url.st);
+    setStatusFilter(urlStatus);
+
+    armRestoredFilterSig({
+      search: url.q,
+      priceApplied: urlPrice,
+      selectedDistricts: url.d,
+      selectedRoomTypes: url.t,
+      moveFilter: url.m,
+      sortMode: url.s,
+      statusFilter: urlStatus,
+    });
 
     filtersVersionRef.current += 1;
     resetPagination(url.nextPage);
@@ -2079,8 +2161,6 @@ useEffect(() => {
     };
 }, [persistSoon, saveScrollToHistory]);
 
-  const prevAppliedSearchRef = useRef<string>("");
-
 type BaselineState = {
   pages: any[][];
   cursors: typeof cursorsRef.current;
@@ -2099,18 +2179,33 @@ useEffect(() => {
     hydrating: hydratingFromUrlRef.current,
     filterSig,
     last: lastFilterSigRef.current,
+    pending: pendingRestoredFilterSigRef.current,
     moveFilter,
   });
 
   const applied = appliedSearch.trim();
 
+  // ✅ nếu vừa restore/back/hydrate thì chờ đến đúng signature đã restore
+  if (pendingRestoredFilterSigRef.current) {
+    if (filterSig !== pendingRestoredFilterSigRef.current) {
+      prevAppliedSearchRef.current = applied;
+      return;
+    }
+
+    lastFilterSigRef.current = filterSig;
+    prevAppliedSearchRef.current = applied;
+    pendingRestoredFilterSigRef.current = null;
+    skipNextFilterEffectRef.current = false;
+    return;
+  }
+
   // ✅ nếu vừa restore/back/hydrate thì chỉ đồng bộ signature, KHÔNG reset
   if (skipNextFilterEffectRef.current || hydratingFromUrlRef.current) {
-  skipNextFilterEffectRef.current = false;
-  lastFilterSigRef.current = filterSig;
-  prevAppliedSearchRef.current = applied;
-  return;
-}
+    skipNextFilterEffectRef.current = false;
+    lastFilterSigRef.current = filterSig;
+    prevAppliedSearchRef.current = applied;
+    return;
+  }
 
   // ✅ không đổi filter thật sự -> không làm gì
   if (filterSig === lastFilterSigRef.current) return;
@@ -2159,21 +2254,20 @@ useEffect(() => {
       s: sortMode,
       st: statusFilter,
       p: base.pageIndex,
+      c: (base.cursors[base.pageIndex] ?? null) as UrlCursor,
     });
 
     preSearchBaselineRef.current = null;
 
-    // ✅ đồng bộ signature tại đúng state restore
-    lastFilterSigRef.current = [
-      "",
-      priceApplied[0],
-      priceApplied[1],
-      selectedDistricts.join(","),
-      selectedRoomTypes.join(","),
-      moveFilter ?? "",
+    armRestoredFilterSig({
+      search: "",
+      priceApplied,
+      selectedDistricts,
+      selectedRoomTypes,
+      moveFilter,
       sortMode,
-      statusFilter ?? "",
-    ].join("|");
+      statusFilter,
+    });
 
     replaceUrlShallow(qsBack);
 
@@ -2204,6 +2298,7 @@ useEffect(() => {
     s: sortMode,
     st: statusFilter,
     p: 0,
+    c: null,
   });
 
   if (filterApplyTimerRef.current) {
@@ -2213,11 +2308,24 @@ useEffect(() => {
   filterApplyTimerRef.current = window.setTimeout(() => {
     // ✅ chỉ tại đây mới chốt lastFilterSig, vì đây mới là "user đổi filter thật"
     lastFilterSigRef.current = filterSig;
+    pendingRestoredFilterSigRef.current = null;
 
     replaceUrlShallow(qs);
     setTotal(null);
+
+    pagesRef.current = [];
+    setPages([]);
+    cursorsRef.current = [null];
+
     setDisplayPageIndex(0);
     resetPagination(0);
+
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = 0;
+      lastScrollTopRef.current = 0;
+    });
+
     fetchPage(0);
     persistSoon();
   }, 200);
@@ -2243,6 +2351,7 @@ useEffect(() => {
   fetchPage,
   displayPageIndex,
   hasNext,
+  armRestoredFilterSig,
 ]);
 
 // ================== NEXT / PREV ==================
@@ -2261,7 +2370,7 @@ const goNext = useCallback(() => {
 saveScrollToHistory();
 
 const qs = buildQs({
-  q: search.trim(),
+  q: appliedSearch.trim(),
   min: priceApplied[0],
   max: priceApplied[1],
   d: selectedDistricts,
@@ -2282,7 +2391,7 @@ persistSoon();
   pageIndex,
   buildQs,
   replaceUrlShallow,
-  search,
+    appliedSearch,
   priceApplied,
   selectedDistricts,
   selectedRoomTypes,
@@ -2307,7 +2416,7 @@ const goPrev = useCallback(() => {
 saveScrollToHistory();
 
 const qs = buildQs({
-  q: search.trim(),
+  q: appliedSearch.trim(),
   min: priceApplied[0],
   max: priceApplied[1],
   d: selectedDistricts,
@@ -2327,7 +2436,7 @@ persistSoon();
   pageIndex,
   buildQs,
   replaceUrlShallow,
-  search,
+    appliedSearch,
   priceApplied,
   selectedDistricts,
   selectedRoomTypes,
