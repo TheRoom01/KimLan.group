@@ -74,10 +74,12 @@ export default async function HomePage({
   const qRaw = firstString(sp.q);
   const minRaw = firstString(sp.min);
   const maxRaw = firstString(sp.max);
-  const dRaw = firstString(sp.d);
+   const dRaw = firstString(sp.d);
   const rtRaw = firstString(sp.t) ?? firstString(sp.rt);
   const stRaw = firstString(sp.st);
   const mRaw = firstString(sp.m);
+  const petRaw = firstString(sp.pet);
+  const termRaw = firstString(sp.term);
   const sRaw = firstString(sp.s);
 
   const search = qRaw ? decodeURIComponent(qRaw).trim() : null;
@@ -85,7 +87,7 @@ export default async function HomePage({
   const minPrice = parseNumberSafe(minRaw, 3_000_000);
   const maxPrice = parseNumberSafe(maxRaw, 30_000_000);
 
-  const districts = parseCsv(dRaw);
+   const districts = parseCsv(dRaw);
   const roomTypes = parseCsv(rtRaw);
 
   const status = stRaw ? decodeURIComponent(stRaw) : null;
@@ -95,11 +97,26 @@ export default async function HomePage({
       ? (mRaw as "elevator" | "stairs")
       : null;
 
+  const petPoliciesRaw = parseCsv(petRaw);
+  const contractTermsRaw = parseCsv(termRaw);
+
+  const petPolicies =
+    petPoliciesRaw?.filter(
+      (v): v is "cat" | "dog" | "nopet" =>
+        v === "cat" || v === "dog" || v === "nopet"
+    ) ?? null;
+
+  const contractTerms =
+    contractTermsRaw?.filter(
+      (v): v is "short" | "long" =>
+        v === "short" || v === "long"
+    ) ?? ["long"];
+
   const sortMode = parseSortMode(sRaw);
 
   // 4) Fetch first page on server using URL-derived filters
   const LIMIT = 20;
-  const res = await fetchRoomsServer(supabase, {
+   const res = await fetchRoomsServer(supabase, {
     limit: LIMIT,
     cursor: null,
     adminLevel,
@@ -109,6 +126,8 @@ export default async function HomePage({
     districts,
     roomTypes,
     move,
+    petPolicies,
+    contractTerms,
     status,
     sortMode,
   });

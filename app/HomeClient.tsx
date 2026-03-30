@@ -28,6 +28,8 @@ const QS = {
   d: "d",
   t: "t",
   m: "m",
+  pet: "pet",
+  term: "term",
   s: "s",
   st: "st",
   p: "p",
