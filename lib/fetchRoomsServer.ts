@@ -4,6 +4,7 @@ export type UpdatedDescCursor = { id: string; updated_at: string; created_at: st
 
 
 export type FetchRoomsParams = {
+
   limit: number;
   // ✅ updated_desc: cursor object (updated_at + id)
   // ✅ các mode khác (price_asc/desc fallback): có thể dùng string id
@@ -18,6 +19,8 @@ export type FetchRoomsParams = {
   roomType?: string | null;
   roomTypes?: string[] | null;
   move?: "elevator" | "stairs" | null;
+  petPolicies?: ("cat" | "dog" | "nopet")[] | null;
+  contractTerms?: ("short" | "long")[] | null;
 
   // ✅ NEW: lọc 1 status (null | "Trống" | "Đã thuê")
   status?: string | null;
@@ -120,7 +123,9 @@ export async function fetchRoomsServer(
     roomType,
     roomTypes,
     move,
-    status, // ✅ NEW
+    petPolicies,
+    contractTerms,
+    status,
     sortMode,
   } = params;
 
@@ -165,6 +170,29 @@ const pMove =
   move === "stairs"   ? "stairs"   :
   null;
 
+const pPetPolicies =
+  Array.isArray(petPolicies) && petPolicies.length
+    ? Array.from(
+        new Set(
+          petPolicies.filter(
+            (x): x is "cat" | "dog" | "nopet" =>
+              x === "cat" || x === "dog" || x === "nopet"
+          )
+        )
+      )
+    : null;
+
+const pContractTerms =
+  Array.isArray(contractTerms) && contractTerms.length
+    ? Array.from(
+        new Set(
+          contractTerms.filter(
+            (x): x is "short" | "long" =>
+              x === "short" || x === "long"
+          )
+        )
+      )
+    : null;
 
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
@@ -181,6 +209,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_districts: Array.isArray(districts) && districts.length ? districts : null,
   p_room_types: Array.isArray(effectiveRoomTypes) && effectiveRoomTypes.length ? effectiveRoomTypes : null,
   p_move: pMove,
+  p_pet_policies: pPetPolicies,
+  p_contract_terms: pContractTerms,
 
   // 4) statuses
   p_statuses: status ? [String(status)] : null,

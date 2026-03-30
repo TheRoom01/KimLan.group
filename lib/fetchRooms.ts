@@ -19,6 +19,8 @@ export type FetchRoomsParams = {
   roomType?: string;
   roomTypes?: string[];
   move?: "elevator" | "stairs" | null;
+  petPolicies?: ("cat" | "dog" | "nopet")[];
+  contractTerms?: ("short" | "long")[];
   sortMode?: "updated_desc" | "price_asc" | "price_desc";
   status?: string | null;
 };
@@ -158,7 +160,7 @@ export async function fetchRooms(
   nextCursor: string | UpdatedDescCursor | null;
   total?: number;
 }> {
-  const {
+    const {
     limit,
     cursor,
     adminLevel,
@@ -169,6 +171,8 @@ export async function fetchRooms(
     roomType,
     roomTypes,
     move,
+    petPolicies,
+    contractTerms,
     sortMode,
     status,
   } = params;
@@ -213,6 +217,30 @@ const pMove =
   move === "stairs"   ? "stairs"   :
   null;
 
+const pPetPolicies =
+  Array.isArray(petPolicies) && petPolicies.length
+    ? Array.from(
+        new Set(
+          petPolicies.filter(
+            (x): x is "cat" | "dog" | "nopet" =>
+              x === "cat" || x === "dog" || x === "nopet"
+          )
+        )
+      )
+    : null;
+
+const pContractTerms =
+  Array.isArray(contractTerms) && contractTerms.length
+    ? Array.from(
+        new Set(
+          contractTerms.filter(
+            (x): x is "short" | "long" =>
+              x === "short" || x === "long"
+          )
+        )
+      )
+    : null;
+
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: role,
@@ -228,6 +256,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_districts: expandDistrictLegacyValues(districts) ?? null,
   p_room_types: expandRoomTypeLegacyValues(roomTypes) ?? null,
   p_move: pMove,
+  p_pet_policies: pPetPolicies,
+  p_contract_terms: pContractTerms,
 
   // 4) statuses
   p_statuses: status ? [String(status)] : null,
