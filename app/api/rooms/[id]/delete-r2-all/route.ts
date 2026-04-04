@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { ListObjectsV2CommandOutput } from "@aws-sdk/client-s3";
+import type { DeleteObjectsCommandOutput } from "@aws-sdk/client-s3";
+
+
 import {
   S3Client,
   ListObjectsV2Command,
@@ -24,13 +28,13 @@ async function listAllKeys(prefix: string) {
   let token: string | undefined = undefined;
 
   do {
-    const res = await r2.send(
-      new ListObjectsV2Command({
-        Bucket: BUCKET,
-        Prefix: prefix,
-        ContinuationToken: token,
-      })
-    );
+  const res: ListObjectsV2CommandOutput = await r2.send(
+  new ListObjectsV2Command({
+    Bucket: BUCKET,
+    Prefix: prefix,
+    ContinuationToken: token,
+  })
+);
 
     for (const obj of res.Contents || []) {
       if (obj.Key) keys.push(obj.Key);
@@ -50,15 +54,15 @@ async function deleteKeys(keys: string[]) {
   for (let i = 0; i < keys.length; i += 1000) {
     const chunk = keys.slice(i, i + 1000);
 
-    const res = await r2.send(
-      new DeleteObjectsCommand({
-        Bucket: BUCKET,
-        Delete: {
-          Objects: chunk.map((Key) => ({ Key })),
-          Quiet: false,
-        },
-      })
-    );
+const res: DeleteObjectsCommandOutput = await r2.send(
+  new DeleteObjectsCommand({
+    Bucket: BUCKET,
+    Delete: {
+      Objects: chunk.map((Key) => ({ Key })),
+      Quiet: false,
+    },
+  })
+);
 
     deleted += res.Deleted?.length ?? 0;
   }
