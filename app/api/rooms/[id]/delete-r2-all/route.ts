@@ -1,8 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { ListObjectsV2CommandOutput } from "@aws-sdk/client-s3";
-import type { DeleteObjectsCommandOutput } from "@aws-sdk/client-s3";
-
-
 import {
   S3Client,
   ListObjectsV2Command,
@@ -10,9 +6,11 @@ import {
 } from "@aws-sdk/client-s3";
 
 const BUCKET = process.env.R2_BUCKET!;
-const ENDPOINT = process.env.R2_ENDPOINT!;
+const ACCOUNT_ID = process.env.R2_ACCOUNT_ID!;
 const ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!;
 const SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY!;
+
+const ENDPOINT = `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`;
 
 const r2 = new S3Client({
   region: "auto",
@@ -23,59 +21,75 @@ const r2 = new S3Client({
   },
 });
 
-async function listAllKeys(prefix: string) {
+async function listAllKeys(prefix: string): Promise<string[]> {
   const keys: string[] = [];
   let token: string | undefined = undefined;
 
   do {
-  const res: ListObjectsV2CommandOutput = await r2.send(
-  new ListObjectsV2Command({
-    Bucket: BUCKET,
-    Prefix: prefix,
-    ContinuationToken: token,
-  })
-);
+    const output: any = await r2.send(
+      new ListObjectsV2Command({
+        Bucket: BUCKET,
+        Prefix: prefix,
+        ContinuationToken: token,
+      })
+    );
 
-    for (const obj of res.Contents || []) {
-      if (obj.Key) keys.push(obj.Key);
+    const contents = Array.isArray(output?.Contents) ? output.Contents : [];
+    for (const obj of contents) {
+      const key = typeof obj?.Key === "string" ? obj.Key : "";
+      if (key) keys.push(key);
     }
 
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    token = output?.IsTruncated ? output?.NextContinuationToken : undefined;
   } while (token);
 
   return keys;
 }
 
-async function deleteKeys(keys: string[]) {
+async function deleteKeys(keys: string[]): Promise<number> {
   if (!keys.length) return 0;
 
-  let deleted = 0;
+  let deletedCount = 0;
 
   for (let i = 0; i < keys.length; i += 1000) {
     const chunk = keys.slice(i, i + 1000);
 
-const res: DeleteObjectsCommandOutput = await r2.send(
-  new DeleteObjectsCommand({
-    Bucket: BUCKET,
-    Delete: {
-      Objects: chunk.map((Key) => ({ Key })),
-      Quiet: false,
-    },
-  })
-);
+    const output: any = await r2.send(
+      new DeleteObjectsCommand({
+        Bucket: BUCKET,
+        Delete: {
+          Objects: chunk.map((key) => ({ Key: key })),
+          Quiet: false,
+        },
+      })
+    );
 
-    deleted += res.Deleted?.length ?? 0;
+    deletedCount += Array.isArray(output?.Deleted) ? output.Deleted.length : 0;
   }
 
-  return deleted;
+  return deletedCount;
 }
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!BUCKET || !ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing R2 env vars",
+        hasBucket: !!BUCKET,
+        hasAccountId: !!ACCOUNT_ID,
+        hasAccessKey: !!ACCESS_KEY_ID,
+        hasSecret: !!SECRET_ACCESS_KEY,
+      },
+      { status: 500 }
+    );
+  }
+
   try {
-    const { id } = await context.params;
+    const { id } = await params;
     const roomId = String(id || "").trim();
 
     if (!roomId) {
@@ -85,6 +99,8 @@ export async function POST(
       );
     }
 
+    // phần code bên dưới giữ tiếp ở đây...
+
     let roomCode = "";
     try {
       const body = await req.json();
@@ -93,9 +109,8 @@ export async function POST(
       roomCode = "";
     }
 
-    const prefixes = [`rooms/${roomId}/`];
+    const prefixes: string[] = [`rooms/${roomId}/`];
 
-    // legacy cũ nếu trước đây từng lưu theo mã phòng
     if (roomCode) {
       prefixes.push(`rooms/${roomCode}/`);
     }
@@ -104,10 +119,12 @@ export async function POST(
 
     for (const prefix of prefixes) {
       const keys = await listAllKeys(prefix);
-      for (const key of keys) allKeys.add(key);
+      for (const key of keys) {
+        allKeys.add(key);
+      }
     }
 
-    const deleted = await deleteKeys([...allKeys]);
+    const deleted = await deleteKeys(Array.from(allKeys));
 
     return NextResponse.json({
       ok: true,
@@ -115,10 +132,13 @@ export async function POST(
       room_code: roomCode || null,
       deleted,
     });
-  } catch (e: any) {
-    console.error("delete-r2-all failed:", e);
+  } catch (error: any) {
+    console.error("delete-r2-all failed:", error);
     return NextResponse.json(
-      { ok: false, error: e?.message || "delete-r2-all failed" },
+      {
+        ok: false,
+        error: error?.message || "delete-r2-all failed",
+      },
       { status: 500 }
     );
   }
