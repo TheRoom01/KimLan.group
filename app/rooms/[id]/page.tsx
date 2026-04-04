@@ -228,20 +228,24 @@ export default function RoomDetailPage() {
     }
   };
 
-  useEffect(() => {
-    const init = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data?.user ?? null);
-    };
+useEffect(() => {
+  const init = async () => {
+    const { data } = await supabase.auth.getUser();
+    setUser(data?.user ?? null);
+  };
 
-    init();
+  init();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+  const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    setUser(session?.user ?? null);
+  });
 
-    return () => sub?.subscription?.unsubscribe?.();
-  }, []);
+  return () => sub?.subscription?.unsubscribe?.();
+}, []);
+
+useEffect(() => {
+  setShowOpenBrowserBar(detectInAppBrowser());
+}, []);
 
   // ===== SHARE (Chi phí) =====
 type ShareKey =
@@ -256,8 +260,9 @@ type ShareKey =
   | "amenities"
   | "description";
 
-const [shareOpen, setShareOpen] = useState(false);
-const [toast, setToast] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [showOpenBrowserBar, setShowOpenBrowserBar] = useState(false);
 
 const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
     room_link: false,
@@ -281,6 +286,60 @@ const roomShareUrl =
 function showToast(msg: string) {
   setToast(msg);
   window.setTimeout(() => setToast(null), 1600);
+}
+
+function detectInAppBrowser() {
+  if (typeof navigator === "undefined") return false;
+
+  const ua = navigator.userAgent || "";
+  const low = ua.toLowerCase();
+
+  const isMessenger =
+    low.includes("messenger") ||
+    low.includes("fbav") ||
+    low.includes("fban");
+
+  const isZalo =
+    low.includes("zalo") ||
+    low.includes("zalopay") ||
+    low.includes("zaloandroid") ||
+    low.includes("zalo iossdk");
+
+  return isMessenger || isZalo;
+}
+
+function detectMobileOS() {
+  if (typeof navigator === "undefined") return "other";
+  const ua = navigator.userAgent || "";
+
+  if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  return "other";
+}
+
+async function handleOpenExternalBrowser() {
+  const url =
+    typeof window !== "undefined" ? window.location.href : roomShareUrl || "";
+
+  if (!url) {
+    showToast("Không lấy được link phòng");
+    return;
+  }
+
+  const copied = await copyText(url);
+  const os = detectMobileOS();
+
+  if (copied) {
+    if (os === "ios") {
+      showToast("Đã copy link — mở bằng Safari để xem đầy đủ");
+    } else if (os === "android") {
+      showToast("Đã copy link — mở bằng Chrome để xem đầy đủ");
+    } else {
+      showToast("Đã copy link — mở bằng trình duyệt ngoài");
+    }
+  } else {
+    showToast("Hãy mở link này bằng trình duyệt ngoài");
+  }
 }
 
 async function copyText(text: string) {
@@ -796,7 +855,57 @@ const zaloLinkRaw = linkRaw.trim();
 
   return (
 
-    <div className="p-6 space-y-6 text-base">
+     <div className="p-6 space-y-6 text-base">
+      {showOpenBrowserBar && (
+        <div className="sticky top-2 z-40 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-amber-900">
+              <div className="font-semibold">
+                Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
+              </div>
+              <div className="text-amber-800">
+                Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleOpenExternalBrowser}
+                className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
+              >
+                Mở bằng Chrome / Safari
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await copyText(roomShareUrl || window.location.href);
+                  showToast(
+                    ok
+                      ? "Đã copy link phòng"
+                      : "Không thể copy link — hãy copy thủ công"
+                  );
+                }}
+                className="rounded-xl border px-4 py-2 text-sm font-medium"
+              >
+                Copy link
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowOpenBrowserBar(false)}
+                className="rounded-xl border px-3 py-2 text-sm"
+                aria-label="Đóng"
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-1">
         {mediaItems.length > 0 ? (
   <>
