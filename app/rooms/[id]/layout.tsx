@@ -67,12 +67,13 @@ if (thumb) {
   image = absUrl(base, thumb);
 } else {
   // ✅ 2) fallback cũ: lấy cover từ room_media
-  const { data: mediaRows } = await supabase
-    .from("room_media")
-    .select("url,is_cover,created_at")
-    .eq("room_id", id)
-    .eq("type", "image")
-    .order("created_at", { ascending: true });
+const { data: mediaRows } = await supabase
+  .from("room_media")
+  .select("url,is_cover,sort_order,created_at")
+  .eq("room_id", id)
+  .eq("type", "image")
+  .order("sort_order", { ascending: true })
+  .order("created_at", { ascending: true });
 
   const img = pickCoverUrl(mediaRows as any[]);
   if (img) image = absUrl(base, img);

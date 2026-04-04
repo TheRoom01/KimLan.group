@@ -80,6 +80,48 @@ function joinParts(parts: Array<string | null | undefined>) {
     .join(", ");
 }
 
+function renderRichMultilineLinks(raw: string) {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+
+  const lines = text.split(/\r?\n/);
+
+  return (
+    <div className="whitespace-pre-wrap break-words space-y-1">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+          return <div key={idx}>&nbsp;</div>;
+        }
+
+        const isUrl = /^https?:\/\/\S+$/i.test(trimmed);
+
+        if (isUrl) {
+          return (
+            <div key={idx}>
+              <a
+                href={trimmed}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-600 underline break-all"
+              >
+                {trimmed}
+              </a>
+            </div>
+          );
+        }
+
+        return (
+          <div key={idx} className="text-gray-800 break-words">
+            {line}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function humanStatus(status: any) {
   if (!status) return "";
   if (status === "Trống") return "Còn Trống";
@@ -662,13 +704,11 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   const isAdmin = adminLevel === 1 || adminLevel === 2;
 
   // ✅ Hợp nhất dữ liệu từ link_zalo + zalo_phone
-  const linkRaw = String(room?.link_zalo ?? "");
-  const phoneRaw = String(room?.zalo_phone ?? "");
+const linkRaw = String(room?.link_zalo ?? "");
+const phoneRaw = String(room?.zalo_phone ?? "");
 
-  // 1) Link: tìm URL trong link_zalo trước, fallback qua zalo_phone (nếu người nhập dán link vào đó)
-  const linkMatch1 = linkRaw.match(/https?:\/\/\S+/i);
-  const linkMatch2 = phoneRaw.match(/https?:\/\/\S+/i);
-  const zaloLink = (linkMatch1?.[0] ?? linkMatch2?.[0] ?? "").trim();
+// ✅ giữ nguyên toàn bộ nội dung admin nhập
+const zaloLinkRaw = linkRaw.trim();
 
   // 2) Phones: gom tất cả text từ cả 2 field, loại dòng link, chỉ giữ digits theo từng dòng
   const collectPhones = (raw: string) =>
@@ -1016,15 +1056,8 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
     {/* LEFT: Link */}
     <div>
       <div className="font-medium mb-1">Link Zalo</div>
-      {zaloLink ? (
-        <a
-          href={zaloLink}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sky-600 underline break-all"
-        >
-          {zaloLink}
-        </a>
+      {zaloLinkRaw ? (
+        renderRichMultilineLinks(zaloLinkRaw)
       ) : (
         <div className="text-gray-500">-</div>
       )}

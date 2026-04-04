@@ -27,12 +27,16 @@ export default function AdminClient({ initialRooms, initialTotal }: AdminClientP
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [adminLevel, setAdminLevel] = useState<number | null>(null);
 
-  const [toast, setToast] = useState<string | null>(null);
-  const notify = useCallback((msg: string) => {
-    setToast(msg);
-    window.clearTimeout((notify as any)._t);
-    (notify as any)._t = window.setTimeout(() => setToast(null), 2500);
-  }, []);
+const [toast, setToast] = useState<string | null>(null);
+const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+const [linkPickerTitle, setLinkPickerTitle] = useState("Chọn link để mở");
+const [linkPickerLinks, setLinkPickerLinks] = useState<string[]>([]);
+
+const notify = useCallback((msg: string) => {
+  setToast(msg);
+  window.clearTimeout((notify as any)._t);
+  (notify as any)._t = window.setTimeout(() => setToast(null), 2500);
+}, []);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
@@ -257,23 +261,26 @@ const toggleRoomStatus = useCallback(
   },
   [notify]
 );
-  const openZaloUX = useCallback((raw?: string | null) => {
-    if (!raw) return;
-    if (typeof window === "undefined") return;
 
-    const s = String(raw).trim();
-    if (!s) return;
+const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | null) => {
+  if (typeof window === "undefined") return;
 
-    if (/^https?:\/\//i.test(s) || /^zalo:\/\//i.test(s)) {
-      window.open(s, "_blank", "noopener,noreferrer");
-      return;
-    }
+  const links = extractHttpLinks(rawLink, rawPhone);
 
-    const digits = s.replace(/\D/g, "");
-    if (!digits) return;
+  if (links.length === 0) {
+    notify("Không có link hợp lệ để mở");
+    return;
+  }
 
-    window.open(`https://zalo.me/${digits}`, "_blank", "noopener,noreferrer");
-  }, []);
+  if (links.length === 1) {
+    window.open(links[0], "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  setLinkPickerTitle("Chọn link để mở:");
+  setLinkPickerLinks(links);
+  setLinkPickerOpen(true);
+}, [notify]);
 
   return (
     <main>
@@ -361,7 +368,12 @@ const toggleRoomStatus = useCallback(
                         <button
                           type="button"
                           style={linkBtn}
-                          onClick={() => openZaloUX(zaloLink)}
+                          onClick={() =>
+                            openZaloUX(
+                              (r as any).link_zalo,
+                              (r as any).zalo_phone,
+                            )
+                          }
                         >
                           Mở Zalo
                         </button>
@@ -478,6 +490,96 @@ const toggleRoomStatus = useCallback(
         />
       )}
 
+      {linkPickerOpen && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.35)",
+      zIndex: 999,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 16,
+    }}
+    onClick={() => setLinkPickerOpen(false)}
+  >
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 520,
+        background: "#fff",
+        borderRadius: 14,
+        boxShadow: "0 20px 50px rgba(0,0,0,0.2)",
+        border: "1px solid #e5e7eb",
+        overflow: "hidden",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        style={{
+          padding: "14px 16px",
+          borderBottom: "1px solid #e5e7eb",
+          fontWeight: 600,
+          fontSize: 16,
+        }}
+      >
+        {linkPickerTitle}
+      </div>
+
+      <div style={{ padding: 16, display: "grid", gap: 10, maxHeight: 360, overflowY: "auto" }}>
+        {linkPickerLinks.map((link, idx) => (
+          <button
+            key={`${link}-${idx}`}
+            type="button"
+            onClick={() => {
+              window.open(link, "_blank", "noopener,noreferrer");
+              setLinkPickerOpen(false);
+            }}
+            style={{
+              textAlign: "left",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              cursor: "pointer",
+              color: "#2563eb",
+              textDecoration: "underline",
+              wordBreak: "break-all",
+            }}
+            title={link}
+          >
+            {link}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          padding: 16,
+          borderTop: "1px solid #e5e7eb",
+          display: "flex",
+          justifyContent: "flex-end",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setLinkPickerOpen(false)}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #e5e7eb",
+            background: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Đóng
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
       {toast && (
         <div
           style={{
@@ -533,6 +635,22 @@ function formatDistrict(input: string) {
   const m = raw.match(/(\d+)/);
   if (m?.[1]) return `Quận ${m[1]}`;
   return `Quận ${raw}`;
+}
+
+function extractHttpLinks(...inputs: Array<string | null | undefined>) {
+  const all = inputs
+    .map((x) => String(x ?? ""))
+    .join("\n");
+
+  const matches = all.match(/https?:\/\/[^\s]+/gi) ?? [];
+
+  return Array.from(
+    new Set(
+      matches
+        .map((x) => x.trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 /* ===================== STYLES ===================== */
