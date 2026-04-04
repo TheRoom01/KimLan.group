@@ -167,15 +167,23 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
   loadRooms(page, debouncedSearch, { useCache: true });
 }, [page, debouncedSearch, loadRooms, adminLevel]);
 
-  const deleteRoom = useCallback(
-  async (id: string) => {
+const deleteRoom = useCallback(
+  async (room: any) => {
+    const id = String(room?.id || "").trim();
+    const roomCode = String(room?.room_code || "").trim();
+
+    if (!id) {
+      setErrorMsg("Thiếu room id");
+      return;
+    }
+
     try {
       setLoading(true);
       setErrorMsg(null);
 
       // ---- L2: Ẩn phòng (không xoá DB/R2) + remove khỏi list ngay ----
       if (adminLevel === 2) {
-        const ok = confirm("Xoá phòng này");
+        const ok = confirm("Ẩn phòng này?");
         if (!ok) return;
 
         const res = await supabase.rpc("hide_room", { p_room_id: id });
@@ -184,24 +192,47 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
           return;
         }
 
-        // UX: “xoá ở UI” => biến mất khỏi bảng L2
-        setRooms((prev) => prev.filter((x: any) => (x as any).id !== id));
+        setRooms((prev) => prev.filter((x: any) => String((x as any).id) !== id));
         setTotal((t) => Math.max(0, t - 1));
 
         cacheRef.current.clear();
         cursorMapRef.current.clear();
+        notify("Đã ẩn phòng");
         return;
       }
 
-      // ---- L1: Xoá thật ----
+      // ---- L1: Xoá thật + xoá media R2 ----
       if (adminLevel === 1) {
-        const ok = confirm("Xoá phòng này? (Sẽ xoá DB và có thể xoá media)");
+        const ok = confirm("Xoá phòng này? Hệ thống sẽ xoá DB và media trên R2.");
         if (!ok) return;
 
+        // 1) xoá DB trước
         const res = await supabase.rpc("admin_l1_delete_room", { p_room_id: id });
         if (res.error) {
           setErrorMsg(res.error.message);
           return;
+        }
+
+        // 2) xoá media trên R2 theo room id (và hỗ trợ room_code cũ nếu có)
+        try {
+          const r2Resp = await fetch(`/api/rooms/${id}/delete-r2-all`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              room_code: roomCode || null,
+            }),
+          });
+
+          if (!r2Resp.ok) {
+            const raw = await r2Resp.text().catch(() => "");
+            console.warn("delete-r2-all failed:", raw);
+            notify("Phòng đã xoá trong DB, nhưng xoá media R2 chưa hoàn tất");
+          } else {
+            notify("Đã xoá phòng và media");
+          }
+        } catch (e) {
+          console.warn("delete-r2-all exception:", e);
+          notify("Phòng đã xoá trong DB, nhưng xoá media R2 chưa hoàn tất");
         }
 
         cacheRef.current.clear();
@@ -218,7 +249,7 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
       setLoading(false);
     }
   },
-  [loadRooms, debouncedSearch, adminLevel]
+  [loadRooms, debouncedSearch, adminLevel, notify]
 );
 
 const toggleRoomStatus = useCallback(
@@ -426,13 +457,13 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                         <Pencil size={18} strokeWidth={1.8} />
                       </button>
 
-                      <button
-                        style={{ ...iconBtn, marginLeft: 10 }}
-                        onClick={() => deleteRoom((r as any).id)}
-                        title="Xoá"
-                      >
-                        <Trash2 size={18} strokeWidth={1.8} color="#ef4444" />
-                      </button>
+                    <button
+                      style={{ ...iconBtn, marginLeft: 10 }}
+                      onClick={() => deleteRoom(r)}
+                      title="Xoá"
+                    >
+                      <Trash2 size={18} strokeWidth={1.8} color="#ef4444" />
+                    </button>
                     </td>
                   </tr>
                 );
