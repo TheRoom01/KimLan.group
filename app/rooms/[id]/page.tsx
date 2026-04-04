@@ -144,10 +144,26 @@ function compactShareHouseNumber(input: any) {
   const s = String(input ?? "").trim();
   if (!s) return "";
 
-  // Lấy cụm số ở đầu, và giữ "/" nếu ngay sau cụm số đó có slash
+  // Share text:
+  // 12/4 -> 12/
+  // 12A3 -> 12
+  // 123  -> 123
   const m = s.match(/^(\d+\/?)/);
   return m?.[1] ?? s;
 }
+
+function compactPublicHouseNumber(input: any) {
+  const s = String(input ?? "").trim();
+  if (!s) return "";
+
+  // Public detail:
+  // 12A3 -> 12A
+  // 12/4 -> 12/
+  // 123  -> không hiện
+  const m = s.match(/^(\d+\D)/);
+  return m?.[1] ?? "";
+}
+
 /* ================= Page ================= */
 
 export default function RoomDetailPage() {
@@ -674,24 +690,32 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   const priceText = formatVND(room?.price);
   const updatedText = formatDMY(room?.updated_at);
   
-  const houseNumber =
-    room?.house_number ??
-    room?.houseNumber ??
-    detail?.house_number ??
-    detail?.houseNumber ??
-    "";
+const houseNumber =
+  adminLevel === 1 || adminLevel === 2
+    ? (
+        room?.house_number ??
+        room?.houseNumber ??
+        detail?.house_number ??
+        detail?.houseNumber ??
+        ""
+      )
+    : String(room?.public_house_number ?? "");
 
-  const addressLine = joinParts([
+const publicHouseNumber =
+  adminLevel === 1 || adminLevel === 2
+    ? compactPublicHouseNumber(houseNumber)
+    : houseNumber;
+
+const addressLine = joinParts([
   adminLevel === 1 || adminLevel === 2
     ? [houseNumber, room?.address].filter(Boolean).join(" ")
-    : room?.address,
+    : [publicHouseNumber, room?.address].filter(Boolean).join(" "),
   room?.ward
-  ? (() => {
-      const w = String(room.ward).trim().replace(/^P\.?\s*/i, "");
-      return `P.${/^[0-9]/.test(w) ? w : ` ${w}`}`;
-    })()
-  : null,
-
+    ? (() => {
+        const w = String(room.ward).trim().replace(/^P\.?\s*/i, "");
+        return `P.${/^[0-9]/.test(w) ? w : ` ${w}`}`;
+      })()
+    : null,
   room?.district,
 ]);
 
