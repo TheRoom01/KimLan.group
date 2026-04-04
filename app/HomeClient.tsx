@@ -2227,12 +2227,16 @@ useEffect(() => {
 
 
   // ================== CENTRAL FETCH ==================
-  useEffect(() => {
+useEffect(() => {
   // ✅ skip 1 vòng ngay sau hydrate restore
   if (didRestoreFromStorageRef.current) {
     didRestoreFromStorageRef.current = false;
     setShowSkeleton(false);
     setDisplayPageIndex(pageIndex);
+
+    const nextCursor = cursorsRef.current[pageIndex + 1] ?? null;
+    setHasNext(Boolean(nextCursor));
+
     return;
   }
 
@@ -2244,6 +2248,9 @@ useEffect(() => {
   } else {
     setShowSkeleton(false);
     setDisplayPageIndex(pageIndex);
+
+    const nextCursor = cursorsRef.current[pageIndex + 1] ?? null;
+    setHasNext(Boolean(nextCursor));
   }
 }, [pageIndex, fetchPage]);
 

@@ -93,11 +93,11 @@ const FilterBar = ({
 const [maxInput, setMaxInput] = useState(formatMoneyInput(priceDraft[1]));
 
 useEffect(() => {
-  setMinInput(String(priceDraft[0]));
+  setMinInput(formatMoneyInput(priceDraft[0]));
 }, [priceDraft[0]]);
 
 useEffect(() => {
-  setMaxInput(String(priceDraft[1]));
+  setMaxInput(formatMoneyInput(priceDraft[1]));
 }, [priceDraft[1]]);
 
   // ===== PRICE SLIDER (custom 2 thumbs) =====
