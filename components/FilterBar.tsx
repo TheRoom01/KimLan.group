@@ -22,8 +22,14 @@ type FilterBarProps = {
   selectedRoomTypes: string[];
   setSelectedRoomTypes: React.Dispatch<React.SetStateAction<string[]>>;
 
-  moveFilter: "elevator" | "stairs" | null;
+   moveFilter: "elevator" | "stairs" | null;
   setMoveFilter: React.Dispatch<React.SetStateAction<"elevator" | "stairs" | null>>;
+
+  petFilters: ("cat" | "dog" | "nopet")[];
+  setPetFilters: React.Dispatch<React.SetStateAction<("cat" | "dog" | "nopet")[]>>;
+
+  termFilters: ("short" | "long")[];
+  setTermFilters: React.Dispatch<React.SetStateAction<("short" | "long")[]>>;
 
   sortMode: SortMode;
   setSortMode: React.Dispatch<React.SetStateAction<SortMode>>;
@@ -70,6 +76,10 @@ const FilterBar = ({
   setSelectedRoomTypes,
   moveFilter,
   setMoveFilter,
+  petFilters,
+  setPetFilters,
+  termFilters,
+  setTermFilters,
   sortMode,
   setSortMode,
   statusFilter,
@@ -78,16 +88,16 @@ const FilterBar = ({
   loading = false,
   onResetAll,
 }: FilterBarProps) => {
-  const [openFilter, setOpenFilter] = useState<"district" | "roomType" | "move" | "sort" | null>(null);
+  const [openFilter, setOpenFilter] = useState<"district" | "roomType" | "amenities" | "sort" | null>(null);
  const [minInput, setMinInput] = useState(formatMoneyInput(priceDraft[0]));
 const [maxInput, setMaxInput] = useState(formatMoneyInput(priceDraft[1]));
 
 useEffect(() => {
-  setMinInput(String(priceDraft[0]));
+  setMinInput(formatMoneyInput(priceDraft[0]));
 }, [priceDraft[0]]);
 
 useEffect(() => {
-  setMaxInput(String(priceDraft[1]));
+  setMaxInput(formatMoneyInput(priceDraft[1]));
 }, [priceDraft[1]]);
 
   // ===== PRICE SLIDER (custom 2 thumbs) =====
@@ -219,6 +229,21 @@ useEffect(() => {
   return `~${(v / 1000000).toFixed(0)} triệu`;
 };
 
+const togglePet = (value: "cat" | "dog" | "nopet") => {
+  setPetFilters((prev) =>
+    prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+  );
+};
+
+const toggleTerm = (value: "short" | "long") => {
+  setTermFilters((prev) => {
+    const next = prev.includes(value)
+      ? prev.filter((x) => x !== value)
+      : [...prev, value];
+
+    return next.length ? next : [];
+  });
+};
   const onTrackPointerDown = (e: React.PointerEvent) => {
     if (loading) return;
     // click/tap vào track => chọn thumb gần nhất rồi kéo luôn
@@ -394,102 +419,147 @@ useEffect(() => {
             )}
           </div>
 
-  {/* DI CHUYỂN */}
+ {/* TIỆN NGHI */}
 <div className="relative z-50 flex flex-wrap items-start gap-2">
   <button
     type="button"
-    onClick={() => setOpenFilter((v) => (v === "move" ? null : "move"))}
+    onClick={() => setOpenFilter((v) => (v === "amenities" ? null : "amenities"))}
     className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
-      openFilter === "move" ? "border-black" : "border-gray-300"
+      openFilter === "amenities" ? "border-black" : "border-gray-300"
     }`}
     disabled={loading}
   >
     <span className="flex flex-col items-start text-left leading-tight">
-      <span>Di chuyển</span>
+      <span>Tiện Nghi</span>
 
-      {moveFilter && (
-        <span className="mt-0.5 text-[10px] text-gray-500 leading-none">
-          ({moveFilter === "elevator" ? "Thang máy" : "Thang bộ"})
-        </span>
-      )}
     </span>
   </button>
 
- {openFilter === "move" && (
-  <div
-    ref={(el) => {
-      if (openFilter === "move") openPanelRef.current = el;
-    }}
-    className="absolute left-0 top-full mt-2 z-50 w-max min-w-full max-w-[min(90vw,360px)] rounded-xl border bg-white shadow p-3 space-y-2"
-    onPointerDown={(e) => e.stopPropagation()}
-    onClick={(e) => e.stopPropagation()}
-  >
-
-      {/* Tất cả */}
-      <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input
-          type="radio"
-          name="moveFilter"
-          checked={moveFilter === null}
-          onChange={() => {
-            setMoveFilter(null);
-            setOpenFilter(null);
-          }}
+  {openFilter === "amenities" && (
+    <div
+      ref={(el) => {
+        if (openFilter === "amenities") openPanelRef.current = el;
+      }}
+      className="absolute left-0 top-full mt-2 z-50 w-[min(96vw,900px)] rounded-xl border bg-white shadow p-4"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-medium">Tiện Nghi</div>
+        <button
+          type="button"
+          className="text-xs text-gray-600 hover:text-black"
           onClick={() => {
-          // Chỉ xử lý khi bấm lại option đang chọn (để "refetch")
-          if (moveFilter !== null) return;
-
-          setMoveFilter("elevator");
-          queueMicrotask(() => setMoveFilter(null));
-          setOpenFilter(null);
-        }}
-        />
-        <span>Tất cả</span>
-      </label>
-
-      {/* Thang máy */}
-      <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input
-          type="radio"
-          name="moveFilter"
-          checked={moveFilter === "elevator"}
-          onChange={() => {
-            setMoveFilter("elevator");
-            setOpenFilter(null);
-          }}
-          onClick={() => {
-            // Chỉ xử lý khi bấm lại option đang chọn (để "refetch")
-            if (moveFilter !== "elevator") return;
-
             setMoveFilter(null);
-            queueMicrotask(() => setMoveFilter("elevator"));
-            setOpenFilter(null);
+            setPetFilters([]);
+            setTermFilters(["long"]);
           }}
-        />
-        <span>Thang máy</span>
-      </label>
+        >
+          Clear
+        </button>
+      </div>
 
-      {/* Thang bộ */}
-      <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input
-          type="radio"
-          name="moveFilter"
-          checked={moveFilter === "stairs"}
-          onChange={() => {
-            setMoveFilter("stairs");
-            setOpenFilter(null);
-          }}
-          onClick={() => {
-            // Chỉ xử lý khi bấm lại option đang chọn (để "refetch")
-            if (moveFilter !== "stairs") return;
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {/* CỘT 1 - DI CHUYỂN */}
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">Di chuyển</div>
 
-            setMoveFilter(null);
-            queueMicrotask(() => setMoveFilter("stairs"));
-            setOpenFilter(null);
-          }}
-        />
-        <span>Thang bộ</span>
-      </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="moveFilter"
+              checked={moveFilter === null}
+              onChange={() => setMoveFilter(null)}
+            />
+            <span>Tất cả</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="moveFilter"
+              checked={moveFilter === "elevator"}
+              onChange={() => setMoveFilter("elevator")}
+            />
+            <span>Thang máy</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="moveFilter"
+              checked={moveFilter === "stairs"}
+              onChange={() => setMoveFilter("stairs")}
+            />
+            <span>Thang bộ</span>
+          </label>
+        </div>
+
+        {/* CỘT 2 - THÚ CƯNG */}
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">Thú Cưng</div>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={petFilters.includes("cat")}
+              onChange={() => togglePet("cat")}
+            />
+            <span>Nuôi mèo</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={petFilters.includes("dog")}
+              onChange={() => togglePet("dog")}
+            />
+            <span>Nuôi chó</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={petFilters.includes("nopet")}
+              onChange={() => togglePet("nopet")}
+            />
+            <span>Không pet</span>
+          </label>
+        </div>
+
+        {/* CỘT 3 - THỜI HẠN HĐ */}
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">Thời hạn HĐ</div>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={termFilters.includes("short")}
+              onChange={() => toggleTerm("short")}
+            />
+            <span>Ngắn hạn</span>
+          </label>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={termFilters.includes("long")}
+              onChange={() => toggleTerm("long")}
+            />
+            <span>Dài hạn</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          className="rounded-lg border px-3 py-2 text-sm bg-black text-white hover:bg-gray-800"
+          onClick={() => setOpenFilter(null)}
+        >
+          Xong
+        </button>
+      </div>
     </div>
   )}
 </div>
@@ -508,8 +578,12 @@ useEffect(() => {
         Sắp xếp
       </button>
 
-          {openFilter === "sort" && (
-            <div className="absolute right-0 mt-2 w-fit min-w-[160px] rounded-xl border bg-white shadow p-3 space-y-2"
+         {openFilter === "sort" && (
+  <div
+    ref={(el) => {
+      if (openFilter === "sort") openPanelRef.current = el;
+    }}
+    className="absolute right-0 mt-2 w-fit min-w-[160px] rounded-xl border bg-white shadow p-3 space-y-2"
 
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}

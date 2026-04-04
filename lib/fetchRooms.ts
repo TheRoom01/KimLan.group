@@ -53,13 +53,15 @@ const ADMIN_L1_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "video_url",
+  "thumb_url",
   "created_at",
   "updated_at",
   "description",
   "chinh_sach",
   "room_detail",
   "link_zalo",
-   "zalo_phone",
+  "zalo_phone",
 ] as const;
 
 const PUBLIC_KEYS = [
@@ -74,6 +76,8 @@ const PUBLIC_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "video_url",
+  "thumb_url",
   "created_at",
   "updated_at",
   "room_detail",
@@ -92,6 +96,8 @@ const ADMIN_L2_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "video_url",
+  "thumb_url",
   "created_at",
   "updated_at",
   "description",
@@ -100,7 +106,6 @@ const ADMIN_L2_KEYS = [
   "link_zalo",
   "zalo_phone",
 ] as const;
-
 
 const expandDistrictLegacyValues = (districts?: string[] | null) => {
   if (!districts || districts.length === 0) return null;

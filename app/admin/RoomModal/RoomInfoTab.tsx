@@ -486,7 +486,7 @@ function Input({
   )
 }
 
-function InputNumber({
+function InputNumber({ 
   label,
   value,
   onChange,
@@ -500,9 +500,13 @@ function InputNumber({
       <label style={labelStyle}>{label}</label>
       <input
         style={inputStyle}
-        type="number"
-        value={Number.isFinite(value) ? value : 0}
-        onChange={e => onChange(Number(e.target.value))}
+        type="text"
+        inputMode="numeric"
+        value={value ? value.toString() : ""}
+        onChange={(e) => {
+          const raw = e.target.value.replace(/\D/g, ""); // chỉ giữ số
+          onChange(raw ? parseInt(raw, 10) : 0);
+        }}
       />
     </div>
   )

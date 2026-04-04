@@ -16,10 +16,12 @@ type Room = {
   description?: string | null;
   status: "Trống" | "Đã thuê" | string;
 
-  image_urls?: string[] | null;   // 3 ảnh đầu, đúng thứ tự admin up
-  image_count?: number | null;    // tổng ảnh để hiện +N đúng
+  image_urls?: string[] | null;
+  image_count?: number | null;
 
   has_video?: boolean;
+  video_url?: string | null;
+  thumb_url?: string | null;
 };
 
 type RoomCardProps = {
@@ -76,19 +78,27 @@ export default function RoomCard({
         )}`
       : "";
 
-  // ✅ main ưu tiên ảnh theo image_urls[0]
-  // fallback 1: thumb.webp
-  // fallback 2: no-image
-  const mainPrimary = hasRealMedia ? safeSrc(showImages[0] ?? null) : FALLBACK;
-  const mainFallback1 = hasRealMedia ? safeSrc(thumbUrl ?? null) : FALLBACK;
+  const rpcThumbUrl = String(room.thumb_url ?? "").trim();
+  const hasRpcThumb = !!rpcThumbUrl;
+
+  // ✅ ưu tiên:
+  // 1) thumb.webp tự build
+  // 2) thumb_url từ RPC
+  // 3) ảnh đầu
+  const mainPrimary =
+    room.has_video
+      ? (thumbUrl || rpcThumbUrl || "")
+      : safeSrc(showImages[0] ?? null);
+
+  const mainFallback1 = safeSrc(rpcThumbUrl || (showImages[0] ?? null));
 
   const subImage1 = safeSrc(showImages[1] ?? "");
   const subImage2 = safeSrc(showImages[2] ?? "");
 
   // ✅ mainErrorStage:
-  // 0: đang dùng image_urls[0]
-  // 1: fallback sang thumb.webp
-  // 2: fallback no-image
+  // 0: đang dùng thumb chính
+  // 1: fallback sang thumb_url / ảnh đầu
+  // 2: fallback sang video_url hoặc no-image
   const [mainErrorStage, setMainErrorStage] = useState<0 | 1 | 2>(0);
   const [sub1Ok, setSub1Ok] = useState(true);
   const [sub2Ok, setSub2Ok] = useState(true);
@@ -145,7 +155,16 @@ export default function RoomCard({
       >
         <div className="h-[240px] overflow-hidden bg-gray-100">
           <div className="grid grid-cols-[60%_40%] gap-1 h-full">
-            <div className="relative w-full h-full overflow-hidden">
+          <div className="relative w-full h-full overflow-hidden">
+            {room.has_video && mainErrorStage >= 1 && room.video_url ? (
+              <video
+                src={room.video_url}
+                className="w-full h-full object-cover object-[50%_40%]"
+                muted
+                playsInline
+                preload="metadata"
+              />
+            ) : (
               <Image
                 src={mainSrc}
                 alt={room.room_type ?? "Hình phòng"}
@@ -155,19 +174,20 @@ export default function RoomCard({
                 priority={index < 6}
                 loading={index < 6 ? "eager" : "lazy"}
                 unoptimized
-                onError={() =>
-                  setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2))
-                }
+                onError={() => {
+                  setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));
+                }}
               />
+            )}
 
-              {room.has_video && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="bg-black/50 text-white text-2xl rounded-full w-12 h-12 flex items-center justify-center">
-                    ▶
-                  </div>
+            {room.has_video && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="bg-black/50 text-white text-2xl rounded-full w-12 h-12 flex items-center justify-center">
+                  ▶
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
 
             <div className="grid grid-rows-2 gap-1 relative h-full">
               {showImages[1] && (

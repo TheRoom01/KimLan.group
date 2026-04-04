@@ -26,6 +26,7 @@ export const amenityConfig: Array<{ key: AmenityBooleanKey; label: string }> = [
   /* ===== THÚ CƯNG ===== */
   { key: 'allow_cat', label: 'Cho nuôi mèo' },
   { key: 'allow_dog', label: 'Cho nuôi chó' },
+  { key: 'no_pet', label: 'Không thú cưng' },
 
   /* ===== GỬI XE ===== */
   { key: 'has_parking', label: 'Có chỗ gửi xe' },
@@ -36,4 +37,8 @@ export const amenityConfig: Array<{ key: AmenityBooleanKey; label: string }> = [
   { key: 'shared_washer', label: 'Có máy giặt chung' },
   { key: 'private_dryer', label: 'Có máy sấy riêng' },
   { key: 'shared_dryer', label: 'Có máy sấy chung' },
+
+  /* ===== THỜI HẠN HĐ ===== */
+  { key: 'short_term', label: 'Ngắn hạn' },
+  { key: 'long_term', label: 'Dài hạn' },
 ]
