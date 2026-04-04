@@ -236,7 +236,7 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
   const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [petFilters, setPetFilters] = useState<("cat" | "dog" | "nopet")[]>([]);
-const [termFilters, setTermFilters] = useState<("short" | "long")[]>(["long"]);
+const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
   const lastFilterSigRef = useRef<string>("");
   const prevAppliedSearchRef = useRef<string>("");
@@ -719,7 +719,7 @@ const readUrlState = useCallback(() => {
       v === "short" || v === "long"
   );
 
-  const normalizedTerm: ("short" | "long")[] = term.length ? term : ["long"];
+  const normalizedTerm: ("short" | "long")[] = term;
 
   const s = (sp.get(QS.s) as SortMode) || "updated_desc";
   const p = Number(sp.get(QS.p) ?? "0");
@@ -2104,7 +2104,7 @@ petPolicies: (pending?.pets ?? petFilters).length
   : undefined,
 contractTerms: (pending?.terms ?? termFilters).length
   ? (pending?.terms ?? termFilters)
-  : ["long"],
+  : undefined,
 });
 
 // ✅ sau lần fetch đầu tiên theo URL snapshot thì clear để các fetch sau dùng state bình thường

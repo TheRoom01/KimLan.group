@@ -43,14 +43,17 @@ const defaultDetailForm: RoomDetail = {
   other_fee_note: '',
 
   /* amenities */
-  has_elevator: false,
+    has_elevator: false,
   has_stairs: false,
   fingerprint_lock: false,
   allow_pet: false,
   allow_cat: false,
   allow_dog: false,
+  no_pet: false,
   has_parking: false,
   has_basement: false,
+  short_term: false,
+  long_term: true,
 
   /* washer / dryer */
   shared_washer: false,

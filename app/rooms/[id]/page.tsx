@@ -988,6 +988,12 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
           {detail?.allow_pet && <li>✔️ Nuôi thú cưng</li>}
           {detail?.allow_cat && <li>✔️ Nuôi mèo</li>}
           {detail?.allow_dog && <li>✔️ Nuôi chó</li>}
+          {/* ===== PET POLICY ===== */}
+          {detail?.no_pet && <li>✔️ Không thú cưng</li>}
+
+          {/* ===== CONTRACT TERM ===== */}
+          {detail?.short_term && <li>✔️ Ngắn hạn</li>}
+          {detail?.long_term && <li>✔️ Dài hạn</li>}
           {detail?.other_amenities && (
             <li className="col-span-2">✔️ {String(detail.other_amenities)}</li>
           )}
