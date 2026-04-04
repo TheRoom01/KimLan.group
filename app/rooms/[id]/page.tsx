@@ -45,8 +45,9 @@ function normalizeImageUrls(image_urls: any): string[] {
 type MediaItem = {
   kind: "video" | "image";
   url: string;
+  thumb?: string;
 };
-  
+
 function normalizeVideoUrls(video_urls: any): string[] {
   if (!Array.isArray(video_urls)) return [];
   return video_urls
@@ -227,12 +228,23 @@ export default function RoomDetailPage() {
   }, []);
 
   // ===== SHARE (Chi phí) =====
-type ShareKey = "house_number"|"address" | "code" |"room_type" | "price" | "lift_stairs" | "fees" | "amenities" | "description";
+type ShareKey =
+  | "room_link"
+  | "house_number"
+  | "address"
+  | "code"
+  | "room_type"
+  | "price"
+  | "lift_stairs"
+  | "fees"
+  | "amenities"
+  | "description";
 
 const [shareOpen, setShareOpen] = useState(false);
 const [toast, setToast] = useState<string | null>(null);
 
 const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
+    room_link: false,
   // ✅ tick sẵn theo yêu cầu + thứ tự build text
   house_number: true,
   address: true,
@@ -246,6 +258,9 @@ const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
   amenities: false,
   description: false,
 });
+
+const roomShareUrl =
+  typeof window !== "undefined" ? window.location.href : "";
 
 function showToast(msg: string) {
   setToast(msg);
@@ -279,6 +294,11 @@ async function copyText(text: string) {
 
 function buildShareText() {
   const lines: string[] = [];
+
+    // 0) Link phòng
+  if (shareSel.room_link && roomShareUrl) {
+    lines.push(`🔗 ${roomShareUrl}`);
+  }
 
   // 1) 📍 Địa chỉ
   if (shareSel.address || shareSel.house_number) {
@@ -587,23 +607,46 @@ useEffect(() => {
 }, [room?.image_urls, room?.media]);
 
 const videoUrls = useMemo(() => {
-  // ✅ ưu tiên field chuẩn hoá từ RPC (đọc room_media)
+  const singleVideoUrl = String(room?.video_url ?? "").trim();
+  if (singleVideoUrl) return [singleVideoUrl];
+
   const v = normalizeVideoUrls(room?.video_urls);
   if (v.length) return v;
 
-  // ✅ fallback: nếu RPC chưa trả video_urls mà vẫn trả room.media dạng array
   const v2 = mediaToVideoUrls(room?.media);
   if (v2.length) return v2;
 
   return [];
-}, [room?.video_urls, room?.media]);
+}, [room?.video_url, room?.video_urls, room?.media]);
 
 
 const mediaItems: MediaItem[] = useMemo(() => {
-  const vids: MediaItem[] = videoUrls.map((url: string) => ({ kind: "video", url }));
-  const imgs: MediaItem[] = imageUrls.map((url: string) => ({ kind: "image", url }));
-  return [...vids, ...imgs]; // ✅ video đứng trước ảnh
-}, [videoUrls, imageUrls]);
+  const R2_BASE =
+    (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL ||
+      process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
+      "")?.replace(/\/$/, "") || "";
+
+  const r2Thumb =
+    R2_BASE && room?.id
+      ? `${R2_BASE}/rooms/${room.id}/images/thumb.webp`
+      : "";
+
+  const rpcThumb = String(room?.thumb_url ?? "").trim();
+  const thumb = rpcThumb || r2Thumb || "";
+
+  const vids: MediaItem[] = videoUrls.map((url: string) => ({
+    kind: "video",
+    url,
+    thumb,
+  }));
+
+  const imgs: MediaItem[] = imageUrls.map((url: string) => ({
+    kind: "image",
+    url,
+  }));
+
+  return [...vids, ...imgs];
+}, [videoUrls, imageUrls, room?.id, room?.thumb_url]);
 
 const activeItem = useMemo(() => {
   if (!mediaItems.length) return null;
@@ -734,78 +777,84 @@ const zaloLinkRaw = linkRaw.trim();
         {mediaItems.length > 0 ? (
   <>
     <div
-     
       className="relative w-full h-[340px] md:h-[440px] rounded-xl overflow-hidden bg-black cursor-pointer"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       onClick={() => {
-      if (activeItem?.kind !== "video") setViewerOpen(true)
-    }}
-
-    >
-      {activeItem ? (
-  activeItem.kind === "video" ? (
-    <div
-      className="relative w-full h-full"
-      onClick={(e) => {
-        e.stopPropagation()
-        showOverlayAndMaybeHide()
+        if (activeItem?.kind !== "video") setViewerOpen(true)
       }}
     >
-      <video
-        ref={videoRef}
-        src={activeItem.url}
-        controls
-        preload="none"
-        playsInline
-        className="w-full h-full object-contain bg-black"
-        onPlay={() => {
-          setShowPlay(false)
-          showOverlayAndMaybeHide()
-        }}
-        onPause={() => {
-          setShowPlay(true)
-          setOverlayVisible(true)
-          clearOverlayTimer()
-        }}
-        onEnded={() => {
-          setShowPlay(true)
-          setOverlayVisible(true)
-          clearOverlayTimer()
-        }}
+      {activeItem ? (
+activeItem.kind === "video" ? (
+  <div
+    className="relative w-full h-full"
+    onClick={(e) => {
+      e.stopPropagation()
+      showOverlayAndMaybeHide()
+    }}
+  >
+    {showPlay && activeItem.thumb ? (
+      <img
+        src={activeItem.thumb}
+        className="absolute inset-0 w-full h-full object-contain z-[1]"
       />
+    ) : null}
 
-      {(overlayVisible || showPlay) && (
-        <button
-          className="absolute inset-0 m-auto w-16 h-16 rounded-full
-                     bg-black/40 text-white text-2xl
-                     flex items-center justify-center
-                     border border-white/40 backdrop-blur"
-          onClick={(e) => {
-            e.stopPropagation()
-            const v = videoRef.current
-            if (!v) return
+    <video
+      ref={videoRef}
+      src={activeItem.url}
+      controls
+      preload="metadata"
+      playsInline
+      poster={activeItem.thumb || undefined}
+      className="w-full h-full object-contain bg-black"
+      onPlay={() => {
+        setShowPlay(false)
+        showOverlayAndMaybeHide()
+      }}
+      onPause={() => {
+        setShowPlay(true)
+        setOverlayVisible(true)
+        clearOverlayTimer()
+      }}
+      onEnded={() => {
+        setShowPlay(true)
+        setOverlayVisible(true)
+        clearOverlayTimer()
+      }}
+    />
 
-            setOverlayVisible(true)
-            clearOverlayTimer()
+    {(overlayVisible || showPlay) && (
+      <button
+        className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full
+                   bg-black/40 text-white text-2xl
+                   flex items-center justify-center
+                   border border-white/40 backdrop-blur"
+        onClick={(e) => {
+          e.stopPropagation()
+          const v = videoRef.current
+          if (!v) return
 
-            if (v.paused) {
-              v.play()
-              setShowPlay(false)
-              scheduleHideOverlay(1500)
-            } else {
-              v.pause()
-              setShowPlay(true)
-            }
-          }}
-          aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
-          title={showPlay ? "Phát" : "Tạm dừng"}
-        >
-          {showPlay ? "▶" : "⏸"}
-        </button>
-      )}
-    </div>
-  ) : (
+          setOverlayVisible(true)
+          clearOverlayTimer()
+
+          if (v.paused) {
+            v.play()
+            setShowPlay(false)
+            scheduleHideOverlay(1500)
+          } else {
+            v.pause()
+            setShowPlay(true)
+          }
+        }}
+        aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
+        title={showPlay ? "Phát" : "Tạm dừng"}
+      >
+        {showPlay ? "▶" : "⏸"}
+      </button>
+    )}
+  </div>
+) : (
     <img
       src={activeItem.url}
       alt={room?.room_code || ""}
@@ -902,9 +951,8 @@ const zaloLinkRaw = linkRaw.trim();
         >
           {it.kind === "video" ? (
             <>
-              <video
-                src={it.url}
-                preload="none"
+              <img
+                src={it.thumb || ""}
                 className="w-full h-full object-contain"
               />
               <div className="absolute inset-0 flex items-center justify-center">
@@ -1192,42 +1240,63 @@ const zaloLinkRaw = linkRaw.trim();
     >
       <div className="flex items-center justify-between gap-3">
         <div className="text-lg font-semibold">Chia sẻ</div>
-        <button
-          type="button"
-          onClick={() => setShareOpen(false)}
-          className="px-3 py-1 rounded-lg hover:bg-gray-100"
-        >
-          Đóng
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setShareSel((s) => ({ ...s, room_link: !s.room_link }))
+            }
+            className={[
+              "px-3 py-1 rounded-lg border transition-colors",
+              shareSel.room_link
+                ? "bg-sky-600 text-white border-sky-600"
+                : "bg-white text-sky-700 border-sky-300 hover:bg-sky-50 hover:border-sky-400",
+            ].join(" ")}
+          >
+            Link phòng
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShareOpen(false)}
+            className="px-3 py-1 rounded-lg hover:bg-gray-100"
+          >
+            Đóng
+          </button>
+        </div>
       </div>
 
-      <div className="mt-3 space-y-3">
-        <div className="text-sm font-semibold text-gray-700">Thông tin nhanh</div>
+    <div className="mt-3 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* CỘT TRÁI */}
+        <div className="space-y-3">
+          {(adminLevel === 1 || adminLevel === 2) && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={shareSel.house_number}
+                disabled={!shareSel.address}
+                onChange={(e) =>
+                  setShareSel((s) => ({ ...s, house_number: e.target.checked }))
+                }
+              />
+              <span>Số nhà</span>
+            </label>
+          )}
 
-        {(adminLevel === 1 || adminLevel === 2) && (
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={shareSel.house_number}
-              disabled={!shareSel.address}
+              checked={shareSel.address}
               onChange={(e) =>
-                setShareSel((s) => ({ ...s, house_number: e.target.checked }))
+                setShareSel((s) => ({ ...s, address: e.target.checked }))
               }
             />
-            <span>Số nhà</span>
+            <span>Địa chỉ</span>
           </label>
-        )}
 
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={shareSel.address}
-            onChange={(e) => setShareSel((s) => ({ ...s, address: e.target.checked }))}
-          />
-          <span>Địa chỉ</span>
-        </label>
-
-        <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2">
             <input
               type="checkbox"
               checked={shareSel.code}
@@ -1251,83 +1320,100 @@ const zaloLinkRaw = linkRaw.trim();
             </label>
           )}
 
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={shareSel.price}
-            onChange={(e) => setShareSel((s) => ({ ...s, price: e.target.checked }))}
-          />
-          <span>Giá phòng</span>
-        </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.price}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, price: e.target.checked }))
+              }
+            />
+            <span>Giá phòng</span>
+          </label>
 
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={shareSel.lift_stairs}
-            onChange={(e) => setShareSel((s) => ({ ...s, lift_stairs: e.target.checked }))}
-          />
-          <span>Thang máy / Thang bộ</span>
-        </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.lift_stairs}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, lift_stairs: e.target.checked }))
+              }
+            />
+            <span>Thang máy / Thang bộ</span>
+          </label>
+        </div>
 
-        <div className="pt-2 border-t" />
+        {/* CỘT PHẢI */}
+        <div className="space-y-3">
+          <div className="text-sm font-semibold text-gray-700">Tuỳ chọn</div>
 
-        <div className="text-sm font-semibold text-gray-700">Tuỳ chọn</div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.fees}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, fees: e.target.checked }))
+              }
+            />
+            <span>Chi phí</span>
+          </label>
 
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={shareSel.fees}
-            onChange={(e) => setShareSel((s) => ({ ...s, fees: e.target.checked }))}
-          />
-          <span>Chi phí</span>
-        </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.amenities}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, amenities: e.target.checked }))
+              }
+            />
+            <span>Tiện ích</span>
+          </label>
 
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={shareSel.amenities}
-            onChange={(e) => setShareSel((s) => ({ ...s, amenities: e.target.checked }))}
-          />
-          <span>Tiện ích </span>
-        </label>
-
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={shareSel.description}
-            onChange={(e) => setShareSel((s) => ({ ...s, description: e.target.checked }))}
-          />
-          <span>Mô tả</span>
-        </label>
-
-        <div className="pt-2 border-t" />
-
-        <div className="text-sm font-semibold text-gray-700">Preview</div>
-        <pre className="text-sm whitespace-pre-wrap bg-gray-50 border rounded-xl p-3 max-h-48 overflow-auto">
-          {buildShareText()}
-        </pre>
-
-        <div className="flex gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleShare}
-            className="flex-1 rounded-xl bg-black text-white py-2 font-medium"
-          >
-            Chia sẻ
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              const text = buildShareText();
-              const ok = await copyText(text);
-              showToast(ok ? "Đã copy nội dung — mở Zalo/Messenger và dán vào" : "Không thể copy — hãy chọn và copy thủ công");
-            }}
-            className="flex-1 rounded-xl border py-2 font-medium"
-          >
-            Copy
-          </button>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.description}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, description: e.target.checked }))
+              }
+            />
+            <span>Mô tả</span>
+          </label>
         </div>
       </div>
+
+      <div className="pt-2 border-t" />
+
+      <div className="text-sm font-semibold text-gray-700">Preview</div>
+      <pre className="text-sm whitespace-pre-wrap bg-gray-50 border rounded-xl p-3 max-h-48 overflow-auto">
+        {buildShareText()}
+      </pre>
+
+      <div className="flex gap-2 pt-2">
+        <button
+          type="button"
+          onClick={handleShare}
+          className="flex-1 rounded-xl bg-black text-white py-2 font-medium"
+        >
+          Chia sẻ
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            const text = buildShareText();
+            const ok = await copyText(text);
+            showToast(
+              ok
+                ? "Đã copy nội dung — mở Zalo/Messenger và dán vào"
+                : "Không thể copy — hãy chọn và copy thủ công"
+            );
+          }}
+          className="flex-1 rounded-xl border py-2 font-medium"
+        >
+          Copy
+        </button>
+      </div>
+    </div>
     </div>
   </div>
 )}
