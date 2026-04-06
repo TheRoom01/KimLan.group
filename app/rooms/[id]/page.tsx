@@ -370,52 +370,53 @@ async function copyText(text: string) {
 function buildShareText() {
   const lines: string[] = [];
 
-    // 0) Link phòng
+  // ===== 1. LINK =====
   if (shareSel.room_link && roomShareUrl) {
     lines.push(`🔗 ${roomShareUrl}`);
   }
 
-  // 1) 📍 Địa chỉ
+  // ===== 2. ĐỊA CHỈ =====
   if (shareSel.address || shareSel.house_number) {
-  const parts: string[] = [];
+    const parts: string[] = [];
 
-  if (shareSel.house_number && houseNumber) {
-  parts.push(compactShareHouseNumber(houseNumber));
-}
-
-  if (shareSel.address) {
-    const addr = joinParts([
-      room?.address,
-      formatWard(room?.ward),
-      room?.district,
-    ]);
-
-    if (addr) parts.push(addr);
-  }
-
-  if (parts.length) {
-  let firstLine = "";
-
-  if (parts.length >= 2) {
-    // 👇 phần đầu: KHÔNG dấu phẩy
-    firstLine = `${parts[0]} ${parts[1]}`;
-
-    // 👇 phần sau vẫn có dấu phẩy
-    if (parts.length > 2) {
-      firstLine += ", " + parts.slice(2).join(", ");
+    if (shareSel.house_number && houseNumber) {
+      parts.push(compactShareHouseNumber(houseNumber));
     }
-  } else {
-    firstLine = parts[0];
+
+    if (shareSel.address) {
+      const addr = joinParts([
+        room?.address,
+        formatWard(room?.ward),
+        room?.district,
+      ]);
+
+      if (addr) parts.push(addr);
+    }
+
+    if (parts.length) {
+      // 👉 nếu có link phía trên thì cách 1 dòng
+      if (lines.length > 0) lines.push("");
+
+      let firstLine = "";
+
+      if (parts.length >= 2) {
+        firstLine = `${parts[0]} ${parts[1]}`;
+        if (parts.length > 2) {
+          firstLine += ", " + parts.slice(2).join(", ");
+        }
+      } else {
+        firstLine = parts[0];
+      }
+
+      lines.push(`📍 ${firstLine}`);
+    }
   }
 
-  lines.push(`📍 ${firstLine}`);
-}
-}
-
-// 4) (blank line) + ✅ Thang máy / thang bộ (chỉ hiện cái "có")
+  // ===== 3. THANG MÁY / THANG BỘ =====
   if (shareSel.lift_stairs) {
     const hasLift = Boolean(detail?.has_elevator);
     const hasStairs = Boolean(detail?.has_stairs);
+
     const parts = [
       hasLift ? "Thang máy" : null,
       hasStairs ? "Thang bộ" : null,
@@ -426,62 +427,69 @@ function buildShareText() {
     }
   }
 
-  // 4) Chi phí (nếu tick)
+  // ===== 4. MÃ + LOẠI PHÒNG =====
+  if (shareSel.code || shareSel.room_type) {
+    const parts: string[] = [];
+
+    if (shareSel.code) {
+      parts.push(`_ Mã: ${roomCode || "—"}`);
+    }
+
+    if (shareSel.room_type && roomType) {
+      parts.push(`Loại phòng: ${roomType}`);
+    }
+
+    if (parts.length) {
+      lines.push("");
+      lines.push(parts.join(" | "));
+    }
+  }
+
+  // ===== 5. GIÁ =====
+  if (shareSel.price) {
+    lines.push(`💰 Giá: ${priceText || "—"}`);
+  }
+
+  // ===== 6. CHI PHÍ =====
   if (shareSel.fees) {
     lines.push("");
     lines.push("Chi phí:");
+
     if (feeRows.length) {
-      feeRows.forEach((r) => lines.push(` ${r.label}: ${r.value}`));
+      feeRows.forEach((r) => lines.push(`- ${r.label}: ${r.value}`));
     } else {
       lines.push("- Đang cập nhật");
     }
   }
 
-  // 5) Tiện ích (nếu tick) — trừ has_elevator/has_stairs
+  // ===== 7. TIỆN ÍCH =====
   if (shareSel.amenities) {
     const amen: string[] = [];
-    if (detail?.shared_washer) amen.push("✔️ Máy giặt chung");
-    if (detail?.private_washer) amen.push("✔️ Máy giặt riêng");
-    if (detail?.shared_dryer) amen.push("✔️ Máy sấy chung");
-    if (detail?.private_dryer) amen.push("✔️ Máy sấy riêng");
-    if (detail?.has_parking) amen.push("✔️ Bãi xe");
-    if (detail?.has_basement) amen.push("✔️ Hầm xe");
-    if (detail?.fingerprint_lock) amen.push("✔️ Cửa vân tay");
-    if (detail?.allow_pet) amen.push("✔️ Nuôi thú cưng");
-    if (detail?.allow_cat) amen.push("✔️ Nuôi mèo");
-    if (detail?.allow_dog) amen.push("✔️ Nuôi chó");
-    if (detail?.other_amenities) amen.push(`✔️ ${String(detail.other_amenities)}`);
+
+    if (detail?.shared_washer) amen.push("Máy giặt chung");
+    if (detail?.private_washer) amen.push("Máy giặt riêng");
+    if (detail?.shared_dryer) amen.push("Máy sấy chung");
+    if (detail?.private_dryer) amen.push("Máy sấy riêng");
+    if (detail?.has_parking) amen.push("Bãi xe");
+    if (detail?.has_basement) amen.push("Hầm xe");
+    if (detail?.fingerprint_lock) amen.push("Cửa vân tay");
+    if (detail?.allow_pet) amen.push("Nuôi thú cưng");
+    if (detail?.allow_cat) amen.push("Nuôi mèo");
+    if (detail?.allow_dog) amen.push("Nuôi chó");
+    if (detail?.other_amenities)
+      amen.push(String(detail.other_amenities));
 
     lines.push("");
     lines.push("Tiện ích:");
-    if (amen.length) amen.forEach((x) => lines.push(`- ${x.replace("✔️ ", "")}`));
-    else lines.push("- Đang cập nhật");
+
+    if (amen.length) {
+      amen.forEach((x) => lines.push(`- ${x}`));
+    } else {
+      lines.push("- Đang cập nhật");
+    }
   }
 
- // 2) Mã phòng | Loại phòng (chung 1 dòng)
-if (shareSel.code || shareSel.room_type) {
-  const parts: string[] = [];
-
-  if (shareSel.code) {
-    parts.push(`_ Mã: ${roomCode || "—"}`);
-  }
-
-  if (shareSel.room_type && roomType) {
-    parts.push(`Loại phòng: ${roomType}`);
-  }
-
-  if (parts.length) {
-    lines.push(""); 
-    lines.push(parts.join(" | "));
-  }
-}
-
-// 3) Giá (dòng riêng)
-if (shareSel.price) {
-  lines.push(`💰 Giá: ${priceText || "—"}`);
-}
-
-  // 6) Mô tả (nếu tick)
+  // ===== 8. MÔ TẢ =====
   if (shareSel.description && descriptionText) {
     lines.push("");
     lines.push("Mô tả:");
