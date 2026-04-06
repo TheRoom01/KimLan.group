@@ -336,7 +336,7 @@ const handleUploadFiles = async (files: File[]) => {
   if (!okFiles.length) return
 
  // ===== VIDEO RULE (FRONTEND) =====
-const MAX_VIDEO_MB = 20
+const MAX_VIDEO_MB = 50
 const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
 
 const MAX_VIDEOS_PER_ROOM = 2
@@ -362,7 +362,7 @@ async function assertVideoDuration(file: File) {
       URL.revokeObjectURL(video.src)
       const d = video.duration
       if (!Number.isFinite(d)) return reject(new Error('Không đọc được thời lượng video'))
-      if (d >= MAX_VIDEO_SECONDS) {
+      if (d > MAX_VIDEO_SECONDS) {
         return reject(new Error(`Mỗi video phải ngắn hơn ${MAX_VIDEO_SECONDS} giây (2 phút)`))
       }
       resolve()
@@ -382,9 +382,9 @@ for (const f of okFiles) {
       return
     }
 
-    // duration < 2 phút
+  // duration <= 2 phút
     try {
-      await assertVideoDuration(f) // trong assertVideoDuration nhớ dùng điều kiện: if (d >= 90) reject(...)
+      await assertVideoDuration(f)
     } catch (e: any) {
       alert(e?.message || `Video không hợp lệ: ${f.name}`)
       return
@@ -563,10 +563,16 @@ for (const file of okFiles) {
         headers: requiredHeaders,
         body: file,
       })
-    } catch (e) {
-      console.warn('R2 PUT failed (likely CORS). Fallback to /api/upload/r2', e)
-      return await uploadViaServerR2({ room_id, file, fixed_name })
-    }
+  } catch (e: any) {
+  console.warn('R2 PUT failed, trying fallback...', e);
+
+  try {
+    return await uploadViaServerR2({ room_id, file, fixed_name });
+  } catch (fallbackErr: any) {
+    console.error('Fallback upload failed', fallbackErr);
+    throw new Error('Upload thất bại cả R2 direct và fallback.');
+  }
+}
 
     if (!put.ok) {
       const status = put.status

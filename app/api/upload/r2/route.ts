@@ -42,7 +42,7 @@ export async function POST(req: Request) {
 
     // ===== ENFORCE VIDEO RULE (BACKEND) =====
     if (isVideo) {
-      const MAX_VIDEO_MB = 20
+      const MAX_VIDEO_MB = 50
       const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
 
       if (file.size > MAX_VIDEO_BYTES) {

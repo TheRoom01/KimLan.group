@@ -61,8 +61,8 @@ export async function POST(req: Request) {
 
     // backend rule giống route cũ
     if (isVideo) {
-      const MAX_VIDEO_MB = 20
-      const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
+      const MAX_VIDEO_MB = 50
+const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
       if (size > MAX_VIDEO_BYTES) {
         return NextResponse.json({ error: `Video quá lớn. Giới hạn ${MAX_VIDEO_MB}MB` }, { status: 400 })
       }
