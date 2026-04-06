@@ -37,6 +37,56 @@ function ensureOption(options: readonly string[], current?: string | null): stri
   return [v, ...options];
 }
 
+function normalizeStreetWord(word: string) {
+  const w = String(word ?? "").trim();
+  if (!w) return "";
+
+  const upperWhole = w.toUpperCase();
+
+  // Giữ nguyên một số viết tắt/phổ biến
+  const KEEP_UPPER = new Set([
+    "CMT8",
+    "XVNT",
+    "KDC",
+    "KDT",
+    "QL",
+    "QL1A",
+    "QL13",
+    "ĐT",
+    "TP",
+    "HCM",
+  ]);
+
+  if (KEEP_UPPER.has(upperWhole)) return upperWhole;
+
+  // D5 / D2 / N1 / B3...
+  if (/^[A-ZĐ]\d+$/i.test(w)) {
+    const first = w.charAt(0).toUpperCase();
+    return first + w.slice(1).toLowerCase();
+  }
+
+  // 3/2, 14/5, 30/4... giữ phần số
+  if (/^\d+(\/\d+)+$/.test(w)) return w;
+
+  // token có số + chữ liền nhau kiểu QL13, CMT8 -> upper toàn bộ
+  if (/^(?=.*[A-Za-zĐđ])(?=.*\d)[A-Za-zĐđ0-9/.-]+$/.test(w)) {
+    return upperWhole;
+  }
+
+  // chữ thường -> viết hoa chữ cái đầu
+  const lower = w.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function toTitleCaseStreet(input: string) {
+  return String(input ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map(normalizeStreetWord)
+    .join(" ");
+}
 export default function RoomInfoTab({
   value,
   onChange,
@@ -143,13 +193,23 @@ useEffect(() => {
           label="Số nhà"
           value={value.house_number}
           onChange={v => onChange({ ...value, house_number: v })}
-          onBlur={() => onAutofillByAddress?.(value.house_number, value.address)}
+          onBlur={() => {
+  const normalizedAddress = toTitleCaseStreet(value.address);
+  if (normalizedAddress !== value.address) {
+    onChange({ ...value, address: normalizedAddress });
+  }
+  onAutofillByAddress?.(value.house_number, normalizedAddress);
+}}
         />
         <Input
           label="Tên đường"
           value={value.address}
           onChange={v => onChange({ ...value, address: v })}
-          onBlur={() => onAutofillByAddress?.(value.house_number, value.address)}
+          onBlur={() => {
+  const normalizedAddress = toTitleCaseStreet(value.address);
+  onChange({ ...value, address: normalizedAddress });
+  onAutofillByAddress?.(value.house_number, normalizedAddress);
+}}
         />
         <Input
           label="Phường"
