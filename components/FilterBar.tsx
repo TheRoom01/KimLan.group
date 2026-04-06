@@ -230,9 +230,24 @@ useEffect(() => {
 };
 
 const togglePet = (value: "cat" | "dog" | "nopet") => {
-  setPetFilters((prev) =>
-    prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
-  );
+  setPetFilters((prev) => {
+    // nếu đang click "Không pet"
+    if (value === "nopet") {
+      // nếu đã có thì bỏ, nếu chưa thì chỉ giữ mỗi nó
+      return prev.includes("nopet") ? [] : ["nopet"];
+    }
+
+    // nếu click "cat" hoặc "dog"
+    const withoutNoPet = prev.filter((x) => x !== "nopet");
+
+    if (withoutNoPet.includes(value)) {
+      // bỏ chọn
+      return withoutNoPet.filter((x) => x !== value);
+    }
+
+    // thêm vào
+    return [...withoutNoPet, value];
+  });
 };
 
 const toggleTerm = (value: "short" | "long") => {
@@ -419,7 +434,7 @@ const toggleTerm = (value: "short" | "long") => {
             )}
           </div>
 
- {/* TIỆN NGHI */}
+{/* TIỆN NGHI */}
 <div className="relative z-50 flex flex-wrap items-start gap-2">
   <button
     type="button"
@@ -431,134 +446,147 @@ const toggleTerm = (value: "short" | "long") => {
   >
     <span className="flex flex-col items-start text-left leading-tight">
       <span>Tiện Nghi</span>
-
     </span>
   </button>
 
   {openFilter === "amenities" && (
     <div
-      ref={(el) => {
-        if (openFilter === "amenities") openPanelRef.current = el;
-      }}
-      className="absolute left-0 top-full mt-2 z-50 w-[min(96vw,900px)] rounded-xl border bg-white shadow p-4"
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-[1200] flex items-center justify-center p-3 sm:p-4"
+      onPointerDown={closeAllFilters}
+      onClick={closeAllFilters}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-medium">Tiện Nghi</div>
-        <button
-          type="button"
-          className="text-xs text-gray-600 hover:text-black"
-          onClick={() => {
-            setMoveFilter(null);
-            setPetFilters([]);
-            setTermFilters(["long"]);
-          }}
-        >
-          Clear
-        </button>
-      </div>
+      {/* backdrop */}
+      <div className="absolute inset-0 bg-black/35" />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        {/* CỘT 1 - DI CHUYỂN */}
-        <div className="space-y-2">
-          <div className="text-sm font-semibold">Di chuyển</div>
+      {/* modal */}
+      <div
+        ref={(el) => {
+          if (openFilter === "amenities") openPanelRef.current = el;
+        }}
+        className="relative z-10 w-full max-w-[680px] max-h-[85vh] overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-2xl p-4 sm:p-5"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="text-base font-semibold">Tiện Nghi</div>
 
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="moveFilter"
-              checked={moveFilter === null}
-              onChange={() => setMoveFilter(null)}
-            />
-            <span>Tất cả</span>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="moveFilter"
-              checked={moveFilter === "elevator"}
-              onChange={() => setMoveFilter("elevator")}
-            />
-            <span>Thang máy</span>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="moveFilter"
-              checked={moveFilter === "stairs"}
-              onChange={() => setMoveFilter("stairs")}
-            />
-            <span>Thang bộ</span>
-          </label>
+          <button
+            type="button"
+            className="text-sm text-gray-600 hover:text-black"
+            onClick={() => {
+              setMoveFilter(null);
+              setPetFilters([]);
+              setTermFilters(["long"]);
+            }}
+          >
+            Clear
+          </button>
         </div>
 
-        {/* CỘT 2 - THÚ CƯNG */}
-        <div className="space-y-2">
-          <div className="text-sm font-semibold">Thú Cưng</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* CỘT 1 - DI CHUYỂN */}
+          <div className="space-y-3">
+            <div className="text-sm font-semibold">Di chuyển</div>
 
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={petFilters.includes("cat")}
-              onChange={() => togglePet("cat")}
-            />
-            <span>Nuôi mèo</span>
-          </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="moveFilter"
+                checked={moveFilter === null}
+                onChange={() => setMoveFilter(null)}
+              />
+              <span>Tất cả</span>
+            </label>
 
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={petFilters.includes("dog")}
-              onChange={() => togglePet("dog")}
-            />
-            <span>Nuôi chó</span>
-          </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="moveFilter"
+                checked={moveFilter === "elevator"}
+                onChange={() => setMoveFilter("elevator")}
+              />
+              <span>Thang máy</span>
+            </label>
 
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={petFilters.includes("nopet")}
-              onChange={() => togglePet("nopet")}
-            />
-            <span>Không pet</span>
-          </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="moveFilter"
+                checked={moveFilter === "stairs"}
+                onChange={() => setMoveFilter("stairs")}
+              />
+              <span>Thang bộ</span>
+            </label>
+            {/* divider mobile */}
+  <div className="border-t border-gray-400 mt-2 pt-1 md:hidden" />
+          </div>
+          {/* CỘT 2 - THÚ CƯNG */}
+          <div className="space-y-3">
+            <div className="text-sm font-semibold">Thú Cưng</div>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={petFilters.includes("cat")}
+                onChange={() => togglePet("cat")}
+              />
+              <span>Nuôi mèo</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={petFilters.includes("dog")}
+                onChange={() => togglePet("dog")}
+              />
+              <span>Nuôi chó</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={petFilters.includes("nopet")}
+                onChange={() => togglePet("nopet")}
+              />
+              <span>Không pet</span>
+            </label>
+            {/* divider mobile */}
+  <div className="border-t border-gray-400 mt-2 pt-1 md:hidden" />
+          </div>
+
+          {/* CỘT 3 - THỜI HẠN HĐ */}
+          <div className="space-y-3">
+            <div className="text-sm font-semibold">Thời hạn HĐ</div>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termFilters.includes("short")}
+                onChange={() => toggleTerm("short")}
+              />
+              <span>Ngắn hạn</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termFilters.includes("long")}
+                onChange={() => toggleTerm("long")}
+              />
+              <span>Dài hạn</span>
+            </label>
+          </div>
         </div>
 
-        {/* CỘT 3 - THỜI HẠN HĐ */}
-        <div className="space-y-2">
-          <div className="text-sm font-semibold">Thời hạn HĐ</div>
-
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={termFilters.includes("short")}
-              onChange={() => toggleTerm("short")}
-            />
-            <span>Ngắn hạn</span>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={termFilters.includes("long")}
-              onChange={() => toggleTerm("long")}
-            />
-            <span>Dài hạn</span>
-          </label>
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            className="rounded-xl bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
+            onClick={() => setOpenFilter(null)}
+          >
+            Xong
+          </button>
         </div>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <button
-          type="button"
-          className="rounded-lg border px-3 py-2 text-sm bg-black text-white hover:bg-gray-800"
-          onClick={() => setOpenFilter(null)}
-        >
-          Xong
-        </button>
       </div>
     </div>
   )}
@@ -608,29 +636,29 @@ const toggleTerm = (value: "short" | "long") => {
               ))}
               <div className="pt-2 mt-2 border-t" />
 
-<div className="text-sm font-medium">Trạng thái</div>
+              <div className="text-sm font-medium">Trạng thái</div>
 
-{(
-  [
-    [null, "Tất cả"],
-    ["Trống", "Trống"],
-    ["Đã thuê", "Đã thuê"],
-  ] as const
-).map(([v, label]) => (
-  <label key={label} className="flex items-center gap-2 text-sm cursor-pointer">
-    <input
-      type="radio"
-      name="statusFilter"
-      checked={statusFilter === v}
-      onChange={() => {
-        
-        setStatusFilter(v);
-        setOpenFilter(null);
-      }}
-    />
-    <span>{label}</span>
-  </label>
-))}
+              {(
+                [
+                  [null, "Tất cả"],
+                  ["Trống", "Trống"],
+                  ["Đã thuê", "Đã thuê"],
+                ] as const
+              ).map(([v, label]) => (
+                <label key={label} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="statusFilter"
+                    checked={statusFilter === v}
+                    onChange={() => {
+                      
+                      setStatusFilter(v);
+                      setOpenFilter(null);
+                    }}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
             </div>
           )}
         </div>
