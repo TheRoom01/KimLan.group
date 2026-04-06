@@ -2700,8 +2700,8 @@ const handleNavigateToRoom = useCallback((href: string) => {
           </div>
         </header>
 
-        {/* STICKY FILTER BAR */}
-        <div className="relative lg:sticky lg:top-0 lg:z-[900] bg-gray-200">
+        {/* FILTER BAR */}
+        <div className="relative bg-gray-200">
           <div className="border-b border-black/10">
             <FilterBar
             districts={districts}

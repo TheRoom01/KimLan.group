@@ -20,24 +20,23 @@ export default function CompanyIntroModal({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[2147483646]">
+    <div className="fixed inset-0 z-[2147483646] flex items-center justify-center p-4">
       <button
         aria-label="Đóng"
         onClick={onClose}
         className="absolute inset-0 bg-black/50"
       />
 
-      <div className="absolute left-0 right-0 bottom-0 mx-auto w-full max-w-[560px] rounded-t-2xl bg-white p-4 shadow-2xl">
-        <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-black/15" />
-
+      <div className="relative z-10 w-full max-w-[560px] max-h-[85vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl">
+      
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold">The Room team</div>
+            <div className="text-lg font-semibold">The Room Team</div>
             <div className="mt-1 space-y-1 text-sm text-black/75">
               <div>Cho thuê căn hộ dịch vụ - Phòng trọ - Chung cư</div>
               <div>Studio / 1 phòng ngủ / 2 phòng ngủ /3 phòng ngủ / Duplex,...</div>
               <div>Hotline: 0967 467 587 - 0772 339 345</div>
-              <div>Địa chỉ: 14/5A5 Kỳ Đồng, Quận 3</div>
+              <div></div>
             </div>
           </div>
 

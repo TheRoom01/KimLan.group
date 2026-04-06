@@ -595,7 +595,11 @@ const toggleTerm = (value: "short" | "long") => {
         </div>
 
    {/* RIGHT: Sắp Xếp */}
-    <div className="relative z-50 shrink-0">
+    <div
+      className={`relative z-50 shrink-0 ${
+        openFilter === "amenities" ? "invisible pointer-events-none" : ""
+      }`}
+    >
       <button
         type="button"
         onClick={() => setOpenFilter((v) => (v === "sort" ? null : "sort"))}
