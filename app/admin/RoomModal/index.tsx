@@ -120,9 +120,10 @@ export default function RoomModal({
   const [detailForm, setDetailForm] = useState<RoomDetail>(defaultDetailForm)
   const [feeAutofillDone, setFeeAutofillDone] = useState(false)
 
-  const [saving, setSaving] = useState(false)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
+const [saving, setSaving] = useState(false)
+const [errorMsg, setErrorMsg] = useState<string | null>(null)
+const [uploading, setUploading] = useState(false)
+const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   // ✅ NEW: dùng để chọn RPC L1/L2 khi cần fallback (bypass RLS)
   const [adminLevel, setAdminLevel] = useState<number | null>(null)
@@ -782,6 +783,7 @@ const detailSample =
   /* ===== LOAD DATA WHEN EDIT ===== */
   useEffect(() => {
     setErrorMsg(null)
+    setShowCloseConfirm(false)
 
     // THÊM MỚI
       if (!editingRoom?.id) {
@@ -922,12 +924,20 @@ const detailSample =
 
   }, [editingRoom])
 
-  const requestClose = () => {
-  // nếu đang lưu / upload thì không cho đóng (tránh lỗi UX)
+const closeNow = () => {
+  setShowCloseConfirm(false)
+  onClose()
+}
+
+const requestClose = () => {
+  // nếu đang lưu / upload thì không cho đóng
   if (saving || uploading) return
 
-  const ok = window.confirm("Bạn có chắc muốn đóng? Thay đổi sẽ không được lưu.")
-  if (ok) onClose()
+  setShowCloseConfirm(true)
+}
+
+const cancelCloseConfirm = () => {
+  setShowCloseConfirm(false)
 }
 
   if (!open) return null
@@ -1222,27 +1232,20 @@ void (async () => {
 
   /* ================= UI ================= */
 
-    const lastBackdropCloseAtRef = useRef<number>(0)
+ const handleBackdropDown = (e: any) => {
+  if (e.target !== e.currentTarget) return
+  requestClose()
+}
 
-  const handleBackdropDown = () => {
-    const now = Date.now()
-    // ✅ chống trigger 2 lần (pointer + mouse / touch)
-    if (now - lastBackdropCloseAtRef.current < 80) return
-    lastBackdropCloseAtRef.current = now
-    requestClose()
-  }
-
-  const stopBackdropEvents = (e: any) => {
-    e.stopPropagation?.()
-  }
+const stopBackdropEvents = (e: any) => {
+  e.stopPropagation?.()
+}
 
   return (
-    <div
-      style={overlay}
-      onPointerDown={handleBackdropDown}
-      onMouseDown={handleBackdropDown}   // fallback
-      onTouchStart={handleBackdropDown}  // fallback
-    >
+      <div
+        style={overlay}
+        onPointerDown={handleBackdropDown}
+      >
       <div
         style={modal}
         onPointerDown={stopBackdropEvents}
@@ -1343,7 +1346,36 @@ void (async () => {
   </div>
 </div>
 
-      </div>
+            </div>
+
+      {showCloseConfirm && (
+        <div style={confirmOverlay} onPointerDown={(e) => e.stopPropagation()}>
+          <div style={confirmBox} onPointerDown={(e) => e.stopPropagation()}>
+            <div style={confirmTitle}>Xác nhận đóng</div>
+            <div style={confirmText}>
+              Bạn có chắc muốn đóng? Thay đổi sẽ không được lưu.
+            </div>
+
+            <div style={confirmActions}>
+              <button
+                type="button"
+                style={confirmStayBtn}
+                onClick={cancelCloseConfirm}
+              >
+                Ở lại
+              </button>
+
+              <button
+                type="button"
+                style={confirmCloseBtn}
+                onClick={closeNow}
+              >
+                Đóng modal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1430,4 +1462,62 @@ const btnSync: CSSProperties = {
   fontWeight: 600,
 }
 
+const confirmOverlay: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.45)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  zIndex: 9999,
+}
 
+const confirmBox: CSSProperties = {
+  width: '100%',
+  maxWidth: 420,
+  background: '#fff',
+  borderRadius: 14,
+  padding: 20,
+  boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+}
+
+const confirmTitle: CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+  color: '#111827',
+  marginBottom: 8,
+}
+
+const confirmText: CSSProperties = {
+  fontSize: 14,
+  lineHeight: 1.5,
+  color: '#374151',
+  marginBottom: 16,
+}
+
+const confirmActions: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: 10,
+}
+
+const confirmStayBtn: CSSProperties = {
+  background: '#e5e7eb',
+  color: '#111827',
+  border: 'none',
+  padding: '10px 16px',
+  borderRadius: 10,
+  cursor: 'pointer',
+  fontWeight: 600,
+}
+
+const confirmCloseBtn: CSSProperties = {
+  background: '#ef4444',
+  color: '#fff',
+  border: 'none',
+  padding: '10px 16px',
+  borderRadius: 10,
+  cursor: 'pointer',
+  fontWeight: 600,
+}
