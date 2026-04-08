@@ -32,10 +32,56 @@ const [linkPickerOpen, setLinkPickerOpen] = useState(false);
 const [linkPickerTitle, setLinkPickerTitle] = useState("Chọn link để mở");
 const [linkPickerLinks, setLinkPickerLinks] = useState<string[]>([]);
 
+const [confirmOpen, setConfirmOpen] = useState(false);
+const [confirmTitle, setConfirmTitle] = useState("Xác nhận");
+const [confirmText, setConfirmText] = useState("");
+const confirmActionRef = useRef<null | (() => void | Promise<void>)>(null);
+
+const toastTimerRef = useRef<number | null>(null);
+
 const notify = useCallback((msg: string) => {
   setToast(msg);
-  window.clearTimeout((notify as any)._t);
-  (notify as any)._t = window.setTimeout(() => setToast(null), 2500);
+
+  if (toastTimerRef.current) {
+    window.clearTimeout(toastTimerRef.current);
+  }
+
+  toastTimerRef.current = window.setTimeout(() => {
+    setToast(null);
+    toastTimerRef.current = null;
+  }, 2500);
+}, []);
+
+useEffect(() => {
+  return () => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+  };
+}, []);
+
+const openConfirm = useCallback(
+  (title: string, text: string, action: () => void | Promise<void>) => {
+    setConfirmTitle(title);
+    setConfirmText(text);
+    confirmActionRef.current = action;
+    setConfirmOpen(true);
+  },
+  []
+);
+
+const closeConfirm = useCallback(() => {
+  setConfirmOpen(false);
+  confirmActionRef.current = null;
+}, []);
+
+const runConfirmAction = useCallback(async () => {
+  const fn = confirmActionRef.current;
+  setConfirmOpen(false);
+  confirmActionRef.current = null;
+  if (fn) {
+    await fn();
+  }
 }, []);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
@@ -167,130 +213,113 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
   loadRooms(page, debouncedSearch, { useCache: true });
 }, [page, debouncedSearch, loadRooms, adminLevel]);
 
-const deleteRoom = useCallback(
-  async (room: any) => {
-    const id = String(room?.id || "").trim();
-    const roomCode = String(room?.room_code || "").trim();
+ const deleteRoom = useCallback(
+  async (id: string) => {
+    if (adminLevel === 2) {
+      openConfirm(
+        "Ẩn phòng",
+        "Bạn có chắc muốn ẩn phòng này khỏi danh sách admin L2?",
+        async () => {
+          try {
+            setLoading(true);
+            setErrorMsg(null);
 
-    if (!id) {
-      setErrorMsg("Thiếu room id");
+            const res = await supabase.rpc("hide_room", { p_room_id: id });
+            if (res.error) {
+              setErrorMsg(res.error.message);
+              return;
+            }
+
+            cacheRef.current.clear();
+            cursorMapRef.current.clear();
+            await loadRooms(page, debouncedSearch, { useCache: false });
+
+            notify("Đã ẩn phòng");
+          } catch (e: any) {
+            setErrorMsg(e?.message ?? "Ẩn phòng thất bại");
+          } finally {
+            setLoading(false);
+          }
+        }
+      );
       return;
     }
 
-    try {
-      setLoading(true);
-      setErrorMsg(null);
+    if (adminLevel === 1) {
+      openConfirm(
+        "Xoá phòng",
+        "Bạn có chắc muốn xoá phòng này? Dữ liệu DB và media có thể bị xoá.",
+        async () => {
+          try {
+            setLoading(true);
+            setErrorMsg(null);
 
-      // ---- L2: Ẩn phòng (không xoá DB/R2) + remove khỏi list ngay ----
-      if (adminLevel === 2) {
-        const ok = confirm("Ẩn phòng này?");
-        if (!ok) return;
+            const res = await supabase.rpc("admin_l1_delete_room", { p_room_id: id });
+            if (res.error) {
+              setErrorMsg(res.error.message);
+              return;
+            }
 
-        const res = await supabase.rpc("hide_room", { p_room_id: id });
-        if (res.error) {
-          setErrorMsg(res.error.message);
-          return;
-        }
+            cacheRef.current.clear();
+            cursorMapRef.current.clear();
+            setPage(1);
+            await loadRooms(1, debouncedSearch, { useCache: false });
 
-        setRooms((prev) => prev.filter((x: any) => String((x as any).id) !== id));
-        setTotal((t) => Math.max(0, t - 1));
-
-        cacheRef.current.clear();
-        cursorMapRef.current.clear();
-        notify("Đã ẩn phòng");
-        return;
-      }
-
-      // ---- L1: Xoá thật + xoá media R2 ----
-      if (adminLevel === 1) {
-        const ok = confirm("Xoá phòng này? Hệ thống sẽ xoá DB và media trên R2.");
-        if (!ok) return;
-
-        // 1) xoá DB trước
-        const res = await supabase.rpc("admin_l1_delete_room", { p_room_id: id });
-        if (res.error) {
-          setErrorMsg(res.error.message);
-          return;
-        }
-
-        // 2) xoá media trên R2 theo room id (và hỗ trợ room_code cũ nếu có)
-        try {
-          const r2Resp = await fetch(`/api/rooms/${id}/delete-r2-all`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              room_code: roomCode || null,
-            }),
-          });
-
-          if (!r2Resp.ok) {
-            const raw = await r2Resp.text().catch(() => "");
-            console.warn("delete-r2-all failed:", raw);
-            notify("Phòng đã xoá trong DB, nhưng xoá media R2 chưa hoàn tất");
-          } else {
-            notify("Đã xoá phòng và media");
+            notify("Đã xoá phòng");
+          } catch (e: any) {
+            setErrorMsg(e?.message ?? "Xoá phòng thất bại");
+          } finally {
+            setLoading(false);
           }
-        } catch (e) {
-          console.warn("delete-r2-all exception:", e);
-          notify("Phòng đã xoá trong DB, nhưng xoá media R2 chưa hoàn tất");
         }
-
-        cacheRef.current.clear();
-        cursorMapRef.current.clear();
-        setPage(1);
-        await loadRooms(1, debouncedSearch, { useCache: false });
-        return;
-      }
-
-      setErrorMsg("Không có quyền thao tác.");
-    } catch (e: any) {
-      setErrorMsg(e?.message ?? "Xoá/Ẩn thất bại");
-    } finally {
-      setLoading(false);
+      );
+      return;
     }
+
+    setErrorMsg("Không có quyền thao tác.");
   },
-  [loadRooms, debouncedSearch, adminLevel, notify]
+  [adminLevel, debouncedSearch, loadRooms, notify, openConfirm, page]
 );
 
 const toggleRoomStatus = useCallback(
   async (room: any) => {
-    try {
-      const current = normalizeStatus(room.status);
-      const next = current === "đã thuê" ? "Trống" : "Đã thuê";
+    const current = normalizeStatus(room.status);
+    const next = current === "đã thuê" ? "Trống" : "Đã thuê";
 
-      const ok = confirm(`Chuyển trạng thái sang "${next}"?`);
-      if (!ok) return;
+    openConfirm(
+      "Đổi trạng thái",
+      `Bạn có chắc muốn chuyển trạng thái phòng sang "${next}"?`,
+      async () => {
+        try {
+          setRooms((prev) =>
+            prev.map((r: any) =>
+              r.id === room.id ? { ...r, status: next } : r
+            )
+          );
 
-      // 👉 optimistic update (đổi ngay UI)
-      setRooms((prev) =>
-        prev.map((r: any) =>
-          r.id === room.id ? { ...r, status: next } : r
-        )
-      );
+          const res = await supabase.rpc("update_room_status", {
+            p_room_id: room.id,
+            p_status: next,
+          });
 
-      // 👉 gọi RPC update DB (bạn cần có function này)
-      const res = await supabase.rpc("update_room_status", {
-        p_room_id: room.id,
-        p_status: next,
-      });
+          if (res.error) {
+            throw new Error(res.error.message);
+          }
 
-      if (res.error) {
-        throw new Error(res.error.message);
+          notify("Đã cập nhật trạng thái");
+        } catch (e: any) {
+          setRooms((prev) =>
+            prev.map((r: any) =>
+              r.id === room.id ? { ...r, status: room.status } : r
+            )
+          );
+
+          setErrorMsg(e?.message ?? "Cập nhật thất bại");
+        }
       }
-
-      notify("Đã cập nhật trạng thái");
-    } catch (e: any) {
-      // rollback nếu lỗi
-      setRooms((prev) =>
-        prev.map((r: any) =>
-          r.id === room.id ? { ...r, status: room.status } : r
-        )
-      );
-
-      alert(e?.message || "Cập nhật thất bại");
-    }
+    );
   },
-  [notify]
+  [notify, openConfirm]
 );
 
 const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | null) => {
@@ -457,13 +486,13 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                         <Pencil size={18} strokeWidth={1.8} />
                       </button>
 
-                    <button
-                      style={{ ...iconBtn, marginLeft: 10 }}
-                      onClick={() => deleteRoom(r)}
-                      title="Xoá"
-                    >
-                      <Trash2 size={18} strokeWidth={1.8} color="#ef4444" />
-                    </button>
+                      <button
+                        style={{ ...iconBtn, marginLeft: 10 }}
+                        onClick={() => deleteRoom((r as any).id)}
+                        title="Xoá"
+                      >
+                        <Trash2 size={18} strokeWidth={1.8} color="#ef4444" />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -505,18 +534,25 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNotify={notify}
-          onSaved={(updatedRoom: any, opts: any) => {
+          onSaved={async (updatedRoom: any, opts: any) => {
             cacheRef.current.clear();
             cursorMapRef.current.clear();
 
             const patchedRoom = { ...updatedRoom, updated_at: new Date().toISOString() };
+
+            if ((debouncedSearch || "").trim()) {
+              await loadRooms(page, debouncedSearch, { useCache: false });
+              return;
+            }
 
             setRooms((prev) => {
               const without = prev.filter((x: any) => (x as any).id !== patchedRoom.id);
               return [patchedRoom, ...without].slice(0, PAGE_SIZE);
             });
 
-            if (opts?.isNew) setTotal((t) => t + 1);
+            if (opts?.isNew) {
+              setTotal((t) => t + 1);
+            }
           }}
         />
       )}
@@ -611,6 +647,96 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
   </div>
 )}
 
+      {confirmOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            zIndex: 1001,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={closeConfirm}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#fff",
+              borderRadius: 14,
+              padding: 20,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: "#111827",
+                marginBottom: 8,
+              }}
+            >
+              {confirmTitle}
+            </div>
+
+            <div
+              style={{
+                fontSize: 14,
+                lineHeight: 1.5,
+                color: "#374151",
+                marginBottom: 16,
+              }}
+            >
+              {confirmText}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeConfirm}
+                style={{
+                  background: "#e5e7eb",
+                  color: "#111827",
+                  border: "none",
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Huỷ
+              </button>
+
+              <button
+                type="button"
+                onClick={runConfirmAction}
+                style={{
+                  background: "#ef4444",
+                  color: "#fff",
+                  border: "none",
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {toast && (
         <div
           style={{
