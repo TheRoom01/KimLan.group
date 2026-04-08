@@ -17,6 +17,25 @@ export default function CompanyIntroModal({ open, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  const handleOpenZalo = () => {
+  const phone = "0967467587";
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  if (isMobile) {
+    // Ưu tiên mở app Zalo
+    window.location.href = `zalo://conversation?phone=${phone}`;
+
+    // Fallback nếu app không mở được
+    window.setTimeout(() => {
+      window.open(`https://zalo.me/${phone}`, "_blank", "noopener,noreferrer");
+    }, 800);
+
+    return;
+  }
+
+  // Desktop: mở web
+  window.open(`https://zalo.me/${phone}`, "_blank", "noopener,noreferrer");
+};
   if (!open) return null;
 
   return (
@@ -60,26 +79,25 @@ export default function CompanyIntroModal({ open, onClose }: Props) {
             href="https://www.tiktok.com/@kimlangroup.chdv?_r=1&_t=ZS-93alZMGvdFQ"
             target="_blank"
             rel="noreferrer"
-            className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-medium hover:bg-black/5"
+            className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-medium hover:bg-gray-100 active:scale-[0.98] transition"
           >
             Tiktok
           </a>
           <a
-            href="https://www.facebook.com/duongkimlan001"
+            href="https://www.facebook.com/share/1Ds8LBYXRF/"
             target="_blank"
             rel="noreferrer"
-            className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-medium hover:bg-black/5"
+            className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-medium hover:bg-gray-100 active:scale-[0.98] transition"
           >
             Facebook
           </a>
-          <a
-            href="https://zalo.me/0772339345"
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-medium hover:bg-black/5"
-          >
-            Zalo
-          </a>
+         <button
+          type="button"
+          onClick={handleOpenZalo}
+          className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-medium hover:bg-gray-100 active:scale-[0.98] transition"
+        >
+         Zalo
+        </button>
         </div>
       </div>
     </div>
