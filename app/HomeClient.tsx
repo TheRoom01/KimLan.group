@@ -2779,7 +2779,7 @@ return (
       />
     </div>
 
-    <div className="sticky bottom-0 z-[950] shrink-0 border-t border-white/15 bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))] backdrop-blur-[36px] shadow-[0_-24px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]">
+    <div className="sticky bottom-0 z-[950] shrink-0 border-t border-white/15 bg-[linear-gradient(rgba(255,255,255,0.045),rgba(255,255,255,0.015))] backdrop-blur-[36px] shadow-[0_-24px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]">
       <Pagination
         goNext={goNext}
         goPrev={goPrev}

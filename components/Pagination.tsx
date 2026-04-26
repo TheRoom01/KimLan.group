@@ -25,7 +25,7 @@ const Pagination = ({
 }: PaginationProps) => {
   return (
     <div className="mx-auto w-full max-w-[1240px] px-4 py-3">
-      <div className="flex items-center justify-between gap-3 bg-transparent px-0 py-0">
+      <div className="relative flex items-center justify-between gap-3 bg-transparent px-0 py-0">
         <button
           type="button"
           onClick={goPrev}
@@ -35,11 +35,11 @@ const Pagination = ({
           ← Trang Trước
         </button>
 
-        {typeof total === "number" && (
-          <div className="hidden rounded-2xl border border-white/20 bg-[linear-gradient(rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-4 py-2 text-sm font-medium text-white/70 backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] sm:block">
-            Tổng {total.toLocaleString("vi-VN")} phòng
-          </div>
-        )}
+    {typeof total === "number" && (
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-2xl border border-white/20 bg-[linear-gradient(rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-3 py-2 text-xs font-semibold text-white/75 backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] sm:text-sm">
+        Tổng {total.toLocaleString("vi-VN")} phòng
+      </div>
+    )}
 
         <button
           type="button"
