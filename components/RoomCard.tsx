@@ -149,11 +149,41 @@ export default function RoomCard({
         onNavigate(href);
       }}
     >
-      <div
-        className="group rounded-xl border bg-white overflow-hidden
-                   transition hover:shadow-xl"
-      >
-        <div className="h-[240px] overflow-hidden bg-gray-100">
+<div
+  className="
+  group relative z-0 overflow-hidden rounded-[18px]
+
+  bg-[rgba(255,255,255,0.06)]
+  backdrop-blur-[48px]
+
+  border border-white/25
+
+  shadow-[0_25px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.25)]
+
+  transition-all duration-300
+
+  hover:-translate-y-1
+  hover:bg-[rgba(255,255,255,0.10)]
+  hover:border-white/35
+"
+>
+
+  <div
+  className="
+  pointer-events-none absolute inset-0 rounded-[18px]
+  bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.35),transparent_50%)]
+  opacity-40
+"
+/>
+
+<div
+  className="
+  pointer-events-none absolute inset-0 rounded-[18px]
+  bg-gradient-to-br from-white/25 via-transparent to-transparent
+  opacity-30
+"
+/>
+        <div className="h-[240px] overflow-hidden bg-black/20">
           <div className="grid grid-cols-[60%_40%] gap-1 h-full">
           <div className="relative w-full h-full overflow-hidden">
             {room.has_video && mainErrorStage >= 1 && room.video_url ? (
@@ -231,23 +261,23 @@ export default function RoomCard({
 
         <div className="p-3 flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[15px] font-medium text-gray-500 leading-6">
+            <h3 className="text-[13px] font-medium text-[#A0856E] leading-5">
               {room.room_code ? (
                 <>
                   <span>Mã: </span>
-                  <span className="font-semibold text-gray-800">{room.room_code}</span>
+                  <span className="font-semibold text-[13px] text-[#E5C9A9]/80">{room.room_code}</span>
                   <span> | </span>
                 </>
               ) : null}
               <span>Dạng: </span>
-              <span className="font-semibold text-gray-800">{room.room_type}</span>
+              <span className="font-semibold text-[#E5C9A9]">{room.room_type}</span>
             </h3>
 
             <span
-              className={`text-xs px-2 py-[2px] rounded-full whitespace-nowrap ${
+              className={`text-xs px-2.5 py-[3px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[12px] ${
                 room.status === "Trống"
-                  ? "bg-green-500 text-white"
-                  : "bg-gray-300 text-gray-700"
+                  ? "bg-[#22c55e]/15 text-[#86efac] border border-[#22c55e]/30"
+                  : "bg-white/10 text-white/60 border border-white/15"
               }`}
             >
               {room.status === "Trống" ? "Còn Trống" : "Đã thuê"}
@@ -255,19 +285,19 @@ export default function RoomCard({
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="shrink-0 whitespace-nowrap text-[16px] font-semibold text-sky-600 leading-6">
-              Giá: {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
-            </div>
+          <div className="text-[18px] font-semibold text-[#60A5FA]">
+           {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
+          </div>
 
             {room.description ? (
-              <div className="flex-1 text-[14px] text-gray-800 text-right break-words whitespace-pre-line line-clamp-2">
+              <div className="flex-1 text-[13px] font-semibold text-[#E5C9A9] text-right break-words whitespace-pre-line line-clamp-2">
                 {room.description}
               </div>
             ) : null}
           </div>
         </div>
 
-        <p className="text-gray-800 font-semibold leading-6 pb-3 px-3">
+       <p className="text-white/90 font-semibold leading-6 pb-3 px-3 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]">
           📍 {isAdmin && room.house_number && `${room.house_number} `}
           {address}
           {ward && `, P. ${ward}`}

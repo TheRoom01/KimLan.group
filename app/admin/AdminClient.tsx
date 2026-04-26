@@ -347,19 +347,37 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
       {/* HEADER */}
       <div style={header}>
         <div style={headerLeft}>
-          <input
-            placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
-            value={search}
-            onChange={(e) => {
-              const v = e.target.value;
-              setSearch(v);
-              setPage(1);
-              cursorMapRef.current.clear();
-              cacheRef.current.clear();
-             
-            }}
-            style={searchInput}
-          />
+          <div style={searchWrap}>
+            <input
+              placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
+              value={search}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSearch(v);
+                setPage(1);
+                cursorMapRef.current.clear();
+                cacheRef.current.clear();
+              }}
+              style={searchInputWithClear}
+            />
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setPage(1);
+                  cursorMapRef.current.clear();
+                  cacheRef.current.clear();
+                }}
+                style={clearSearchBtn}
+                aria-label="Xoá tìm kiếm"
+                title="Xoá tìm kiếm"
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
 
         <button
@@ -836,6 +854,34 @@ const searchInput: CSSProperties = {
   outline: "none",
 };
 
+const searchWrap: CSSProperties = {
+  position: "relative",
+  flex: 1,
+  maxWidth: 720,
+};
+
+const searchInputWithClear: CSSProperties = {
+  ...searchInput,
+  width: "100%",
+  maxWidth: "none",
+  paddingRight: 40,
+};
+
+const clearSearchBtn: CSSProperties = {
+  position: "absolute",
+  right: 8,
+  top: "50%",
+  transform: "translateY(-50%)",
+  width: 28,
+  height: 28,
+  borderRadius: 999,
+  border: "none",
+  background: "transparent",
+  color: "#6b7280",
+  fontSize: 20,
+  lineHeight: "28px",
+  cursor: "pointer",
+};
 const addBtn: CSSProperties = {
   padding: "10px 14px",
   borderRadius: 10,

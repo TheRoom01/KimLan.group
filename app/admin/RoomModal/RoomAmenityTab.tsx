@@ -18,34 +18,41 @@ export default function RoomAmenityTab({ detailForm, onChange }: Props) {
           const checked = Boolean((detailForm as any)[key])
 
           return (
-            <div key={String(key)} style={amenityCard}>
-              <span style={amenityLabel}>{item.label}</span>
+ 
+            <button
+              key={String(key)}
+              type="button"
+              style={{
+                ...amenityCard,
+                ...(checked ? amenityCardOn : {}),
+              }}
+              onClick={() =>
+                onChange({ [key]: !checked } as Partial<RoomDetail>)
+              }
+            >
+              <span
+                style={{
+                  ...amenityLabel,
+                  ...(checked ? amenityLabelOn : {}),
+                }}
+              >
+                {item.label}
+              </span>
 
-              <label style={switchWrap}>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={e =>
-                    onChange({ [key]: e.target.checked } as Partial<RoomDetail>)
-                  }
-                  style={switchInput}
-                />
-
+              <span
+                style={{
+                  ...switchTrack,
+                  ...(checked ? switchTrackOn : {}),
+                }}
+              >
                 <span
                   style={{
-                    ...switchTrack,
-                    ...(checked ? switchTrackOn : {}),
+                    ...switchKnob,
+                    transform: checked ? 'translateX(20px)' : 'translateX(0px)',
                   }}
-                >
-                  <span
-                    style={{
-                      ...switchKnob,
-                      transform: checked ? 'translateX(20px)' : 'translateX(0px)',
-                    }}
-                  />
-                </span>
-              </label>
-            </div>
+                />
+              </span>
+            </button>
           )
         })}
       </div>
@@ -81,11 +88,26 @@ const amenityCard: React.CSSProperties = {
   background: '#fff',
   fontSize: 16,
   gap: 12,
+  cursor: 'pointer',
+  textAlign: 'left',
+  width: '100%',
+  transition: 'background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+}
+
+const amenityCardOn: React.CSSProperties = {
+  background: '#eff6ff',
+  border: '1px solid #2563eb',
+  boxShadow: '0 0 0 1px rgba(37, 99, 235, 0.12)',
 }
 
 const amenityLabel: React.CSSProperties = {
   color: '#111827',
   lineHeight: 1.2,
+}
+
+const amenityLabelOn: React.CSSProperties = {
+  color: '#1d4ed8',
+  fontWeight: 600,
 }
 
 /* ===== PILL SWITCH ===== */

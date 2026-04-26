@@ -344,7 +344,10 @@ useEffect(() => {
       ? createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[9999] inline-block rounded-xl border bg-white shadow"
+            className="fixed z-[9999] inline-block rounded-3xl border border-white/35
+bg-[linear-gradient(rgba(255,255,255,0.045),rgba(255,255,255,0.015))]
+backdrop-blur-[45px]
+shadow-[0_35px_120px_rgba(0,0,0,0.75),0_0_50px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.45)]"
             style={{ left: menuPos.left, top: menuPos.top }}
           >
             <div className="py-1">
@@ -354,7 +357,8 @@ useEffect(() => {
                   closeMenu();
                   router.push("/admin");
                 }}
-                className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-medium hover:bg-gray-50"
+                className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85
+hover:bg-white/10 hover:text-white rounded-xl transition-all"
               >
                 Admin
               </button>
@@ -365,7 +369,8 @@ useEffect(() => {
                   closeMenu();
                   setChangePwOpen(true);
                 }}
-                className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-medium hover:bg-gray-50"
+                className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85
+hover:bg-white/10 hover:text-white rounded-xl transition-all"
               >
                 Đổi mật khẩu
               </button>
@@ -375,8 +380,9 @@ useEffect(() => {
                 onClick={() => {
                   closeMenu();
                   handleLogout();
-                }}
-                className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-medium hover:bg-gray-50"
+                }}className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85
+hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                
               >
                 Đăng xuất
               </button>
@@ -387,15 +393,19 @@ useEffect(() => {
       : null;
 
   // ===== controls (portal to #auth-anchor) =====
-  const controls = (
-    <div className="flex items-center gap-3">
+const controls = (
+  <div className="relative z-[9999] flex items-center gap-3 pointer-events-auto">
       {user ? (
         <div className="relative">
           <button
             ref={btnRef}
             type="button"
             onClick={() => (menuOpen ? closeMenu() : openMenu())}
-            className="rounded-lg bg-white/90 px-3 py-1.5 text-sm font-medium hover:bg-white"
+            className="rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold text-white
+bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
+backdrop-blur-[30px]
+shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
+hover:bg-[rgba(255,255,255,0.1)] transition-all"
             title={user?.email || "Đã đăng nhập"}
           >
             Tài khoản ▾
@@ -404,7 +414,11 @@ useEffect(() => {
       ) : (
         <button
           onClick={openAuth}
-          className="rounded-lg bg-white/90 px-3 py-1.5 text-sm font-medium hover:bg-white"
+          className="rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold text-white
+bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
+backdrop-blur-[30px]
+shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
+hover:bg-[rgba(255,255,255,0.1)] transition-all"
         >
           Đăng nhập
         </button>

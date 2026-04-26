@@ -81,42 +81,109 @@ function joinParts(parts: Array<string | null | undefined>) {
     .join(", ");
 }
 
-function renderRichMultilineLinks(raw: string) {
-  const text = String(raw ?? "").trim();
-  if (!text) return null;
-
-  const lines = text.split(/\r?\n/);
+function renderSmartLinks(raw: string) {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
   return (
-    <div className="whitespace-pre-wrap break-words space-y-1">
+    <div className="space-y-2">
       {lines.map((line, idx) => {
-        const trimmed = line.trim();
+        const type = detectLinkType(line);
 
-        if (!trimmed) {
-          return <div key={idx}>&nbsp;</div>;
-        }
-
-        const isUrl = /^https?:\/\/\S+$/i.test(trimmed);
-
-        if (isUrl) {
+        // ===== ZALO =====
+        if (type === "zalo") {
           return (
-            <div key={idx}>
-              <a
-                href={trimmed}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sky-600 underline break-all"
-              >
-                {trimmed}
-              </a>
+          <a
+            key={idx}
+            href={line}
+            target="_blank"
+            rel="noreferrer"
+            className="
+              inline-flex items-center gap-3
+              w-fit max-w-full
+              rounded-2xl px-3 py-2
+              border border-white/20
+              bg-[rgba(255,255,255,0.06)]
+              backdrop-blur-[24px]
+              shadow-[0_10px_35px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]
+              hover:bg-[rgba(255,255,255,0.12)]
+              transition-all
+            "
+          >
+            <div
+              className="
+                w-10 h-10 rounded-full flex items-center justify-center
+                text-white font-bold
+                bg-[rgba(59,130,246,0.25)]
+                backdrop-blur-[10px]
+                border border-blue-300/40
+              "
+            >
+              Z
             </div>
+
+            <div className="flex-1">
+              <div className="text-sm font-medium text-[#F4E7D6]">
+                Group Zalo chủ nhà
+              </div>
+              <div className="text-xs text-[#EAD8C0]/70 break-all">
+                {line}
+              </div>
+            </div>
+          </a>
           );
         }
 
+        // ===== GOOGLE SHEET =====
+        if (type === "gsheet") {
+          return (
+            <a
+              key={idx}
+              href={line}
+              target="_blank"
+              rel="noreferrer"
+              className="
+                inline-flex items-center gap-3
+                w-fit max-w-full shrink-0
+                rounded-2xl px-3 py-2
+                border border-white/20
+                bg-[rgba(255,255,255,0.06)]
+                backdrop-blur-[24px]
+                shadow-[0_10px_35px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]
+                hover:bg-[rgba(255,255,255,0.12)]
+                active:scale-[0.97]
+                transition-all
+              "
+            >
+              <div
+                className="
+                  w-10 h-10 rounded-full flex items-center justify-center
+                  text-white text-sm
+                  bg-[rgba(34,197,94,0.18)]
+                  backdrop-blur-[10px]
+                  border border-green-400/30
+                "
+              >
+                📊
+              </div>
+
+              <div className="text-sm font-medium text-[#F4E7D6]">
+                Mở Google Sheet
+              </div>
+            </a>
+          );
+        }
+
+        // ===== DEFAULT =====
         return (
-          <div key={idx} className="text-gray-800 break-words">
+          <a
+            key={idx}
+            href={line}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[#F4E7D6] underline break-all"
+          >
             {line}
-          </div>
+          </a>
         );
       })}
     </div>
@@ -166,12 +233,23 @@ function compactPublicHouseNumber(input: any) {
 
 /* ================= Page ================= */
 
+function detectLinkType(url: string) {
+  const u = url.toLowerCase();
+
+  if (u.includes("zalo.me")) return "zalo";
+  if (u.includes("docs.google.com/spreadsheets")) return "gsheet";
+  if (u.includes("docs.google.com")) return "gdoc";
+
+  return "other";
+}
 export default function RoomDetailPage() {
   const params = useParams();
   const id = (params?.id as string) || "";
   const [room, setRoom] = useState<any>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [phoneModal, setPhoneModal] = useState<string | null>(null);
+  const [policyOpen, setPolicyOpen] = useState(false);
 
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -861,9 +939,14 @@ const zaloLinkRaw = linkRaw.trim();
   // (tuỳ chọn) lấy số đầu tiên nếu bạn vẫn cần 1 biến zaloPhone
   const zaloPhone = zaloPhones[0] ?? "";
 
-  return (
-
-     <div className="p-6 space-y-6 text-base">
+return (
+  <div
+    className="
+      p-6 space-y-6 text-base text-[#F4E7D6]
+      bg-[url('/bg-glass.jpg')]
+      bg-cover bg-center bg-fixed
+    "
+  >
       {showOpenBrowserBar && (
         <div className="sticky top-2 z-40 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1064,7 +1147,7 @@ activeItem.kind === "video" ? (
       absolute top-3 right-3 z-10
       inline-flex items-center gap-1
       rounded-full border border-gray-300
-      bg-white/90 backdrop-blur
+       backdrop-blur
       px-2 py-[1px]
       text-[10px] font-medium
       text-gray-700
@@ -1122,14 +1205,22 @@ activeItem.kind === "video" ? (
       </div>
       
 {/* ===== Ngày cập nhật ===== */}
-<div className="flex items-center justify-end gap-3 mt-1 mb-0 text-sm text-gray-600">
+<div className="flex items-center justify-end gap-3 mt-1 mb-0 text-sm text-black/80 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
   {updatedText && <div>Ngày cập nhật: {updatedText}</div>}
 </div>
 
-  <div className="rounded-xl border p-4 space-y-2">
+  <div
+  className="
+    rounded-2xl p-4 space-y-2
+    border border-white/15
+    bg-[rgba(255,255,255,0.04)]
+    backdrop-blur-[28px]
+    shadow-[0_20px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]
+  "
+>
  {/* Dòng 1: Mã | type  + Badge bên phải */}
 <div className="flex items-start justify-between gap-3">
-  <div className="text-gray-800">
+  <div className="text-[#F4E7D6]">
     <span>Mã:</span>{" "}
     <span className="font-semibold">{roomCode || "—"}</span>
     {roomType && (
@@ -1146,7 +1237,9 @@ activeItem.kind === "video" ? (
       <span
         className={[
           "text-sm px-2 py-[2px] rounded-full whitespace-nowrap",
-          statusText === "Còn Trống" ? "bg-green-500 text-white" : "bg-red-500 text-white",
+          statusText === "Còn Trống"
+  ? "bg-[rgba(34,197,94,0.18)] text-green-300 border border-green-400/30 backdrop-blur"
+  : "bg-[rgba(239,68,68,0.18)] text-red-300 border border-red-400/30 backdrop-blur"
         ].join(" ")}
         title={statusText}
       >
@@ -1160,20 +1253,28 @@ activeItem.kind === "video" ? (
 
   {/* Dòng 2: Giá + Mô Tả*/}
   <div className="flex items-center justify-between gap-3">
-    <div className="text-gray-800">
+    <div className="text-[#F4E7D6]">
       <span className="font-medium">Giá:</span>{" "}
       <span className="font-semibold text-sky-600">{priceText}</span>
     </div>
-      <div className="max-w-[50%] text-right text-gray-800 whitespace-pre-line break-words">
+      <div className="max-w-[30%] text-right text-[#EAD8C0]/80 text-sm line-clamp-2">
     {descriptionText}
   </div>
 </div>
  {/* Dòng 3: Địa chỉ */}
-  {addressLine && <div className="text-gray-800 font-semibold">📍 {addressLine}</div>}
+  {addressLine && <div className="text-[#F4E7D6] font-semibold">📍 {addressLine}</div>}
 
   </div>
 
-      <div className="space-y-2 pt-4 border-t">
+      <div
+  className="
+    space-y-2 pt-4 mt-2
+    border-t border-white/10
+    bg-[rgba(255,255,255,0.03)]
+    backdrop-blur-[20px]
+    rounded-xl p-4
+  "
+>
         <div className="flex items-center justify-between">
   <h2 className="text-lg font-semibold">Chi phí</h2>
 
@@ -1202,7 +1303,15 @@ activeItem.kind === "video" ? (
         )}
       </div>
 
-      <div className="pt-4 border-t">
+      <div
+  className="
+    pt-4 mt-2
+    border-t border-white/10
+    bg-[rgba(255,255,255,0.02)]
+    backdrop-blur-[18px]
+    rounded-xl p-4
+  "
+>
         <h2 className="text-lg font-semibold mb-2">Tiện ích</h2>
         <ul className="grid grid-cols-2 gap-2">
           {detail?.has_elevator && <li>✔️ Thang máy</li>}
@@ -1230,23 +1339,36 @@ activeItem.kind === "video" ? (
       </div>
 
       {isAdmin && (
-  <div className="pt-4 border-t space-y-2">
-    <h2 className="text-lg font-semibold">Chính Sách</h2>
+    <div className="pt-4 border-t space-y-2">
+    <div className="flex items-center justify-between gap-3">
 
-    <textarea
-      className="w-full min-h-[140px] rounded-xl border p-3"
-      defaultValue={room?.chinh_sach ?? ""}
-      readOnly
-    />
+  <button
+    type="button"
+    onClick={() => setPolicyOpen(true)}
+    className="
+      rounded-full px-4 py-2 text-sm font-semibold text-white
+      border border-white/25
+      bg-[rgba(255,255,255,0.08)]
+      backdrop-blur-[20px]
+      shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
+      hover:bg-[rgba(255,255,255,0.14)]
+      active:scale-[0.97]
+      transition-all
+    "
+    title="Xem chính sách"
+  >
+    📄 Chính sách & Quy định
+  </button>
+</div>
 
     {/* ✅ L1 + L2 luôn thấy link_zalo + zalo_phone (kể cả rỗng) */}
 {isAdmin && (
-  <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 text-gray-800">
+  <div className="grid grid-cols-1 sm:grid-cols-[auto_220px] gap-3 text-[#F4E7D6]">
     {/* LEFT: Link */}
     <div>
-      <div className="font-medium mb-1">Link Zalo</div>
+      
       {zaloLinkRaw ? (
-        renderRichMultilineLinks(zaloLinkRaw)
+        renderSmartLinks(zaloLinkRaw)
       ) : (
         <div className="text-gray-500">-</div>
       )}
@@ -1258,9 +1380,18 @@ activeItem.kind === "video" ? (
       {zaloPhones.length > 0 ? (
         <div className="space-y-1">
           {zaloPhones.map((p, i) => (
-            <div key={`${p}-${i}`} className="break-all">
-              {p}
-            </div>
+          <button
+            key={`${p}-${i}`}
+            onClick={() => setPhoneModal(p)}
+            className="
+              text-left w-full break-all
+              text-red-400 font-semibold
+              hover:text-red-300 hover:underline
+              transition-colors
+            "
+          >
+            {p}
+          </button>
           ))}
         </div>
       ) : (
@@ -1272,111 +1403,136 @@ activeItem.kind === "video" ? (
   </div>
 )}
 
-  {viewerOpen && mediaItems.length > 0 && (
-        <div className="fixed inset-0 bg-black z-50 flex items-center justify-center" onClick={() => setViewerOpen(false)}>
-          <div
-            className="relative w-full h-full flex items-center justify-center"
-            onTouchStart={onTouchStart}
-            onTouchEnd={onTouchEnd}
-            onClick={(e) => e.stopPropagation()}
-          >
-   {activeItem?.kind === "video" ? (
-  <div className="relative w-full h-full">
+{viewerOpen && mediaItems.length > 0 && (
+  <div
+    className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-[12px]"
+    onClick={() => setViewerOpen(false)}
+  >
     <div
-  className="relative w-full h-full"
-  onClick={(e) => {
-    e.stopPropagation()
-    showOverlayAndMaybeHide()
-  }}
->
-  <video
-    ref={videoRef}
-    src={activeItem.url}
-    controls
-    playsInline
-    preload="none"
-    className="w-full h-full object-contain bg-black"
-    onPlay={() => {
-      setShowPlay(false)
-      showOverlayAndMaybeHide()
-    }}
-    onPause={() => {
-      setShowPlay(true)
-      setOverlayVisible(true)
-      clearOverlayTimer()
-    }}
-    onEnded={() => {
-      setShowPlay(true)
-      setOverlayVisible(true)
-      clearOverlayTimer()
-    }}
-  />
-
-  {(overlayVisible || showPlay) && (
-    <button
-      className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/40 text-white text-2xl flex items-center justify-center border border-white/40 backdrop-blur"
-      onClick={(e) => {
-        e.stopPropagation()
-        const v = videoRef.current
-        if (!v) return
-
-        // luôn hiện nút khi user tương tác
-        setOverlayVisible(true)
-        clearOverlayTimer()
-
-        if (v.paused) {
-          v.play()
-          setShowPlay(false)
-          scheduleHideOverlay(1500)
-        } else {
-          v.pause()
-          setShowPlay(true)
-        }
-      }}
-      aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
-      title={showPlay ? "Phát" : "Tạm dừng"}
+      className="relative flex h-full w-full items-center justify-center"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
     >
-      {showPlay ? "▶" : "⏸"}
-    </button>
-  )}
-</div>
+      {activeItem?.kind === "video" ? (
+        <div className="relative h-full w-full">
+          <div
+            className="relative h-full w-full"
+            onClick={(e) => {
+              e.stopPropagation();
+              showOverlayAndMaybeHide();
+            }}
+          >
+            <video
+              ref={videoRef}
+              src={activeItem.url}
+              controls
+              playsInline
+              preload="none"
+              className="h-full w-full object-contain bg-black/40"
+              onPlay={() => {
+                setShowPlay(false);
+                showOverlayAndMaybeHide();
+              }}
+              onPause={() => {
+                setShowPlay(true);
+                setOverlayVisible(true);
+                clearOverlayTimer();
+              }}
+              onEnded={() => {
+                setShowPlay(true);
+                setOverlayVisible(true);
+                clearOverlayTimer();
+              }}
+            />
 
-  </div>
-  ) : (
-    <img
-      src={activeItem?.url || ""}
-      alt={room?.title || roomCode || ""}
-      className="w-full h-full object-contain"
-      loading="lazy"
-    />
-  )}
-            <button className="absolute top-4 right-4 text-white text-2xl" onClick={() => setViewerOpen(false)}>
-              ✕
-            </button>
+            {(overlayVisible || showPlay) && (
+              <button
+                className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const v = videoRef.current;
+                  if (!v) return;
 
-            {activeIndex > 0 && (
-              <button className="absolute left-4 text-white text-3xl" onClick={() => setActiveIndex((i) => i - 1)}>
-                ‹
-              </button>
-            )}
+                  setOverlayVisible(true);
+                  clearOverlayTimer();
 
-            {activeIndex < mediaItems.length - 1 && (
-              <button className="absolute right-4 text-white text-3xl" onClick={() => setActiveIndex((i) => i + 1)}>
-                ›
+                  if (v.paused) {
+                    v.play();
+                    setShowPlay(false);
+                    scheduleHideOverlay(1500);
+                  } else {
+                    v.pause();
+                    setShowPlay(true);
+                  }
+                }}
+                aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
+                title={showPlay ? "Phát" : "Tạm dừng"}
+              >
+                {showPlay ? "▶" : "⏸"}
               </button>
             )}
           </div>
         </div>
+      ) : (
+        <img
+          src={activeItem?.url || ""}
+          alt={room?.title || roomCode || ""}
+          className="h-full w-full object-contain"
+          loading="lazy"
+        />
       )}
+
+      <button
+        className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+        onClick={() => setViewerOpen(false)}
+      >
+        ✕
+      </button>
+
+      {activeIndex > 0 && (
+        <button
+          className="absolute left-4 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+          onClick={() => setActiveIndex((i) => i - 1)}
+        >
+          ‹
+        </button>
+      )}
+
+      {activeIndex < mediaItems.length - 1 && (
+        <button
+          className="absolute right-4 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+          onClick={() => setActiveIndex((i) => i + 1)}
+        >
+          ›
+        </button>
+      )}
+    </div>
+  </div>
+)}
 
       {/* ===== SHARE MODAL ===== */}
 {(adminLevel === 1 || adminLevel === 2) && shareOpen && (
   <div
-    className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center"
-    onClick={() => setShareOpen(false)}
-  >
+  className="
+    fixed inset-0 
+    z-[99999] 
+    flex items-end md:items-center justify-center
+    bg-black/50 
+    backdrop-blur-[8px]
+  "
+  onClick={() => setShareOpen(false)}
+>
     <div
-      className="w-full md:max-w-lg bg-white rounded-t-2xl md:rounded-2xl p-4"
+      className="
+    w-full md:max-w-lg p-4
+    rounded-t-2xl md:rounded-3xl
+    border border-white/15
+    bg-[rgba(255,255,255,0.05)]
+    backdrop-blur-[40px]
+    text-white
+    shadow-[0_30px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between gap-3">
@@ -1390,9 +1546,9 @@ activeItem.kind === "video" ? (
             }
             className={[
               "px-3 py-1 rounded-lg border transition-colors",
-              shareSel.room_link
-                ? "bg-sky-600 text-white border-sky-600"
-                : "bg-white text-sky-700 border-sky-300 hover:bg-sky-50 hover:border-sky-400",
+             shareSel.room_link
+            ? "bg-white/15 text-white border-white/30"
+            : "bg-white/5 text-[#F4E7D6] border-white/20 hover:bg-white/10 hover:border-white/35",
             ].join(" ")}
           >
             Link phòng
@@ -1486,7 +1642,7 @@ activeItem.kind === "video" ? (
 
         {/* CỘT PHẢI */}
         <div className="space-y-3">
-          <div className="text-sm font-semibold text-gray-700">Tuỳ chọn</div>
+          <div className="text-sm font-semibold text-[#F4E7D6]/80">Tuỳ chọn</div>
 
           <label className="flex items-center gap-2">
             <input
@@ -1499,70 +1655,155 @@ activeItem.kind === "video" ? (
             <span>Chi phí</span>
           </label>
 
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={shareSel.amenities}
-              onChange={(e) =>
-                setShareSel((s) => ({ ...s, amenities: e.target.checked }))
-              }
-            />
-            <span>Tiện ích</span>
-          </label>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={shareSel.description}
+          onChange={(e) =>
+            setShareSel((s) => ({ ...s, description: e.target.checked }))
+          }
+        />
+        <span>Mô tả</span>
+      </label>
+              </div>
+            </div>
 
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={shareSel.description}
-              onChange={(e) =>
-                setShareSel((s) => ({ ...s, description: e.target.checked }))
-              }
-            />
-            <span>Mô tả</span>
-          </label>
+            <div className="pt-2 border-t border-white/20" />
+
+            <div className="text-sm font-semibold text-[#F4E7D6]/80">
+              Preview
+            </div>
+
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/20 bg-[rgba(255,255,255,0.06)] p-3 text-sm text-[#F4E7D6] backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+              {buildShareText()}
+            </pre>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleShare}
+                className="flex-1 rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.08)] py-2 font-semibold text-white backdrop-blur-[24px] hover:bg-white/15"
+              >
+                Chia sẻ
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const text = buildShareText();
+                  const ok = await copyText(text);
+                  showToast(
+                    ok
+                      ? "Đã copy nội dung — mở Zalo/Messenger và dán vào"
+                      : "Không thể copy — hãy chọn và copy thủ công"
+                  );
+                }}
+                className="flex-1 rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.06)] py-2 font-semibold text-white backdrop-blur-[24px] hover:bg-white/12"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+          </div>
         </div>
+      )}
+
+{/* ===== TOAST ===== */}
+{toast && (
+  <div
+    className="
+      fixed z-[99999] bottom-6 left-1/2 -translate-x-1/2
+      px-5 py-2.5 text-sm font-medium text-white
+      rounded-full
+      border border-white/20
+      bg-[rgba(255,255,255,0.08)]
+      backdrop-blur-[20px]
+      shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
+      animate-[fadeIn_0.25s_ease]
+    "
+  >
+    {toast}
+  </div>
+)}
+{phoneModal && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30"
+    onClick={() => setPhoneModal(null)}
+  >
+    <div
+      className="w-[280px] rounded-2xl 
+      border border-white/10 
+      bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.01)),rgba(58,33,18,0.45)] 
+      backdrop-blur-2xl 
+      shadow-[0_20px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)] 
+      p-4 space-y-3"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="text-center text-[#f4eadf] font-semibold">
+        {phoneModal}
       </div>
 
-      <div className="pt-2 border-t" />
+      <a
+        href={`tel:${phoneModal}`}
+        className="block text-center rounded-xl bg-[#A47A52]/65 text-white py-2 border border-[#E0B77A]/25 backdrop-blur hover:bg-[#B8895C]/75"
+      >
+        📞 Gọi điện
+      </a>
 
-      <div className="text-sm font-semibold text-gray-700">Preview</div>
-      <pre className="text-sm whitespace-pre-wrap bg-gray-50 border rounded-xl p-3 max-h-48 overflow-auto">
-        {buildShareText()}
-      </pre>
+      <a
+        href={`https://zalo.me/${phoneModal}`}
+        target="_blank"
+        rel="noreferrer"
+        className="block text-center rounded-xl border border-[#E0B77A]/25 bg-white/5 text-[#f4eadf] py-2 backdrop-blur hover:bg-white/10"
+      >
+        💬 Nhắn Zalo
+      </a>
 
-      <div className="flex gap-2 pt-2">
-        <button
-          type="button"
-          onClick={handleShare}
-          className="flex-1 rounded-xl bg-black text-white py-2 font-medium"
-        >
-          Chia sẻ
-        </button>
-        <button
-          type="button"
-          onClick={async () => {
-            const text = buildShareText();
-            const ok = await copyText(text);
-            showToast(
-              ok
-                ? "Đã copy nội dung — mở Zalo/Messenger và dán vào"
-                : "Không thể copy — hãy chọn và copy thủ công"
-            );
-          }}
-          className="flex-1 rounded-xl border py-2 font-medium"
-        >
-          Copy
-        </button>
-      </div>
-    </div>
+      <button
+        onClick={async () => {
+          await navigator.clipboard.writeText(phoneModal);
+        }}
+        className="block w-full text-center rounded-xl border border-[#E0B77A]/20 bg-white/5 text-white py-2 backdrop-blur hover:bg-white/10"
+      >
+        📋 Copy số
+      </button>
     </div>
   </div>
 )}
 
-{/* ===== TOAST ===== */}
-{toast && (
-  <div className="fixed z-50 bottom-4 left-1/2 -translate-x-1/2 bg-black text-white text-sm px-4 py-2 rounded-full">
-    {toast}
+{policyOpen && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 p-4"
+    onClick={() => setPolicyOpen(false)}
+  >
+    <div
+      className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-3xl border border-white/10 bg-[rgba(58,33,18,0.48)] p-4 text-[#F6E7D2] shadow-[0_24px_70px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.10)] backdrop-blur-2xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-lg font-semibold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">Chính Sách</div>
+
+        <button
+          type="button"
+          onClick={() => setPolicyOpen(false)}
+          className="rounded-full px-3 py-1 text-xl text-[#F6E7D2] hover:bg-white/10 hover:text-white"
+          aria-label="Đóng"
+        >
+          ×
+        </button>
+      </div>
+
+      <div
+        className="whitespace-pre-wrap break-words text-sm leading-6 select-text text-[#EAD8C0]/300"
+        style={{
+          WebkitUserSelect: "text",
+          userSelect: "text",
+          touchAction: "auto",
+        }}
+      >
+        {room?.chinh_sach?.trim() ? room.chinh_sach : "Chưa có chính sách"}
+      </div>
+    </div>
   </div>
 )}
 

@@ -2665,114 +2665,133 @@ const handleNavigateToRoom = useCallback((href: string) => {
 ]);
 
   // ================== RENDER ==================
-  return (
-    <div className="flex flex-col h-screen">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto pb-24 bg-gray-200">
-       <header className="relative z-50 h-[140px] sm:h-[160px] md:h-[220px]">
-          <div className="absolute inset-0 overflow-hidden">
-            <img
-              src="/hero.jpg"
-              alt="The Room"
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/30" />
-          </div>
 
-          <div className="absolute left-0 right-0 top-0 z-[1000] pt-2 px-3 md:pt-4 md:px-8">
-            <div className="mx-auto flex w-full max-w-[1200px] items-start justify-between">
-              <div className="flex items-start gap-2 md:gap-3">
-                <LogoIntroButton logoSrc="/logo.png" />
+return (
+  <div className="relative flex h-screen flex-col overflow-hidden text-[#F4E7D6]">
+    {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
+    <div className="fixed inset-0 z-0 pointer-events-none">
+      <img
+        src="/bg-glass.jpg"
+        alt=""
+        className="h-full w-full object-cover scale-105 blur-[2px]"
+      />
 
-                <div className="mt-[2px] leading-tight text-white">
-                  <div className="text-base md:text-lg font-semibold whitespace-nowrap">
-                    The Room
-                  </div>
-                  <div className="text-xs md:text-sm text-white/85">
-                    Cho thuê chung cư, căn hộ &amp; phòng trọ tại TP.HCM
-                  </div>
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.35)_0%,rgba(0,0,0,0.58)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(255,210,150,0.16)_0%,transparent_45%)]" />
+    </div>
+
+    <div
+      ref={scrollRef}
+      className="relative z-10 flex-1 overflow-y-auto pb-32 bg-transparent"
+    >
+      <header className="relative z-50 h-[160px] sm:h-[190px] md:h-[260px]">
+        <div className="absolute inset-0 overflow-hidden">
+          <img
+            src="/hero.jpg"
+            alt="The Room"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/10 to-transparent" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(229,201,169,0.12)_0%,rgba(45,27,20,0.48)_70%)]" />
+        </div>
+
+        <div className="absolute left-0 right-0 top-0 z-[1000] px-4 pt-3 md:px-8 md:pt-5">
+          <div className="mx-auto flex w-full max-w-[1240px] items-start justify-between">
+            <div className="flex items-start gap-2 md:gap-3">
+              <LogoIntroButton logoSrc="/logo.png" />
+
+              <div className="mt-[2px] leading-tight text-[#E5C9A9] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+                <div className="whitespace-nowrap text-base font-semibold md:text-xl">
+                  The Room
+                </div>
+                <div className="text-xs text-[#A0856E] md:text-sm">
+                  Cho thuê chung cư, căn hộ &amp; phòng trọ tại TP.HCM
                 </div>
               </div>
+            </div>
 
-              <div className="relative z-[1000] whitespace-nowrap self-start">
-                <div id="auth-anchor" />
-              </div>
+            <div className="relative z-[3000] self-start whitespace-nowrap pt-1">
+              <div
+                id="auth-anchor"
+                className="min-w-[110px] h-[38px] flex items-center justify-center rounded-2xl border border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.45)] text-[#E5C9A9] backdrop-blur-[20px] shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+              />
             </div>
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* FILTER BAR */}
-        <div className="relative bg-gray-200">
-          <div className="border-b border-black/10">
+      {/* FILTER BAR */}
+      <div className="relative z-[900] -mt-12 md:-mt-16">
+        <div className="mx-auto w-full max-w-[1240px] px-0">
+          <div className="pt-2">
             <FilterBar
-            districts={districts}
-            roomTypes={roomTypes}
-            loading={loading}
-            search={search}
-            setSearch={setSearch}
-            priceDraft={priceDraft}
-            priceApplied={priceApplied}
-            setPriceDraft={setPriceDraft}
-            setPriceApplied={setPriceApplied}
-            selectedDistricts={selectedDistricts}
-            setSelectedDistricts={setSelectedDistricts}
-            selectedRoomTypes={selectedRoomTypes}
-            setSelectedRoomTypes={setSelectedRoomTypes}
-            moveFilter={moveFilter}
-            setMoveFilter={setMoveFilter}
-            petFilters={petFilters}
-            setPetFilters={setPetFilters}
-            termFilters={termFilters}
-            setTermFilters={setTermFilters}
-
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-
-            sortMode={sortMode}
-            setSortMode={setSortMode}
-            total={total}
-            onResetAll={() => {
-              setSelectedDistricts([]);
-              setSelectedRoomTypes([]);
-              setMoveFilter(null);
-              setPetFilters([]);
-              setTermFilters(["long"]);
-              setStatusFilter(null);
-              setSortMode("updated_desc");
-              setSearch("");
-            }}
-          />
+              districts={districts}
+              roomTypes={roomTypes}
+              loading={loading}
+              search={search}
+              setSearch={setSearch}
+              priceDraft={priceDraft}
+              priceApplied={priceApplied}
+              setPriceDraft={setPriceDraft}
+              setPriceApplied={setPriceApplied}
+              selectedDistricts={selectedDistricts}
+              setSelectedDistricts={setSelectedDistricts}
+              selectedRoomTypes={selectedRoomTypes}
+              setSelectedRoomTypes={setSelectedRoomTypes}
+              moveFilter={moveFilter}
+              setMoveFilter={setMoveFilter}
+              petFilters={petFilters}
+              setPetFilters={setPetFilters}
+              termFilters={termFilters}
+              setTermFilters={setTermFilters}
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+              sortMode={sortMode}
+              setSortMode={setSortMode}
+              total={total}
+              onResetAll={() => {
+                setSelectedDistricts([]);
+                setSelectedRoomTypes([]);
+                setMoveFilter(null);
+                setPetFilters([]);
+                setTermFilters(["long"]);
+                setStatusFilter(null);
+                setSortMode("updated_desc");
+                setSearch("");
+              }}
+            />
           </div>
-
-          </div>
-          <RoomList
-          fetchError={fetchError}
-          showSkeleton={showSkeleton}
-          roomsToRender={roomsToRender}
-          adminLevel={adminLevel}
-          pageIndex={pageIndex}
-          loading={loading}
-          hasNext={hasNext}
-          goPrev={goPrev}
-          goNext={goNext}
-          onNavigate={handleNavigateToRoom}
-          isRefreshing={isRefreshing}
-        />
+        </div>
       </div>
 
-      <div className="sticky bottom-0 z-[950] shrink-0 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-            <Pagination
-              goNext={goNext}
-              goPrev={goPrev}
-              hasNext={hasNext}
-              loading={loading}
-              total={typeof total === "number" ? total : undefined}
-            />
-       </div>
-
-      {/* portal root nếu bạn đang dùng */}
-      <div id="portal-root" className="fixed inset-0 pointer-events-none z-[9999]" />
+      <RoomList
+        fetchError={fetchError}
+        showSkeleton={showSkeleton}
+        roomsToRender={roomsToRender}
+        adminLevel={adminLevel}
+        pageIndex={pageIndex}
+        loading={loading}
+        hasNext={hasNext}
+        goPrev={goPrev}
+        goNext={goNext}
+        onNavigate={handleNavigateToRoom}
+        isRefreshing={isRefreshing}
+      />
     </div>
-  );
+
+    <div className="sticky bottom-0 z-[950] shrink-0 border-t border-white/15 bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))] backdrop-blur-[36px] shadow-[0_-24px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]">
+      <Pagination
+        goNext={goNext}
+        goPrev={goPrev}
+        hasNext={hasNext}
+        loading={loading}
+        total={typeof total === "number" ? total : undefined}
+      />
+    </div>
+
+    <div id="portal-root" className="fixed inset-0 pointer-events-none z-[9999]" />
+  </div>
+);
 };
 
 export default HomeClient;

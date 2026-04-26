@@ -857,13 +857,7 @@ const detailSample =
       media: Array.isArray((editingRoom as any).media) ? (editingRoom as any).media : [],
       link_zalo: (editingRoom as any).link_zalo ?? '',
       chinh_sach: (editingRoom as any).chinh_sach ?? '',
-      zalo_phone:
-      (editingRoom as any).zalo_phone ??
-      (() => {
-        const raw = String((editingRoom as any).link_zalo ?? "");
-        const lines = raw.split(/\r?\n/);
-        return lines.slice(1).join("\n").trim(); // fallback data cũ
-      })(),
+      zalo_phone: (editingRoom as any).zalo_phone ?? "",
 
     })
 
@@ -1239,8 +1233,8 @@ void (async () => {
   /* ================= UI ================= */
 
  const handleBackdropDown = (e: any) => {
-  if (e.target !== e.currentTarget) return
-  requestClose()
+  // ❌ KHÔNG cho đóng khi click ngoài
+  return
 }
 
 const stopBackdropEvents = (e: any) => {
@@ -1324,9 +1318,9 @@ const stopBackdropEvents = (e: any) => {
 >
   {/* LEFT */}
   <div>
-    <button onClick={requestClose} style={btnCancel} disabled={saving} type="button">
-      Huỷ
-    </button>
+  <button onClick={requestClose} style={btnCancel} disabled={saving} type="button">
+    Huỷ
+  </button>
   </div>
 
   {/* CENTER */}
