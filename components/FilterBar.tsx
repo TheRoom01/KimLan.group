@@ -46,7 +46,7 @@ const PRICE_MAX = 30_000_000;
 const PRICE_STEP = 1_000_000;
 
 const pillBtnBase =
-  "min-h-[32px] px-3 py-[5px] rounded-2xl border border-white/25 text-[11px] tracking-wide font-semibold flex items-center justify-center gap-1 transition-all bg-[rgba(255,255,255,0.06)] text-white backdrop-blur-[28px] shadow-[0_10px_30px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40 sm:text-xs";
+  "min-h-[30px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.06)] px-[9px] py-[5px] text-[9.5px] tracking-wide font-semibold text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)] backdrop-blur-[28px] shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40 sm:px-[10px] sm:text-[10.5px] flex items-center justify-center gap-1";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const floorPrice = (v: number) => Math.floor(v / PRICE_STEP) * PRICE_STEP;
@@ -814,7 +814,7 @@ p-4 space-y-3"
         <div className="shrink-0">
           <button
             type="button"
-            className="w-[110px] rounded-xl border border-[#D8A66A]/35 bg-[rgba(150,150,155,0.28)] px-3 py-2 text-sm text-[#F6E7D2] backdrop-blur-xl whitespace-nowrap hover:bg-[rgba(180,160,135,0.35)]"
+            className="rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.06)] px-[9px] py-[5px] text-[9.5px] tracking-wide font-semibold text-white backdrop-blur-[28px] shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] whitespace-nowrap hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40"
             onClick={() => {
               const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
               setPriceDraft(resetVal);
