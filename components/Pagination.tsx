@@ -36,7 +36,7 @@ const Pagination = ({
         </button>
 
         {typeof total === "number" && (
-          <div className="hidden rounded-2xl border border-white/20 bg-[linear-gradient(rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-4 py-2 text-sm font-medium text-white/70 backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] sm:block">
+          <div className="rounded-2xl border border-white/20 bg-[linear-gradient(rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-3 py-2 text-xs font-medium text-black/80 backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] sm:px-4 sm:text-sm">
             Tổng {total.toLocaleString("vi-VN")} phòng
           </div>
         )}
