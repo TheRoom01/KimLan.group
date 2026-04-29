@@ -10,8 +10,8 @@ html {
   --tr-glass-bg: rgba(45, 27, 20, 0.4);
   --tr-glass-border: rgba(197, 165, 130, 0.007);
 
-  --tr-text-main: #e5c9a9;
-  --tr-text-muted: #a0856e;
+--tr-text-main: #F8FAFC;        /* trắng sáng */
+--tr-text-muted: #cbd5e1;      /* xám sáng */
 
   --tr-active: #8b6b4d;
 }
@@ -189,24 +189,31 @@ input[type="radio"] {
 }
 
 .btn-category {
-  background: rgba(139, 107, 77, 0.2);
-  border: 1px solid rgba(139, 107, 77, 0.9);
-  color: var(--tr-text-main);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #F8FAFC;
   border-radius: 999px;
   padding: 8px 20px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .btn-category.active {
-  background: var(--tr-active);
-  color: #fff;
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #ffffff;
+  box-shadow:
+    0 6px 20px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.3);
 }
 
 .text-premium {
-  color: var(--tr-text-main);
+  color: #F8FAFC;
+  text-shadow: 0 1px 6px rgba(255,255,255,0.15);
 }
 
 .text-premium-muted {
-  color: var(--tr-text-muted);
+  color: #cbd5e1;
 }
 
 /* ===== LIQUID GLASS FILTER MODAL - LEGACY SUPPORT ===== */

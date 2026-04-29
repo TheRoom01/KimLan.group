@@ -46,7 +46,7 @@ const PRICE_MAX = 30_000_000;
 const PRICE_STEP = 1_000_000;
 
 const pillBtnBase =
- "min-h-[42px] px-5 py-2 rounded-2xl border text-sm font-semibold flex items-center gap-1 transition-all bg-[rgba(255,255,255,0.055)] text-[#F4E7D6] border-white/24 backdrop-blur-[28px] shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_12px_30px_rgba(0,0,0,0.28)] hover:bg-[rgba(255,255,255,0.13)] hover:border-white/36 hover:text-white";
+ "min-h-[36px] px-4 py-[6px] rounded-2xl border text-[13px] font-semibold flex items-center gap-1 transition-all bg-[rgba(255,255,255,0.055)] text-[#F4E7D6] border-white/24 backdrop-blur-[28px] shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_12px_30px_rgba(0,0,0,0.28)] hover:bg-[rgba(255,255,255,0.13)] hover:border-white/36 hover:text-white";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const floorPrice = (v: number) => Math.floor(v / PRICE_STEP) * PRICE_STEP;
@@ -127,6 +127,10 @@ useEffect(() => {
   const [dragging, setDragging] = useState<"min" | "max" | null>(null);
   const draggingRef = useRef<"min" | "max" | null>(null);
   const openPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const filterRowRef = useRef<HTMLDivElement | null>(null);
+const filterButtonsRef = useRef<HTMLDivElement | null>(null);
+const [compactFilterText, setCompactFilterText] = useState(false);
 
   const closeAllFilters = () => setOpenFilter(null);
   const fmtVND = (n: number) => n.toLocaleString("vi-VN");
@@ -238,6 +242,36 @@ useEffect(() => {
   };
 }, [openFilter]);
 
+useEffect(() => {
+  const row = filterRowRef.current;
+  const buttons = filterButtonsRef.current;
+  if (!row || !buttons) return;
+
+  const measure = () => {
+    const rowWidth = row.clientWidth;
+    const buttonsWidth = buttons.scrollWidth;
+
+    setCompactFilterText(buttonsWidth > rowWidth);
+  };
+
+  measure();
+
+  const ro = new ResizeObserver(measure);
+  ro.observe(row);
+  ro.observe(buttons);
+
+  window.addEventListener("resize", measure);
+
+  return () => {
+    ro.disconnect();
+    window.removeEventListener("resize", measure);
+  };
+}, [
+  selectedDistricts.length,
+  selectedRoomTypes.length,
+  openFilter,
+]);
+
   const beginDrag = (thumb: "min" | "max") => (e: React.PointerEvent) => {
     if (loading) return;
     e.preventDefault();
@@ -312,7 +346,7 @@ const toggleTerm = (value: "short" | "long") => {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Tìm theo địa chỉ..."
-        className="w-full h-[36px] rounded-2xl border border-white/20 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
+        className="w-full h-[46px] rounded-2xl border border-white/20 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
       />
 
       {search.trim() !== "" && (
@@ -338,8 +372,8 @@ const toggleTerm = (value: "short" | "long") => {
     )}
 
     {/* HÀNG NÚT */}
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex flex-wrap items-center gap-3">
+    <div ref={filterRowRef} className="flex items-center justify-between gap-2">
+      <div ref={filterButtonsRef} className="flex flex-nowrap items-center gap-2">
         {/* QUẬN */}
         <div className="relative z-[1500]">
           <button
@@ -347,7 +381,7 @@ const toggleTerm = (value: "short" | "long") => {
             onClick={() =>
               setOpenFilter((v) => (v === "district" ? null : "district"))
             }
-            className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+            className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
               openFilter === "district"
                 ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
                 : "border-white/20"
@@ -433,7 +467,7 @@ const toggleTerm = (value: "short" | "long") => {
             onClick={() =>
               setOpenFilter((v) => (v === "roomType" ? null : "roomType"))
             }
-            className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+            className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
               openFilter === "roomType"
                 ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
                 : "border-white/20"
@@ -501,7 +535,7 @@ const toggleTerm = (value: "short" | "long") => {
             onClick={() =>
               setOpenFilter((v) => (v === "amenities" ? null : "amenities"))
             }
-            className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+            className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
               openFilter === "amenities"
                 ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
                 : "border-white/20"
@@ -657,7 +691,7 @@ p-4 sm:p-5"
           onClick={() =>
             setOpenFilter((v) => (v === "sort" ? null : "sort"))
           }
-          className={`${pillBtnBase} ${loading ? "opacity-60" : ""} ${
+          className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
             openFilter === "sort"
               ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
               : "border-white/20"
