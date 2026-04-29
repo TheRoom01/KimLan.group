@@ -937,7 +937,7 @@ const zaloLinkRaw = linkRaw.trim();
 return (
   <div
     className="
-      p-6 space-y-6 text-base text-[#F4E7D6]
+      p-6 space-y-6 text-base text-white
       bg-[url('/bg-glass.jpg')]
       bg-cover bg-center bg-fixed
     "
@@ -1800,7 +1800,7 @@ activeItem.kind === "video" ? (
       </div>
 
       <div
-        className="whitespace-pre-wrap break-words text-sm leading-6 select-text text-[#EAD8C0]/300"
+        className="whitespace-pre-wrap break-words text-sm leading-6 select-text text-white/80"
         style={{
           WebkitUserSelect: "text",
           userSelect: "text",

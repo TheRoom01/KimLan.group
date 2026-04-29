@@ -46,7 +46,7 @@ const PRICE_MAX = 30_000_000;
 const PRICE_STEP = 1_000_000;
 
 const pillBtnBase =
- "min-h-[36px] px-4 py-[6px] rounded-2xl border text-[13px] font-semibold flex items-center gap-1 transition-all bg-[rgba(255,255,255,0.055)] text-[#F4E7D6] border-white/24 backdrop-blur-[28px] shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_12px_30px_rgba(0,0,0,0.28)] hover:bg-[rgba(255,255,255,0.13)] hover:border-white/36 hover:text-white";
+  "min-h-[32px] px-3 py-[5px] rounded-2xl border border-white/25 text-[11px] tracking-wide font-semibold flex items-center justify-center gap-1 transition-all bg-[rgba(255,255,255,0.06)] text-white backdrop-blur-[28px] shadow-[0_10px_30px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40 sm:text-xs";
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const floorPrice = (v: number) => Math.floor(v / PRICE_STEP) * PRICE_STEP;
@@ -871,7 +871,7 @@ p-4 space-y-3"
 
       <div
         ref={trackRef}
-        className="relative h-6 px-3 md:px-1"
+        className="relative h-6 mx-4 md:mx-2"
         onPointerDown={onTrackPointerDown}
         style={{ touchAction: "none" }}
       >
