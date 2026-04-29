@@ -1061,6 +1061,10 @@ const cancelCloseConfirm = () => {
     const isNew = !isEdit
 
     // ✅ payload rooms: KHÔNG còn media nữa
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
 const payload = {
   room_code: roomForm.room_code,
   room_type: roomForm.room_type,
@@ -1074,6 +1078,9 @@ const payload = {
   link_zalo: roomForm.link_zalo,
   zalo_phone: roomForm.zalo_phone,
   chinh_sach: roomForm.chinh_sach,
+
+  // chỉ gắn người tạo khi thêm mới, edit thì giữ owner_id cũ
+  ...(isNew ? { owner_id: user?.id ?? null } : {}),
 }
 
 // ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media

@@ -570,6 +570,33 @@ const persistBlockedRef = useRef(false);
     [pages, displayPageIndex]
   );
 
+  // ================== SAVED ==================
+ useEffect(() => {
+  if (!Array.isArray(roomsToRender) || roomsToRender.length === 0) return;
+
+  try {
+    const raw = sessionStorage.getItem("saved_rooms_cache");
+    const oldRooms = raw ? JSON.parse(raw) : [];
+
+    const map = new Map<string, any>();
+
+    if (Array.isArray(oldRooms)) {
+      oldRooms.forEach((room) => {
+        if (room?.id) map.set(room.id, room);
+      });
+    }
+
+    roomsToRender.forEach((room) => {
+      if (room?.id) map.set(room.id, room);
+    });
+
+    sessionStorage.setItem(
+      "saved_rooms_cache",
+      JSON.stringify(Array.from(map.values()))
+    );
+  } catch {}
+}, [roomsToRender]);
+
   // ================== URL helpers (SHALLOW, NO NEXT NAV) ==================
  const buildQs = useCallback(
   (next: {
@@ -2665,7 +2692,6 @@ const handleNavigateToRoom = useCallback((href: string) => {
 ]);
 
   // ================== RENDER ==================
-
 return (
   <div className="relative flex h-screen flex-col overflow-hidden text-[#F4E7D6]">
     {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
@@ -2710,11 +2736,31 @@ return (
               </div>
             </div>
 
-            <div className="relative z-[3000] self-start whitespace-nowrap pt-1">
+            <div className="relative z-[3000] flex flex-col items-end gap-10 self-start whitespace-nowrap pt-1">
               <div
                 id="auth-anchor"
                 className="min-w-[110px] h-[38px] flex items-center justify-center rounded-2xl border border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.45)] text-[#E5C9A9] backdrop-blur-[20px] shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
               />
+
+              <a
+              href="/saved"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="
+                rounded-2xl border border-[#E5C9A9]/25
+                bg-[rgba(45,27,20,0.45)]
+                px-4 py-2
+                text-[11px] font-semibold text-[#E5C9A9]
+
+                backdrop-blur-[20px]
+                shadow-[0_10px_30px_rgba(0,0,0,0.35)]
+
+                hover:bg-[rgba(255,255,255,0.08)]
+                transition-all
+              "
+            >
+              ★ Phòng đã lưu
+            </a>
             </div>
           </div>
         </div>

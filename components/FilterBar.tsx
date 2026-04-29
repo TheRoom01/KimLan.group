@@ -557,13 +557,25 @@ const toggleTerm = (value: "short" | "long") => {
                 ref={(el) => {
                   if (openFilter === "amenities") openPanelRef.current = el;
                 }}
-               className="relative z-10 w-full max-w-[680px] max-h-[85vh] overflow-y-auto rounded-3xl 
-border border-white/40 
-bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))] 
-text-white 
-backdrop-blur-[50px] 
-shadow-[0_45px_140px_rgba(0,0,0,0.85),0_0_60px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.55)] 
-p-4 sm:p-5"
+               className="
+                relative z-10
+
+                w-[60%] max-w-[350px]
+                max-h-[50vh]
+                overflow-y-auto
+
+                rounded-2xl
+                border border-white/25
+
+                bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))]
+                text-white
+
+                backdrop-blur-[24px]
+
+                shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.35)]
+
+                p-2
+                "
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -587,7 +599,7 @@ p-4 sm:p-5"
 
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
                   <div className="space-y-3">
-                    <div className="text-sm font-semibold text-white">
+                    <div className="text-sm font-semibold text-[#FFE7BE]/75">
                       Di chuyển
                     </div>
 
@@ -612,7 +624,7 @@ p-4 sm:p-5"
                   </div>
 
                   <div className="space-y-3">
-                    <div className="text-sm font-semibold text-white">
+                    <div className="text-sm font-semibold text-[#FFE7BE]/75">
                       Thú Cưng
                     </div>
 
@@ -640,7 +652,7 @@ p-4 sm:p-5"
                   </div>
 
                   <div className="space-y-3">
-                    <div className="text-sm font-semibold text-white">
+                    <div className="text-sm font-semibold text-[#FFE7BE]/75">
                       Thời hạn HĐ
                     </div>
 
