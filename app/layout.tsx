@@ -27,20 +27,20 @@ export const metadata: Metadata = {
     title: "The Room",
     description: "Kim Lân Group",
     images: [
-      {
-        url: "/hero.jpg",
+    {
+      url: "/og-logo.jpg",
         width: 1200,
         height: 630,
         alt: "Căn hộ dịch vụ - KimLanGroup",
       },
     ],
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "The Room",
-    description: "Kim Lân Group",
-    images: ["/hero.jpg"],
-  },
+ twitter: {
+  card: "summary_large_image",
+  title: "The Room",
+  description: "Kim Lân Group",
+  images: ["/og-logo.jpg"],
+},
 };
 
 export default function RootLayout({
