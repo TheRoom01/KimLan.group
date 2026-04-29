@@ -14,7 +14,7 @@ type PaginationProps = {
 };
 
 const glassBtn =
-  "rounded-2xl border border-white/30 bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))] px-4 py-2 text-sm font-semibold text-white backdrop-blur-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.5)] transition-all hover:bg-[rgba(255,255,255,0.1)] hover:border-white/45";
+  "rounded-2xl border border-white/30 bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))] px-3 py-2 text-xs font-semibold text-white backdrop-blur-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.5)] transition-all hover:bg-[rgba(255,255,255,0.1)] hover:border-white/45 sm:px-4 sm:text-sm";
 
 const Pagination = ({
   goNext,
@@ -35,11 +35,11 @@ const Pagination = ({
           ← Trang Trước
         </button>
 
-    {typeof total === "number" && (
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-2xl border border-white/20 bg-[linear-gradient(rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-3 py-2 text-xs font-semibold text-white/75 backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] sm:text-sm">
-        Tổng {total.toLocaleString("vi-VN")} phòng
-      </div>
-    )}
+        {typeof total === "number" && (
+          <div className="hidden rounded-2xl border border-white/20 bg-[linear-gradient(rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-4 py-2 text-sm font-medium text-white/70 backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)] sm:block">
+            Tổng {total.toLocaleString("vi-VN")} phòng
+          </div>
+        )}
 
         <button
           type="button"

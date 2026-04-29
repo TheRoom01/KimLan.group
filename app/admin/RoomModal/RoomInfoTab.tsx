@@ -508,12 +508,15 @@ useEffect(() => {
         onChange={v => onChange({ ...value, description: v })}
       />
 
+    <div>
       <label style={labelStyle}>Chính sách</label>
-<textarea
-  value={chinh_sach}
-  onChange={(e) => onChangeChinhSach(e.target.value)}
-  placeholder="Nhập chính sách..."
-/>
+      <textarea
+        style={textareaStyle}
+        value={chinh_sach}
+        onChange={(e) => onChangeChinhSach(e.target.value)}
+        placeholder="Nhập chính sách..."
+      />
+    </div>
 
 
     </div>

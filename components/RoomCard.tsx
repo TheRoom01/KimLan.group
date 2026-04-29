@@ -297,7 +297,7 @@ export default function RoomCard({
           </div>
         </div>
 
-       <p className="text-white/90 font-semibold leading-6 pb-3 px-3 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]">
+       <p className="text-white font-semibold leading-6 pb-3 px-3 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
           📍 {isAdmin && room.house_number && `${room.house_number} `}
           {address}
           {ward && `, P. ${ward}`}

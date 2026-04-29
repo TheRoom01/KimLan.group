@@ -701,15 +701,12 @@ useEffect(() => {
 // ✅ Patch 4: nếu RPC không trả link_zalo / zalo_phone cho admin => fallback đọc thẳng từ rooms
 useEffect(() => {
   const level = Number(adminLevel) || 0;
-  const isAdmin = level === 1 || level === 2;
 
-  // Chỉ admin mới cần 2 field này
-  if (!isAdmin) return;
+  // Chỉ L1 mới được fallback lấy link/sđt từ bảng gốc
+  if (level !== 1) return;
 
-  // Chưa có room thì thôi
   if (!room?.id) return;
 
-  // Nếu đã có rồi thì không fetch nữa
   const hasAny =
     String(room?.link_zalo ?? "").trim() || String(room?.zalo_phone ?? "").trim();
   if (hasAny) return;
@@ -726,8 +723,6 @@ useEffect(() => {
 
       if (cancelled) return;
       if (error) return;
-
-      // Nếu là phòng hidden mà lỡ vào được, không show (an toàn)
       if ((data as any)?.is_hidden) return;
 
       const link_zalo = (data as any)?.link_zalo ?? null;
@@ -1655,16 +1650,27 @@ activeItem.kind === "video" ? (
             <span>Chi phí</span>
           </label>
 
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={shareSel.description}
-          onChange={(e) =>
-            setShareSel((s) => ({ ...s, description: e.target.checked }))
-          }
-        />
-        <span>Mô tả</span>
-      </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.amenities}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, amenities: e.target.checked }))
+              }
+            />
+            <span>Tiện ích</span>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={shareSel.description}
+              onChange={(e) =>
+                setShareSel((s) => ({ ...s, description: e.target.checked }))
+              }
+            />
+            <span>Mô tả</span>
+          </label>
               </div>
             </div>
 

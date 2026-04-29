@@ -347,7 +347,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
       {/* HEADER */}
       <div style={header}>
         <div style={headerLeft}>
-          <div style={searchWrap}>
+          <div style={{ ...searchWrap, position: "relative" }}>
             <input
               placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
               value={search}
@@ -361,21 +361,41 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
               style={searchInputWithClear}
             />
 
-            {search && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setPage(1);
-                  cursorMapRef.current.clear();
-                  cacheRef.current.clear();
-                }}
-                style={clearSearchBtn}
-                aria-label="Xoá tìm kiếm"
-                title="Xoá tìm kiếm"
-              >
-                ×
-              </button>
+{search && (
+  <button
+    type="button"
+    onClick={() => {
+      setSearch("");
+      setPage(1);
+      cursorMapRef.current.clear();
+      cacheRef.current.clear();
+    }}
+    style={{
+      position: "absolute",
+      right: 10,
+      top: "50%",
+      transform: "translateY(-50%)",
+      width: 20,
+      height: 20,
+      padding: 0,
+      border: "none",
+      borderRadius: 999,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 30,
+      lineHeight: "10px",
+      background: "rgba(0,0,0,0.08)",
+      color: "#111827",
+      cursor: "pointer",
+      zIndex: 2,
+    }}
+    aria-label="Xoá tìm kiếm"
+    title="Xoá tìm kiếm"
+  >
+    ×
+  </button>
+
             )}
           </div>
         </div>
