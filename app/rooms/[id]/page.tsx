@@ -831,20 +831,13 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   const updatedText = formatDMY(room?.updated_at);
   
 const houseNumber =
-  adminLevel === 1 || adminLevel === 2
-    ? (
-        room?.house_number ??
-        room?.houseNumber ??
-        detail?.house_number ??
-        detail?.houseNumber ??
-        ""
-      )
-    : String(room?.public_house_number ?? "");
+  room?.house_number ??
+  room?.houseNumber ??
+  detail?.house_number ??
+  detail?.houseNumber ??
+  "";
 
-const publicHouseNumber =
-  adminLevel === 1 || adminLevel === 2
-    ? compactPublicHouseNumber(houseNumber)
-    : houseNumber;
+const publicHouseNumber = houseNumber;
 
 const addressLine = joinParts([
   adminLevel === 1 || adminLevel === 2

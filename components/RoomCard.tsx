@@ -412,7 +412,7 @@ return (
 
         {/* ADDRESS */}
         <p className="text-white font-semibold leading-6 pb-3 px-3 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
-          📍 {isAdmin && room.house_number && `${room.house_number} `}
+          📍 {room.house_number && `${room.house_number} `}
           {address}
           {ward && `, P. ${ward}`}
           {district && `, ${district}`}
