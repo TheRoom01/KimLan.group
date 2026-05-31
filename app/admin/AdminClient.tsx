@@ -372,21 +372,19 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
     }}
     style={{
       position: "absolute",
-      right: 10,
+      right: 0,
       top: "50%",
       transform: "translateY(-50%)",
-      width: 20,
-      height: 20,
+      width: 56,
+      height: 40,
       padding: 0,
       border: "none",
-      borderRadius: 999,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      fontSize: 30,
-      lineHeight: "10px",
-      background: "rgba(0,0,0,0.08)",
+      background: "transparent",
       color: "#111827",
+      fontSize: 30,
       cursor: "pointer",
       zIndex: 2,
     }}
@@ -889,17 +887,16 @@ const searchInputWithClear: CSSProperties = {
 
 const clearSearchBtn: CSSProperties = {
   position: "absolute",
-  right: 8,
+  right: 0,
   top: "50%",
   transform: "translateY(-50%)",
-  width: 28,
-  height: 28,
-  borderRadius: 999,
+
+  padding: "8px 16px",
+
   border: "none",
   background: "transparent",
   color: "#6b7280",
   fontSize: 20,
-  lineHeight: "28px",
   cursor: "pointer",
 };
 const addBtn: CSSProperties = {
