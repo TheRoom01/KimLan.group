@@ -444,21 +444,44 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
       width: "100%",
       borderCollapse: "collapse",
       borderSpacing: 0,
-      tableLayout: "auto",
-      fontSize: 13,
-      wordBreak: "keep-all",
+      tableLayout: "fixed",
+      fontSize: 14, // 👈 tăng nhẹ từ 13 → 14 cho dễ đọc hơn
     }}
   >
     <thead>
       <tr>
-        <th style={{ ...th, padding: "2px 4px", whiteSpace: "nowrap" }}>Ngày cập nhật</th>
-        <th style={{ ...th, padding: "2px 4px", whiteSpace: "nowrap" }}>Link zalo</th>
-        <th style={{ ...th, padding: "2px 4px", whiteSpace: "nowrap" }}>Địa chỉ</th>
-        <th style={{ ...th, padding: "2px 4px", whiteSpace: "nowrap" }}>Loại phòng</th>
-        <th style={{ ...th, padding: "2px 4px", whiteSpace: "nowrap" }}>Mã phòng</th>
-        <th style={{ ...th, padding: "2px 4px", whiteSpace: "nowrap" }}>Giá</th>
-        <th style={{ ...th, padding: "2px 4px", whiteSpace: "nowrap" }}>Trạng thái</th>
-        <th style={{ ...th, width: 90, padding: "2px 4px", textAlign: "right", whiteSpace: "nowrap" }}>
+        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+          Ngày cập nhật
+        </th>
+        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+          Link zalo
+        </th>
+        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+          Địa chỉ
+        </th>
+        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+          Loại phòng
+        </th>
+        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+          Mã phòng
+        </th>
+        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+          Giá
+        </th>
+        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+          Trạng thái
+        </th>
+        <th
+          style={{
+            ...th,
+            width: 100,
+            padding: "4px 6px",
+            textAlign: "right",
+            whiteSpace: "nowrap",
+            borderBottom: "2px solid #9ca3af",
+            fontWeight: 600,
+          }}
+        >
           Thao tác
         </th>
       </tr>
@@ -467,7 +490,14 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
     <tbody>
       {rooms.length === 0 ? (
         <tr>
-          <td style={{ ...td, padding: "2px 4px" }} colSpan={8}>
+          <td
+            style={{
+              ...td,
+              padding: "6px 6px",
+             borderBottom: "1.5px solid #2b2b2c",
+            }}
+            colSpan={8}
+          >
             Không có dữ liệu
           </td>
         </tr>
@@ -492,12 +522,17 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
               .join(", ") || "-";
 
           return (
-            <tr key={(r as any).id}>
-              <td style={{ ...td, padding: "2px 4px", whiteSpace: "nowrap" }}>
+            <tr
+              key={(r as any).id}
+              style={{
+               borderBottom: "1.5px solid #0c0c0c", // 👈 row line rõ hơn kiểu Excel
+              }}
+            >
+              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
                 {formatDate((r as any).updated_at)}
               </td>
 
-              <td style={{ ...td, padding: "2px 4px", whiteSpace: "nowrap" }}>
+              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
                 {zaloLink ? (
                   <button
                     type="button"
@@ -516,23 +551,23 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                 )}
               </td>
 
-              <td style={{ ...td, padding: "2px 4px" }}>
+              <td style={{ ...td, padding: "6px 6px" }}>
                 {addressText}
               </td>
 
-              <td style={{ ...td, padding: "2px 4px", whiteSpace: "nowrap" }}>
+              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
                 {(r as any).room_type ?? "-"}
               </td>
 
-              <td style={{ ...td, padding: "2px 4px", whiteSpace: "nowrap" }}>
+              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
                 <b>{(r as any).room_code ?? "-"}</b>
               </td>
 
-              <td style={{ ...td, padding: "2px 4px", whiteSpace: "nowrap" }}>
+              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
                 {formatPrice((r as any).price)}
               </td>
 
-              <td style={{ ...td, padding: "2px 4px", whiteSpace: "nowrap" }}>
+              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
                 {adminLevel === 1 && isHidden ? (
                   <span style={{ ...badge, ...badgeHidden }}>
                     Đã ẩn
@@ -555,10 +590,10 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
               <td
                 style={{
                   ...td,
-                  padding: "2px 4px",
+                  padding: "6px 6px",
                   textAlign: "right",
                   whiteSpace: "nowrap",
-                  width: 90,
+                  width: 100,
                 }}
               >
                 <div
@@ -566,7 +601,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                     display: "flex",
                     justifyContent: "flex-end",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 6,
                   }}
                 >
                   <button
@@ -585,13 +620,13 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                     style={{
                       ...iconBtn,
                       color: "#16a34a",
-                      fontSize: 30,      // 👈 chữ "+" to hơn
-                      width: 28,         // 👈 tăng kích thước nút
-                      height: 28,        // 👈 tăng kích thước nút
+                      width: 30,
+                      height: 30,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       padding: 0,
+                      fontSize: 18,
                     }}
                     onClick={() => {
                       const cloned = buildClonedRoom(r as Room);
