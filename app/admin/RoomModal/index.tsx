@@ -89,6 +89,7 @@ function normalizeStatus(v?: RoomStatus | string | null) {
 /* ================= COMPONENT ================= */
 
 export default function RoomModal({
+  
   open,
   onClose,
   editingRoom,
@@ -98,7 +99,7 @@ export default function RoomModal({
   onSaved,
 }: Props) {
   const isEdit = Boolean(editingRoom?.id)
-
+ const isClone = (editingRoom as any)?._isClone;
    const [roomForm, setRoomForm] = useState<RoomForm>({
     room_code: '',
     room_type: '',
@@ -786,143 +787,137 @@ const detailSample =
   onNotify?.("✅ Đã đồng bộ theo phòng mới nhất.");
 }
 
-  /* ===== LOAD DATA WHEN EDIT ===== */
   useEffect(() => {
-    setErrorMsg(null)
-    setShowCloseConfirm(false)
+  setErrorMsg(null)
+  setShowCloseConfirm(false)
 
-    // THÊM MỚI
-      if (!editingRoom?.id) {
-      // ✅ tạo draft id để upload ảnh/video ngay cả khi chưa lưu phòng
-      draftRoomIdRef.current = genDraftId();
+  const base = editingRoom ?? ({} as any)
+  const isCloneMode = Boolean(base?._isClone)
+  const isEdit = Boolean(base?.id && !isCloneMode)
+  const isNew = !base?.id && !isCloneMode
 
-      // ✅ Patch 2: thêm mới thì cover ban đầu rỗng
-      initialCoverUrlRef.current = "";
+  // ======================
+  // NEW / CLONE
+  // ======================
+  if (isNew || isCloneMode) {
+    draftRoomIdRef.current = genDraftId()
+    initialCoverUrlRef.current = ""
 
-      setRoomForm({
-        room_code: '',
-        room_type: '',
-        house_number: '',
-        address: '',
-        ward: '',
-        district: '',
-        price: 0,
-        status: 'Trống',
-        description: '',
-        link_zalo: '',
-         zalo_phone: '',
-        media: [],
-        chinh_sach: '',
-      })
-      setDetailForm(defaultDetailForm)
-      setFeeAutofillDone(false)
-      return
-    }
-
-    // ✅ NEW: snapshot media ban đầu (để save không động ảnh thì không prune)
-    try {
-      const media0 = Array.isArray((editingRoom as any)?.media) ? (editingRoom as any).media : [];
-      const sig0 = JSON.stringify(
-        media0
-          .filter((m: any) => m?.url && (m?.type === "image" || m?.type === "video"))
-          .map((m: any) => `${m.type}:${String(m.url).trim()}`)
-          .sort()
-      );
-      initialMediaSigRef.current = sig0;
-   } catch {
-      initialMediaSigRef.current = "";
-    }
-
-    // ✅ Patch 2: snapshot cover ban đầu (ảnh image đầu tiên theo thứ tự hiện có)
-    try {
-      const media0 = Array.isArray((editingRoom as any)?.media) ? (editingRoom as any).media : [];
-      const cover0 = media0.find((m: any) => m?.type === "image" && (m?.url || m?.path));
-      initialCoverUrlRef.current = String(cover0?.url ?? cover0?.path ?? "").trim();
-    } catch {
-      initialCoverUrlRef.current = "";
-    }
-
-
-    // EDIT ROOM
     setRoomForm({
-      room_code: editingRoom.room_code ?? '',
-      room_type: editingRoom.room_type ?? '',
-      house_number: editingRoom.house_number ?? '',
-      address: editingRoom.address ?? '',
-      ward: editingRoom.ward ?? '',
-      district: editingRoom.district ?? '',
-      price: editingRoom.price ?? 0,
-      status: normalizeStatus(editingRoom.status),
-      description: editingRoom.description ?? '',
-      media: Array.isArray((editingRoom as any).media) ? (editingRoom as any).media : [],
-      link_zalo: (editingRoom as any).link_zalo ?? '',
-      chinh_sach: (editingRoom as any).chinh_sach ?? '',
-      zalo_phone: (editingRoom as any).zalo_phone ?? "",
+      room_code: isCloneMode ? "" : "",
+      room_type: isCloneMode ? "" : "",
 
+      house_number: base.house_number ?? "",
+      address: base.address ?? "",
+      ward: base.ward ?? "",
+      district: base.district ?? "",
+
+      price: 0,
+      status: "Trống",
+      description: "",
+
+      link_zalo: base.link_zalo ?? "",
+      zalo_phone: base.zalo_phone ?? "",
+
+      media: isCloneMode ? (base.media ?? []) : [],
+
+      chinh_sach: base.chinh_sach ?? "",
     })
 
-       // ✅ Load full room data via RPC (bypass RLS like /rooms/[id])
+    const detail =
+      base.room_details ??
+      base.room_detail ??
+      base.detail ??
+      base.details ??
+      null
+
+    setDetailForm(
+      detail
+        ? { ...defaultDetailForm, ...(detail as RoomDetail) }
+        : defaultDetailForm
+    )
+
+    setFeeAutofillDone(false)
+  }
+
+  // ======================
+  // EDIT ONLY (QUAN TRỌNG: RETURN NGAY)
+  // ======================
+  if (!isEdit) return
+
   void (async () => {
     try {
-      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
-        p_id: editingRoom.id,
-        p_role: 0, // giữ param để tương thích; role thực tế tính theo auth.uid() ở DB
-      });
+      const { data, error } = await supabase.rpc(
+        "fetch_room_detail_full_v1",
+        {
+          p_id: base.id,
+          p_role: 0,
+        }
+      )
 
       if (error) {
-        setErrorMsg(error.message);
-        return;
+        setErrorMsg(error.message)
+        return
       }
 
-      const room = (data ?? {}) as any;
+      const room = (data ?? {}) as any
 
-      // 1) Media: ưu tiên room.media (nếu RPC trả), fallback image_urls
       const mediaFromRpc = Array.isArray(room?.media)
-        ? room.media
-            .filter((m: any) => m?.url && (m?.type === "image" || m?.type === "video"))
-            .map((m: any) => ({ type: m.type, url: String(m.url), path: String(m.url) }))
-        : [];
+        ? room.media.map((m: any) => ({
+            type: m.type,
+            url: String(m.url),
+            path: String(m.url),
+          }))
+        : []
 
-      const imageUrlsFallback = Array.isArray(room?.image_urls)
-        ? room.image_urls.map((u: any) => ({ type: "image", url: String(u), path: String(u) }))
-        : [];
+      const imageFallback = Array.isArray(room?.image_urls)
+        ? room.image_urls.map((u: any) => ({
+            type: "image",
+            url: String(u),
+            path: String(u),
+          }))
+        : []
 
-      const nextMedia = mediaFromRpc.length ? mediaFromRpc : imageUrlsFallback;
+      const nextMedia = mediaFromRpc.length ? mediaFromRpc : imageFallback
 
-      // ✅ Patch 2: cover ban đầu phải lấy theo media đã sort đúng từ RPC
-      try {
-        const cover = (nextMedia || []).find((m: any) => m?.type === "image" && m?.url);
-        initialCoverUrlRef.current = String(cover?.url ?? "").trim();
-      } catch {
-        // ignore
-      }
-
-      setRoomForm((prev: any) => ({
+      setRoomForm((prev) => ({
         ...prev,
+        room_code: room.room_code ?? prev.room_code,
+        room_type: room.room_type ?? prev.room_type,
+
+        house_number: room.house_number ?? prev.house_number,
+        address: room.address ?? prev.address,
+        ward: room.ward ?? prev.ward,
+        district: room.district ?? prev.district,
+
+        price: room.price ?? prev.price,
+        status: normalizeStatus(room.status ?? prev.status),
+
+        description: room.description ?? prev.description,
+        link_zalo: room.link_zalo ?? prev.link_zalo,
+        zalo_phone: room.zalo_phone ?? prev.zalo_phone,
+
+        chinh_sach: room.chinh_sach ?? prev.chinh_sach,
         media: nextMedia,
+      }))
 
-        // ✅ luôn lấy lại dữ liệu đầy đủ từ RPC nếu có
-        description: room?.description ?? prev.description ?? "",
-        chinh_sach: room?.chinh_sach ?? prev.chinh_sach ?? "",
-        link_zalo: room?.link_zalo ?? prev.link_zalo ?? "",
-        zalo_phone: room?.zalo_phone ?? prev.zalo_phone ?? "",
-      }));
-
-      // 2) Detail: ưu tiên room.room_detail / room.room_details (như /rooms/[id])
       const detail =
-        (room?.room_detail ??
-          room?.room_details ??
-          room?.detail ??
-          room?.details ??
-          null) as any;
+        room?.room_detail ??
+        room?.room_details ??
+        room?.detail ??
+        room?.details ??
+        null
 
-      setDetailForm(detail ? { ...defaultDetailForm, ...(detail as RoomDetail) } : defaultDetailForm);
+      setDetailForm(
+        detail
+          ? { ...defaultDetailForm, ...(detail as RoomDetail) }
+          : defaultDetailForm
+      )
     } catch (e: any) {
-      setErrorMsg(e?.message ?? "Load phòng thất bại");
+      setErrorMsg(e?.message ?? "Load phòng thất bại")
     }
-  })();
-
-  }, [editingRoom])
+  })()
+}, [editingRoom])
 
 const closeNow = () => {
   setShowCloseConfirm(false)
