@@ -435,8 +435,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
       </div>
 
       {errorMsg && <div style={{ ...errorBox, marginTop: 10 }}>{errorMsg}</div>}
-
-     {/* TABLE */}
+{/* TABLE */}
 <div style={tableWrap}>
   <table
     style={{
@@ -444,42 +443,42 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
       width: "100%",
       borderCollapse: "collapse",
       borderSpacing: 0,
-      tableLayout: "fixed",
-      fontSize: 14, // 👈 tăng nhẹ từ 13 → 14 cho dễ đọc hơn
+      tableLayout: "auto",
+      fontSize: 14,
+      wordBreak: "keep-all",
     }}
   >
     <thead>
       <tr>
-        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+        <th style={{ ...th, padding: "4px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
           Ngày cập nhật
         </th>
-        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+        <th style={{ ...th, padding: "4px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
           Link zalo
         </th>
-        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+        <th style={{ ...th, padding: "4px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
           Địa chỉ
         </th>
-        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+        <th style={{ ...th, padding: "4px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
           Loại phòng
         </th>
-        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+        <th style={{ ...th, padding: "4px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
           Mã phòng
         </th>
-        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+        <th style={{ ...th, padding: "4px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
           Giá
         </th>
-        <th style={{ ...th, padding: "4px 6px", whiteSpace: "nowrap", borderBottom: "2px solid #9ca3af", fontWeight: 600 }}>
+        <th style={{ ...th, padding: "4px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap" }}>
           Trạng thái
         </th>
         <th
           style={{
             ...th,
-            width: 100,
+            width: 90,
             padding: "4px 6px",
             textAlign: "right",
+            verticalAlign: "middle",
             whiteSpace: "nowrap",
-            borderBottom: "2px solid #9ca3af",
-            fontWeight: 600,
           }}
         >
           Thao tác
@@ -494,7 +493,8 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
             style={{
               ...td,
               padding: "6px 6px",
-             borderBottom: "1.5px solid #2b2b2c",
+              textAlign: "center",
+              verticalAlign: "middle",
             }}
             colSpan={8}
           >
@@ -525,14 +525,30 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
             <tr
               key={(r as any).id}
               style={{
-               borderBottom: "1.5px solid #0c0c0c", // 👈 row line rõ hơn kiểu Excel
+                borderBottom: "1.5px solid rgba(107, 114, 128, 0.75)",
               }}
             >
-              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
+              <td
+                style={{
+                  ...td,
+                  padding: "6px 6px",
+                  textAlign: "center",
+                  verticalAlign: "middle",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {formatDate((r as any).updated_at)}
               </td>
 
-              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
+              <td
+                style={{
+                  ...td,
+                  padding: "6px 6px",
+                  textAlign: "center",
+                  verticalAlign: "middle",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {zaloLink ? (
                   <button
                     type="button"
@@ -551,23 +567,62 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                 )}
               </td>
 
-              <td style={{ ...td, padding: "6px 6px" }}>
+              <td
+                style={{
+                  ...td,
+                  padding: "6px 6px",
+                  textAlign: "left",
+                  verticalAlign: "middle",
+                }}
+              >
                 {addressText}
               </td>
 
-              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
+              <td
+                style={{
+                  ...td,
+                  padding: "6px 6px",
+                  textAlign: "center",
+                  verticalAlign: "middle",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {(r as any).room_type ?? "-"}
               </td>
 
-              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
+              <td
+                style={{
+                  ...td,
+                  padding: "6px 6px",
+                  textAlign: "center",
+                  verticalAlign: "middle",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 <b>{(r as any).room_code ?? "-"}</b>
               </td>
 
-              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
+              <td
+                style={{
+                  ...td,
+                  padding: "6px 6px",
+                  textAlign: "center",
+                  verticalAlign: "middle",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {formatPrice((r as any).price)}
               </td>
 
-              <td style={{ ...td, padding: "6px 6px", whiteSpace: "nowrap" }}>
+              <td
+                style={{
+                  ...td,
+                  padding: "6px 6px",
+                  textAlign: "center",
+                  verticalAlign: "middle",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {adminLevel === 1 && isHidden ? (
                   <span style={{ ...badge, ...badgeHidden }}>
                     Đã ẩn
@@ -592,8 +647,9 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                   ...td,
                   padding: "6px 6px",
                   textAlign: "right",
+                  verticalAlign: "middle",
                   whiteSpace: "nowrap",
-                  width: 100,
+                  width: 90,
                 }}
               >
                 <div
@@ -613,7 +669,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                     }}
                     title="Sửa"
                   >
-                    <Pencil size={18} strokeWidth={2} />
+                    <Pencil size={20} strokeWidth={1.8} />
                   </button>
 
                   <button
@@ -626,7 +682,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                       alignItems: "center",
                       justifyContent: "center",
                       padding: 0,
-                      fontSize: 18,
+                      fontSize: 35,
                     }}
                     onClick={() => {
                       const cloned = buildClonedRoom(r as Room);
@@ -655,7 +711,6 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
     </tbody>
   </table>
 </div>
-
       {/* PAGINATION */}
       <div style={pagination}>
         <button
@@ -740,7 +795,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
       <div
         style={{
           padding: "14px 16px",
-          borderBottom: "1px solid #e5e7eb",
+          borderBottom: "1px solid #4e4e50",
           fontWeight: 600,
           fontSize: 16,
         }}
