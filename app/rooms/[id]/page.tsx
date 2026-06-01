@@ -242,6 +242,30 @@ function detectLinkType(url: string) {
 
   return "other";
 }
+
+function publicHouseNumber(value?: string | null) {
+  const s = String(value || "").trim();
+
+  if (!s) return "...";
+
+  if (s.includes("/")) {
+    const first = s.split("/")[0]?.trim();
+    return first ? `${first}/...` : "...";
+  }
+
+  if (/^\d+$/.test(s)) {
+    return "...";
+  }
+
+  const m = s.match(/^(\d+)/);
+
+  if (m?.[1]) {
+    return `${m[1]}...`;
+  }
+
+  return "...";
+}
+
 export default function RoomDetailPage() {
   const params = useParams();
   const id = (params?.id as string) || "";
@@ -837,12 +861,13 @@ const houseNumber =
   detail?.houseNumber ??
   "";
 
-const publicHouseNumber = houseNumber;
+
+const maskedHouseNumber = publicHouseNumber(houseNumber);
 
 const addressLine = joinParts([
   adminLevel === 1 || adminLevel === 2
     ? [houseNumber, room?.address].filter(Boolean).join(" ")
-    : [publicHouseNumber, room?.address].filter(Boolean).join(" "),
+    : [maskedHouseNumber, room?.address].filter(Boolean).join(" "),
   room?.ward
     ? (() => {
         const w = String(room.ward).trim().replace(/^P\.?\s*/i, "");
@@ -856,50 +881,68 @@ const addressLine = joinParts([
 
   const feeRows: Array<{ label: string; value: string }> = [];
 
-  if (detail?.electric_fee_value) {
-    feeRows.push({
-      label: "⚡ Điện",
-      value: `${formatVND(detail.electric_fee_value)}${
-        detail?.electric_fee_unit ? ` / ${feeUnitLabel(detail.electric_fee_unit)}` : ""
-      }`,
-    });
-  }
+if (detail?.electric_fee_value != null) {
+  feeRows.push({
+    label: "⚡ Điện",
+    value: `${formatVND(detail.electric_fee_value)}${
+      detail?.electric_fee_unit
+        ? ` / ${feeUnitLabel(detail.electric_fee_unit)}`
+        : ""
+    }`,
+  });
+}
 
-  if (detail?.water_fee_value) {
-    feeRows.push({
-      label: "💧 Nước",
-      value: `${formatVND(detail.water_fee_value)}${
-        detail?.water_fee_unit ? ` / ${feeUnitLabel(detail.water_fee_unit)}` : ""
-      }`,
-    });
-  }
+if (detail?.water_fee_value != null) {
+  feeRows.push({
+    label: "💧 Nước",
+    value: `${formatVND(detail.water_fee_value)}${
+      detail?.water_fee_unit
+        ? ` / ${feeUnitLabel(detail.water_fee_unit)}`
+        : ""
+    }`,
+  });
+}
 
-  if (detail?.service_fee_value) {
-    feeRows.push({
-      label: "🧾 Dịch vụ",
-      value: `${formatVND(detail.service_fee_value)}${
-        detail?.service_fee_unit ? ` / ${feeUnitLabel(detail.service_fee_unit)}` : ""
-      }`,
-    });
-  }
+if (detail?.service_fee_value != null) {
+  feeRows.push({
+    label: "🧾 Dịch vụ",
+    value: `${formatVND(detail.service_fee_value)}${
+      detail?.service_fee_unit
+        ? ` / ${feeUnitLabel(detail.service_fee_unit)}`
+        : ""
+    }`,
+  });
+}
 
-  if (detail?.parking_fee_value) {
-    feeRows.push({
-      label: "🏍️ Gửi xe",
-      value: `${formatVND(detail.parking_fee_value)}${
-        detail?.parking_fee_unit ? ` / ${feeUnitLabel(detail.parking_fee_unit)}` : " / xe"
-      }`,
-    });
-  }
+if (detail?.parking_fee_value != null) {
+  feeRows.push({
+    label: "🏍️ Gửi xe",
+    value: `${formatVND(detail.parking_fee_value)}${
+      detail?.parking_fee_unit
+        ? ` / ${feeUnitLabel(detail.parking_fee_unit)}`
+        : " / xe"
+    }`,
+  });
+}
 
-  if (detail?.other_fee_value || detail?.other_fee_note) {
-    const valuePart = detail?.other_fee_value ? formatVND(detail.other_fee_value) : "";
-    const notePart = detail?.other_fee_note ? String(detail.other_fee_note) : "";
-    feeRows.push({
-      label: "➕ Khác",
-      value: [valuePart, notePart].filter(Boolean).join(" - "),
-    });
-  }
+if (
+  detail?.other_fee_value != null ||
+  detail?.other_fee_note
+) {
+  const valuePart =
+    detail?.other_fee_value != null
+      ? formatVND(detail.other_fee_value)
+      : "0";
+
+  const notePart = detail?.other_fee_note
+    ? String(detail.other_fee_note)
+    : "";
+
+  feeRows.push({
+    label: "➕ Khác",
+    value: [valuePart, notePart].filter(Boolean).join(" - "),
+  });
+}
 
   const isAdmin = adminLevel === 1 || adminLevel === 2;
 

@@ -36,6 +36,30 @@ type RoomCardProps = {
   onNavigate: (href: string) => void;
 };
 
+function publicHouseNumber(value?: string | null) {
+  const s = String(value || "").trim();
+
+  // không có số nhà => vẫn hiện ...
+  if (!s) return "...";
+
+  if (s.includes("/")) {
+    const first = s.split("/")[0]?.trim();
+    return first ? `${first}/..` : "..";
+  }
+
+  if (/^\d+$/.test(s)) {
+    return "..";
+  }
+
+  const m = s.match(/^(\d+)/);
+
+  if (m?.[1]) {
+    return `${m[1]}...`;
+  }
+
+  return "...";
+}
+
 export default function RoomCard({
   room,
   adminLevel,
@@ -412,7 +436,10 @@ return (
 
         {/* ADDRESS */}
         <p className="text-white font-semibold leading-6 pb-3 px-3 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
-          📍 {room.house_number && `${room.house_number} `}
+          📍{adminLevel === 1 || adminLevel === 2
+                ? (room.house_number ? `${room.house_number} ` : "")
+                : `${publicHouseNumber(room.house_number)} `
+             }
           {address}
           {ward && `, P. ${ward}`}
           {district && `, ${district}`}
@@ -467,7 +494,7 @@ return (
         <div className="flex flex-col gap-2">
           <a
             href={`tel:${adminPhone}`}
-            className="w-full rounded-xl border border-white/20 bg-[rgba(255,255,255,0.12)] py-3 text-center font-semibold text-white backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+            className="w-full rounded-xl border border-white/20 bg-[rgba(66, 65, 65, 0.12)] py-3 text-center font-semibold text-white backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
           >
             📞 Gọi điện
           </a>
