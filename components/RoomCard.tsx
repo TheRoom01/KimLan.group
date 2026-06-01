@@ -268,7 +268,7 @@ return (
   </svg>
 </button>
 
-      {/* ADMIN BUTTON */}
+ {/* ADMIN BUTTON */}
       {room.creator_admin_phone && (
         <button
         type="button"
