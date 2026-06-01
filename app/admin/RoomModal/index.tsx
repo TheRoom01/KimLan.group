@@ -181,7 +181,6 @@ const [showCloseConfirm, setShowCloseConfirm] = useState(false)
     return `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
-
    async function fileToHTMLImage(file: File): Promise<HTMLImageElement> {
     const url = URL.createObjectURL(file)
     try {
