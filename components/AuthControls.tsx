@@ -224,12 +224,8 @@ useEffect(() => {
     setAuthLoading(true);
     setAuthMsg("");
 
-    const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      window.location.origin;
-
     await supabase.auth.resetPasswordForEmail(target, {
-      redirectTo: `${siteUrl}/auth/reset-password`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
     });
 
     setAuthLoading(false);
