@@ -217,20 +217,32 @@ useEffect(() => {
   setMenuOpen(false);
 };
 
-  const handleSendReset = async () => {
-    const target = (forgotEmail || email).trim();
-    if (!target.includes("@")) return;
+const handleSendReset = async () => {
+  const target = (forgotEmail || email).trim();
 
-    setAuthLoading(true);
-    setAuthMsg("");
+  if (!target.includes("@")) return;
 
-    await supabase.auth.resetPasswordForEmail(target, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
-    });
+  setAuthLoading(true);
+  setAuthMsg("");
 
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    window.location.origin;
+
+  const { error } = await supabase.auth.resetPasswordForEmail(target, {
+    redirectTo: `${siteUrl}/auth/reset-password`,
+  });
+
+  if (error) {
+    console.error("RESET PASSWORD ERROR:", error);
+    setAuthMsg(error.message);
     setAuthLoading(false);
-    setAuthView("sent");
-  };
+    return;
+  }
+
+  setAuthLoading(false);
+  setAuthView("sent");
+};
 
   const handleChangePassword = async () => {
     setPwMsg("");
