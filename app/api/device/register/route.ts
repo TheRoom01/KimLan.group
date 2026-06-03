@@ -81,31 +81,50 @@ const ua =
 const deviceName =
   `${platform} - ${ua.slice(0, 120)}`;
   
- const { data, error } = await supabase.rpc("register_device_session", {
-    p_device_id: deviceId,
-    p_token_hash: tokenHash,
-    p_device_fingerprint: fingerprint,
-    p_max_devices: 2,
-    p_evict_oldest: forceEvict,
-  });
+const { data, error } = await supabase.rpc("register_device_session", {
+  p_device_id: deviceId,
+  p_token_hash: tokenHash,
+  p_device_fingerprint: fingerprint,
+  p_max_devices: 2,
+  p_evict_oldest: forceEvict,
+});
 
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+if (error) {
+  return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+}
+
+const result = Array.isArray(data) ? data[0] : null;
+
+if (result?.status === "limit_reached") {
+  // 🔥 lấy danh sách thiết bị đang login
+  const { data: devices, error: devicesError } = await supabase.rpc(
+    "list_device_sessions"
+  );
+
+  if (devicesError) {
+    return NextResponse.json(
+      { ok: false, error: devicesError.message },
+      { status: 500 }
+    );
   }
 
-  const status = (Array.isArray(data) && data[0]?.status) || "unknown";
-
-  if (status === "limit_reached") {
-  // ❌ Không cho login, không evict, chỉ trả 403
   return NextResponse.json(
     {
       ok: false,
-      status,
-      message:
-        "Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục.",
+      status: "limit_reached",
+      devices: devices || [],
+      message: "Đã vượt quá 2 thiết bị. Chọn thiết bị để đăng xuất.",
     },
     { status: 403 }
   );
 }
-  return NextResponse.json({ ok: true, status }, { status: 200 });
-}
+
+// ✅ login bình thường
+return NextResponse.json(
+  {
+    ok: true,
+    status: "ok",
+    deviceId,
+  },
+  { status: 200 }
+)}

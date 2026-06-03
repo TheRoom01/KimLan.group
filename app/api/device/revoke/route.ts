@@ -6,8 +6,7 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
 
-  const { data: userRes, error: userErr } =
-    await supabase.auth.getUser();
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
 
   if (userErr || !userRes?.user) {
     return NextResponse.json(
@@ -17,8 +16,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-
-  const sessionId = Number(body?.sessionId);
+  const sessionId = body?.sessionId;
 
   if (!sessionId) {
     return NextResponse.json(
@@ -27,12 +25,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const { data, error } = await supabase.rpc(
-    "revoke_device_session_by_id",
-    {
-      p_session_id: sessionId,
-    }
-  );
+  // 🔥 revoke device
+  const { error } = await supabase.rpc("revoke_device_session_by_id", {
+    p_session_id: sessionId,
+  });
 
   if (error) {
     return NextResponse.json(
@@ -41,8 +37,12 @@ export async function POST(req: Request) {
     );
   }
 
+  // 🔥 QUAN TRỌNG: trả luôn list devices mới
+  const { data: devices } = await supabase.rpc("list_device_sessions");
+
   return NextResponse.json({
     ok: true,
-    result: data,
+    revoked: sessionId,
+    devices: devices || [],
   });
 }

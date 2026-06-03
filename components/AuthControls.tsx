@@ -30,6 +30,7 @@ const [devices, setDevices] = useState<any[]>([]);
 const [loadingDevices, setLoadingDevices] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const loginLockRef = useRef(false);
 
   const [changePwOpen, setChangePwOpen] = useState(false);
   const [oldPw, setOldPw] = useState("");
@@ -55,7 +56,9 @@ const [loadingDevices, setLoadingDevices] = useState(false);
 
     // 2️⃣ Lắng nghe thay đổi auth
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
+      // nếu đang mở device manager thì không reset UI login state
+      if (showDeviceManager) return;
+
       setUser(session?.user ?? null);
     });
 
@@ -72,6 +75,7 @@ useEffect(() => {
 
   const sp = new URLSearchParams(window.location.search);
   const authType = sp.get("auth");
+  
 
   if (!authType) return;
 
@@ -162,79 +166,105 @@ useEffect(() => {
   };
 
   // ===== login/logout/reset =====
-  const handleLogin = async () => {
-  if (!canLogin) return;
+const handleLogin = async () => {
+  if (loginLockRef.current) return;
+  loginLockRef.current = true;
+
+  if (!canLogin) {
+    loginLockRef.current = false;
+    return;
+  }
 
   setAuthLoading(true);
   setAuthMsg("");
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password: password.trim(),
-  });
+  const doLogin = async () => {
+    return supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: password.trim(),
+    });
+  };
 
-  if (error) {
-    setAuthLoading(false);
-    setAuthMsg(error.message);
-    return;
-  }
-
-  // 2) Register this browser as a "device" (enforce max 2 devices)
   try {
+    let { error } = await doLogin();
+
+    if (error) {
+      setAuthLoading(false);
+      setAuthMsg(error.message);
+      loginLockRef.current = false;
+      return;
+    }
+
     const r = await fetch("/api/device/register", { method: "POST" });
 
-      if (r.status === 403) {
+    // ❌ vượt limit → mở device manager, KHÔNG logout
+    if (r.status === 403) {
+      const s = await fetch("/api/device/list");
+      const body = await s.json();
+
+      setDevices(body?.devices || []);
+      setShowDeviceManager(true);
+
+      setAuthLoading(false);
+      loginLockRef.current = false;
+      return;
+    }
+
+    // ❌ lỗi register → retry flow
+    if (!r.ok) {
+      await fetch("/api/device/logout", { method: "POST" });
+
+      const retry = await doLogin();
+
+      if (retry.error) {
         await supabase.auth.signOut();
-
-        setShowDeviceManager(true);
-
-        try {
-          await fetchDevices();
-        } catch {
-          setAuthMsg(
-            "Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục."
-          );
-        }
-
         setAuthLoading(false);
+        setAuthMsg(retry.error.message || "Login failed");
+        loginLockRef.current = false;
         return;
       }
 
-    if (!r.ok) {
-      const body = await r.json().catch(() => ({} as any));
-      await supabase.auth.signOut();
-      setAuthLoading(false);
-      setAuthMsg(body?.error || "Không thể đăng ký thiết bị. Vui lòng thử lại.");
-      return;
+      const r2 = await fetch("/api/device/register", { method: "POST" });
+
+      if (!r2.ok) {
+        await supabase.auth.signOut();
+        setAuthLoading(false);
+        setAuthMsg("Không thể đăng ký thiết bị sau retry");
+        loginLockRef.current = false;
+        return;
+      }
     }
+
+    await fetchDevices().catch(() => {});
+
+    setAuthLoading(false);
+    closeAuth();
+    loginLockRef.current = false;
   } catch {
     await supabase.auth.signOut();
     setAuthLoading(false);
-    setAuthMsg("Không thể đăng ký thiết bị (lỗi mạng). Vui lòng thử lại.");
-    return;
+    setAuthMsg("Lỗi mạng khi đăng nhập");
+    loginLockRef.current = false;
   }
+};
 
-    setAuthLoading(false);
-
-    // sync device list sau login thành công
-    try {
-      await fetchDevices();
-    } catch {}
-
-    closeAuth();
-  };
-
- const handleLogout = async () => {
-  // 1) revoke device session + clear httpOnly device cookies
+const handleLogout = async () => {
   try {
     await fetch("/api/device/logout", { method: "POST" });
-  } catch {
-    // ignore
-  }
+  } catch {}
 
-  // 2) logout Supabase auth
   await supabase.auth.signOut();
+
   setMenuOpen(false);
+  setDevices([]);
+  setShowDeviceManager(false);
+  setUser(null);
+
+  // 🔥 tránh UI “kẹt state” khi Supabase delay
+  setAuthOpen(false);
+  setAuthMsg("");
+
+  router.refresh();
 };
 
 const fetchDevices = async () => {
@@ -696,6 +726,57 @@ hover:bg-[rgba(255,255,255,0.1)] transition-all"
           </div>
         </div>
       )}
+
+      {showDeviceManager && (
+  <div className="fixed inset-0 z-[10000] bg-black/60 flex items-center justify-center">
+    <div className="bg-white w-full max-w-md rounded-xl p-4 space-y-3">
+      <h2 className="text-lg font-semibold">
+        Quản lý thiết bị đăng nhập
+      </h2>
+
+      {devices.length === 0 ? (
+        <div className="text-sm text-gray-600">
+          Không tải được danh sách thiết bị
+        </div>
+      ) : (
+        devices.map((d) => (
+          <div
+            key={d.id}
+            className="flex justify-between items-center border-b py-2"
+          >
+            <div className="text-sm">
+              {d.device_name || "Thiết bị"}
+              <div className="text-xs text-gray-500">
+                {new Date(d.last_seen_at).toLocaleString()}
+              </div>
+            </div>
+
+            <button
+              className="text-xs text-red-500"
+              onClick={async () => {
+                await fetch("/api/device/revoke", {
+                  method: "POST",
+                  body: JSON.stringify({ token_hash: d.token_hash }),
+                });
+
+                await fetchDevices();
+              }}
+            >
+              Đăng xuất
+            </button>
+          </div>
+        ))
+      )}
+
+      <button
+        className="w-full mt-3 bg-black text-white rounded-lg py-2 text-sm"
+        onClick={() => setShowDeviceManager(false)}
+      >
+        Đóng
+      </button>
+    </div>
+  </div>
+)}
     </>
   );
 }
