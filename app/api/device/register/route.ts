@@ -87,6 +87,7 @@ const { data, error } = await supabase.rpc("register_device_session", {
   p_device_fingerprint: fingerprint,
   p_max_devices: 2,
   p_evict_oldest: forceEvict,
+  p_device_name: deviceName,
 });
 
 if (error) {

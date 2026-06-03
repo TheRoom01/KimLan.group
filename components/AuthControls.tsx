@@ -195,7 +195,15 @@ const handleLogin = async () => {
       return;
     }
 
-    const r = await fetch("/api/device/register", { method: "POST" });
+    const r = await fetch("/api/device/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        forceEvict: false,
+      }),
+    });
 
     // ❌ vượt limit → mở device manager, KHÔNG logout
     if (r.status === 403) {
@@ -483,12 +491,16 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                   >
                     <div className="flex justify-between items-center">
                       <span>
-                        {d.device_name || "Thiết bị"}
+                        {d.device_name ||
+  `${d.device_fingerprint?.slice?.(0, 10) || "Device"} • ${new Date(d.last_seen_at).toLocaleString()}`}
                       </span>
 
                       <button
-                        className="text-xs text-red-300 hover:text-red-200"
-                        onClick={async () => {
+                        className="text-xs text-red-300 hover:text-red-200 pointer-events-auto relative z-[99999]"
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+
                           await fetch("/api/device/revoke", {
                             method: "POST",
                             headers: {
@@ -498,8 +510,6 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                           });
 
                           await fetchDevices();
-
-                          fetchDevices(); // refresh list
                         }}
                       >
                         đăng xuất
@@ -745,24 +755,33 @@ hover:bg-[rgba(255,255,255,0.1)] transition-all"
             className="flex justify-between items-center border-b py-2"
           >
             <div className="text-sm">
-              {d.device_name || "Thiết bị"}
+              <div className="text-sm font-medium">
+                {d.device_name ||
+                  `${d.platform || "Unknown"} - ${d.browser || "Browser"}`}
+              </div>
               <div className="text-xs text-gray-500">
                 {new Date(d.last_seen_at).toLocaleString()}
               </div>
             </div>
 
             <button
-              className="text-xs text-red-500"
-              onClick={async () => {
+              className="text-xs text-red-300 hover:text-red-200 pointer-events-auto relative z-[99999]"
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
                 await fetch("/api/device/revoke", {
                   method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
                   body: JSON.stringify({ token_hash: d.token_hash }),
                 });
 
                 await fetchDevices();
               }}
             >
-              Đăng xuất
+              đăng xuất
             </button>
           </div>
         ))
