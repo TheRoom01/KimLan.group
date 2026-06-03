@@ -63,11 +63,29 @@ export async function POST(req: Request) {
 
   const tokenHash = sha256Base64Url(deviceToken);
 
-  const { data, error } = await supabase.rpc("register_device_session", {
+ const fingerprint = sha256Base64Url(
+    [
+      req.headers.get("user-agent") || "",
+      req.headers.get("sec-ch-ua-platform") || "",
+      req.headers.get("sec-ch-ua") || "",
+    ].join("|")
+  );
+
+  const platform =
+  req.headers.get("sec-ch-ua-platform") ||
+  "Unknown";
+
+const ua =
+  req.headers.get("user-agent") || "";
+
+const deviceName =
+  `${platform} - ${ua.slice(0, 120)}`;
+  
+ const { data, error } = await supabase.rpc("register_device_session", {
     p_device_id: deviceId,
     p_token_hash: tokenHash,
+    p_device_fingerprint: fingerprint,
     p_max_devices: 2,
-    // ✅ mặc định KHÔNG evict, chỉ evict khi user confirm
     p_evict_oldest: forceEvict,
   });
 

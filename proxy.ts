@@ -102,6 +102,14 @@ export async function proxy(request: NextRequest) {
 try {
   let tokenHash = await sha256Base64Url(deviceToken);
 
+  const fingerprint = await sha256Base64Url(
+    [
+      request.headers.get("user-agent") || "",
+      request.headers.get("sec-ch-ua-platform") || "",
+      request.headers.get("sec-ch-ua") || "",
+    ].join("|")
+  );
+
   // validate current device is still active (also touches last_seen_at)
   const { data: v1, error: e1 } = await supabase.rpc("validate_device_session", {
     p_token_hash: tokenHash,
@@ -118,9 +126,11 @@ try {
   let { data: reg1, error: eReg } = await supabase.rpc("register_device_session", {
   p_device_id: deviceId,
   p_token_hash: tokenHash,
+  p_device_fingerprint: fingerprint,
   p_max_devices: 2,
-  p_evict_oldest: false, // ✅ hard limit: never evict here
+  p_evict_oldest: false,
 });
+ 
 let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
 
   // ✅ nếu register bị trùng token_hash (23505)
@@ -134,8 +144,9 @@ let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
     const retry = await supabase.rpc("register_device_session", {
       p_device_id: deviceId,
       p_token_hash: tokenHash,
+      p_device_fingerprint: fingerprint,
       p_max_devices: 2,
-      p_evict_oldest: false, // ✅ hard limit
+      p_evict_oldest: false,
     });
 
     eReg = retry.error;
@@ -147,21 +158,31 @@ let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
   }
 
   // ✅ hard limit: device #3 -> block access (do NOT evict others)
-  if (regStatus === "limit_reached") {
-    try {
-      await supabase.auth.signOut();
-    } catch {
-      // ignore
-    }
+ if (regStatus === "limit_reached") {
+  try {
+    await supabase.auth.signOut();
+  } catch {}
 
-    response.cookies.set({ name: DEVICE_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
-    response.cookies.set({ name: DEVICE_ID_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
+  response.cookies.set({
+    name: DEVICE_COOKIE,
+    value: "",
+    ...cookieOptions,
+    maxAge: 0,
+  });
 
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/";
-    redirectUrl.searchParams.set("auth", "kicked");
-    return NextResponse.redirect(redirectUrl);
-  }
+  response.cookies.set({
+    name: DEVICE_ID_COOKIE,
+    value: "",
+    ...cookieOptions,
+    maxAge: 0,
+  });
+
+  const redirectUrl = request.nextUrl.clone();
+  redirectUrl.pathname = "/";
+  redirectUrl.searchParams.set("auth", "limit");
+
+  return NextResponse.redirect(redirectUrl);
+}
 
   // validate again after register (with possibly rotated tokenHash)
   const { data: v2, error: e2 } = await supabase.rpc("validate_device_session", {

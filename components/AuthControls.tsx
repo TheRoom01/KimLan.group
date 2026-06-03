@@ -22,6 +22,13 @@ export default function AuthControls() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authMsg, setAuthMsg] = useState("");
 
+  const [deviceSessions, setDeviceSessions] = useState<any[]>([]);
+const [showDeviceManager, setShowDeviceManager] = useState(false);
+const [deviceLoading, setDeviceLoading] = useState(false);
+
+const [devices, setDevices] = useState<any[]>([]);
+const [loadingDevices, setLoadingDevices] = useState(false);
+
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [changePwOpen, setChangePwOpen] = useState(false);
@@ -176,13 +183,22 @@ useEffect(() => {
   try {
     const r = await fetch("/api/device/register", { method: "POST" });
 
-    if (r.status === 403) {
-      // limit reached / got kicked: logout immediately
-      await supabase.auth.signOut();
-      setAuthLoading(false);
-      setAuthMsg("Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục.");
-      return;
-    }
+      if (r.status === 403) {
+        await supabase.auth.signOut();
+
+        setShowDeviceManager(true);
+
+        try {
+          await fetchDevices();
+        } catch {
+          setAuthMsg(
+            "Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục."
+          );
+        }
+
+        setAuthLoading(false);
+        return;
+      }
 
     if (!r.ok) {
       const body = await r.json().catch(() => ({} as any));
@@ -198,11 +214,15 @@ useEffect(() => {
     return;
   }
 
-  setAuthLoading(false);
+    setAuthLoading(false);
 
-  // ✅ KHÔNG router.refresh() để tránh remount -> trắng/skeleton
-  closeAuth();
-};
+    // sync device list sau login thành công
+    try {
+      await fetchDevices();
+    } catch {}
+
+    closeAuth();
+  };
 
  const handleLogout = async () => {
   // 1) revoke device session + clear httpOnly device cookies
@@ -215,6 +235,25 @@ useEffect(() => {
   // 2) logout Supabase auth
   await supabase.auth.signOut();
   setMenuOpen(false);
+};
+
+const fetchDevices = async () => {
+  setLoadingDevices(true);
+
+  try {
+    const res = await fetch("/api/device/list");
+    const json = await res.json();
+
+    if (json?.ok) {
+      setDevices(json.devices || []);
+    } else {
+      setDevices([]);
+    }
+  } catch {
+    setDevices([]);
+  } finally {
+    setLoadingDevices(false);
+  }
 };
 
 const handleSendReset = async () => {
@@ -309,10 +348,11 @@ const handleSendReset = async () => {
     });
   };
 
-  const openMenu = () => {
-    updateMenuPos();
-    setMenuOpen(true);
-  };
+ const openMenu = () => {
+  updateMenuPos();
+  setMenuOpen(true);
+  fetchDevices();
+};
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -357,9 +397,9 @@ const handleSendReset = async () => {
           <div
             ref={menuRef}
             className="fixed z-[9999] inline-block rounded-3xl border border-white/35
-bg-[linear-gradient(rgba(255,255,255,0.045),rgba(255,255,255,0.015))]
-backdrop-blur-[45px]
-shadow-[0_35px_120px_rgba(0,0,0,0.75),0_0_50px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.45)]"
+              bg-[linear-gradient(rgba(255,255,255,0.045),rgba(255,255,255,0.015))]
+              backdrop-blur-[45px]
+              shadow-[0_35px_120px_rgba(0,0,0,0.75),0_0_50px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.45)]"
             style={{ left: menuPos.left, top: menuPos.top }}
           >
             <div className="py-1">
@@ -398,6 +438,50 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
               >
                 Đăng xuất
               </button>
+
+              <div className="px-3 py-2 text-xs text-white/60">
+                Thiết bị đang đăng nhập
+              </div>
+
+              {loadingDevices ? (
+                <div className="px-3 py-2 text-xs text-white/50">Đang tải...</div>
+              ) : (
+                devices.map((d) => (
+                  <div
+                    key={d.id}
+                    className="px-3 py-2 flex flex-col gap-1 text-sm text-white/80"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span>
+                        {d.device_name || "Thiết bị"}
+                      </span>
+
+                      <button
+                        className="text-xs text-red-300 hover:text-red-200"
+                        onClick={async () => {
+                          await fetch("/api/device/revoke", {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({ token_hash: d.token_hash }),
+                          });
+
+                          await fetchDevices();
+
+                          fetchDevices(); // refresh list
+                        }}
+                      >
+                        đăng xuất
+                      </button>
+                    </div>
+
+                    <div className="text-[11px] text-white/50">
+                      last seen: {new Date(d.last_seen_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>,
           document.body
@@ -414,10 +498,10 @@ const controls = (
             type="button"
             onClick={() => (menuOpen ? closeMenu() : openMenu())}
             className="rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold text-white
-bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
-backdrop-blur-[30px]
-shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
-hover:bg-[rgba(255,255,255,0.1)] transition-all"
+              bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
+              backdrop-blur-[30px]
+              shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
+              hover:bg-[rgba(255,255,255,0.1)] transition-all"
             title={user?.email || "Đã đăng nhập"}
           >
             Tài khoản ▾
