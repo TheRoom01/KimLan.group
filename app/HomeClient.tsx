@@ -10,7 +10,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
-
+import AnonymousLockModal from "@/components/AnonymousLockModal";
 
 type InitialProps = {
   initialRooms: any[];
@@ -216,6 +216,11 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
 
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
+  // ================== ANON LOCK ==================
+const [isAnonLocked, setIsAnonLocked] = useState(false);
+const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+const lockTimerRef = useRef<number | null>(null);
  
   // ================== FILTER ==================
   
@@ -2616,6 +2621,7 @@ useEffect(() => {
 
     const uid = data.session?.user?.id ?? null;
     lastSessionUserIdRef.current = uid;
+    setIsLoggedIn(!!uid);
 
     // nếu không có session thì hạ quyền
     if (!data.session) setAdminLevel(0);
@@ -2628,11 +2634,15 @@ useEffect(() => {
     // Skip callback đầu tiên (thường là INITIAL_SESSION hoặc bắn ngay khi subscribe)
     if (skipFirstAuthEffectRef.current) {
       skipFirstAuthEffectRef.current = false;
-      lastSessionUserIdRef.current = session?.user?.id ?? null;
+      const uid = session?.user?.id ?? null;
+
+        lastSessionUserIdRef.current = uid;
+        setIsLoggedIn(!!uid);
       return;
     }
 
     const nextUid = session?.user?.id ?? null;
+    setIsLoggedIn(!!nextUid);
     const prevUid = lastSessionUserIdRef.current;
 
     // cập nhật baseline
@@ -2658,11 +2668,39 @@ useEffect(() => {
   };
 }, [resetPagination, pageIndex, persistSoon]);
 
+ // ================== Khóa Anon ==================
+useEffect(() => {
+  if (isLoggedIn) {
+    setIsAnonLocked(false);
+
+    if (lockTimerRef.current) {
+      window.clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+
+    return;
+  }
+
+  if (lockTimerRef.current) {
+    window.clearTimeout(lockTimerRef.current);
+  }
+
+  lockTimerRef.current = window.setTimeout(() => {
+    setIsAnonLocked(true);
+   }, 90_000); // 90 giây
+
+  return () => {
+    if (lockTimerRef.current) {
+      window.clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+  };
+}, [isLoggedIn]);
+
 const handleNavigateToRoom = useCallback((href: string) => {
   try {
     const el = scrollRef.current;
 
-    // ✅ đồng bộ ref ngay trước khi snapshot
     if (el) lastScrollTopRef.current = el.scrollTop;
     lastPageIndexRef.current = pageIndex;
     lastDisplayPageIndexRef.current = displayPageIndex;
@@ -2690,8 +2728,7 @@ const handleNavigateToRoom = useCallback((href: string) => {
   pageIndex,
   displayPageIndex,
 ]);
-
-  // ================== RENDER ==================
+// ================== RENDER ==================
 return (
   <div className="relative flex h-screen flex-col overflow-hidden text-[#F4E7D6]">
     {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
@@ -2743,24 +2780,22 @@ return (
               />
 
               <a
-              href="/saved"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="
-                rounded-2xl border border-[#E5C9A9]/25
-                bg-[rgba(45,27,20,0.45)]
-                px-4 py-2
-                text-[11px] font-semibold text-[#E5C9A9]
-
-                backdrop-blur-[20px]
-                shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-
-                hover:bg-[rgba(255,255,255,0.08)]
-                transition-all
-              "
-            >
-              ★ Phòng đã lưu
-            </a>
+                href="/saved"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="
+                  rounded-2xl border border-[#E5C9A9]/25
+                  bg-[rgba(45,27,20,0.45)]
+                  px-4 py-2
+                  text-[11px] font-semibold text-[#E5C9A9]
+                  backdrop-blur-[20px]
+                  shadow-[0_10px_30px_rgba(0,0,0,0.35)]
+                  hover:bg-[rgba(255,255,255,0.08)]
+                  transition-all
+                "
+              >
+                ★ Phòng đã lưu
+              </a>
             </div>
           </div>
         </div>
@@ -2825,11 +2860,15 @@ return (
       />
     </div>
 
-    <div className="fixed inset-x-0 bottom-0 z-[950]
-  border-t border-white/25
-  bg-[linear-gradient(rgba(255,255,255,0.08),rgba(255,255,255,0.03))]
-  backdrop-blur-[40px]
-  shadow-[0_-8px_30px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.4)]">
+    <div
+      className="
+        fixed inset-x-0 bottom-0 z-[950]
+        border-t border-white/25
+        bg-[linear-gradient(rgba(255,255,255,0.08),rgba(255,255,255,0.03))]
+        backdrop-blur-[40px]
+        shadow-[0_-8px_30px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.4)]
+      "
+    >
       <Pagination
         goNext={goNext}
         goPrev={goPrev}
@@ -2839,7 +2878,17 @@ return (
       />
     </div>
 
-    <div id="portal-root" className="fixed inset-0 pointer-events-none z-[9999]" />
+    {isAnonLocked && (
+      <AnonymousLockModal
+        phone="0967.467.587"
+        zaloUrl="https://zalo.me/0967467587"
+      />
+    )}
+
+    <div
+      id="portal-root"
+      className="fixed inset-0 pointer-events-none z-[9999]"
+    />
   </div>
 );
 };
