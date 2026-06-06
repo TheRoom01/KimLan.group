@@ -345,7 +345,7 @@ const toggleTerm = (value: "short" | "long") => {
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Tìm theo địa chỉ..."
+        placeholder="Tìm theo tên đường..."
         className="w-full h-[46px] rounded-2xl border border-white/20 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
       />
 

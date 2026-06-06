@@ -87,6 +87,7 @@ function toTitleCaseStreet(input: string) {
     .map(normalizeStreetWord)
     .join(" ");
 }
+
 export default function RoomInfoTab({
   value,
   onChange,
@@ -194,22 +195,22 @@ useEffect(() => {
           value={value.house_number}
           onChange={v => onChange({ ...value, house_number: v })}
           onBlur={() => {
-  const normalizedAddress = toTitleCaseStreet(value.address);
-  if (normalizedAddress !== value.address) {
-    onChange({ ...value, address: normalizedAddress });
-  }
-  onAutofillByAddress?.(value.house_number, normalizedAddress);
-}}
+            const normalizedAddress = toTitleCaseStreet(value.address);
+            if (normalizedAddress !== value.address) {
+              onChange({ ...value, address: normalizedAddress });
+            }
+            onAutofillByAddress?.(value.house_number, normalizedAddress);
+          }}
         />
         <Input
           label="Tên đường"
           value={value.address}
           onChange={v => onChange({ ...value, address: v })}
           onBlur={() => {
-  const normalizedAddress = toTitleCaseStreet(value.address);
-  onChange({ ...value, address: normalizedAddress });
-  onAutofillByAddress?.(value.house_number, normalizedAddress);
-}}
+        const normalizedAddress = toTitleCaseStreet(value.address);
+        onChange({ ...value, address: normalizedAddress });
+        onAutofillByAddress?.(value.house_number, normalizedAddress);
+      }}
         />
         <Input
           label="Phường"
@@ -249,12 +250,11 @@ useEffect(() => {
       {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
       <div style={infoGridStyle}>
        <Select
-  label="Trạng thái"
-  value={value.status}
-  options={["Trống", "Đã thuê"]}
-  onChange={(v: string) => onChange({ ...value, status: v as RoomStatus })}
- />
-
+          label="Trạng thái"
+          value={value.status}
+          options={["Trống", "Đã thuê"]}
+          onChange={(v: string) => onChange({ ...value, status: v as RoomStatus })}
+        />
 
         <ReadOnly label="Ngày tạo" value={formatDate(updatedAt)} />
 
@@ -262,30 +262,30 @@ useEffect(() => {
           <label style={labelStyle}>Ảnh</label>
 
           <input
-  ref={fileRef}
-  type="file"
-  accept="image/*,video/*"
-  multiple
-  style={{ display: "none" }}
+          ref={fileRef}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          style={{ display: "none" }}
 
-  onChange={(e) => {
-  const files = Array.from(e.target.files ?? []);
+          onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
 
-  const ok = files
-    .filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"))
-    .map((file, index) => ({
-      file,
-      __order: index, // ✅ giữ thứ tự user chọn
-    }));
+          const ok = files
+            .filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"))
+            .map((file, index) => ({
+              file,
+              __order: index, // ✅ giữ thứ tự user chọn
+            }));
 
-  if (ok.length) {
-    // chỉ gửi file theo đúng thứ tự đã map
-    onUploadFiles(ok.map(x => x.file));
-  }
+          if (ok.length) {
+            // chỉ gửi file theo đúng thứ tự đã map
+            onUploadFiles(ok.map(x => x.file));
+          }
 
-  e.currentTarget.value = "";
-}}
-/>
+          e.currentTarget.value = "";
+        }}
+        />
 
 
           <button
