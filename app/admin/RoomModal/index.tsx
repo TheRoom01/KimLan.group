@@ -670,7 +670,7 @@ for (const file of okFiles) {
     // Chỉ fallback nếu biết level là 1/2
     const lvl = adminLevel;
     const rpcName =
-      lvl === 1 ? "fetch_admin_rooms_l1_v1" : lvl === 2 ? "fetch_admin_rooms_l2_v1" : null;
+      lvl === 1 ? "fetch_admin_rooms_l1_v2" : lvl === 2 ? "fetch_admin_rooms_l2_v2" : null;
 
     if (!rpcName) return null;
 

@@ -4,8 +4,21 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const PAGE_SIZE = 20;
 
-export default async function AdminPage() {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    report?: string;
+  }>;
+}) {
+
   const supabase = await createSupabaseServerClient();
+  const params = await searchParams;
+
+  const report =
+    typeof params?.report === "string"
+      ? params.report
+      : null;
 
   // 1) Must be logged in
   const { data: u, error: userErr } = await supabase.auth.getUser();
@@ -29,13 +42,14 @@ export default async function AdminPage() {
   const offset = 0;
 
   const rpcName =
-    level === 2 ? "fetch_admin_rooms_l2_v1" : "fetch_admin_rooms_l1_v1";
+  level === 2 ? "fetch_admin_rooms_l2_v2" : "fetch_admin_rooms_l1_v2";
 
   const { data: rpcData, error: rpcErr } =
     await supabase.rpc(rpcName as any, {
       p_limit: PAGE_SIZE,
       p_offset: offset,
       p_search: null,
+      p_report: report ?? null,
     });
 
   if (rpcErr) {
@@ -45,6 +59,12 @@ export default async function AdminPage() {
 
   const rooms = ((rpcData as any)?.data ?? []) as any[];
   const total = Number((rpcData as any)?.total_count ?? (rpcData as any)?.total ?? 0);
-
-  return <AdminClient initialRooms={rooms} initialTotal={total} />;
+  
+  return (
+  <AdminClient
+    initialRooms={rooms}
+    initialTotal={total}
+    report={report ?? null}
+  />
+);
 }

@@ -11,9 +11,10 @@ const PAGE_SIZE = 20;
 type AdminClientProps = {
   initialRooms: Room[];
   initialTotal: number;
+  report?: string | null;
 };
 
-export default function AdminClient({ initialRooms, initialTotal }: AdminClientProps) {
+export default function AdminClient({ initialRooms, initialTotal, report, }: AdminClientProps) {
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(1);
@@ -38,6 +39,7 @@ const [confirmText, setConfirmText] = useState("");
 const confirmActionRef = useRef<null | (() => void | Promise<void>)>(null);
 
 const toastTimerRef = useRef<number | null>(null);
+const [reportState] = useState(report ?? null);
 
 const buildClonedRoom = (r: Room) => {
   const base = r as any;
@@ -188,14 +190,16 @@ const rpcArgs = {
   p_limit: PAGE_SIZE,
   p_offset: offset,
   p_search: q.trim() || null,
+  p_report: report ?? null, // 👈 THÊM DÒNG NÀY
 };
 
 const rpcName =
   adminLevel === 1
-    ? "fetch_admin_rooms_l1_v1"
+    ? "fetch_admin_rooms_l1_v2"
     : adminLevel === 2
-    ? "fetch_admin_rooms_l2_v1"
+    ? "fetch_admin_rooms_l2_v2"
     : null;
+
 console.log("admin rpc:", rpcName, "level:", adminLevel); // 👈 THÊM DÒNG NÀY
 if (!rpcName) {
   setErrorMsg("Không có quyền truy cập trang admin.");
@@ -366,8 +370,63 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
   setLinkPickerOpen(true);
 }, [notify]);
 
-  return (
-    <main>
+ return (
+  <main>
+
+    {report && (
+      <div
+        style={{
+          marginBottom: 16,
+          padding: "14px 16px",
+          borderRadius: 12,
+          border: "1px solid #bfdbfe",
+          background: "#eff6ff",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "#1d4ed8",
+              fontWeight: 600,
+            }}
+          >
+            ĐANG XEM BÁO CÁO
+          </div>
+
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              color: "#111827",
+            }}
+          >
+            {report}
+          </div>
+        </div>
+
+        <a
+          href="/admin"
+          style={{
+            textDecoration: "none",
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "#1d4ed8",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          Thoát bộ lọc
+        </a>
+      </div>
+    )}
+
+
       {/* HEADER */}
       <div style={header}>
         <div style={headerLeft}>
