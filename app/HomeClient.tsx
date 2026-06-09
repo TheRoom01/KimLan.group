@@ -795,6 +795,27 @@ const debugLastWriteRef = useRef<DebugWrite>({});
 const debugOverlayElRef = useRef<HTMLDivElement | null>(null);
 const debugAppliedBackHintRef = useRef<{ at?: number; qs?: string }>({});
 
+// ✅ DEBUG PAGINATION: hiện kết quả fetch trực tiếp trên UI khi URL có ?debug=1
+const [pageDebug, setPageDebug] = useState<{
+  at: string;
+  event: string;
+  targetIndex?: number;
+  pageIndex?: number;
+  displayPageIndex?: number;
+  total?: number | null;
+  rawLen?: number;
+  dedupedLen?: number;
+  limit?: number;
+  cursorUsedForThisPage?: any;
+  nextCursor?: any;
+  sortMode?: string;
+  hasNextBefore?: boolean;
+  finalHasNext?: boolean;
+  cachedState?: string;
+  filterSig?: string;
+  note?: string;
+} | null>(null);
+
 const debugSetItem = useCallback((key: string, value: string) => {
   // always swallow (like current code), but record what happened
   try {
@@ -2064,10 +2085,35 @@ queueMicrotask(() => {
     });
 
     if (pagesRef.current[targetIndex] !== undefined) {
-      console.log("[fetchPage] skip: cached page exists", { targetIndex });
-      setShowSkeleton(false);
-      return;
-    }
+  console.log("[fetchPage] skip: cached page exists", { targetIndex });
+
+  if (debugEnabled) {
+    const cachedPage = pagesRef.current[targetIndex];
+
+    setPageDebug({
+      at: new Date().toLocaleTimeString(),
+      event: "SKIP_CACHED_PAGE",
+      targetIndex,
+      pageIndex: pageIndexRef.current,
+      displayPageIndex,
+      total,
+      rawLen: Array.isArray(cachedPage) ? cachedPage.length : undefined,
+      dedupedLen: Array.isArray(cachedPage) ? cachedPage.length : undefined,
+      limit: LIMIT,
+      cursorUsedForThisPage: cursorsRef.current[targetIndex] ?? null,
+      nextCursor: cursorsRef.current[targetIndex + 1] ?? null,
+      sortMode,
+      hasNextBefore: hasNext,
+      finalHasNext: Boolean(cursorsRef.current[targetIndex + 1]),
+      cachedState: "pagesRef.current[targetIndex] !== undefined",
+      filterSig: lastFilterSigRef.current,
+      note: "fetchPage bị skip vì page này đã có trong cache. Nếu nút Sau bị tắt ở đây, có thể hasNext/cursor cache đang cũ.",
+    });
+  }
+
+  setShowSkeleton(false);
+  return;
+}
 
     const reqKey = `${lastFilterSigRef.current ?? ""}::${targetIndex}`;
 
@@ -2089,6 +2135,9 @@ queueMicrotask(() => {
 
     try {
       const cursorForThisPage = cursorsRef.current[targetIndex] ?? null;
+
+    // ✅ alias để lát nữa render debug dễ hiểu
+    const cursorUsedForThisPage = cursorForThisPage;
 
       const pending = pendingUrlFiltersRef.current;
       const visiblePage = pagesRef.current[targetIndex] as any[] | undefined;
@@ -2165,12 +2214,44 @@ if (pendingUrlFiltersRef.current && targetIndex === pageIndexRef.current) {
       setPages(nextPages);
 
       cursorsRef.current[targetIndex + 1] = res.nextCursor ?? null;
-      setHasNext(Boolean(res.nextCursor) && deduped.length === LIMIT);
 
-      // ✅ show ngay page đang đứng
-      if (targetIndex === pageIndexRef.current) {
-        setDisplayPageIndex(targetIndex);
-      }
+const nextHasNext = Boolean(res.nextCursor) && deduped.length === LIMIT;
+setHasNext(nextHasNext);
+
+// ✅ DEBUG PAGINATION RESULT
+if (debugEnabled) {
+  setPageDebug({
+    at: new Date().toLocaleTimeString(),
+    event: "FETCH_RESULT",
+    targetIndex,
+    pageIndex: pageIndexRef.current,
+    displayPageIndex,
+    total: typeof res.total === "number" ? res.total : null,
+    rawLen: Array.isArray(res.data) ? res.data.length : 0,
+    dedupedLen: deduped.length,
+    limit: LIMIT,
+    cursorUsedForThisPage,
+    nextCursor: res.nextCursor ?? null,
+    sortMode: pending?.sort ?? sortMode,
+    hasNextBefore: hasNext,
+    finalHasNext: nextHasNext,
+    cachedState: pagesRef.current[targetIndex] !== undefined ? "cached_after_fetch" : "not_cached_before_fetch",
+    filterSig: lastFilterSigRef.current,
+    note:
+      !res.nextCursor && typeof res.total === "number" && res.total > (targetIndex + 1) * LIMIT
+        ? "NGHI RPC: total còn nhiều nhưng nextCursor = null."
+        : res.nextCursor && deduped.length < LIMIT
+          ? "NGHI DEDUP: RPC có nextCursor nhưng dedupedLen < LIMIT nên frontend tự tắt hasNext."
+          : nextHasNext
+            ? "OK: có nextCursor và đủ LIMIT, nút Sau nên bật."
+            : "Có thể đã hết dữ liệu thật hoặc cần xem total/rawLen/nextCursor.",
+  });
+}
+
+// ✅ show ngay page đang đứng
+if (targetIndex === pageIndexRef.current) {
+  setDisplayPageIndex(targetIndex);
+}
 
       // ===== Idle prefetch NEXT page (UX nhanh) =====
       // ❌ đừng prefetch khi vừa reset/filter
@@ -2513,13 +2594,56 @@ useEffect(() => {
 
 // ================== NEXT / PREV ==================
 const goNext = useCallback(() => {
-  if (loading || !hasNext) return;
+  if (loading || !hasNext) {
+  if (debugEnabled) {
+    setPageDebug({
+      at: new Date().toLocaleTimeString(),
+      event: "NEXT_BLOCKED",
+      pageIndex,
+      displayPageIndex,
+      total,
+      limit: LIMIT,
+      cursorUsedForThisPage: cursorsRef.current[pageIndex] ?? null,
+      nextCursor: cursorsRef.current[pageIndex + 1] ?? null,
+      sortMode,
+      hasNextBefore: hasNext,
+      finalHasNext: hasNext,
+      filterSig: lastFilterSigRef.current,
+      note: loading
+        ? "Bấm Sau bị chặn vì loading = true."
+        : "Bấm Sau bị chặn vì hasNext = false.",
+    });
+  }
 
-  const next = pageIndex + 1;
+  return;
+}
 
-  // ✅ cursor để fetch trang "next" đã được lưu ở cursorsRef[next]
-  const nextCursor = (cursorsRef.current[next] ?? null) as UrlCursor;
-  if (!nextCursor) return; // chưa có cursor thì chưa cho next (an toàn)
+const next = pageIndex + 1;
+
+// ✅ cursor để fetch trang "next" đã được lưu ở cursorsRef[next]
+const nextCursor = (cursorsRef.current[next] ?? null) as UrlCursor;
+
+if (!nextCursor) {
+  if (debugEnabled) {
+    setPageDebug({
+      at: new Date().toLocaleTimeString(),
+      event: "NEXT_BLOCKED_NO_CURSOR",
+      pageIndex,
+      displayPageIndex,
+      total,
+      limit: LIMIT,
+      cursorUsedForThisPage: cursorsRef.current[pageIndex] ?? null,
+      nextCursor: null,
+      sortMode,
+      hasNextBefore: hasNext,
+      finalHasNext: false,
+      filterSig: lastFilterSigRef.current,
+      note: "hasNext có thể true nhưng cursor trang sau không tồn tại.",
+    });
+  }
+
+  return;
+}
 
   setPageIndex(next);
 
@@ -2844,7 +2968,58 @@ return (
           </div>
         </div>
       </div>
+      {debugEnabled && pageDebug && (
+        <div
+          className="
+            fixed left-2 right-2 bottom-[88px] z-[99999]
+            max-h-[48vh] overflow-auto rounded-2xl
+            border border-yellow-300/40
+            bg-black/85 p-3 text-[11px] leading-relaxed text-yellow-100
+            shadow-[0_10px_40px_rgba(0,0,0,0.65)]
+            backdrop-blur-xl
+          "
+        >
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="font-bold text-yellow-300">
+              PAGE DEBUG — {pageDebug.event}
+            </div>
 
+            <button
+              type="button"
+              onClick={() => setPageDebug(null)}
+              className="rounded-full border border-white/30 px-3 py-1 text-[10px] text-white"
+            >
+              Đóng
+            </button>
+          </div>
+
+          <pre className="whitespace-pre-wrap break-words">
+{JSON.stringify(
+  {
+    at: pageDebug.at,
+    event: pageDebug.event,
+    targetIndex: pageDebug.targetIndex,
+    pageIndex: pageDebug.pageIndex,
+    displayPageIndex: pageDebug.displayPageIndex,
+    total: pageDebug.total,
+    rawLen: pageDebug.rawLen,
+    dedupedLen: pageDebug.dedupedLen,
+    limit: pageDebug.limit,
+    sortMode: pageDebug.sortMode,
+    hasNextBefore: pageDebug.hasNextBefore,
+    finalHasNext: pageDebug.finalHasNext,
+    cursorUsedForThisPage: pageDebug.cursorUsedForThisPage,
+    nextCursor: pageDebug.nextCursor,
+    cachedState: pageDebug.cachedState,
+    filterSig: pageDebug.filterSig,
+    note: pageDebug.note,
+  },
+  null,
+  2
+)}
+          </pre>
+        </div>
+      )}
       <RoomList
         fetchError={fetchError}
         showSkeleton={showSkeleton}
