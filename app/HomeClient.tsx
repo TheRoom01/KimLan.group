@@ -796,7 +796,7 @@ const debugOverlayElRef = useRef<HTMLDivElement | null>(null);
 const debugAppliedBackHintRef = useRef<{ at?: number; qs?: string }>({});
 
 // ✅ DEBUG PAGINATION: hiện kết quả fetch trực tiếp trên UI khi URL có ?debug=1
-const [pageDebug, setPageDebug] = useState<{
+type PageDebugItem = {
   at: string;
   event: string;
   targetIndex?: number;
@@ -814,7 +814,24 @@ const [pageDebug, setPageDebug] = useState<{
   cachedState?: string;
   filterSig?: string;
   note?: string;
-} | null>(null);
+};
+
+const [pageDebug, setPageDebug] = useState<PageDebugItem | null>(null);
+const [pageDebugHistory, setPageDebugHistory] = useState<PageDebugItem[]>([]);
+
+const pushPageDebug = useCallback(
+  (item: PageDebugItem) => {
+    if (!debugEnabled) return;
+
+    setPageDebug(item);
+
+    setPageDebugHistory((prev) => {
+      const next = [item, ...prev];
+      return next.slice(0, 5);
+    });
+  },
+  [debugEnabled]
+);
 
 const debugSetItem = useCallback((key: string, value: string) => {
   // always swallow (like current code), but record what happened
@@ -838,80 +855,6 @@ const debugSetItem = useCallback((key: string, value: string) => {
   }
 }, []);
 
-useEffect(() => {
-  if (!debugEnabled) return;
-
-  // create overlay
-  const el = document.createElement("div");
-  el.id = "home-debug-overlay";
-  el.style.position = "fixed";
-  el.style.left = "8px";
-  el.style.right = "8px";
-  el.style.bottom = "8px";
-  el.style.zIndex = "2147483647";
-  el.style.background = "rgba(0,0,0,0.80)";
-  el.style.color = "white";
-  el.style.padding = "10px 12px";
-  el.style.borderRadius = "10px";
-  el.style.fontSize = "12px";
-  el.style.lineHeight = "1.35";
-  el.style.whiteSpace = "pre-wrap";
-  el.style.wordBreak = "break-word";
-  el.style.pointerEvents = "auto";
-  el.style.userSelect = "text";
-  el.textContent = "HOME DEBUG (starting...)";
-  document.body.appendChild(el);
-  debugOverlayElRef.current = el;
-
-  const render = () => {
-    if (!debugOverlayElRef.current) return;
-
-    // read current keys (best-effort)
-    const homeStateRaw = (() => { try { return sessionStorage.getItem(HOME_STATE_KEY); } catch { return null; } })();
-    const backSnapRaw  = (() => { try { return sessionStorage.getItem(HOME_BACK_SNAPSHOT_KEY); } catch { return null; } })();
-    const backHintRaw  = (() => { try { return sessionStorage.getItem(HOME_BACK_HINT_KEY); } catch { return null; } })();
-
-    const homeState = safeJsonParse<{ ts?: number; qs?: string }>(homeStateRaw);
-    const backSnap  = safeJsonParse<{ ts?: number; qs?: string }>(backSnapRaw);
-    const backHint  = safeJsonParse<{ ts?: number; qs?: string }>(backHintRaw);
-
-    const now = Date.now();
-    const fmtAge = (ts?: number) => (ts ? `${Math.max(0, Math.round((now - ts) / 1000))}s ago` : "n/a");
-
-    const last = debugLastWriteRef.current;
-    const applied = debugAppliedBackHintRef.current;
-    const appliedAge = applied.at ? `${Math.max(0, Math.round((now - applied.at) / 1000))}s ago` : "n/a";
-
-   const lines = [
-  `HOME DEBUG (debug=1)`,
-  `URL: ${window.location.pathname}${window.location.search}`,
-  `AppliedBackHintUrl: ${applied.at ? "YES" : "NO"}  age=${appliedAge}`,
-  applied.qs ? `RestoredQs: ${applied.qs}` : `RestoredQs: (none)`,
-  ``,
-  `Last write:`,
-      last.okAt ? `  OK   ${fmtAge(last.okAt)}  key=${last.key}  bytes=${last.bytes}` : `  OK   n/a`,
-      last.errAt ? `  ERR  ${fmtAge(last.errAt)}  ${last.errName}: ${last.errMsg}  key=${last.key}  bytes=${last.bytes}` : `  ERR  none`,
-      ``,
-      `sessionStorage keys (exists / bytes / age):`,
-      `  HOME_STATE_V2: ${homeStateRaw ? "YES" : "NO"}  bytes=${homeStateRaw ? approxBytes(homeStateRaw) : 0}  age=${fmtAge(homeState?.ts)}`,
-      `  HOME_BACK_SNAPSHOT_V1: ${backSnapRaw ? "YES" : "NO"}  bytes=${backSnapRaw ? approxBytes(backSnapRaw) : 0}  age=${fmtAge(backSnap?.ts)}`,
-      `  HOME_BACK_HINT_V1: ${backHintRaw ? "YES" : "NO"}  bytes=${backHintRaw ? approxBytes(backHintRaw) : 0}  age=${fmtAge(backHint?.ts)}`,
-      ``,
-      `Tip: nếu thấy ERR = QuotaExceededError / SecurityError / null keys sau khi treo tab -> đúng hướng lỗi.`,
-    ];
-
-    debugOverlayElRef.current.textContent = lines.join("\n");
-  };
-
-  render();
-  const t = window.setInterval(render, 800);
-
-  return () => {
-    window.clearInterval(t);
-    try { document.body.removeChild(el); } catch {}
-    debugOverlayElRef.current = null;
-  };
-}, [debugEnabled]);
 
   // ================== PERSIST (sessionStorage) ==================
   const persistRafRef = useRef<number | null>(null);
@@ -2090,7 +2033,7 @@ queueMicrotask(() => {
   if (debugEnabled) {
     const cachedPage = pagesRef.current[targetIndex];
 
-    setPageDebug({
+    pushPageDebug({
       at: new Date().toLocaleTimeString(),
       event: "SKIP_CACHED_PAGE",
       targetIndex,
@@ -2220,7 +2163,7 @@ setHasNext(nextHasNext);
 
 // ✅ DEBUG PAGINATION RESULT
 if (debugEnabled) {
-  setPageDebug({
+  pushPageDebug({
     at: new Date().toLocaleTimeString(),
     event: "FETCH_RESULT",
     targetIndex,
@@ -2297,19 +2240,24 @@ if (targetIndex === pageIndexRef.current) {
       }
     }
   },
-  [
-    adminLevel,
-    appliedSearch,
-    minPriceApplied,
-    maxPriceApplied,
-    sortMode,
-    statusFilter,
-    selectedDistricts,
-    selectedRoomTypes,
-    moveFilter,
-    petFilters,
-    termFilters,
-  ]
+    [
+      adminLevel,
+      appliedSearch,
+      minPriceApplied,
+      maxPriceApplied,
+      sortMode,
+      statusFilter,
+      selectedDistricts,
+      selectedRoomTypes,
+      moveFilter,
+      petFilters,
+      termFilters,
+      debugEnabled,
+      displayPageIndex,
+      total,
+      hasNext,
+      pushPageDebug,
+   ]
    );
    useEffect(() => {
    fetchPageRef.current = fetchPage;
@@ -2596,7 +2544,7 @@ useEffect(() => {
 const goNext = useCallback(() => {
   if (loading || !hasNext) {
   if (debugEnabled) {
-    setPageDebug({
+    pushPageDebug({
       at: new Date().toLocaleTimeString(),
       event: "NEXT_BLOCKED",
       pageIndex,
@@ -2625,7 +2573,7 @@ const nextCursor = (cursorsRef.current[next] ?? null) as UrlCursor;
 
 if (!nextCursor) {
   if (debugEnabled) {
-    setPageDebug({
+    pushPageDebug({
       at: new Date().toLocaleTimeString(),
       event: "NEXT_BLOCKED_NO_CURSOR",
       pageIndex,
@@ -2674,15 +2622,21 @@ persistSoon();
   pageIndex,
   buildQs,
   replaceUrlShallow,
-    appliedSearch,
+  appliedSearch,
   priceApplied,
   selectedDistricts,
   selectedRoomTypes,
   moveFilter,
+  petFilters,
+  termFilters,
   sortMode,
   persistSoon,
   statusFilter,
   saveScrollToHistory,
+  debugEnabled,
+  displayPageIndex,
+  total,
+  pushPageDebug,
 ]);
 
 const goPrev = useCallback(() => {
@@ -2968,11 +2922,11 @@ return (
           </div>
         </div>
       </div>
-      {debugEnabled && pageDebug && (
+          {debugEnabled && pageDebug && (
         <div
           className="
             fixed left-2 right-2 bottom-[88px] z-[99999]
-            max-h-[48vh] overflow-auto rounded-2xl
+            max-h-[58vh] overflow-auto rounded-2xl
             border border-yellow-300/40
             bg-black/85 p-3 text-[11px] leading-relaxed text-yellow-100
             shadow-[0_10px_40px_rgba(0,0,0,0.65)]
@@ -2984,16 +2938,31 @@ return (
               PAGE DEBUG — {pageDebug.event}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setPageDebug(null)}
-              className="rounded-full border border-white/30 px-3 py-1 text-[10px] text-white"
-            >
-              Đóng
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPageDebugHistory([])}
+                className="rounded-full border border-white/30 px-3 py-1 text-[10px] text-white"
+              >
+                Xóa history
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPageDebug(null)}
+                className="rounded-full border border-white/30 px-3 py-1 text-[10px] text-white"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
 
-          <pre className="whitespace-pre-wrap break-words">
+          <div className="mb-2 rounded-xl border border-yellow-300/20 bg-yellow-300/10 p-2">
+            <div className="mb-1 font-bold text-yellow-300">
+              LATEST
+            </div>
+
+            <pre className="whitespace-pre-wrap break-words">
 {JSON.stringify(
   {
     at: pageDebug.at,
@@ -3017,7 +2986,38 @@ return (
   null,
   2
 )}
-          </pre>
+            </pre>
+          </div>
+
+          <div className="rounded-xl border border-white/15 bg-white/5 p-2">
+            <div className="mb-1 font-bold text-white">
+              HISTORY — 5 lần gần nhất
+            </div>
+
+            <pre className="whitespace-pre-wrap break-words">
+{JSON.stringify(
+  pageDebugHistory.map((x, i) => ({
+    no: i + 1,
+    at: x.at,
+    event: x.event,
+    targetIndex: x.targetIndex,
+    pageIndex: x.pageIndex,
+    total: x.total,
+    rawLen: x.rawLen,
+    dedupedLen: x.dedupedLen,
+    limit: x.limit,
+    sortMode: x.sortMode,
+    finalHasNext: x.finalHasNext,
+    cursorUsedForThisPage: x.cursorUsedForThisPage,
+    nextCursor: x.nextCursor,
+    cachedState: x.cachedState,
+    note: x.note,
+  })),
+  null,
+  2
+)}
+            </pre>
+          </div>
         </div>
       )}
       <RoomList
