@@ -341,7 +341,7 @@ const MAX_VIDEO_MB = 50
 const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
 
 const MAX_VIDEOS_PER_ROOM = 2
-const MAX_VIDEO_SECONDS = 120 // < 2 phút
+const MAX_VIDEO_SECONDS = 240 // < 4 phút
 
 const existingVideosCount = Array.isArray((roomForm as any)?.media)
   ? (roomForm as any).media.filter((m: any) => m?.type === 'video').length
@@ -364,7 +364,7 @@ async function assertVideoDuration(file: File) {
       const d = video.duration
       if (!Number.isFinite(d)) return reject(new Error('Không đọc được thời lượng video'))
       if (d > MAX_VIDEO_SECONDS) {
-        return reject(new Error(`Mỗi video phải ngắn hơn ${MAX_VIDEO_SECONDS} giây (2 phút)`))
+        return reject(new Error(`Mỗi video phải ngắn hơn ${MAX_VIDEO_SECONDS} giây (4 phút)`))
       }
       resolve()
     }
