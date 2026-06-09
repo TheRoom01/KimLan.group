@@ -202,19 +202,32 @@ export async function fetchRooms(
   const cursorId: string | null =
     cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
 
-const toIsoOrNull = (v: unknown): string | null => {
+// ✅ CỰC KỲ QUAN TRỌNG:
+// Không dùng new Date(string).toISOString() cho cursor timestamp từ Postgres,
+// vì JavaScript sẽ làm mất microseconds:
+// "2026-06-07T17:47:30.366639+00:00"
+// -> "2026-06-07T17:47:30.366Z"
+// Làm keyset pagination bị nhảy sai / mất dữ liệu.
+const toTimestampOrNull = (v: unknown): string | null => {
   if (!v) return null;
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === "string") {
-    // nếu đã là ISO thì giữ nguyên; nếu là string thường thì cố parse
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+
+  if (v instanceof Date) {
+    return v.toISOString();
   }
+
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+
+    // Giữ nguyên string từ Supabase/Postgres để không mất microseconds.
+    return s;
+  }
+
   return null;
 };
 
-const cursorUpdatedAt: string | null = toIsoOrNull(cursorObj?.updated_at);
-const cursorCreatedAt: string | null = toIsoOrNull((cursorObj as any)?.created_at);
+const cursorUpdatedAt: string | null = toTimestampOrNull(cursorObj?.updated_at);
+const cursorCreatedAt: string | null = toTimestampOrNull((cursorObj as any)?.created_at);
 
 // RPC expects: 'elevator' | 'stairs' | null
 const pMove =
