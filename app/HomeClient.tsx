@@ -263,11 +263,6 @@ const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
   lastFilterSigRef.current = sig;
   prevAppliedSearchRef.current = next.search.trim();
 }, []);
-
-  useEffect(() => {
-  console.log("MOVE_FILTER_STATE =", moveFilter);
-}, [moveFilter]);
-
   
   //-----------------appliedSearch------------
   const [search, setSearch] = useState("");
@@ -667,20 +662,10 @@ type DebugWrite = {
   bytes?: number;
 };
 
-function safeJsonParse<T>(raw: string | null): T | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
-
 function approxBytes(str: string) {
   // rough UTF-8-ish estimate
   return typeof TextEncoder !== "undefined" ? new TextEncoder().encode(str).length : str.length * 2;
 }
-
 
 const replaceUrlShallow = useCallback(
   (nextQs: string) => {
@@ -792,8 +777,6 @@ const debugEnabled = useMemo(() => {
 }, []);
 
 const debugLastWriteRef = useRef<DebugWrite>({});
-const debugOverlayElRef = useRef<HTMLDivElement | null>(null);
-const debugAppliedBackHintRef = useRef<{ at?: number; qs?: string }>({});
 
 // ✅ DEBUG PAGINATION: hiện kết quả fetch trực tiếp trên UI khi URL có ?debug=1
 type PageDebugItem = {
@@ -2019,22 +2002,10 @@ queueMicrotask(() => {
   async (targetIndex: number) => {
     const myVersion = filtersVersionRef.current;
 
-    // 🔎 DEBUG
-    console.log("[fetchPage] enter", {
-      targetIndex,
-      myVersion,
-      pageIndex: pageIndexRef.current,
-      cachedIsUndef: pagesRef.current[targetIndex] === undefined,
-      cachedType: typeof pagesRef.current[targetIndex],
-      cachedLen: Array.isArray(pagesRef.current[targetIndex])
-        ? pagesRef.current[targetIndex]?.length
-        : null,
-      lastFilterSig: lastFilterSigRef.current,
-      hydrating: hydratingFromUrlRef.current,
-    });
-
     if (pagesRef.current[targetIndex] !== undefined) {
+  if (debugEnabled) {
   console.log("[fetchPage] skip: cached page exists", { targetIndex });
+}
 
   if (debugEnabled) {
     const cachedPage = pagesRef.current[targetIndex];
@@ -2072,7 +2043,9 @@ queueMicrotask(() => {
     }
 
     inFlightRef.current[reqKey] = true;
-    console.log("[fetchPage] start request", { reqKey });
+    if (debugEnabled) {
+  console.log("[fetchPage] start request", { reqKey });
+}
 
     const isVisible = targetIndex === pageIndexRef.current;
 
@@ -2384,14 +2357,6 @@ const preSearchBaselineRef = useRef<BaselineState | null>(null);
 
 // ================== FILTER CHANGE ==================
 useEffect(() => {
-  console.log("FILTER_CHANGE", {
-    skip: skipNextFilterEffectRef.current,
-    hydrating: hydratingFromUrlRef.current,
-    filterSig,
-    last: lastFilterSigRef.current,
-    pending: pendingRestoredFilterSigRef.current,
-    moveFilter,
-  });
 
   const applied = appliedSearch.trim();
 
@@ -2969,6 +2934,23 @@ return (
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const payload = {
+                    latest: pageDebug,
+                    history: pageDebugHistory,
+                  };
+
+                  navigator.clipboard
+                    ?.writeText(JSON.stringify(payload, null, 2))
+                    .catch(() => {});
+                }}
+                className="rounded-full border border-white/30 px-3 py-1 text-[10px] text-white"
+              >
+                Copy
+              </button>
+
               <button
                 type="button"
                 onClick={() => setPageDebugHistory([])}
