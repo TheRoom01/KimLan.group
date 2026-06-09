@@ -60,6 +60,15 @@ function publicHouseNumber(value?: string | null) {
   return "...";
 }
 
+function normalizeStatus(v?: string | null) {
+  const s = String(v ?? "").toLowerCase().trim();
+
+  if (s.includes("thuê")) return "Đã thuê";
+  if (s.includes("trống") || s === "trong") return "Trống";
+
+  return "Trống";
+}
+
 export default function RoomCard({
   room,
   adminLevel,
@@ -79,6 +88,16 @@ export default function RoomCard({
     return s ? s : FALLBACK;
   };
 
+const [currentStatus, setCurrentStatus] = useState(
+  normalizeStatus(room.status)
+);
+
+const [updatingStatus, setUpdatingStatus] = useState(false);
+
+const [confirmStatus, setConfirmStatus] = useState<{
+  prevStatus: string;
+  nextStatus: string;
+} | null>(null);
 
   // ✅ build thumb.webp theo UUID (room.id) để tránh trùng room_code
   // rooms/{uuid}/images/thumb.webp
@@ -140,6 +159,10 @@ useEffect(() => {
   setSaved(isRoomSaved(room.id));
 }, [room.id]);
 
+useEffect(() => {
+  setCurrentStatus(normalizeStatus(room.status));
+}, [room.status]);
+
   const mainSrc =
     mainErrorStage === 0
       ? mainPrimary
@@ -172,14 +195,69 @@ useEffect(() => {
     (room as any).district_name ??
     "";
 
-useEffect(() => {
-  document.body.style.overflow = adminPhone ? "hidden" : "";
-}, [adminPhone]);
+  useEffect(() => {
+    document.body.style.overflow = adminPhone ? "hidden" : "";
+  }, [adminPhone]);
 
   const level = Number(adminLevel) || 0;
   const isAdmin = level === 1 || level === 2;
 
   const href = `/rooms/${room.id}`;
+
+  const isRoomAvailable = currentStatus === "Trống";
+
+function handleToggleStatus(
+  e: React.MouseEvent<HTMLButtonElement>
+) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (!isAdmin || updatingStatus) return;
+
+  const prevStatus = currentStatus;
+  const nextStatus = isRoomAvailable ? "Đã thuê" : "Trống";
+
+  setConfirmStatus({
+    prevStatus,
+    nextStatus,
+  });
+}
+
+async function confirmToggleStatus() {
+  if (!confirmStatus || updatingStatus) return;
+
+  const prevStatus = confirmStatus.prevStatus;
+  const nextStatus = confirmStatus.nextStatus;
+
+  setConfirmStatus(null);
+  setCurrentStatus(nextStatus);
+  setUpdatingStatus(true);
+
+  try {
+    const res = await fetch(`/api/rooms/${room.id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        status: nextStatus,
+      }),
+    });
+
+    const json = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Cập nhật trạng thái thất bại");
+    }
+
+    setCurrentStatus(normalizeStatus(json?.data?.status || nextStatus));
+  } catch (err: any) {
+    setCurrentStatus(prevStatus);
+    alert(err?.message || "Cập nhật trạng thái thất bại");
+  } finally {
+    setUpdatingStatus(false);
+  }
+}
 
 return (
   <>
@@ -408,15 +486,39 @@ return (
               </span>
             </h3>
 
-            <span
-              className={`text-xs px-2.5 py-[3px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[12px] ${
-                room.status === "Trống"
-                  ? "bg-[#22c55e]/15 text-[#86efac] border border-[#22c55e]/30"
-                  : "bg-white/10 text-white/60 border border-white/15"
-              }`}
-            >
-              {room.status === "Trống" ? "Còn Trống" : "Đã thuê"}
-            </span>
+            {isAdmin ? (
+              <button
+                type="button"
+                disabled={updatingStatus}
+                onClick={handleToggleStatus}
+                title="Bấm để đổi trạng thái phòng"
+                className={`text-[8px] px-1 py-[0.5px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[10px] transition-all duration-150 active:scale-95 ${
+  updatingStatus
+    ? "opacity-70 cursor-wait"
+    : "cursor-pointer hover:scale-105"
+} ${
+  isRoomAvailable
+    ? "bg-[#22c55e]/35 text-[#bbf7d0] border border-[#22c55e]/60 shadow-[0_0_14px_rgba(34,197,94,0.18)]"
+    : "bg-red-500/30 text-red-100 border border-red-400/50 shadow-[0_0_14px_rgba(239,68,68,0.16)]"
+}`}
+              >
+                {updatingStatus
+                  ? "Đang lưu..."
+                  : isRoomAvailable
+                  ? "Còn Trống"
+                  : "Đã thuê"}
+              </button>
+            ) : (
+              <span
+                className={`text-[8px] px-1 py-[0.5px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[10px] ${
+  isRoomAvailable
+    ? "bg-[#22c55e]/35 text-[#bbf7d0] border border-[#22c55e]/60 shadow-[0_0_14px_rgba(34,197,94,0.18)]"
+    : "bg-red-500/30 text-red-100 border border-red-400/50 shadow-[0_0_14px_rgba(239,68,68,0.16)]"
+}`}
+              >
+                {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
+              </span>
+            )}
           </div>
 
           <div className="flex items-start gap-3">
@@ -445,7 +547,83 @@ return (
           {district && `, ${district}`}
         </p>
       </div>
-    </Link>
+       </Link>
+
+    {/* STATUS CONFIRM MODAL */}
+    {confirmStatus &&
+      typeof window !== "undefined" &&
+      createPortal(
+        <div
+          className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/55 px-4 backdrop-blur-[4px]"
+          onClick={() => setConfirmStatus(null)}
+        >
+          <div
+            className="
+              w-full max-w-[340px] rounded-[24px]
+              border border-white/20
+              bg-[linear-gradient(180deg,rgba(35,35,40,0.96),rgba(18,18,22,0.96))]
+              p-5 text-white
+              shadow-[0_30px_90px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.12)]
+              backdrop-blur-[28px]
+            "
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-[17px] font-bold">
+              Xác nhận đổi trạng thái
+            </div>
+
+            <div className="text-sm leading-6 text-white/70">
+              Bạn muốn đổi trạng thái phòng này từ{" "}
+              <span className="font-bold text-white">
+                {confirmStatus.prevStatus}
+              </span>{" "}
+              sang{" "}
+              <span
+                className={
+                  confirmStatus.nextStatus === "Trống"
+                    ? "font-bold text-green-300"
+                    : "font-bold text-red-300"
+                }
+              >
+                {confirmStatus.nextStatus}
+              </span>
+              ?
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmStatus(null)}
+                className="
+                  rounded-2xl border border-white/15
+                  bg-white/10 px-4 py-2
+                  text-sm font-semibold text-white/80
+                  transition hover:bg-white/15 active:scale-95
+                "
+              >
+                Hủy
+              </button>
+
+              <button
+                type="button"
+                disabled={updatingStatus}
+                onClick={confirmToggleStatus}
+                className="
+                  rounded-2xl border border-blue-400/40
+                  bg-blue-600 px-4 py-2
+                  text-sm font-bold text-white
+                  shadow-[0_0_18px_rgba(37,99,235,0.45)]
+                  transition hover:bg-blue-500 active:scale-95
+                  disabled:cursor-wait disabled:opacity-60
+                "
+              >
+                {updatingStatus ? "Đang lưu..." : "OK"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
     {/* ADMIN MODAL */}
 {adminPhone &&
@@ -515,11 +693,11 @@ return (
             </span>
           </a>
 
-          
         </div>
       </div>
     </div>,
     document.body
+    
   )}
   </>
 );}

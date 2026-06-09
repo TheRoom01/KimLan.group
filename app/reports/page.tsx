@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import type { CSSProperties } from "react";
 
 function card(title: string, value: number) {
   return (
@@ -34,11 +35,7 @@ function card(title: string, value: number) {
   );
 }
 
-function reportCard(
-  title: string,
-  value: number,
-  href: string
-) {
+function reportCard(title: string, value: number, href: string) {
   return (
     <Link
       href={href}
@@ -92,6 +89,54 @@ function reportCard(
   );
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+const reportThRight: CSSProperties = {
+  textAlign: "right",
+  padding: 12,
+  borderBottom: "1px solid #e5e7eb",
+  borderLeft: "1px solid #e5e7eb",
+  whiteSpace: "nowrap",
+};
+
+const reportTdRight: CSSProperties = {
+  padding: 12,
+  textAlign: "right",
+  borderBottom: "1px solid #f3f4f6",
+  borderLeft: "1px solid #f3f4f6",
+  whiteSpace: "nowrap",
+};
+
+const reportTdRightBold: CSSProperties = {
+  ...reportTdRight,
+  fontWeight: 600,
+};
+
+const reportThLeft: CSSProperties = {
+  textAlign: "left",
+  padding: 12,
+  borderBottom: "1px solid #e5e7eb",
+  whiteSpace: "nowrap",
+};
+
+const reportTdLeft: CSSProperties = {
+  padding: 12,
+  borderBottom: "1px solid #f3f4f6",
+  whiteSpace: "nowrap",
+};
+
 export default async function ReportsPage() {
   const supabase = await createSupabaseServerClient();
 
@@ -103,9 +148,7 @@ export default async function ReportsPage() {
     redirect("/auth");
   }
 
-  const { data: levelData } = await supabase.rpc(
-    "get_my_admin_level"
-  );
+  const { data: levelData } = await supabase.rpc("get_my_admin_level");
 
   const level = Number(levelData ?? 0);
 
@@ -113,17 +156,19 @@ export default async function ReportsPage() {
     redirect("/admin");
   }
 
-  const { data: reportData, error } =
-    await supabase.rpc("reports_overview_v1");
+  const { data: reportData, error } = await supabase.rpc(
+    "reports_overview_v1"
+  );
 
-  const { data: topDistricts } =
-  await supabase.rpc("reports_top_districts_v1");
+  const { data: topDistricts } = await supabase.rpc(
+    "reports_top_districts_v1"
+  );
 
-  const { data: topAdmins } =
-    await supabase.rpc("reports_top_admins_v1");
-    
-  const { data: dataHealth } =
-    await supabase.rpc("reports_data_health_v1");
+  const { data: topAdmins } = await supabase.rpc("reports_top_admins_v1");
+
+  const { data: dataHealth } = await supabase.rpc(
+    "reports_data_health_v1"
+  );
 
   if (error) {
     throw new Error(error.message);
@@ -142,6 +187,18 @@ export default async function ReportsPage() {
     no_owner_phone: 0,
     no_media: 0,
   };
+
+  const districtRows = topDistricts ?? [];
+
+  const roomTypeColumns = [
+    "Studio",
+    "1 Phòng ngủ",
+    "2 Phòng ngủ",
+    "3 Phòng ngủ",
+    "4 Phòng ngủ",
+    "Duplex",
+    "Tách bếp",
+  ];
 
   return (
     <main
@@ -164,296 +221,341 @@ export default async function ReportsPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(240px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
           gap: 16,
         }}
       >
-        {card("Tổng phòng", stats.total)}
-        {card("Đang trống", stats.available)}
-        {card("Đã thuê", stats.rented)}
-        {card("Đã ẩn", stats.hidden)}
+        {card("Tổng phòng", Number(stats.total ?? 0))}
+        {card("Đang trống", Number(stats.available ?? 0))}
+        {card("Đã thuê", Number(stats.rented ?? 0))}
+        {card("Đã ẩn", Number(stats.hidden ?? 0))}
       </div>
 
       <div
-  style={{
-    marginTop: 32,
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    overflow: "hidden",
-    background: "#fff",
-  }}
->
-  <div
-    style={{
-      padding: 16,
-      fontSize: 20,
-      fontWeight: 700,
-      borderBottom: "1px solid #e5e7eb",
-    }}
-  >
-    Top quận nhiều phòng nhất
-  </div>
-
-  <table
-    style={{
-      width: "100%",
-      borderCollapse: "collapse",
-    }}
-  >
-    <thead>
-      <tr>
-        <th
+        style={{
+          marginTop: 32,
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          overflow: "hidden",
+          background: "#fff",
+        }}
+      >
+        <div
           style={{
-            textAlign: "left",
-            padding: 12,
+            padding: 16,
+            fontSize: 20,
+            fontWeight: 700,
             borderBottom: "1px solid #e5e7eb",
           }}
         >
-          Quận
-        </th>
+          Top quận nhiều phòng nhất
+        </div>
 
-        <th
-          style={{
-            textAlign: "right",
-            padding: 12,
-            borderBottom: "1px solid #e5e7eb",
-          }}
-        >
-          Số phòng
-        </th>
-      </tr>
-    </thead>
+        
 
-    <tbody>
-      {(topDistricts ?? []).map((row: any) => (
-        <tr key={row.district}>
-          <td
+        <div style={{ overflowX: "auto" }}>
+          <table
             style={{
-              padding: 12,
-              borderBottom: "1px solid #f3f4f6",
+              width: "100%",
+              minWidth: 1100,
+              borderCollapse: "collapse",
             }}
           >
-            {row.district}
-          </td>
+            <thead>
+              <tr>
+                <th
+                  style={{
+                    textAlign: "left",
+                    padding: 12,
+                    borderBottom: "1px solid #e5e7eb",
+                    whiteSpace: "nowrap",
+                    position: "sticky",
+                    left: 0,
+                    background: "#fff",
+                    zIndex: 2,
+                    borderRight: "1px solid #e5e7eb",
+                  }}
+                >
+                  Quận
+                </th>
 
-          <td
-            style={{
-              padding: 12,
-              textAlign: "right",
-              borderBottom: "1px solid #f3f4f6",
-              fontWeight: 600,
-            }}
-          >
-            {Number(row.total).toLocaleString("vi-VN")}
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-</div>
+                <th style={reportThRight}>Tổng phòng</th>
+                <th style={reportThRight}>Đang trống</th>
+                <th style={reportThRight}>Đã thuê</th>
+                <th style={reportThRight}>Đã ẩn</th>
+                <th style={reportThRight}>Tỷ lệ thuê</th>
 
-<div
-  style={{
-    marginTop: 32,
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    overflow: "hidden",
-    background: "#fff",
-  }}
->
-  <div
-    style={{
-      padding: 16,
-      fontSize: 20,
-      fontWeight: 700,
-      borderBottom: "1px solid #e5e7eb",
-    }}
-  >
-    Top Admins
-  </div>
+                {roomTypeColumns.map((type) => (
+                  <th key={type} style={reportThRight}>
+                    {type}
+                  </th>
+                ))}
+              </tr>
+            </thead>
 
-  <table
-    style={{
-      width: "100%",
-      borderCollapse: "collapse",
-    }}
-  >
-    <thead>
-      <tr>
-        <th style={{ padding: 12, textAlign: "left" }}>
-          Admin
-        </th>
+            <tbody>
+              {districtRows.map((row: any) => {
+                const total = Number(row.total ?? 0);
+                const available = Number(row.available ?? 0);
+                const rented = Number(row.rented ?? 0);
+                const hidden = Number(row.hidden ?? 0);
+                const rentedRate = Number(row.rented_rate ?? 0);
 
-        <th style={{ padding: 12, textAlign: "center" }}>
-          Level
-        </th>
+                return (
+                  <tr key={row.district}>
+                    <td
+                      style={{
+                        ...reportTdLeft,
+                        position: "sticky",
+                        left: 0,
+                        background: "#fff",
+                        zIndex: 1,
+                        fontWeight: 600,
+                        borderRight: "1px solid #f3f4f6",
+                      }}
+                    >
+                      {row.district}
+                    </td>
 
-        <th style={{ padding: 12, textAlign: "center" }}>
-          SĐT
-        </th>
+                    <td style={reportTdRightBold}>
+                      {total.toLocaleString("vi-VN")}
+                    </td>
 
-        <th style={{ padding: 12, textAlign: "right" }}>
-          Tổng phòng
-        </th>
+                    <td style={reportTdRight}>
+                      {available.toLocaleString("vi-VN")}
+                    </td>
 
-        <th style={{ padding: 12, textAlign: "right" }}>
-          Đã thuê
-        </th>
+                    <td style={reportTdRight}>
+                      {rented.toLocaleString("vi-VN")}
+                    </td>
 
-        <th style={{ padding: 12, textAlign: "right" }}>
-          Tỷ lệ thuê
-        </th>
-      </tr>
-    </thead>
+                    <td style={reportTdRight}>
+                      {hidden.toLocaleString("vi-VN")}
+                    </td>
 
-    <tbody>
-      {(topAdmins ?? []).map((row: any) => {
-        const total = Number(row.total_rooms ?? 0);
-        const rented = Number(row.rented_rooms ?? 0);
+                    <td style={reportTdRight}>
+                      {rentedRate.toLocaleString("vi-VN")}%
+                    </td>
 
-        const ratio =
-          total > 0
-            ? ((rented / total) * 100).toFixed(1)
-            : "0";
-
-        return (
-          <tr key={row.email}>
-            <td
-              style={{
-                padding: 12,
-                borderTop: "1px solid #f3f4f6",
-              }}
-            >
-              <div style={{ fontWeight: 600 }}>
-                {row.full_name || "-"}
-              </div>
+                    {roomTypeColumns.map((type) => (
+                      <td key={type} style={reportTdRight}>
+                        {Number(
+                          row.room_types?.[type] ?? 0
+                        ).toLocaleString("vi-VN")}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
               <div
-                style={{
-                  fontSize: 12,
-                  color: "#6b7280",
-                }}
-              >
-                {row.email}
-              </div>
-            </td>
+        style={{
+          marginTop: 32,
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          overflow: "hidden",
+          background: "#fff",
+        }}
+      >
+        <div
+          style={{
+            padding: 16,
+            fontSize: 20,
+            fontWeight: 700,
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
+          Top Admins
+        </div>
 
-            <td
-              style={{
-                padding: 12,
-                textAlign: "center",
-                borderTop: "1px solid #f3f4f6",
-              }}
-            >
-              L{row.level}
-            </td>
+        <div style={{ overflowX: "auto" }}>
+          <table
+            style={{
+              width: "100%",
+              minWidth: 780,
+              borderCollapse: "collapse",
+            }}
+          >
+            <thead>
+              <tr>
+                <th
+                  style={{
+                    padding: 12,
+                    textAlign: "left",
+                    borderBottom: "1px solid #e5e7eb",
+                    borderRight: "1px solid #e5e7eb",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Admin
+                </th>
 
-            <td
-              style={{
-                padding: 12,
-                textAlign: "center",
-                borderTop: "1px solid #f3f4f6",
-              }}
-            >
-              {row.phone || "-"}
-            </td>
+                <th
+                  style={{
+                    padding: 12,
+                    textAlign: "center",
+                    borderBottom: "1px solid #e5e7eb",
+                    borderRight: "1px solid #e5e7eb",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Level
+                </th>
 
-            <td
-              style={{
-                padding: 12,
-                textAlign: "right",
-                borderTop: "1px solid #f3f4f6",
-                fontWeight: 600,
-              }}
-            >
-              {total.toLocaleString("vi-VN")}
-            </td>
+                <th
+                  style={{
+                    padding: 12,
+                    textAlign: "center",
+                    borderBottom: "1px solid #e5e7eb",
+                    borderRight: "1px solid #e5e7eb",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  SĐT
+                </th>
 
-            <td
-              style={{
-                padding: 12,
-                textAlign: "right",
-                borderTop: "1px solid #f3f4f6",
-              }}
-            >
-              {rented.toLocaleString("vi-VN")}
-            </td>
+                <th
+                  style={{
+                    ...reportThRight,
+                    borderRight: "1px solid #e5e7eb",
+                  }}
+                >
+                  Tổng phòng
+                </th>
 
-            <td
-              style={{
-                padding: 12,
-                textAlign: "right",
-                borderTop: "1px solid #f3f4f6",
-              }}
-            >
-              {ratio}%
-            </td>
-          </tr>
-        );
-      })}
-    </tbody>
-  </table>
-</div>
+                <th style={reportThRight}>Ngày gia nhập</th>
+              </tr>
+            </thead>
 
-<div
-  style={{
-    marginTop: 32,
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    overflow: "hidden",
-    background: "#fff",
-  }}
->
-  <div
-    style={{
-      padding: 16,
-      fontSize: 20,
-      fontWeight: 700,
-      borderBottom: "1px solid #e5e7eb",
-    }}
-  >
-    Data Health
-  </div>
+            <tbody>
+              {(topAdmins ?? []).map((row: any) => {
+                const total = Number(row.total_rooms ?? 0);
 
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns:
-        "repeat(auto-fit,minmax(220px,1fr))",
-      gap: 16,
-      padding: 16,
-    }}
-  >
-    {reportCard(
-      "Không có Zalo",
-      Number(health.no_zalo),
-      "/admin?report=no_zalo"
-    )}
+                return (
+                  <tr key={row.email}>
+                    <td
+                      style={{
+                        padding: 12,
+                        borderBottom: "1px solid #f3f4f6",
+                        borderRight: "1px solid #f3f4f6",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>
+                        {row.full_name || "-"}
+                      </div>
 
-    {reportCard(
-      "Không có tọa độ",
-      Number(health.no_coordinates),
-      "/admin?report=no_coordinates"
-    )}
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#6b7280",
+                        }}
+                      >
+                        {row.email}
+                      </div>
+                    </td>
 
-    {reportCard(
-      "Không có SĐT chủ",
-      Number(health.no_owner_phone),
-      "/admin?report=no_owner_phone"
-    )}
+                    <td
+                      style={{
+                        padding: 12,
+                        textAlign: "center",
+                        borderBottom: "1px solid #f3f4f6",
+                        borderRight: "1px solid #f3f4f6",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      L{row.level}
+                    </td>
 
-    {reportCard(
-      "Không có ảnh",
-      Number(health.no_media ?? 0),
-      "/admin?report=no_media"
-    )}
-  </div>
+                    <td
+                      style={{
+                        padding: 12,
+                        textAlign: "center",
+                        borderBottom: "1px solid #f3f4f6",
+                        borderRight: "1px solid #f3f4f6",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {row.phone || "-"}
+                    </td>
 
-  
-</div>
+                    <td
+                      style={{
+                        ...reportTdRightBold,
+                        borderRight: "1px solid #f3f4f6",
+                      }}
+                    >
+                      {total.toLocaleString("vi-VN")}
+                    </td>
 
+                    <td style={reportTdRight}>
+                      {formatDate(row.created_at)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 32,
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          overflow: "hidden",
+          background: "#fff",
+        }}
+      >
+        <div
+          style={{
+            padding: 16,
+            fontSize: 20,
+            fontWeight: 700,
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
+          Data Health
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+            gap: 16,
+            padding: 16,
+          }}
+        >
+          {reportCard(
+            "Không có Zalo",
+            Number(health.no_zalo ?? 0),
+            "/admin?report=no_zalo"
+          )}
+
+          {reportCard(
+            "Không có tọa độ",
+            Number(health.no_coordinates ?? 0),
+            "/admin?report=no_coordinates"
+          )}
+
+          {reportCard(
+            "Không có SĐT chủ",
+            Number(health.no_owner_phone ?? 0),
+            "/admin?report=no_owner_phone"
+          )}
+
+          {reportCard(
+            "Không có ảnh",
+            Number(health.no_media ?? 0),
+            "/admin?report=no_media"
+          )}
+        </div>
+      </div>
     </main>
-    
   );
 }
