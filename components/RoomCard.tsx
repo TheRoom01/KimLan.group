@@ -205,6 +205,12 @@ useEffect(() => {
   const href = `/rooms/${room.id}`;
 
   const isRoomAvailable = currentStatus === "Trống";
+  const statusBadgeBaseClass =
+  "inline-flex h-[20px] min-w-[58px] items-center justify-center rounded-full px-2 text-[10px] font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
+
+const statusBadgeColorClass = isRoomAvailable
+  ? "bg-[#22c55e]/35 text-[#bbf7d0] border-[#22c55e]/60 shadow-[0_0_12px_rgba(34,197,94,0.16)]"
+  : "bg-red-500/30 text-red-100 border-red-400/50 shadow-[0_0_12px_rgba(239,68,68,0.14)]";
 
 function handleToggleStatus(
   e: React.MouseEvent<HTMLButtonElement>
@@ -486,35 +492,27 @@ return (
               </span>
             </h3>
 
-            {isAdmin ? (
+           {isAdmin ? (
               <button
                 type="button"
                 disabled={updatingStatus}
                 onClick={handleToggleStatus}
                 title="Bấm để đổi trạng thái phòng"
-                className={`text-[8px] px-1 py-[0.5px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[10px] transition-all duration-150 active:scale-95 ${
-  updatingStatus
-    ? "opacity-70 cursor-wait"
-    : "cursor-pointer hover:scale-105"
-} ${
-  isRoomAvailable
-    ? "bg-[#22c55e]/35 text-[#bbf7d0] border border-[#22c55e]/60 shadow-[0_0_14px_rgba(34,197,94,0.18)]"
-    : "bg-red-500/30 text-red-100 border border-red-400/50 shadow-[0_0_14px_rgba(239,68,68,0.16)]"
-}`}
+                className={`${statusBadgeBaseClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
+                  updatingStatus
+                    ? "cursor-wait opacity-70"
+                    : "cursor-pointer hover:scale-105"
+                }`}
               >
                 {updatingStatus
-                  ? "Đang lưu..."
+                  ? "Đang lưu"
                   : isRoomAvailable
                   ? "Còn Trống"
                   : "Đã thuê"}
               </button>
             ) : (
               <span
-                className={`text-[10px] px-1 py-[0.5px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[10px] ${
-  isRoomAvailable
-    ? "bg-[#22c55e]/35 text-[#bbf7d0] border border-[#22c55e]/60 shadow-[0_0_14px_rgba(34,197,94,0.18)]"
-    : "bg-red-500/30 text-red-100 border border-red-400/50 shadow-[0_0_14px_rgba(239,68,68,0.16)]"
-}`}
+                className={`${statusBadgeBaseClass} ${statusBadgeColorClass}`}
               >
                 {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
               </span>
