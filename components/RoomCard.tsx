@@ -512,8 +512,8 @@ return (
               </button>
             ) : (
               <span
-                className={`${statusBadgeBaseClass} ${statusBadgeColorClass}`}
-              >
+  className={`${statusBadgeBaseClass} ${statusBadgeColorClass} h-[22px] min-w-[66px] px-2 text-[11px]`}
+>
                 {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
               </span>
             )}
