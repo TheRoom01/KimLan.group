@@ -356,10 +356,10 @@ return (
           setAdminPhone(room.creator_admin_phone || null);
         }}
         className="
-      absolute left-3 top-3 z-30
+      absolute left-1 top-1 z-30
 
       flex items-center gap-1
-      px-2 py-[3px]
+      px-2 py-[2px]
       rounded-full
 
       text-[1px] font-semibold text-white
@@ -510,7 +510,7 @@ return (
               </button>
             ) : (
               <span
-                className={`text-[12px] px-1 py-[0.5px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[10px] ${
+                className={`text-[10px] px-1 py-[0.5px] rounded-full whitespace-nowrap font-semibold backdrop-blur-[10px] ${
   isRoomAvailable
     ? "bg-[#22c55e]/35 text-[#bbf7d0] border border-[#22c55e]/60 shadow-[0_0_14px_rgba(34,197,94,0.18)]"
     : "bg-red-500/30 text-red-100 border border-red-400/50 shadow-[0_0_14px_rgba(239,68,68,0.16)]"
