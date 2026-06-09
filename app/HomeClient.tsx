@@ -814,6 +814,12 @@ type PageDebugItem = {
   cachedState?: string;
   filterSig?: string;
   note?: string;
+
+  // ✅ DEBUG SORT GIÁ
+  pagePriceMin?: number | null;
+  pagePriceMax?: number | null;
+  firstRows?: any[];
+  lastRows?: any[];
 };
 
 const [pageDebug, setPageDebug] = useState<PageDebugItem | null>(null);
@@ -2150,13 +2156,33 @@ if (pendingUrlFiltersRef.current && targetIndex === pageIndexRef.current) {
         deduped.push(r);
       }
 
-      const nextPages = [...pagesRef.current];
-      nextPages[targetIndex] = deduped; // có thể là []
+const nextPages = [...pagesRef.current];
+nextPages[targetIndex] = deduped; // có thể là []
 
-      pagesRef.current = nextPages;
-      setPages(nextPages);
+pagesRef.current = nextPages;
+setPages(nextPages);
 
-      cursorsRef.current[targetIndex + 1] = res.nextCursor ?? null;
+// ✅ DEBUG SORT GIÁ: lấy vài dòng đầu/cuối của page để xem thứ tự có đúng không
+const debugRows = deduped.map((r, i) => ({
+  i,
+  id: r?.id ?? null,
+  room_code: r?.room_code ?? null,
+  price: typeof r?.price === "number" ? r.price : Number(r?.price ?? NaN),
+  updated_at: r?.updated_at ?? null,
+  created_at: r?.created_at ?? null,
+}));
+
+const debugPrices = debugRows
+  .map((r) => r.price)
+  .filter((n) => Number.isFinite(n));
+
+const pagePriceMin = debugPrices.length ? Math.min(...debugPrices) : null;
+const pagePriceMax = debugPrices.length ? Math.max(...debugPrices) : null;
+
+const firstRows = debugRows.slice(0, 5);
+const lastRows = debugRows.slice(-5);
+
+cursorsRef.current[targetIndex + 1] = res.nextCursor ?? null;
 
 const nextHasNext = Boolean(res.nextCursor) && deduped.length === LIMIT;
 setHasNext(nextHasNext);
@@ -2180,6 +2206,10 @@ if (debugEnabled) {
     finalHasNext: nextHasNext,
     cachedState: pagesRef.current[targetIndex] !== undefined ? "cached_after_fetch" : "not_cached_before_fetch",
     filterSig: lastFilterSigRef.current,
+      pagePriceMin,
+  pagePriceMax,
+  firstRows,
+  lastRows,
     note:
       !res.nextCursor && typeof res.total === "number" && res.total > (targetIndex + 1) * LIMIT
         ? "NGHI RPC: total còn nhiều nhưng nextCursor = null."
@@ -2981,6 +3011,10 @@ return (
     nextCursor: pageDebug.nextCursor,
     cachedState: pageDebug.cachedState,
     filterSig: pageDebug.filterSig,
+    pagePriceMin: pageDebug.pagePriceMin,
+    pagePriceMax: pageDebug.pagePriceMax,
+    firstRows: pageDebug.firstRows,
+    lastRows: pageDebug.lastRows,
     note: pageDebug.note,
   },
   null,
@@ -3008,6 +3042,10 @@ return (
     limit: x.limit,
     sortMode: x.sortMode,
     finalHasNext: x.finalHasNext,
+    pagePriceMin: x.pagePriceMin,
+    pagePriceMax: x.pagePriceMax,
+    firstRows: x.firstRows,
+    lastRows: x.lastRows,
     cursorUsedForThisPage: x.cursorUsedForThisPage,
     nextCursor: x.nextCursor,
     cachedState: x.cachedState,
