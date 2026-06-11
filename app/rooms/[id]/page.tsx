@@ -1379,10 +1379,10 @@ activeItem.kind === "video" ? (
     className="
       rounded-full px-4 py-2 text-sm font-semibold text-white
       border border-white/25
-      bg-[rgba(255,255,255,0.08)]
+      bg-[rgba(255, 255, 255, 0.26)]
       backdrop-blur-[20px]
       shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
-      hover:bg-[rgba(255,255,255,0.14)]
+      hover:bg-[rgba(255, 255, 255, 0.38)]
       active:scale-[0.97]
       transition-all
     "
@@ -1819,7 +1819,7 @@ activeItem.kind === "video" ? (
     onClick={() => setPolicyOpen(false)}
   >
     <div
-      className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-3xl border border-white/10 bg-[rgba(58,33,18,0.48)] p-4 text-[#F6E7D2] shadow-[0_24px_70px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.10)] backdrop-blur-2xl"
+      className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-3xl border border-white/10 bg-[rgb(232, 229, 227)] p-4 text-[#F6E7D2] shadow-[0_24px_70px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.10)] backdrop-blur-2xl"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
