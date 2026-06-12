@@ -243,6 +243,9 @@ const inputStyle: React.CSSProperties = {
 
 const textareaStyle: React.CSSProperties = {
   ...inputStyle,
-  minHeight: 120,
+  minHeight: 140,
   resize: 'vertical',
+  whiteSpace: 'pre-wrap',
+  lineHeight: 1.6,
+  fontFamily: 'inherit',
 }

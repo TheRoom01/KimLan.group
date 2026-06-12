@@ -578,15 +578,23 @@ function buildShareText() {
     if (detail?.allow_pet) amen.push("Nuôi thú cưng");
     if (detail?.allow_cat) amen.push("Nuôi mèo");
     if (detail?.allow_dog) amen.push("Nuôi chó");
-    if (detail?.other_amenities)
-      amen.push(String(detail.other_amenities));
+    const otherAmenitiesText = detail?.other_amenities
+      ? String(detail.other_amenities).trim()
+      : "";
 
     lines.push("");
     lines.push("Tiện ích:");
 
     if (amen.length) {
       amen.forEach((x) => lines.push(`- ${x}`));
-    } else {
+    }
+
+    if (otherAmenitiesText) {
+      if (amen.length) lines.push("");
+      lines.push(otherAmenitiesText);
+    }
+
+    if (!amen.length && !otherAmenitiesText) {
       lines.push("- Đang cập nhật");
     }
   }
@@ -929,19 +937,25 @@ if (
   detail?.other_fee_value != null ||
   detail?.other_fee_note
 ) {
+  const otherFeeValue = Number(detail?.other_fee_value ?? 0);
+
   const valuePart =
-    detail?.other_fee_value != null
-      ? formatVND(detail.other_fee_value)
-      : "0";
+    otherFeeValue > 0 ? formatVND(otherFeeValue) : "";
 
   const notePart = detail?.other_fee_note
-    ? String(detail.other_fee_note)
+    ? String(detail.other_fee_note).trim()
     : "";
 
-  feeRows.push({
-    label: "➕ Khác",
-    value: [valuePart, notePart].filter(Boolean).join(" - "),
-  });
+  const otherValue = [valuePart, notePart]
+    .filter(Boolean)
+    .join(valuePart && notePart ? "\n" : "");
+
+  if (otherValue) {
+    feeRows.push({
+      label: "➕ Khác",
+      value: otherValue,
+    });
+  }
 }
 
   const isAdmin = adminLevel === 1 || adminLevel === 2;
@@ -1324,8 +1338,11 @@ activeItem.kind === "video" ? (
         {feeRows.length > 0 ? (
           <div className="space-y-1">
             {feeRows.map((r) => (
-              <p key={r.label}>
-                <span className="font-medium">{r.label}:</span> {r.value}
+              <p key={r.label} className="leading-6">
+                <span className="font-medium">{r.label}:</span>{" "}
+                <span className="whitespace-pre-wrap break-words">
+                  {r.value}
+                </span>
               </p>
             ))}
           </div>
@@ -1364,7 +1381,17 @@ activeItem.kind === "video" ? (
           {detail?.short_term && <li>✔️ Ngắn hạn</li>}
           {detail?.long_term && <li>✔️ Dài hạn</li>}
           {detail?.other_amenities && (
-            <li className="col-span-2">✔️ {String(detail.other_amenities)}</li>
+            <li className="col-span-2 flex items-start gap-2">
+              <span className="shrink-0">✔️</span>
+
+              <div className="min-w-0">
+                <div className="font-medium">Tiện ích khác:</div>
+
+                <div className="whitespace-pre-wrap break-words">
+                  {String(detail.other_amenities).trim()}
+                </div>
+              </div>
+            </li>
           )}
         </ul>
       </div>

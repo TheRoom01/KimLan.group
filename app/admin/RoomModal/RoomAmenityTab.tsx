@@ -63,7 +63,12 @@ export default function RoomAmenityTab({ detailForm, onChange }: Props) {
           style={textareaStyle}
           value={detailForm.other_amenities ?? ''}
           onChange={e => onChange({ other_amenities: e.target.value })}
-          placeholder="Nhập các tiện ích khác (phân cách bằng dấu phẩy)"
+          placeholder={`Nhập các tiện ích khác theo đúng bố cục bạn muốn hiển thị
+
+        Ví dụ:
+        - Có ban công
+        - Có máy giặt riêng
+        - Giờ giấc tự do`}
         />
       </div>
     </div>
@@ -170,6 +175,9 @@ const textareaStyle: React.CSSProperties = {
   borderRadius: 10,
   border: '1px solid #cbd5e1',
   background: '#f8fafc',
-  minHeight: 110,
+  minHeight: 140,
   resize: 'vertical',
+  whiteSpace: 'pre-wrap',
+  lineHeight: 1.6,
+  fontFamily: 'inherit',
 }

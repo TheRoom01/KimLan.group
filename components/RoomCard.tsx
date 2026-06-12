@@ -305,89 +305,92 @@ return (
         "
         />
 
-        {/* SAVE BUTTON */}
-        <button
-  type="button"
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const nextSaved = toggleSavedRoom(room.id);
-    setSaved(nextSaved);
-
-    setAnimating(true);
-    setTimeout(() => setAnimating(false), 300);
-  }}
-  className={`
-    absolute right-2 top-2 z-30
-    flex items-center justify-center
-
-    w-[34px] aspect-square rounded-full
-    
-    bg-[rgba(225, 225, 225, 0.69)]
-    backdrop-blur-[18px]
-
-    border border-white/30
-
-    shadow-[0_8px_24px_rgba(0,0,0,0.5)]
-
-    transition-all duration-200
-    hover:scale-110
-    ${animating ? "scale-110" : "scale-100"}
-  `}
->
-  <svg
-    viewBox="0 0 24 24"
-    className={`
-      w-[18px] h-[18px] transition-all duration-300
-      ${
-        saved
-          ? "fill-yellow-400 stroke-yellow-400 drop-shadow-[0_0_10px_rgba(255,214,0,0.8)]"
-          : "fill-transparent stroke-white"
-      }
-    `}
-    strokeWidth="2"
-  >
-    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-  </svg>
-</button>
-
- {/* ADMIN BUTTON */}
-      {room.creator_admin_phone && (
+     {/* SAVE BUTTON */}
         <button
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setAdminPhone(room.creator_admin_phone || null);
+
+          const nextSaved = toggleSavedRoom(room.id);
+          setSaved(nextSaved);
+
+          setAnimating(true);
+          setTimeout(() => setAnimating(false), 300);
         }}
-        className="
-      absolute left-1 top-1 z-30
+        className={`
+          absolute right-2 top-2 z-30
+          flex items-center justify-center
 
-      flex items-center gap-1
-      px-2 py-[2px]
-      rounded-full
+          w-[34px] aspect-square rounded-full
+          
+          bg-[rgba(225, 225, 225, 0.69)]
+          backdrop-blur-[18px]
 
-      text-[1px] font-semibold text-white
+          border border-white/30
 
-      bg-[linear-gradient(180deg,rgba(255, 255, 255, 0),rgba(255,255,255,0.03))]
-      backdrop-blur-[14px]
+          shadow-[0_8px_24px_rgba(0,0,0,0.5)]
 
-      border border-white/25
+          transition-all duration-200
+          hover:scale-110
+          ${animating ? "scale-110" : "scale-100"}
+        `}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className={`
+            w-[18px] h-[18px] transition-all duration-300
+            ${
+              saved
+                ? "fill-yellow-400 stroke-yellow-400 drop-shadow-[0_0_10px_rgba(255,214,0,0.8)]"
+                : "fill-transparent stroke-white"
+            }
+          `}
+          strokeWidth="2"
+        >
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+        </svg>
+      </button>
+      
+ {/* ADMIN BUTTON */}
+{room.creator_admin_phone && (
+  <button
+    type="button"
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setAdminPhone(room.creator_admin_phone || null);
+    }}
+    title={room.creator_admin_name || "Liên hệ"}
+    className="
+      ai-admin-button ai-admin-gradient-border
+      !absolute left-2 top-1 z-30
 
-      shadow-[0_4px_10px_rgba(0,0,0,0.25)]
+      !min-h-0 !h-[32px]
+      rounded-full p-[1px]
 
-      transition-all duration-150
-      hover:bg-[rgba(255, 255, 255, 0)]
+      transition-all duration-50
       hover:scale-[1.05]
       active:scale-[0.95]
+    "
+  >
+    <span
+      className="
+        flex h-full items-center gap-1
+        rounded-full
+        bg-[#141516]/65
+        px-1
+        !text-[14px] font-bold text-white
+        leading-none
+        backdrop-blur-[20px]
       "
-        title={room.creator_admin_name || "Liên hệ"}
-      >
-        <span className="text-[11px]">📞</span>
-        <span>Admin</span>
-      </button>
-      )}
+    >
+      <span className="text-[12px] leading-none">☎️</span>
+      <span className="leading-none">Admin</span>
+    </span>
+  </button>
+)}
+
 
         {/* IMAGE */}
         <div className="h-[240px] overflow-hidden bg-black/20">
@@ -427,6 +430,8 @@ return (
                 </div>
               )}
             </div>
+
+          
 
             {/* SUB IMAGES */}
             <div className="grid grid-rows-2 gap-1 relative h-full">
@@ -512,8 +517,8 @@ return (
               </button>
             ) : (
               <span
-  className={`${statusBadgeBaseClass} ${statusBadgeColorClass} h-[22px] min-w-[66px] px-2 text-[11px]`}
->
+      className={`${statusBadgeBaseClass} ${statusBadgeColorClass} h-[22px] min-w-[66px] px-1 text-[11px]`}
+              >
                 {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
               </span>
             )}

@@ -266,3 +266,67 @@ input[type="radio"] {
   background: rgba(229, 201, 169, 0.55);
   border-radius: 999px;
 }
+
+/* ===== AI ANIMATED GRADIENT ADMIN BUTTON ===== */
+@property --ai-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.ai-admin-gradient-border {
+  isolation: isolate;
+  background: conic-gradient(
+    from var(--ai-angle),
+    #4285f4,
+    #9b51e0,
+    #ea4335,
+    #fbbc05,
+    #34a853,
+    #4285f4
+  );
+  animation: ai-admin-spin 3s linear infinite;
+}
+
+.ai-admin-gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--ai-angle),
+    #4285f4,
+    #9b51e0,
+    #ea4335,
+    #fbbc05,
+    #34a853,
+    #4285f4
+  );
+  filter: blur(8px);
+  opacity: 0.22;
+  z-index: -1;
+  animation: ai-admin-spin 3s linear infinite;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.ai-admin-gradient-border:hover::before {
+  opacity: 0.55;
+  filter: blur(12px);
+}
+
+.ai-admin-button {
+  min-height: 0 !important;
+  height: auto;
+  font-size: inherit !important;
+  line-height: 1 !important;
+}
+
+@keyframes ai-admin-spin {
+  from {
+    --ai-angle: 0deg;
+  }
+
+  to {
+    --ai-angle: 360deg;
+  }
+}
