@@ -154,6 +154,7 @@ const [confirmStatus, setConfirmStatus] = useState<{
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
 const [saved, setSaved] = useState(false);
 const [animating, setAnimating] = useState(false);
+const [copiedAddress, setCopiedAddress] = useState(false);
 
 useEffect(() => {
   setSaved(isRoomSaved(room.id));
@@ -194,6 +195,47 @@ useEffect(() => {
     (room as any).district ??
     (room as any).district_name ??
     "";
+  const fullAddressText = [
+    adminLevel === 1 || adminLevel === 2
+      ? room.house_number
+        ? `${room.house_number}`
+        : ""
+      : publicHouseNumber(room.house_number),
+    address,
+    ward ? `P. ${ward}` : "",
+    district,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+    async function handleCopyAddress(
+      e: React.MouseEvent<HTMLButtonElement>
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const text = String(fullAddressText ?? "").trim();
+      if (!text) return;
+
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopiedAddress(true);
+        window.setTimeout(() => setCopiedAddress(false), 1200);
+      } catch {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+
+        setCopiedAddress(true);
+        window.setTimeout(() => setCopiedAddress(false), 1200);
+      }
+    }
+
 
   useEffect(() => {
     document.body.style.overflow = adminPhone ? "hidden" : "";
@@ -539,16 +581,53 @@ return (
           </div>
         </div>
 
-        {/* ADDRESS */}
-        <p className="text-white font-semibold leading-6 pb-3 px-3 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
-          📍{adminLevel === 1 || adminLevel === 2
-                ? (room.house_number ? `${room.house_number} ` : "")
-                : `${publicHouseNumber(room.house_number)} `
-             }
-          {address}
-          {ward && `, P. ${ward}`}
-          {district && `, ${district}`}
-        </p>
+       {/* ADDRESS */}
+<p className="px-3 pb-3 text-white font-semibold leading-6 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+  📍{adminLevel === 1 || adminLevel === 2
+    ? room.house_number
+      ? `${room.house_number} `
+      : ""
+    : `${publicHouseNumber(room.house_number)} `}
+  {address}
+  {ward && `, P. ${ward}`}
+  {district && `, ${district}`}
+
+  <button
+    type="button"
+    onClick={handleCopyAddress}
+    title={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
+    className="
+      !min-h-0 !h-[20px] !w-[20px]
+      ml-1 inline-flex align-[-2px]
+      items-center justify-center
+      rounded-[3px]
+      bg-white/10
+      text-white/75
+      backdrop-blur-[10px]
+      transition
+      hover:bg-white/20 hover:text-white
+      active:scale-90
+    "
+  >
+    {copiedAddress ? (
+      <span className="text-[10px] leading-none text-green-300">✓</span>
+    ) : (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-[20px] w-[20px]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="8" y="8" width="11" height="11" rx="2.5" />
+        <path d="M5 16V7.5A2.5 2.5 0 0 1 7.5 5H16" />
+      </svg>
+    )}
+  </button>
+</p>
+
       </div>
        </Link>
 

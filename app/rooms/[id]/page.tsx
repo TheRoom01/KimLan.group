@@ -984,6 +984,97 @@ const zaloLinkRaw = linkRaw.trim();
   // (tuỳ chọn) lấy số đầu tiên nếu bạn vẫn cần 1 biến zaloPhone
   const zaloPhone = zaloPhones[0] ?? "";
 
+  function renderCopyIcon(text: string, successMessage: string) {
+  const value = String(text ?? "").trim();
+
+  return (
+    <button
+      type="button"
+      disabled={!value}
+      onClick={async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const ok = await copyText(value);
+
+        showToast(
+          ok
+            ? successMessage
+            : "Không thể copy — hãy copy thủ công"
+        );
+      }}
+      className="
+        !min-h-0 !h-[20px] !w-[20px]
+        ml-1 inline-flex shrink-0 align-[-2px]
+        items-center justify-center
+        rounded-[3px]
+        bg-white/10
+        text-white/75
+        backdrop-blur-[10px]
+        transition
+        hover:bg-white/20 hover:text-white
+        active:scale-90
+        disabled:cursor-not-allowed disabled:opacity-30
+      "
+      title="Copy"
+      aria-label="Copy"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-[20px] w-[20px]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="8" y="8" width="11" height="11" rx="2.5" />
+        <path d="M5 16V7.5A2.5 2.5 0 0 1 7.5 5H16" />
+      </svg>
+    </button>
+  );
+}
+
+const feeCopyText = feeRows
+  .map((r) => `${r.label}: ${r.value}`)
+  .join("\n");
+
+const amenitiesList = [
+  detail?.has_elevator ? "Thang máy" : "",
+  detail?.has_stairs ? "Thang bộ" : "",
+  detail?.shared_washer ? "Máy giặt chung" : "",
+  detail?.private_washer ? "Máy giặt riêng" : "",
+  detail?.shared_dryer ? "Máy sấy chung" : "",
+  detail?.private_dryer ? "Máy sấy riêng" : "",
+  detail?.has_parking ? "Bãi xe" : "",
+  detail?.has_basement ? "Hầm xe" : "",
+  detail?.fingerprint_lock ? "Cửa vân tay" : "",
+  detail?.allow_pet ? "Nuôi thú cưng" : "",
+  detail?.allow_cat ? "Nuôi mèo" : "",
+  detail?.allow_dog ? "Nuôi chó" : "",
+  detail?.no_pet ? "Không thú cưng" : "",
+  detail?.short_term ? "Ngắn hạn" : "",
+  detail?.long_term ? "Dài hạn" : "",
+].filter(Boolean);
+
+const otherAmenitiesText = detail?.other_amenities
+  ? String(detail.other_amenities).trim()
+  : "";
+
+const amenitiesCopyText = [
+  ...amenitiesList.map((x) => `✔️ ${x}`),
+  otherAmenitiesText
+    ? `Tiện ích khác:\n${otherAmenitiesText}`
+    : "",
+]
+  .filter(Boolean)
+  .join("\n");
+
+const policyCopyText = room?.chinh_sach?.trim()
+  ? room.chinh_sach.trim()
+  : "";
+
+
 return (
   <div
     className="
@@ -1306,35 +1397,52 @@ activeItem.kind === "video" ? (
     {descriptionText}
   </div>
 </div>
- {/* Dòng 3: Địa chỉ */}
-  {addressLine && <div className="text-[#F4E7D6] font-semibold">📍 {addressLine}</div>}
+
+
+  {/* Dòng 3: Địa chỉ */}
+  {addressLine && (
+    <div className="flex items-start gap-1.5 text-[#F4E7D6] font-semibold">
+      <div className="min-w-0 break-words">
+        📍 {addressLine}
+      </div>
+
+      <span className="pt-[5px]">
+        {renderCopyIcon(addressLine, "Đã copy địa chỉ")}
+      </span>
+    </div>
+  )}
 
   </div>
-
       <div
-  className="
-    space-y-2 pt-4 mt-2
-    border-t border-white/10
-    bg-[rgba(255,255,255,0.03)]
-    backdrop-blur-[20px]
-    rounded-xl p-4
-  "
->
-        <div className="flex items-center justify-between">
-  <h2 className="text-lg font-semibold">Chi phí</h2>
+        className="
+          space-y-2 pt-4 mt-2
+          border-t border-white/10
+          bg-[rgba(255,255,255,0.03)]
+          backdrop-blur-[20px]
+          rounded-xl p-4
+        "
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Chi phí</h2>
 
-    {(adminLevel === 1 || adminLevel === 2) && (
-    <button
-      type="button"
-      onClick={() => setShareOpen(true)}
-      className="text-sm px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
-      aria-label="Chia sẻ"
-      title="Chia sẻ"
-     >
-      Chia sẻ
-    </button>
-    )}
-</div>
+            {feeCopyText &&
+              renderCopyIcon(feeCopyText, "Đã copy chi phí")}
+          </div>
+
+          {(adminLevel === 1 || adminLevel === 2) && (
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              className="text-sm px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
+              aria-label="Chia sẻ"
+              title="Chia sẻ"
+            >
+              Chia sẻ
+            </button>
+          )}
+        </div>
+
         {feeRows.length > 0 ? (
           <div className="space-y-1">
             {feeRows.map((r) => (
@@ -1360,7 +1468,12 @@ activeItem.kind === "video" ? (
     rounded-xl p-4
   "
 >
-        <h2 className="text-lg font-semibold mb-2">Tiện ích</h2>
+    <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-lg font-semibold">Tiện ích</h2>
+
+        {amenitiesCopyText &&
+          renderCopyIcon(amenitiesCopyText, "Đã copy tiện ích")}
+      </div>
         <ul className="grid grid-cols-2 gap-2">
           {detail?.has_elevator && <li>✔️ Thang máy</li>}
           {detail?.has_stairs && <li>✔️ Thang bộ</li>}
@@ -1396,28 +1509,31 @@ activeItem.kind === "video" ? (
         </ul>
       </div>
 
-      {isAdmin && (
+  {isAdmin && (
     <div className="pt-4 border-t space-y-2">
     <div className="flex items-center justify-between gap-3">
 
-  <button
-    type="button"
-    onClick={() => setPolicyOpen(true)}
-    className="
-      rounded-full px-4 py-2 text-sm font-semibold text-white
-      border border-white/25
-      bg-[rgba(255, 255, 255, 0.26)]
-      backdrop-blur-[20px]
-      shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
-      hover:bg-[rgba(255, 255, 255, 0.38)]
-      active:scale-[0.97]
-      transition-all
-    "
-    title="Xem chính sách"
-  >
-    📄 Chính sách & Quy định
-  </button>
-</div>
+  <div className="flex items-center gap-2">
+    <button
+      type="button"
+      onClick={() => setPolicyOpen(true)}
+      className="
+        rounded-full px-4 py-2 text-sm font-semibold text-white
+        border border-white/25
+        bg-[rgba(255, 255, 255, 0.26)]
+        backdrop-blur-[20px]
+        shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
+        hover:bg-[rgba(255, 255, 255, 0.38)]
+        active:scale-[0.97]
+        transition-all
+      "
+      title="Xem chính sách"
+    >
+      📄 Chính sách & Quy định
+    </button>
+
+    </div>
+  </div>
 
     {/* ✅ L1 + L2 luôn thấy link_zalo + zalo_phone (kể cả rỗng) */}
 {isAdmin && (
@@ -1850,7 +1966,13 @@ activeItem.kind === "video" ? (
       onClick={(e) => e.stopPropagation()}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-lg font-semibold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">Chính Sách</div>
+        <div className="flex items-center gap-2">
+          <div className="text-lg font-semibold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">
+            Chính Sách
+          </div>
+
+          {renderCopyIcon(policyCopyText, "Đã copy chính sách")}
+        </div>
 
         <button
           type="button"

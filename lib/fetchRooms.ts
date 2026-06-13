@@ -135,6 +135,17 @@ const expandDistrictLegacyValues = (districts?: string[] | null) => {
   return out.size ? Array.from(out) : null;
 };
 
+const normalizeSearchKeyword = (value?: string | null) => {
+  return String(value ?? "")
+    .normalize("NFC")
+    .replace(/\.{2,}/g, " ")
+    .replace(/[…,，。]+/g, " ")
+    .replace(/[|;:/\\()[\]{}"'“”‘’`~!@#$%^&*_+=<>?]+/g, " ")
+    .replace(/[-–—]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
 const expandRoomTypeLegacyValues = (roomTypes?: string[] | null) => {
   if (!roomTypes || roomTypes.length === 0) return null;
 
@@ -186,6 +197,7 @@ export async function fetchRooms(
     roomTypes?.length ? roomTypes : roomType?.trim() ? [roomType.trim()] : [];
 
   const role = adminLevel === 2 ? 2 : adminLevel === 1 ? 1 : 0;
+  const normalizedSearch = normalizeSearchKeyword(search);
 
   // ✅ Parse cursor theo đúng SQL:
   // - updated_desc dùng {updated_at, id}
@@ -268,7 +280,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_cursor: cursorId ? String(cursorId) : null,
 
   // 3) filter/search
-  p_search: (search ?? "").trim() ? String(search).trim() : null,
+  p_search: normalizedSearch ? normalizedSearch : null,
   p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
   p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
   p_districts: expandDistrictLegacyValues(districts) ?? null,

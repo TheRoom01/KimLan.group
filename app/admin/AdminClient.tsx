@@ -8,6 +8,15 @@ import { supabase } from "@/lib/supabase";
 
 const PAGE_SIZE = 20;
 
+function normalizeSearchKeyword(value?: string | null) {
+  return String(value ?? "")
+    .normalize("NFC")
+    .replace(/[,\n\r\t]+/g, " ")
+    .replace(/[|;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 type AdminClientProps = {
   initialRooms: Room[];
   initialTotal: number;
@@ -162,11 +171,13 @@ const runConfirmAction = useCallback(async () => {
 
   const reqSeqRef = useRef(0);
   const cacheRef = useRef(new Map<string, { rooms: Room[]; total: number }>());
-  const makeCacheKey = (p: number, q: string) => `${q.trim().toLowerCase()}|${p}`;
+  const makeCacheKey = (p: number, q: string) =>
+  `${normalizeSearchKeyword(q).toLowerCase()}|${p}`;
 
   const loadRooms = useCallback(
-    async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean }) => {
-      const key = makeCacheKey(p, q);
+  async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean }) => {
+    const normalizedSearch = normalizeSearchKeyword(q);
+    const key = makeCacheKey(p, normalizedSearch);
 
   const canUseCache = !!opts?.useCache;
 
@@ -189,8 +200,8 @@ const offset = (p - 1) * PAGE_SIZE;
 const rpcArgs = {
   p_limit: PAGE_SIZE,
   p_offset: offset,
-  p_search: q.trim() || null,
-  p_report: report ?? null, // 👈 THÊM DÒNG NÀY
+  p_search: normalizedSearch || null,
+  p_report: report ?? null,
 };
 
 const rpcName =
@@ -808,7 +819,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
 
             const patchedRoom = { ...updatedRoom, updated_at: new Date().toISOString() };
 
-            if ((debouncedSearch || "").trim()) {
+            if (normalizeSearchKeyword(debouncedSearch)) {
               await loadRooms(page, debouncedSearch, { useCache: false });
               return;
             }
