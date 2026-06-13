@@ -1341,7 +1341,7 @@ activeItem.kind === "video" ? (
       </div>
       
 {/* ===== Ngày cập nhật ===== */}
-<div className="flex items-center justify-end gap-3 mt-1 mb-0 text-sm text-black/80 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+<div className="flex items-center justify-end gap-3 mt-1 mb-0 text-sm text-[#FACC15] drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
   {updatedText && <div>Ngày cập nhật: {updatedText}</div>}
 </div>
 
