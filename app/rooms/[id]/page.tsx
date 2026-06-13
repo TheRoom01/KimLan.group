@@ -1387,15 +1387,18 @@ activeItem.kind === "video" ? (
   </div>
 </div>
 
-  {/* Dòng 2: Giá + Mô Tả*/}
-  <div className="flex items-center justify-between gap-3">
-    <div className="text-[#F4E7D6]">
-      <span className="font-medium">Giá:</span>{" "}
-      <span className="font-semibold text-sky-600">{priceText}</span>
-    </div>
-      <div className="max-w-[30%] text-right text-[#EAD8C0]/80 text-sm line-clamp-2">
-    {descriptionText}
+  {/* Dòng 2: Giá + Mô Tả */}
+<div className="flex items-start justify-between gap-3">
+  <div className="shrink-0 text-[#F4E7D6]">
+    <span className="font-medium">Giá:</span>{" "}
+    <span className="font-semibold text-sky-600">{priceText}</span>
   </div>
+
+  {descriptionText && (
+    <div className="max-w-[48%] whitespace-pre-wrap break-words text-right text-red-500 text-sm font-semibold leading-6 drop-shadow-[0_1px_6px_rgba(248,113,113,0.35)]">
+      {String(descriptionText).trim()}
+    </div>
+  )}
 </div>
 
 
@@ -1550,7 +1553,7 @@ activeItem.kind === "video" ? (
 
     {/* RIGHT: Phones */}
     <div>
-      <div className="font-medium mb-1">SĐT</div>
+      <div className="font-medium mb-1"> SĐT chủ nhà </div>
       {zaloPhones.length > 0 ? (
         <div className="space-y-1">
           {zaloPhones.map((p, i) => (
@@ -1740,6 +1743,7 @@ activeItem.kind === "video" ? (
 
     <div className="mt-3 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
         {/* CỘT TRÁI */}
         <div className="space-y-3">
           {(adminLevel === 1 || adminLevel === 2) && (
