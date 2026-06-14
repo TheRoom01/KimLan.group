@@ -111,6 +111,30 @@ const HOME_STATE_LITE_TTL = 30 * 60 * 1000; // 30 phút (đồng bộ V2)
 // ✅ nếu có thay đổi dữ liệu quan trọng từ tab khác (/admin) thì Home bỏ restore cache cũ
 const HOME_DIRTY_KEY = "HOME_DIRTY_V1";
 
+const VIP_ACCESS_KEY = "VIP_ACCESS_V1";
+const VIP_PARAM_KEY = "vip";
+
+function readVipAccess() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    const raw = localStorage.getItem(VIP_ACCESS_KEY);
+    if (!raw) return false;
+
+    const parsed = JSON.parse(raw);
+    const expiresAt = Number(parsed?.expiresAt ?? 0);
+
+    if (!expiresAt || Date.now() >= expiresAt) {
+      localStorage.removeItem(VIP_ACCESS_KEY);
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 type BackSnapshot = {
   qs: string;
 
@@ -216,11 +240,14 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
 
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
+
   // ================== ANON LOCK ==================
 const [isAnonLocked, setIsAnonLocked] = useState(false);
 const [isLoggedIn, setIsLoggedIn] = useState(false);
+const [hasVipAccess, setHasVipAccess] = useState(false);
 
 const lockTimerRef = useRef<number | null>(null);
+const vipTimerRef = useRef<number | null>(null);
  
   // ================== FILTER ==================
   
@@ -305,6 +332,104 @@ const filterSig = useMemo(() => {
   sortMode,
   statusFilter,
 ]);
+
+// ================== VIP State ==================
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const clearVipTimer = () => {
+    if (vipTimerRef.current) {
+      window.clearTimeout(vipTimerRef.current);
+      vipTimerRef.current = null;
+    }
+  };
+
+  const applyStoredVip = () => {
+    try {
+      const raw = localStorage.getItem(VIP_ACCESS_KEY);
+      if (!raw) {
+        setHasVipAccess(false);
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      const expiresAt = Number(parsed?.expiresAt ?? 0);
+
+      if (!expiresAt || Date.now() >= expiresAt) {
+        localStorage.removeItem(VIP_ACCESS_KEY);
+        setHasVipAccess(false);
+        return;
+      }
+
+      setHasVipAccess(true);
+
+      const msLeft = expiresAt - Date.now();
+      clearVipTimer();
+
+      vipTimerRef.current = window.setTimeout(() => {
+        localStorage.removeItem(VIP_ACCESS_KEY);
+        setHasVipAccess(false);
+      }, Math.min(msLeft, 2_147_000_000));
+    } catch {
+      localStorage.removeItem(VIP_ACCESS_KEY);
+      setHasVipAccess(false);
+    }
+  };
+
+  async function validateVipFromUrl() {
+    const sp = new URLSearchParams(window.location.search);
+    const token = sp.get(VIP_PARAM_KEY)?.trim();
+
+    applyStoredVip();
+
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/vip/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (res.ok && json?.valid && json?.expiresAt) {
+        const expiresAtMs = new Date(json.expiresAt).getTime();
+
+        if (Number.isFinite(expiresAtMs) && expiresAtMs > Date.now()) {
+          localStorage.setItem(
+            VIP_ACCESS_KEY,
+            JSON.stringify({
+              expiresAt: expiresAtMs,
+              savedAt: Date.now(),
+            })
+          );
+
+          setHasVipAccess(true);
+        }
+      }
+    } finally {
+      const next = new URLSearchParams(window.location.search);
+      next.delete(VIP_PARAM_KEY);
+
+      const nextQs = next.toString();
+      const nextUrl = nextQs ? `${pathname}?${nextQs}` : pathname;
+
+      window.history.replaceState(window.history.state, "", nextUrl);
+
+      applyStoredVip();
+    }
+  }
+
+  validateVipFromUrl();
+
+  return () => {
+    clearVipTimer();
+  };
+}, [pathname]);
+
 // ================== PAGINATION (cache) ==================
  const initCursor: string | UpdatedDescCursor | null =
   initialNextCursor && typeof initialNextCursor === "object"
@@ -2743,7 +2868,7 @@ useEffect(() => {
 
  // ================== Khóa Anon ==================
 useEffect(() => {
-  if (isLoggedIn) {
+  if (isLoggedIn || hasVipAccess) {
     setIsAnonLocked(false);
 
     if (lockTimerRef.current) {
@@ -2760,7 +2885,7 @@ useEffect(() => {
 
   lockTimerRef.current = window.setTimeout(() => {
     setIsAnonLocked(true);
-   }, 90_000); // 90 giây
+  }, 90_000);
 
   return () => {
     if (lockTimerRef.current) {
@@ -2768,7 +2893,7 @@ useEffect(() => {
       lockTimerRef.current = null;
     }
   };
-}, [isLoggedIn]);
+}, [isLoggedIn, hasVipAccess]);
 
 const handleNavigateToRoom = useCallback((href: string) => {
   try {
@@ -3073,7 +3198,7 @@ return (
       />
     </div>
 
-    {isAnonLocked && (
+    {isAnonLocked && !hasVipAccess && (
       <AnonymousLockModal
         phone="0967.467.587"
         zaloUrl="https://zalo.me/0967467587"
