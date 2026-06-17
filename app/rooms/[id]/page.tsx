@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { getBrowserContext, openExternalBrowser } from "@/lib/browser";
 
 /* ================= Utils ================= */
 
@@ -1083,55 +1084,61 @@ return (
       bg-cover bg-center bg-fixed
     "
   >
-      {showOpenBrowserBar && (
-        <div className="sticky top-2 z-40 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="text-sm text-amber-900">
-              <div className="font-semibold">
-                Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
-              </div>
-              <div className="text-amber-800">
-                Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
-              </div>
+     {showOpenBrowserBar && (
+      <div className="sticky top-2 z-40 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+
+          {/* TEXT */}
+          <div className="text-sm text-amber-900">
+            <div className="font-semibold">
+              Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
             </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleOpenExternalBrowser}
-                className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
-              >
-                Mở bằng Chrome / Safari
-              </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  const ok = await copyText(roomShareUrl || window.location.href);
-                  showToast(
-                    ok
-                      ? "Đã copy link phòng"
-                      : "Không thể copy link — hãy copy thủ công"
-                  );
-                }}
-                className="rounded-xl border px-4 py-2 text-sm font-medium"
-              >
-                Copy link
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowOpenBrowserBar(false)}
-                className="rounded-xl border px-3 py-2 text-sm"
-                aria-label="Đóng"
-                title="Đóng"
-              >
-                ✕
-              </button>
+            <div className="text-amber-800">
+              Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
             </div>
           </div>
+
+          {/* ACTIONS */}
+          <div className="flex gap-2">
+
+            <button
+              type="button"
+              onClick={() => openExternalBrowser(roomShareUrl || window.location.href)}
+              className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
+            >
+              Mở trình duyệt
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await copyText(roomShareUrl || window.location.href);
+
+                showToast(
+                  ok
+                    ? "Đã copy link phòng"
+                    : "Không thể copy link — hãy copy thủ công"
+                );
+              }}
+              className="rounded-xl border px-4 py-2 text-sm font-medium"
+            >
+              Copy link
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowOpenBrowserBar(false)}
+              className="rounded-xl border px-3 py-2 text-sm"
+              aria-label="Đóng"
+              title="Đóng"
+            >
+              ✕
+            </button>
+
+          </div>
         </div>
-      )}
+      </div>
+    )}
 
       <div className="space-y-1">
         {mediaItems.length > 0 ? (
@@ -1341,7 +1348,7 @@ activeItem.kind === "video" ? (
       </div>
       
 {/* ===== Ngày cập nhật ===== */}
-<div className="flex items-center justify-end gap-3 mt-1 mb-0 text-sm text-[#FACC15] drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+<div className="flex items-center justify-end gap-1 mt-1 mb-0 text-sm text-red-600 drop-shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
   {updatedText && <div>Ngày cập nhật: {updatedText}</div>}
 </div>
 
@@ -1387,18 +1394,12 @@ activeItem.kind === "video" ? (
   </div>
 </div>
 
-  {/* Dòng 2: Giá + Mô Tả */}
-<div className="flex items-start justify-between gap-3">
-  <div className="shrink-0 text-[#F4E7D6]">
-    <span className="font-medium">Giá:</span>{" "}
-    <span className="font-semibold text-sky-600">{priceText}</span>
-  </div>
-
-  {descriptionText && (
-    <div className="max-w-[48%] whitespace-pre-wrap break-words text-right text-red-500 text-sm font-semibold leading-6 drop-shadow-[0_1px_6px_rgba(248,113,113,0.35)]">
-      {String(descriptionText).trim()}
-    </div>
-  )}
+{/* GIÁ - BLOCK RIÊNG */}
+<div className="mt-2 flex items-center gap-2">
+  <span className="font-medium text-[#F4E7D6]">Giá:</span>
+  <span className="text-sky-300 font-semibold text-[20px]">
+  {formatVND(room?.price)}
+  </span>
 </div>
 
 
@@ -1406,7 +1407,7 @@ activeItem.kind === "video" ? (
   {addressLine && (
     <div className="flex items-start gap-1.5 text-[#F4E7D6] font-semibold">
       <div className="min-w-0 break-words">
-        📍 {addressLine}
+    📍 {addressLine}
       </div>
 
       <span className="pt-[5px]">
@@ -1415,14 +1416,22 @@ activeItem.kind === "video" ? (
     </div>
   )}
 
+  {/* DESCRIPTION - FULL WIDTH (QUAN TRỌNG NHẤT) */}
+    {room.description && (
+      <div className="mt-2 text-red-700 text-[15px] leading-snug whitespace-pre-line">
+        {room.description}
+      </div>
+    )}
+
+
   </div>
       <div
         className="
-          space-y-2 pt-4 mt-2
+          space-y-2 pt-2 mt-2
           border-t border-white/10
           bg-[rgba(255,255,255,0.03)]
           backdrop-blur-[20px]
-          rounded-xl p-4
+          rounded-xl p-3
         "
       >
         <div className="flex items-center justify-between gap-3">
