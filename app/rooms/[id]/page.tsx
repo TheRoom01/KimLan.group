@@ -1084,61 +1084,95 @@ return (
       bg-cover bg-center bg-fixed
     "
   >
-     {showOpenBrowserBar && (
-      <div className="sticky top-2 z-40 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    {showOpenBrowserBar && (
+  <div className="
+    sticky top-2 z-40
+    rounded-2xl
+    border border-white/20
+    bg-white/10
+    backdrop-blur-xl
+    shadow-[0_8px_30px_rgba(0,0,0,0.12)]
+    ring-1 ring-white/20
+  ">
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4">
 
-          {/* TEXT */}
-          <div className="text-sm text-amber-900">
-            <div className="font-semibold">
-              Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
-            </div>
-            <div className="text-amber-800">
-              Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
-            </div>
-          </div>
-
-          {/* ACTIONS */}
-          <div className="flex gap-2">
-
-            <button
-              type="button"
-              onClick={() => openExternalBrowser(roomShareUrl || window.location.href)}
-              className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
-            >
-              Mở trình duyệt
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                const ok = await copyText(roomShareUrl || window.location.href);
-
-                showToast(
-                  ok
-                    ? "Đã copy link phòng"
-                    : "Không thể copy link — hãy copy thủ công"
-                );
-              }}
-              className="rounded-xl border px-4 py-2 text-sm font-medium"
-            >
-              Copy link
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowOpenBrowserBar(false)}
-              className="rounded-xl border px-3 py-2 text-sm"
-              aria-label="Đóng"
-              title="Đóng"
-            >
-              ✕
-            </button>
-
-          </div>
+      {/* TEXT */}
+      <div className="text-sm text-white/90">
+        <div className="font-semibold">
+          Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
+        </div>
+        <div className="text-white/70">
+          Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
         </div>
       </div>
-    )}
+
+      {/* ACTIONS */}
+      <div className="flex gap-2">
+
+        <button
+          type="button"
+          onClick={() => openExternalBrowser(roomShareUrl || window.location.href)}
+          className="
+            rounded-xl
+            bg-black/80
+            backdrop-blur-md
+            px-4 py-2
+            text-sm font-medium text-white
+            shadow-lg
+            hover:bg-black
+            transition
+          "
+        >
+          Mở trình duyệt
+        </button>
+
+        <button
+          type="button"
+          onClick={async () => {
+            const ok = await copyText(roomShareUrl || window.location.href);
+
+            showToast(
+              ok
+                ? "Đã copy link phòng"
+                : "Không thể copy link — hãy copy thủ công"
+            );
+          }}
+          className="
+            rounded-xl
+            border border-white/20
+            bg-white/10
+            backdrop-blur-md
+            px-4 py-2
+            text-sm font-medium text-white
+            hover:bg-white/20
+            transition
+          "
+        >
+          Copy link
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowOpenBrowserBar(false)}
+          className="
+            rounded-xl
+            border border-white/10
+            bg-white/10
+            text-white/80
+            px-3 py-2 text-sm
+            hover:bg-white/20
+            transition
+          "
+          aria-label="Đóng"
+          title="Đóng"
+        >
+          ✕
+        </button>
+
+      </div>
+    </div>
+  </div>
+)}
 
       <div className="space-y-1">
         {mediaItems.length > 0 ? (
