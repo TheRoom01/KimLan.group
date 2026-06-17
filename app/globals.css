@@ -5,7 +5,7 @@ html {
 }
 
 :root {
- --tr-bg-main: #3e2a1c;
+ --tr-bg-main: #71513a;
 
   --tr-glass-bg: rgba(45, 27, 20, 0.4);
   --tr-glass-border: rgba(197, 165, 130, 0.007);
@@ -278,12 +278,12 @@ input[type="radio"] {
   isolation: isolate;
   background: conic-gradient(
     from var(--ai-angle),
-    #4285f4,
-    #9b51e0,
-    #ea4335,
-    #fbbc05,
-    #34a853,
-    #4285f4
+    #5993f1,
+    #9e4aed,
+    #f84b3b,
+    #f8d877,
+    #76f097,
+    #709ee8
   );
   animation: ai-admin-spin 3s linear infinite;
 }
@@ -291,19 +291,19 @@ input[type="radio"] {
 .ai-admin-gradient-border::before {
   content: "";
   position: absolute;
-  inset: -3px;
+  inset: -10px;
   border-radius: inherit;
   background: conic-gradient(
     from var(--ai-angle),
-    #4285f4,
-    #9b51e0,
-    #ea4335,
-    #fbbc05,
+    #5e97f4,
+    #c192ed,
+    #f05547,
+    #ffe083,
     #34a853,
     #4285f4
   );
-  filter: blur(8px);
-  opacity: 0.22;
+  filter: blur(5px);
+  opacity: 0.44;
   z-index: -1;
   animation: ai-admin-spin 3s linear infinite;
   transition: opacity 0.2s ease, filter 0.2s ease;
@@ -330,3 +330,4 @@ input[type="radio"] {
     --ai-angle: 360deg;
   }
 }
+

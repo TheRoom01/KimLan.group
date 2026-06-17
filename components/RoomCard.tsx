@@ -394,45 +394,45 @@ return (
         </svg>
       </button>
       
- {/* ADMIN BUTTON */}
-{room.creator_admin_phone && (
-  <button
-    type="button"
-    onClick={(e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setAdminPhone(room.creator_admin_phone || null);
-    }}
-    title={room.creator_admin_name || "Liên hệ"}
-    className="
-      ai-admin-button ai-admin-gradient-border
-      !absolute left-2 top-1 z-30
 
-      !min-h-0 !h-[32px]
-      rounded-full p-[1px]
+    {/* ADMIN BUTTON */}
+    {room.creator_admin_phone && (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setAdminPhone(room.creator_admin_phone || null);
+        }}
+        title={room.creator_admin_name || "Liên hệ"}
+        className="
+          ai-admin-button ai-admin-gradient-border
+          !absolute left-2 top-1 z-30
 
-      transition-all duration-50
-      hover:scale-[1.05]
-      active:scale-[0.95]
-    "
-  >
-    <span
-      className="
-        flex h-full items-center gap-1
-        rounded-full
-        bg-[#141516]/65
-        px-1
-        !text-[14px] font-bold text-white
-        leading-none
-        backdrop-blur-[20px]
-      "
-    >
-      <span className="text-[12px] leading-none">☎️</span>
-      <span className="leading-none">Admin</span>
-    </span>
-  </button>
-)}
+          !min-h-0 !h-[25px]
+          rounded-full p-[1px]
 
+          transition-all duration-50
+          hover:scale-[1.05]
+          active:scale-[0.95]
+        "
+      >
+        <span
+          className="
+            flex h-full items-center gap-1
+            rounded-full
+            bg-[#141516]/75
+            px-1
+            !text-[14px] font-bold text-white
+            leading-none
+            backdrop-blur-[20px]
+          "
+        >
+          <span className="text-[12px] leading-none">☎️</span>
+          <span className="leading-none">Admin</span>
+        </span>
+      </button>
+    )}
 
         {/* IMAGE */}
         <div className="h-[240px] overflow-hidden bg-black/20">
