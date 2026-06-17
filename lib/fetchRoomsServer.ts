@@ -105,6 +105,20 @@ const ADMIN_L2_KEYS = [
   "zalo_phone",
 ] as const;
 
+const normalizeSearchKeyword = (value?: string | null) => {
+  return String(value ?? "")
+    .normalize("NFC")
+
+    // "P.13", "p13", "Phường 13", "phuong 13" -> "13"
+    .replace(/\b(phường|phuong|p\.?|p)\s*(\d{1,3})\b/gi, "$2")
+
+    .replace(/\.{2,}/g, " ")
+    .replace(/[…,，。]+/g, " ")
+    .replace(/[|;:/\\()[\]{}"'“”‘’`~!@#$%^&*_+=<>?]+/g, " ")
+    .replace(/[-–—]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
 
 /**
  * Server-side fetch for initial render (SSR).

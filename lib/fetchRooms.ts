@@ -130,14 +130,21 @@ const expandDistrictLegacyValues = (districts?: string[] | null) => {
     if (match?.[1]) {
       out.add(match[1]); // số thuần cho DB legacy
     }
-  }
+    }
 
   return out.size ? Array.from(out) : null;
 };
 
+
+
 const normalizeSearchKeyword = (value?: string | null) => {
   return String(value ?? "")
     .normalize("NFC")
+
+    // ✅ Chuẩn hoá phường khi user search:
+    // "P.13", "p13", "Phường 13", "phuong 13" -> "13"
+    .replace(/\b(phường|phuong|p\.?|p)\s*(\d{1,3})\b/gi, "$2")
+
     .replace(/\.{2,}/g, " ")
     .replace(/[…,，。]+/g, " ")
     .replace(/[|;:/\\()[\]{}"'“”‘’`~!@#$%^&*_+=<>?]+/g, " ")
