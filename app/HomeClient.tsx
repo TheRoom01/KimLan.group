@@ -439,6 +439,10 @@ useEffect(() => {
         created_at: String(
           (initialNextCursor as any).created_at ?? (initialNextCursor as any).updated_at
         ),
+        search_score:
+          Number.isFinite(Number((initialNextCursor as any).search_score))
+            ? Number((initialNextCursor as any).search_score)
+            : undefined,
       }
     : typeof initialNextCursor === "string"
       ? initialNextCursor

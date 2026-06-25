@@ -247,8 +247,15 @@ useEffect(() => {
   const href = `/rooms/${room.id}`;
 
   const isRoomAvailable = currentStatus === "Trống";
-  const statusBadgeBaseClass =
-  "inline-flex h-[20px] min-w-[58px] items-center justify-center rounded-full px-2 text-[10px] font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
+
+ const statusBadgeBaseClass =
+  "inline-flex items-center justify-center rounded-full font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
+
+const statusBadgeAdminSizeClass =
+  "h-[10px] min-w-[30px] px-1.5 text-[5px]";
+
+const statusBadgePublicSizeClass =
+  "h-[18px] min-w-[54px] px-1.5 text-[9px]";
 
 const statusBadgeColorClass = isRoomAvailable
   ? "bg-[#22c55e]/35 text-[#bbf7d0] border-[#22c55e]/60 shadow-[0_0_12px_rgba(34,197,94,0.16)]"
@@ -545,7 +552,7 @@ return (
                 disabled={updatingStatus}
                 onClick={handleToggleStatus}
                 title="Bấm để đổi trạng thái phòng"
-                className={`${statusBadgeBaseClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
+               className={`${statusBadgeBaseClass} ${statusBadgeAdminSizeClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
                   updatingStatus
                     ? "cursor-wait opacity-70"
                     : "cursor-pointer hover:scale-105"
@@ -559,7 +566,7 @@ return (
               </button>
             ) : (
               <span
-      className={`${statusBadgeBaseClass} ${statusBadgeColorClass} h-[22px] min-w-[66px] px-1 text-[11px]`}
+     className={`${statusBadgeBaseClass} ${statusBadgePublicSizeClass} ${statusBadgeColorClass}`}
               >
                 {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
               </span>

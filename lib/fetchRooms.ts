@@ -1,6 +1,11 @@
 import { supabase } from "./supabase";
 
-export type UpdatedDescCursor = { id: string; updated_at: string; created_at: string };
+export type UpdatedDescCursor = {
+  id: string;
+  updated_at: string;
+  created_at: string;
+  search_score?: number;
+};
 
 
 export type FetchRoomsParams = {
@@ -215,6 +220,10 @@ export async function fetchRooms(
         id: String((cursor as any).id),
         updated_at: String((cursor as any).updated_at),
         created_at: String((cursor as any).created_at),
+        search_score:
+          Number.isFinite(Number((cursor as any).search_score))
+            ? Number((cursor as any).search_score)
+            : undefined,
       }
     : null;
 
@@ -326,16 +335,19 @@ const projected = rows;
   const rawNext = (data as any)?.nextCursor ?? null;
 
   const nextCursor: string | UpdatedDescCursor | null =
-  rawNext && typeof rawNext === "object"
-    ? {
-        id: String((rawNext as any).id),
-        updated_at: String((rawNext as any).updated_at),
-        created_at: String((rawNext as any).created_at),
-      }
-    : typeof rawNext === "string"
-    ? rawNext
-    : null;
-
+    rawNext && typeof rawNext === "object"
+      ? {
+          id: String((rawNext as any).id),
+          updated_at: String((rawNext as any).updated_at),
+          created_at: String((rawNext as any).created_at),
+          search_score:
+            Number.isFinite(Number((rawNext as any).search_score))
+              ? Number((rawNext as any).search_score)
+              : undefined,
+        }
+      : typeof rawNext === "string"
+      ? rawNext
+      : null;
 
   // ✅ total_count từ RPC (nếu có)
   const rawTotal = (data as any)?.total_count;

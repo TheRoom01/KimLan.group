@@ -134,56 +134,41 @@ function renderSmartLinks(raw: string) {
           );
         }
 
-        // ===== GOOGLE SHEET =====
-        if (type === "gsheet") {
-          return (
-            <a
-              key={idx}
-              href={line}
-              target="_blank"
-              rel="noreferrer"
-              className="
-                inline-flex items-center gap-3
-                w-fit max-w-full shrink-0
-                rounded-2xl px-3 py-2
-                border border-white/20
-                bg-[rgba(255,255,255,0.06)]
-                backdrop-blur-[24px]
-                shadow-[0_10px_35px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]
-                hover:bg-[rgba(255,255,255,0.12)]
-                active:scale-[0.97]
-                transition-all
-              "
-            >
-              <div
-                className="
-                  w-10 h-10 rounded-full flex items-center justify-center
-                  text-white text-sm
-                  bg-[rgba(34,197,94,0.18)]
-                  backdrop-blur-[10px]
-                  border border-green-400/30
-                "
-              >
-                📊
-              </div>
-
-              <div className="text-sm font-medium text-[#F4E7D6]">
-                Mở Google Sheet
-              </div>
-            </a>
-          );
-        }
-
-        // ===== DEFAULT =====
+       // ===== ALL OTHER LINKS =====
         return (
           <a
             key={idx}
             href={line}
             target="_blank"
             rel="noreferrer"
-            className="text-[#F4E7D6] underline break-all"
+            className="
+              inline-flex items-center gap-3
+              w-fit max-w-full
+              rounded-2xl px-3 py-2
+              border border-white/20
+              bg-[rgba(255,255,255,0.06)]
+              backdrop-blur-[24px]
+              shadow-[0_10px_35px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]
+              hover:bg-[rgba(255,255,255,0.12)]
+              active:scale-[0.97]
+              transition-all
+            "
           >
-            {line}
+            <div
+              className="
+                w-10 h-10 rounded-full flex items-center justify-center
+                text-white text-sm
+                bg-[rgba(34,197,94,0.18)]
+                backdrop-blur-[10px]
+                border border-green-400/30
+              "
+            >
+              🔗
+            </div>
+
+            <div className="text-sm font-medium text-[#F4E7D6]">
+              {getLinkButtonLabel(type)}
+            </div>
           </a>
         );
       })}
@@ -239,9 +224,17 @@ function detectLinkType(url: string) {
 
   if (u.includes("zalo.me")) return "zalo";
   if (u.includes("docs.google.com/spreadsheets")) return "gsheet";
+  if (u.includes("drive.google.com")) return "gdrive";
   if (u.includes("docs.google.com")) return "gdoc";
 
   return "other";
+}
+
+function getLinkButtonLabel(type: string) {
+  if (type === "gsheet") return "Mở Google Sheet";
+  if (type === "gdrive") return "Mở Google Drive";
+  if (type === "gdoc") return "Mở Google Docs";
+  return "Mở liên kết";
 }
 
 function publicHouseNumber(value?: string | null) {
@@ -1585,7 +1578,7 @@ activeItem.kind === "video" ? (
 {isAdmin && (
   <div className="grid grid-cols-1 sm:grid-cols-[auto_220px] gap-3 text-[#F4E7D6]">
     {/* LEFT: Link */}
-    <div>
+  <div className="min-w-0">
       
       {zaloLinkRaw ? (
         renderSmartLinks(zaloLinkRaw)

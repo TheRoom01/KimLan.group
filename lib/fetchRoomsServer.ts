@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type UpdatedDescCursor = { id: string; updated_at: string; created_at: string };
-
+export type UpdatedDescCursor = {
+  id: string;
+  updated_at: string;
+  created_at: string;
+  search_score?: number;
+};
 
 export type FetchRoomsParams = {
 
@@ -157,12 +161,16 @@ export async function fetchRoomsServer(
   // ✅ Parse cursor theo đúng SQL:
   // - updated_desc dùng {updated_at, id}
   // - price_asc/price_desc/fallback dùng uuid string
-  const cursorObj: UpdatedDescCursor | null =
+ const cursorObj: UpdatedDescCursor | null =
   cursor && typeof cursor === "object"
     ? {
         id: String((cursor as any).id),
         updated_at: String((cursor as any).updated_at),
         created_at: String((cursor as any).created_at),
+        search_score:
+          Number.isFinite(Number((cursor as any).search_score))
+            ? Number((cursor as any).search_score)
+            : undefined,
       }
     : null;
 
@@ -170,19 +178,20 @@ export async function fetchRoomsServer(
   const cursorId: string | null =
     cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
 
-  const toIsoOrNull = (v: unknown): string | null => {
+ const toTimestampOrNull = (v: unknown): string | null => {
   if (!v) return null;
   if (v instanceof Date) return v.toISOString();
+
   if (typeof v === "string") {
-    // nếu đã là ISO thì giữ nguyên; nếu là string thường thì cố parse
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    const s = v.trim();
+    return s || null;
   }
+
   return null;
 };
 
-const cursorUpdatedAt: string | null = toIsoOrNull(cursorObj?.updated_at);
-const cursorCreatedAt: string | null = toIsoOrNull((cursorObj as any)?.created_at);
+const cursorUpdatedAt: string | null = toTimestampOrNull(cursorObj?.updated_at);
+const cursorCreatedAt: string | null = toTimestampOrNull((cursorObj as any)?.created_at);
 
 // RPC expects: 'elevator' | 'stairs' | null
 const pMove =
@@ -223,7 +232,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_cursor: cursorId ? String(cursorId) : null,
 
   // 3) filter/search
-  p_search: (search ?? "").trim() ? String(search).trim() : null,
+  p_search: normalizeSearchKeyword(search) ? normalizeSearchKeyword(search) : null,
   p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
   p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
   p_districts: Array.isArray(districts) && districts.length ? districts : null,
@@ -262,11 +271,14 @@ const projected = rows;
         id: String((rawNext as any).id),
         updated_at: String((rawNext as any).updated_at),
         created_at: String((rawNext as any).created_at),
+        search_score:
+          Number.isFinite(Number((rawNext as any).search_score))
+            ? Number((rawNext as any).search_score)
+            : undefined,
       }
     : typeof rawNext === "string"
     ? rawNext
     : null;
-
 
   const rawTotal = (data as any)?.total_count;
   const total =
