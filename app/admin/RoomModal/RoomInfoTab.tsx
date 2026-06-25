@@ -88,6 +88,19 @@ function toTitleCaseStreet(input: string) {
     .join(" ");
 }
 
+function toTitleCaseWard(input: string) {
+  return String(input ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => {
+      const lower = w.toLowerCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
 export default function RoomInfoTab({
   value,
   onChange,
@@ -216,6 +229,12 @@ useEffect(() => {
           label="Phường"
           value={value.ward}
           onChange={v => onChange({ ...value, ward: v })}
+          onBlur={() => {
+            const normalizedWard = toTitleCaseWard(value.ward);
+            if (normalizedWard !== value.ward) {
+              onChange({ ...value, ward: normalizedWard });
+            }
+          }}
         />
         <Select
           label="Quận"

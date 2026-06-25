@@ -148,7 +148,11 @@ const normalizeSearchKeyword = (value?: string | null) => {
 
     // ✅ Chuẩn hoá phường khi user search:
     // "P.13", "p13", "Phường 13", "phuong 13" -> "13"
+    // "P.13", "p13", "Phường 13" -> "13"
     .replace(/\b(phường|phuong|p\.?|p)\s*(\d{1,3})\b/gi, "$2")
+
+    // "P. Bến Thành", "Phường Bến Thành", "phuong Ben Thanh" -> "Bến Thành"
+    .replace(/\b(phường|phuong|p\.?|p)\s+(?=\S)/gi, "")
 
     .replace(/\.{2,}/g, " ")
     .replace(/[…,，。]+/g, " ")
