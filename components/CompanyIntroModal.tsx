@@ -85,7 +85,7 @@ const linkClass =
 
         <div className="mt-4 grid grid-cols-3 gap-2">
           <a
-            href="https://www.tiktok.com/@kimlangroup.chdv?_r=1&_t=ZS-93alZMGvdFQ"
+            href="https://www.tiktok.com/@theroom.chdv?_r=1&_t=ZS-97V9l7OhsqG"
             target="_blank"
             rel="noreferrer"
             className={linkClass}

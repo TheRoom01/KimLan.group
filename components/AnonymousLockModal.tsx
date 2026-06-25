@@ -3,19 +3,22 @@
 type Props = {
   phone: string;
   zaloUrl: string;
-};
-
-const unlockFor24Hours = () => {
-  localStorage.setItem(
-    "anon_lock_dismiss_until",
-    String(Date.now() + 24 * 60 * 60 * 1000)
-  );
+  onUnlocked?: () => void;
 };
 
 export default function AnonymousLockModal({
   phone,
   zaloUrl,
+  onUnlocked,
 }: Props) {
+
+    const unlockFor24Hours = () => {
+    localStorage.setItem(
+      "anon_lock_dismiss_until",
+      String(Date.now() + 24 * 60 * 60 * 1000)
+    );
+  };
+
   return (
     <div
       className="

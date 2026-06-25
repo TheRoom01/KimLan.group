@@ -249,6 +249,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
 p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
 p_cursor_id: cursorId ? String(cursorId) : null,
+p_anon_session_id: null,
 
 });
 

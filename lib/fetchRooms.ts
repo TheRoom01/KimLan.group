@@ -180,6 +180,24 @@ const expandRoomTypeLegacyValues = (roomTypes?: string[] | null) => {
   return out.size ? Array.from(out) : null;
 };
 
+const ANON_SESSION_KEY = "anon_session_id_v1";
+
+async function getAnonSessionId(adminLevel?: 0 | 1 | 2) {
+  if (adminLevel === 1 || adminLevel === 2) return null;
+  if (typeof window === "undefined") return null;
+
+  const oldId = localStorage.getItem(ANON_SESSION_KEY);
+
+  const { data, error } = await supabase.rpc("start_anon_session", {
+    p_session_id: oldId || null,
+  });
+
+  if (error || !data) return null;
+
+  const id = String(data);
+  localStorage.setItem(ANON_SESSION_KEY, id);
+  return id;
+}
 
 export async function fetchRooms(
   params: FetchRoomsParams
@@ -286,7 +304,7 @@ const pContractTerms =
         )
       )
     : null;
-
+const anonSessionId = await getAnonSessionId(adminLevel);
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: role,
@@ -312,7 +330,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
  p_sort: (sortMode ?? "updated_desc") as any,
 p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
 p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
-p_cursor_id: cursorId ? String(cursorId) : null,
+p_cursor_id: cursorId ? String(cursorId) : null, 
+p_anon_session_id: anonSessionId,
 
 });
 

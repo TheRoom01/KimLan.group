@@ -2888,8 +2888,15 @@ useEffect(() => {
   }
 
   lockTimerRef.current = window.setTimeout(() => {
-    setIsAnonLocked(true);
-  }, 90_000);
+  setIsAnonLocked(true);
+
+  // Chặn xem tiếp data đã load sẵn trên UI
+  pagesRef.current = [];
+  setPages([]);
+  cursorsRef.current = [null];
+  setHasNext(false);
+  setTotal(0);
+}, 60_000);
 
   return () => {
     if (lockTimerRef.current) {
@@ -3204,9 +3211,18 @@ return (
 
     {isAnonLocked && !hasVipAccess && (
       <AnonymousLockModal
-        phone="0967.467.587"
-        zaloUrl="https://zalo.me/0967467587"
-      />
+      phone="0967.467.587"
+      zaloUrl="https://zalo.me/0967467587"
+      onUnlocked={() => {
+        setHasVipAccess(true);
+        setIsAnonLocked(false);
+
+        resetPagination(0);
+        queueMicrotask(() => {
+          fetchPageRef.current(0);
+        });
+      }}
+    />
     )}
 
     <div
