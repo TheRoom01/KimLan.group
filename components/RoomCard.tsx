@@ -248,14 +248,14 @@ useEffect(() => {
 
   const isRoomAvailable = currentStatus === "Trống";
 
- const statusBadgeBaseClass =
-  "inline-flex items-center justify-center rounded-full font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
+const statusBadgeBaseClass =
+  "inline-flex !min-h-0 items-center justify-center rounded-full font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
 
-const statusBadgeAdminSizeClass =
-  "h-[10px] min-w-[30px] px-1.5 text-[5px]";
+const statusBadgeAnonClass =
+  "h-[24px] min-w-[70px] px-1.5 text-[12px]";
 
-const statusBadgePublicSizeClass =
-  "h-[18px] min-w-[54px] px-1.5 text-[9px]";
+const statusBadgeAdminClass =
+  "!h-[24px] !min-w-[70px] !px-2 !py-1,5 !text-[12px]";
 
 const statusBadgeColorClass = isRoomAvailable
   ? "bg-[#22c55e]/35 text-[#bbf7d0] border-[#22c55e]/60 shadow-[0_0_12px_rgba(34,197,94,0.16)]"
@@ -552,7 +552,7 @@ return (
                 disabled={updatingStatus}
                 onClick={handleToggleStatus}
                 title="Bấm để đổi trạng thái phòng"
-               className={`${statusBadgeBaseClass} ${statusBadgeAdminSizeClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
+                className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
                   updatingStatus
                     ? "cursor-wait opacity-70"
                     : "cursor-pointer hover:scale-105"
@@ -566,7 +566,7 @@ return (
               </button>
             ) : (
               <span
-     className={`${statusBadgeBaseClass} ${statusBadgePublicSizeClass} ${statusBadgeColorClass}`}
+              className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass}`}
               >
                 {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
               </span>
@@ -588,52 +588,52 @@ return (
           </div>
         </div>
 
-       {/* ADDRESS */}
-<p className="px-3 pb-3 text-white font-semibold leading-6 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
-  📍{adminLevel === 1 || adminLevel === 2
-    ? room.house_number
-      ? `${room.house_number} `
-      : ""
-    : `${publicHouseNumber(room.house_number)} `}
-  {address}
-  {ward && `, P. ${ward}`}
-  {district && `, ${district}`}
+   {/* ADDRESS */}
+      <p className="px-3 pb-3 text-white font-semibold leading-6 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+        📍{adminLevel === 1 || adminLevel === 2
+          ? room.house_number
+            ? `${room.house_number} `
+            : ""
+          : `${publicHouseNumber(room.house_number)} `}
+        {address}
+        {ward && `, P. ${ward}`}
+        {district && `, ${district}`}
 
-  <button
-    type="button"
-    onClick={handleCopyAddress}
-    title={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
-    className="
-      !min-h-0 !h-[20px] !w-[20px]
-      ml-1 inline-flex align-[-2px]
-      items-center justify-center
-      rounded-[3px]
-      bg-white/10
-      text-white/75
-      backdrop-blur-[10px]
-      transition
-      hover:bg-white/20 hover:text-white
-      active:scale-90
-    "
-  >
-    {copiedAddress ? (
-      <span className="text-[10px] leading-none text-green-300">✓</span>
-    ) : (
-      <svg
-        viewBox="0 0 24 24"
-        className="h-[20px] w-[20px]"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <rect x="8" y="8" width="11" height="11" rx="2.5" />
-        <path d="M5 16V7.5A2.5 2.5 0 0 1 7.5 5H16" />
-      </svg>
-    )}
-  </button>
-</p>
+        <button
+          type="button"
+          onClick={handleCopyAddress}
+          title={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
+          className="
+            !min-h-0 !h-[20px] !w-[20px]
+            ml-1 inline-flex align-[-2px]
+            items-center justify-center
+            rounded-[3px]
+            bg-white/10
+            text-white/75
+            backdrop-blur-[10px]
+            transition
+            hover:bg-white/20 hover:text-white
+            active:scale-90
+          "
+        >
+          {copiedAddress ? (
+            <span className="text-[10px] leading-none text-green-300">✓</span>
+          ) : (
+            <svg
+              viewBox="0 0 24 24"
+              className="h-[20px] w-[20px]"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="8" y="8" width="11" height="11" rx="2.5" />
+              <path d="M5 16V7.5A2.5 2.5 0 0 1 7.5 5H16" />
+            </svg>
+          )}
+        </button>
+      </p>
 
       </div>
        </Link>
