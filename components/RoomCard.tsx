@@ -252,10 +252,10 @@ const statusBadgeBaseClass =
   "inline-flex !min-h-0 items-center justify-center rounded-full font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
 
 const statusBadgeAnonClass =
-  "h-[24px] min-w-[70px] px-1.5 text-[12px]";
+  "h-[30px] min-w-[92px] px-1.5 py-0 text-[15px]";
 
 const statusBadgeAdminClass =
-  "!h-[24px] !min-w-[70px] !px-2 !py-1,5 !text-[12px]";
+  "!h-[30px] !min-h-0 !min-w-[92px] !px-1.5 !py-0 !text-[15px]";
 
 const statusBadgeColorClass = isRoomAvailable
   ? "bg-[#22c55e]/35 text-[#bbf7d0] border-[#22c55e]/60 shadow-[0_0_12px_rgba(34,197,94,0.16)]"
