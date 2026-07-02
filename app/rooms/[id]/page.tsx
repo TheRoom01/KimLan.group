@@ -847,6 +847,24 @@ if (!id || fetchStatus === "loading") {
   );
 }
 
+const formatTimeAgo = (value?: string | null) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+
+  const minutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(diffMs / 86400000);
+
+  if (minutes < 1) return "vừa cập nhật";
+  if (minutes < 60) return `${minutes} phút trước`;
+  if (hours < 24) return `${hours} giờ trước`;
+  if (days < 30) return `${days} ngày trước`;
+
+  return date.toLocaleDateString("vi-VN");
+};
+
 if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>;
 
 
@@ -854,7 +872,7 @@ if (!room) return <div className="p-6 text-base">Không tìm thấy phòng</div>
   const roomType = room?.room_type ?? room?.type ?? room?.roomType ?? "";
   const statusText = humanStatus(room?.status);
   const priceText = formatVND(room?.price);
-  const updatedText = formatDMY(room?.updated_at);
+  const updatedText = formatTimeAgo(room?.updated_at);
   
 const houseNumber =
   room?.house_number ??
@@ -1374,10 +1392,10 @@ activeItem.kind === "video" ? (
 )}
       </div>
       
-{/* ===== Ngày cập nhật ===== */}
-<div className="flex items-center justify-end gap-1 mt-1 mb-0 text-sm text-red-600 drop-shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
-  {updatedText && <div>Ngày cập nhật: {updatedText}</div>}
-</div>
+  {/* ===== Ngày cập nhật ===== */}
+  <div className="flex items-center justify-end gap-1 mt-1 mb-0 text-sm text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+    {updatedText && <div>Đã cập nhật: {updatedText}</div>}
+  </div>
 
   <div
   className="
@@ -1941,7 +1959,7 @@ activeItem.kind === "video" ? (
       px-5 py-2.5 text-sm font-medium text-white
       rounded-full
       border border-white/20
-      bg-[rgba(255,255,255,0.08)]
+      bg-[rgba(255, 255, 255, 0.2)]
       backdrop-blur-[20px]
       shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
       animate-[fadeIn_0.25s_ease]
@@ -1958,7 +1976,7 @@ activeItem.kind === "video" ? (
     <div
       className="w-[280px] rounded-2xl 
       border border-white/10 
-      bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.01)),rgba(58,33,18,0.45)] 
+      bg-[linear-gradient(135deg,rgba(255, 255, 255, 0.88),rgba(255, 255, 255, 0.54)),rgba(58,33,18,0.45)] 
       backdrop-blur-2xl 
       shadow-[0_20px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)] 
       p-4 space-y-3"

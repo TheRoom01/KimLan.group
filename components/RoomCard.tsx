@@ -714,46 +714,41 @@ return (
         document.body
       )}
 
-    {/* ADMIN MODAL */}
+   {/* ADMIN MODAL */}
 {adminPhone &&
   typeof window !== "undefined" &&
   createPortal(
     <div
-      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40 backdrop-blur-[5px]"
       onClick={() => setAdminPhone(null)}
     >
       <div
         className="
-        relative
-        w-[88%] max-w-[250px] rounded-[20px]
+          relative
+          w-[88%] max-w-[250px] rounded-[20px]
 
-        bg-[linear-gradient(180deg,rgba(255,255,255,0.28),rgba(255,255,255,0.06))]
-        backdrop-blur-[42px]
+         bg-[linear-gradient(180deg,rgba(249, 236, 213, 0.41),rgba(218,196,166,0.48))]
+backdrop-blur-[42px]
+backdrop-saturate-[190%]
+          backdrop-saturate-[160%]
 
-        border border-white/30
+          border border-[#fff4df]/60
 
-        shadow-[
-        0_30px_80px_rgba(0,0,0,0.75),
-        inset_0_1px_0_rgba(255,255,255,0.7),
-        inset_0_-1px_0_rgba(255,255,255,0.25),
-        inset_0_0_30px_rgba(255,255,255,0.08)
-        ]
+          shadow-[0_30px_80px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.72),inset_0_-1px_0_rgba(255,255,255,0.22)]
 
-        p-4
-        animate-[fadeIn_0.2s_ease]
+          p-4
+          animate-[fadeIn_0.2s_ease]
 
-        before:absolute before:inset-0
-        before:rounded-[20px]
-        before:bg-[linear-gradient(120deg,rgba(255,255,255,0.35),transparent_40%)]
-        before:opacity-40
-        before:pointer-events-none
+          before:absolute before:inset-0
+          before:rounded-[20px]
+          before:bg-[linear-gradient(120deg,rgba(255,255,255,0.6),transparent_42%)]
+          before:opacity-45
+          before:pointer-events-none
         "
         onClick={(e) => e.stopPropagation()}
       >
-        
-
         {room.creator_admin_name && (
-          <div className="mb-3 mt-1 text-center text-sm text-white/70">
+          <div className="mb-3 mt-1 text-center text-sm font-medium text-[#5f5141]">
             {room.creator_admin_name}
           </div>
         )}
@@ -761,7 +756,7 @@ return (
         <div className="flex flex-col gap-2">
           <a
             href={`tel:${adminPhone}`}
-            className="w-full rounded-xl border border-white/20 bg-[rgba(66, 65, 65, 0.12)] py-3 text-center font-semibold text-white backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+            className="w-full rounded-xl border border-[#fff4df]/45 bg-[rgba(243,234,220,0.68)] py-3 text-center font-semibold text-[#5b4a38] backdrop-blur-[18px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
           >
             📞 Gọi điện
           </a>
@@ -770,23 +765,17 @@ return (
             href={`https://zalo.me/${adminPhone}`}
             target="_blank"
             rel="noreferrer"
-            className="w-full rounded-xl border border-white/20 bg-[rgba(255,255,255,0.12)] py-3 text-center font-semibold text-white backdrop-blur-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+            className="w-full rounded-xl border border-[#fff4df]/45 bg-[rgba(239,224,201,0.72)] py-3 text-center font-semibold text-[#5b4a38] backdrop-blur-[18px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
           >
             <span className="flex items-center justify-center gap-2 leading-none">
-              <img
-                src="/zalo.svg"
-                alt="Zalo"
-                className="h-[20px] w-[20px]"
-              />
+              <img src="/zalo.svg" alt="Zalo" className="h-[20px] w-[20px]" />
               <span>Zalo</span>
             </span>
           </a>
-
         </div>
       </div>
     </div>,
     document.body
-    
   )}
   </>
 );}
