@@ -2948,8 +2948,8 @@ return (
         className="h-full w-full object-cover scale-105 blur-[2px]"
       />
 
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.35)_0%,rgba(0,0,0,0.58)_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(255,210,150,0.16)_0%,transparent_45%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(244, 213, 164, 0.15)_0%,rgba(120, 117, 117, 0)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(255, 209, 150, 0)_0%,transparent_45%)]" />
     </div>
 
     <div
