@@ -5,20 +5,20 @@ html {
 }
 
 :root {
- --tr-bg-main: #71513a;
+  --tr-bg-main: #FFF8DC;
 
-  --tr-glass-bg: rgba(45, 27, 20, 0.4);
-  --tr-glass-border: rgba(197, 165, 130, 0.007);
+  --tr-glass-bg: rgba(255, 248, 220, 0.45);
+  --tr-glass-border: rgba(139, 107, 77, 0.18);
 
---tr-text-main: #F8FAFC;        /* trắng sáng */
---tr-text-muted: #cbd5e1;      /* xám sáng */
+  --tr-text-main: #3f2f24;
+  --tr-text-muted: #6f5a46;
 
   --tr-active: #8b6b4d;
 }
 
 body {
-  background: #f3f4f6;
-  color: #111827;
+  background: #FFF8DC;
+  color: #3f2f24;
 }
 
 /* ===== ADMIN FORM BASE ===== */

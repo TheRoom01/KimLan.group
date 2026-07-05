@@ -2939,17 +2939,13 @@ const handleNavigateToRoom = useCallback((href: string) => {
 ]);
 // ================== RENDER ==================
 return (
-  <div className="relative flex h-screen flex-col overflow-hidden text-[#F4E7D6]">
-    {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
-    <div className="fixed inset-0 z-0 pointer-events-none">
-      <img
-        src="/bg-glass.jpg"
-        alt=""
-        className="h-full w-full object-cover scale-105 blur-[2px]"
-      />
-
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.35)_0%,rgba(0,0,0,0.58)_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(255,210,150,0.16)_0%,transparent_45%)]" />
+  <div className="relative flex h-screen flex-col overflow-hidden bg-[#FFF8DC] text-[#3f2f24]">
+        {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
+    <div className="fixed inset-0 z-0 pointer-events-none bg-[#FFF8DC]">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,#FFF8DC_0%,#F7EBC5_48%,#EFD9AC_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_0%,rgba(255,255,255,0.72)_0%,transparent_42%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_18%,rgba(139,107,77,0.12)_0%,transparent_36%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(139,107,77,0.10)_0%,transparent_48%)]" />
     </div>
 
     <div
