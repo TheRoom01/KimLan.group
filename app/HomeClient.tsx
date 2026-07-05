@@ -2939,7 +2939,7 @@ const handleNavigateToRoom = useCallback((href: string) => {
 ]);
 // ================== RENDER ==================
 return (
-  <div className="relative flex h-screen flex-col overflow-hidden text-[#F4E7D6]">
+  <div className="relative flex h-screen flex-col overflow-hidden bg-[#FFF8DC] text-[#3f2f24]">
     {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
     <div className="fixed inset-0 z-0 pointer-events-none">
       <img
@@ -2948,8 +2948,8 @@ return (
         className="h-full w-full object-cover scale-105 blur-[2px]"
       />
 
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(244, 213, 164, 0.15)_0%,rgba(120, 117, 117, 0)_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(255, 209, 150, 0)_0%,transparent_45%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(244, 213, 164, 0.15)_0%,rgba(120, 117, 117, 0.08)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(255, 209, 150, 0.42)_0%,transparent_45%)]" />
     </div>
 
     <div
@@ -3147,31 +3147,31 @@ return (
             </div>
 
             <pre className="whitespace-pre-wrap break-words">
-{JSON.stringify(
-  pageDebugHistory.map((x, i) => ({
-    no: i + 1,
-    at: x.at,
-    event: x.event,
-    targetIndex: x.targetIndex,
-    pageIndex: x.pageIndex,
-    total: x.total,
-    rawLen: x.rawLen,
-    dedupedLen: x.dedupedLen,
-    limit: x.limit,
-    sortMode: x.sortMode,
-    finalHasNext: x.finalHasNext,
-    pagePriceMin: x.pagePriceMin,
-    pagePriceMax: x.pagePriceMax,
-    firstRows: x.firstRows,
-    lastRows: x.lastRows,
-    cursorUsedForThisPage: x.cursorUsedForThisPage,
-    nextCursor: x.nextCursor,
-    cachedState: x.cachedState,
-    note: x.note,
-  })),
-  null,
-  2
-)}
+          {JSON.stringify(
+            pageDebugHistory.map((x, i) => ({
+              no: i + 1,
+              at: x.at,
+              event: x.event,
+              targetIndex: x.targetIndex,
+              pageIndex: x.pageIndex,
+              total: x.total,
+              rawLen: x.rawLen,
+              dedupedLen: x.dedupedLen,
+              limit: x.limit,
+              sortMode: x.sortMode,
+              finalHasNext: x.finalHasNext,
+              pagePriceMin: x.pagePriceMin,
+              pagePriceMax: x.pagePriceMax,
+              firstRows: x.firstRows,
+              lastRows: x.lastRows,
+              cursorUsedForThisPage: x.cursorUsedForThisPage,
+              nextCursor: x.nextCursor,
+              cachedState: x.cachedState,
+              note: x.note,
+            })),
+            null,
+            2
+          )}
             </pre>
           </div>
         </div>

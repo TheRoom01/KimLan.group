@@ -5,10 +5,10 @@ html {
 }
 
 :root {
-  --tr-bg-main: #FFF8DC;
+  --tr-bg-main: #D2B48C;
 
-  --tr-glass-bg: rgba(255, 248, 220, 0.45);
-  --tr-glass-border: rgba(139, 107, 77, 0.18);
+  --tr-glass-bg: rgba(210, 180, 140, 0.46);
+  --tr-glass-border: rgba(90, 62, 38, 0.22);
 
   --tr-text-main: #3f2f24;
   --tr-text-muted: #6f5a46;
@@ -17,7 +17,7 @@ html {
 }
 
 body {
-  background: #FFF8DC;
+  background: #D2B48C;
   color: #3f2f24;
 }
 

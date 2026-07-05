@@ -314,6 +314,10 @@ async function confirmToggleStatus() {
   }
 }
 
+const roomMetaLabelColor = "#fce0bf";
+const roomMetaValueColor = "#E5C9A9";
+const roomMetaDividerColor = "rgba(229,201,169,0.9)";
+
 return (
   <>
     <Link
@@ -324,35 +328,39 @@ return (
         onNavigate(href);
       }}
     >
-      <div
-        className="
-        group relative z-0 overflow-hidden rounded-[18px]
-        bg-[rgba(255,255,255,0.06)]
-        backdrop-blur-[48px]
-        border border-white/25
-        shadow-[0_25px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.25)]
-        transition-all duration-300
-        hover:-translate-y-1
-        hover:bg-[rgba(255,255,255,0.10)]
-        hover:border-white/35
-      "
-      >
-        {/* glass layers */}
-        <div
-          className="
-          pointer-events-none absolute inset-0 rounded-[18px]
-          bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.35),transparent_50%)]
-          opacity-40
-        "
-        />
+     <div
+  className="
+    group relative z-0 overflow-hidden rounded-[18px]
 
-        <div
-          className="
-          pointer-events-none absolute inset-0 rounded-[18px]
-          bg-gradient-to-br from-white/25 via-transparent to-transparent
-          opacity-30
-        "
-        />
+   bg-[rgba(100,53,9,0.78)]
+    backdrop-blur-[10px]
+    backdrop-saturate-[155%]
+    border border-[#D2B48C]/30
+
+    shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]
+
+    transition-all duration-300
+    hover:-translate-y-1
+    hover:bg-[rgba(70,41,27,0.92)]
+    hover:border-[#E5C9A9]/45
+  "
+>
+  {/* glass layers */}
+  <div
+    className="
+      pointer-events-none absolute inset-0 rounded-[18px]
+      bg-[radial-gradient(circle_at_30%_18%,rgba(232,222,210,0.73),transparent_52%)]
+      opacity-34
+    "
+  />
+
+  <div
+    className="
+      pointer-events-none absolute inset-0 rounded-[18px]
+      bg-gradient-to-br from-[#DEB887]/10 via-transparent to-transparent
+      opacity-28
+    "
+  />
 
      {/* SAVE BUTTON */}
         <button
@@ -527,24 +535,34 @@ return (
           </div>
         </div>
 
-        {/* CONTENT */}
-        <div className="p-3 flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[13px] font-medium text-[#A0856E] leading-5">
-              {room.room_code && (
-                <>
-                  <span>Mã: </span>
-                  <span className="font-semibold text-[13px] text-[#E5C9A9]/80">
-                    {room.room_code}
-                  </span>
-                  <span> | </span>
-                </>
-              )}
-              <span>Dạng: </span>
-              <span className="font-semibold text-[#E5C9A9]">
-                {room.room_type}
-              </span>
-            </h3>
+       {/* CONTENT */}
+<div className="p-3 flex flex-col gap-2">
+  <div className="flex items-center justify-between gap-2">
+    <h3
+      className="text-[15px] font-medium leading-5"
+      style={{ color: roomMetaLabelColor }}
+    >
+      {room.room_code && (
+        <>
+          <span>Mã: </span>
+          <span
+            className="font-semibold text-[15px]"
+            style={{ color: roomMetaValueColor }}
+          >
+            {room.room_code}
+          </span>
+          <span style={{ color: roomMetaDividerColor }}> | </span>
+        </>
+      )}
+
+      <span>Dạng: </span>
+      <span
+        className="font-semibold"
+        style={{ color: roomMetaValueColor }}
+      >
+        {room.room_type}
+      </span>
+    </h3>
 
            {isAdmin ? (
               <button
@@ -728,8 +746,8 @@ return (
           w-[88%] max-w-[250px] rounded-[20px]
 
          bg-[linear-gradient(180deg,rgba(249, 236, 213, 0.41),rgba(218,196,166,0.48))]
-backdrop-blur-[42px]
-backdrop-saturate-[190%]
+          backdrop-blur-[42px]
+          backdrop-saturate-[190%]
           backdrop-saturate-[160%]
 
           border border-[#fff4df]/60

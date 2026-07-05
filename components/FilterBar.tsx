@@ -537,7 +537,7 @@ const toggleTerm = (value: "short" | "long") => {
             }
             className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
               openFilter === "amenities"
-                ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
+                ? "border-[#E0B77A] bg-[rgba(143,82,38,0.42)]"
                 : "border-white/20"
             }`}
             disabled={loading}
@@ -705,7 +705,7 @@ const toggleTerm = (value: "short" | "long") => {
           }
           className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
             openFilter === "sort"
-              ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
+              ? "border-[#E0B77A] bg-[rgba(215,215,215,0.22)]"
               : "border-white/20"
           }`}
         >
@@ -818,7 +818,7 @@ p-4 space-y-3"
               setPriceApplied([appliedMin, priceApplied[1]]);
               setMinInput(formatMoneyDisplay(String(safeRaw)));
             }}
-            className="w-[120px] rounded-xl border border-white/15 bg-[rgba(255,255,255,0.08)] px-2 py-2 text-center text-sm text-[#F6E7D2] outline-none backdrop-blur-xl whitespace-nowrap focus:ring-2 focus:ring-white/15"
+            className="w-[120px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.19)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[28px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.33)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
             placeholder="3000000"
           />
         </div>
@@ -826,7 +826,7 @@ p-4 space-y-3"
         <div className="shrink-0">
           <button
             type="button"
-            className="rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.06)] px-[9px] py-[5px] text-[9.5px] tracking-wide font-semibold text-white backdrop-blur-[28px] shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] whitespace-nowrap hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40"
+            className="rounded-2xl border border-white/25 bg-[rgba(215,215,215,0.27)] px-[9px] py-[5px] text-[9.5px] tracking-wide font-semibold text-white backdrop-blur-[28px] shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] whitespace-nowrap hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40"
             onClick={() => {
               const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
               setPriceDraft(resetVal);
@@ -837,7 +837,7 @@ p-4 space-y-3"
             }}
             disabled={loading}
           >
-            Xoá bộ lọc
+            Xóa bộ lọc
           </button>
         </div>
 
@@ -875,7 +875,7 @@ p-4 space-y-3"
               setPriceApplied([priceApplied[0], appliedMax]);
               setMaxInput(formatMoneyDisplay(String(safeRaw)));
             }}
-            className="ml-auto w-[128px] rounded-xl border border-white/15 bg-[rgba(255,255,255,0.08)] px-2 py-2 text-center text-sm text-[#F6E7D2] outline-none backdrop-blur-xl whitespace-nowrap focus:ring-2 focus:ring-white/15"
+           className="ml-auto w-[128px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.08)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[28px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.12)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
             placeholder="30000000"
           />
         </div>
