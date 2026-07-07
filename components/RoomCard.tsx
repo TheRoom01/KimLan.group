@@ -340,7 +340,7 @@ return (
       className="
         group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
-        bg-[rgba(247,215,180,0.16)]
+        bg-[rgba(215,215,215,0.22)]
         backdrop-blur-[34px]
         backdrop-saturate-[155%]
         border border-[#D2B48C]/30
@@ -357,7 +357,7 @@ return (
   <div
     className="
       pointer-events-none absolute inset-0 rounded-[18px]
-      bg-[radial-gradient(circle_at_30%_18%,rgba(255,250,244,0.95),transparent_52%)]
+      bg-[radial-gradient(circle_at_30%_18%,rgba(255,250,244,0.47),transparent_52%)]
       opacity-34
     "
   />

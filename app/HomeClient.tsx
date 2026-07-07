@@ -2965,7 +2965,7 @@ return (
           shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]
         "
       >
-        <div className="flex w-full max-w-none items-center justify-between gap-4 px-4 py-3 md:px-8 2xl:px-12">
+        <div className="flex w-full max-w-none items-start justify-between gap-3 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
           {/* LEFT: LOGO + TITLE */}
           <div className="flex min-w-0 items-center gap-2 md:gap-3">
             <LogoIntroButton logoSrc="/logo.png" />
@@ -2980,8 +2980,23 @@ return (
             </div>
           </div>
 
-          {/* RIGHT: ACCOUNT + SAVED */}
-<div className="relative z-[3000] flex shrink-0 items-center gap-1.5 whitespace-nowrap sm:gap-2">
+         {/* RIGHT: ACCOUNT + SAVED */}
+<div className="relative z-[3000] flex shrink-0 flex-col items-end gap-1.5 whitespace-nowrap self-start">
+  {/* ACCOUNT */}
+  <div
+    id="auth-anchor"
+    className="
+      flex h-[36px] min-w-[118px] items-center justify-center
+      rounded-2xl border border-[#E5C9A9]/25
+      bg-[rgba(45,27,20,0.55)]
+      px-0
+      text-[12px] font-semibold text-[#E5C9A9]
+      backdrop-blur-[20px]
+      shadow-[0_10px_26px_rgba(0,0,0,0.35)]
+    "
+  />
+
+  {/* SAVED */}
   <a
     href="/saved"
     target="_blank"
@@ -2989,41 +3004,27 @@ return (
     aria-label="Phòng đã lưu"
     title="Phòng đã lưu"
     className="
-      inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center
+      flex h-[34px] min-w-[118px] items-center justify-center
       rounded-2xl border border-[#E5C9A9]/25
-      bg-[rgba(45,27,20,0.45)]
-      text-[13px] font-semibold text-[#E5C9A9]
+      bg-[rgba(45,27,20,0.55)]
+      px-4
+      text-[12px] font-semibold text-[#E5C9A9]
       backdrop-blur-[20px]
-      shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-      transition-all
+      shadow-[0_10px_26px_rgba(0,0,0,0.35)]
+      transition
       hover:bg-[rgba(255,255,255,0.08)]
-      sm:w-auto sm:px-4 sm:py-2 sm:text-[11px]
     "
   >
-    <span className="sm:hidden">★</span>
-    <span className="hidden sm:inline">★ Phòng đã lưu</span>
+    ★ Phòng đã lưu
   </a>
-
-  <div
-    id="auth-anchor"
-    className="
-      flex h-[38px] min-w-[96px] shrink-0 items-center justify-center
-      rounded-2xl border border-[#E5C9A9]/25
-      bg-[rgba(45,27,20,0.45)]
-      text-[#E5C9A9]
-      backdrop-blur-[20px]
-      shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-      sm:min-w-[110px]
-    "
-  />
 </div>
         </div>
       </header>
 
      {/* FILTER BAR */}
 <div className="relative z-[900]">
-  <div className="w-full max-w-none px-2 pt-2 sm:px-3 lg:px-4">
-    <div className="scale-[0.95] origin-top">
+  <div className="w-full max-w-none px-0.5 pt-0.5 sm:px-3 lg:px-4">
+    <div className="scale-[0.88] origin-top">
       <FilterBar
               districts={districts}
               roomTypes={roomTypes}

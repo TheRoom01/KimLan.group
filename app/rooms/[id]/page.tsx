@@ -2048,7 +2048,7 @@ activeItem.kind === "video" ? (
         max-h-[calc(100dvh-16px)]
         rounded-t-2xl
         border border-white/15
-        bg-[rgba(242,136,61,0.2)]
+        bg-[rgba(252,202,141,0.25)]
         backdrop-blur-[50px]
         text-white
         shadow-[0_30px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]
@@ -2088,7 +2088,7 @@ activeItem.kind === "video" ? (
       </div>
 
     <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 items-start gap-4 sm:gap-6">
 
         {/* CỘT TRÁI */}
         <div className="space-y-3">
@@ -2307,7 +2307,7 @@ activeItem.kind === "video" ? (
               sticky bottom-0 z-10 -mx-1 flex gap-2
               rounded-2xl
               border border-white/15
-              bg-[rgba(120,63,32,0.85)]
+              bg-[rgba(128,61,26,0.74)]
               px-2 pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]
               backdrop-blur-[36px]
             ">
@@ -2317,7 +2317,7 @@ activeItem.kind === "video" ? (
                 onClick={handleShare}
                 className="
                   flex-1 rounded-2xl border border-white/25
-                  bg-[rgba(199,149,89,0.62)]
+                  bg-[rgba(246,187,142,0.62)]
                   py-2 font-semibold text-white
                   backdrop-blur-[24px]
                   hover:bg-white/15
