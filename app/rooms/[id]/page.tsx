@@ -360,6 +360,12 @@ type ShareKey =
   const [toast, setToast] = useState<string | null>(null);
   const [showOpenBrowserBar, setShowOpenBrowserBar] = useState(false);
 
+  // ===== SHARE IMAGES =====
+  // Auto chọn toàn bộ ảnh đang có.
+  // Lưu ý: khi share thật qua Zalo/Messenger, nếu quá nặng có thể cần giới hạn lại sau.
+  const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
+  const [sharing, setSharing] = useState(false);
+
 const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
     room_link: false,
   // ✅ tick sẵn theo yêu cầu + thứ tự build text
@@ -615,34 +621,108 @@ function isRealMobile() {
 }
 
 async function handleShare() {
+  if (sharing) return;
+
   const text = buildShareText();
-  if (!text.trim()) {
-    showToast("Không có nội dung để chia sẻ");
+  const selectedImageUrls = Array.from(
+    new Set(
+      shareImageUrls
+        .map((url) => String(url ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const hasText = text.trim().length > 0;
+  const hasImages = selectedImageUrls.length > 0;
+
+  if (!hasText && !hasImages) {
+    showToast("Không có nội dung hoặc ảnh để chia sẻ");
     return;
   }
 
-  // ✅ Desktop / giả mobile trên desktop: luôn copy để tránh “share sheet bật rồi tắt”
+  // ✅ Desktop / giả mobile trên desktop: copy text để tránh share sheet bật rồi tắt
   if (!isRealMobile()) {
-    const ok = await copyText(text);
-    showToast(ok ? "Đã copy nội dung — mở Zalo/Messenger và dán vào" : "Không thể copy — hãy chọn và copy thủ công");
+    await copyShareTextFallback(
+      text,
+      hasImages
+        ? "Desktop chưa hỗ trợ gửi ảnh trực tiếp — đã copy nội dung"
+        : undefined
+    );
     return;
   }
 
-  // ✅ Mobile thật: ưu tiên Web Share
+  // ✅ Mobile nhưng browser không có Web Share API
+  if (!navigator?.share) {
+    await copyShareTextFallback(
+      text,
+      hasImages
+        ? "Trình duyệt không hỗ trợ gửi ảnh trực tiếp — đã copy nội dung"
+        : undefined
+    );
+    return;
+  }
+
+  setSharing(true);
+
   try {
-    if (navigator?.share) {
-      await navigator.share({ text });
-      showToast("Đã mở chia sẻ");
+    // ===== CASE 1: Có ảnh được chọn =====
+    if (hasImages) {
+      const files = await Promise.all(
+        selectedImageUrls.map((url, index) => r2ImageUrlToFile(url, index))
+      );
+
+      const canShareFiles =
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files });
+
+      if (!canShareFiles) {
+        await copyShareTextFallback(
+          text,
+          "Thiết bị không hỗ trợ gửi ảnh trực tiếp — đã copy nội dung"
+        );
+        return;
+      }
+
+      await navigator.share({
+        title: "The Room",
+        text: hasText ? text : undefined,
+        files,
+      });
+
+      showToast("Đã mở chia sẻ ảnh");
+      setShareOpen(false);
       return;
     }
-  } catch (e) {
-    // share bị cancel / fail -> fallback copy
+
+    // ===== CASE 2: Không chọn ảnh, share text như cũ =====
+    await navigator.share({
+      title: "The Room",
+      text,
+    });
+
+    showToast("Đã mở chia sẻ");
+    setShareOpen(false);
+  } catch (e: any) {
+    console.error("handleShare error:", e);
+
+    // Người dùng bấm huỷ share sheet thì không cần báo lỗi quá nặng
+    const msg = String(e?.name || e?.message || "").toLowerCase();
+
+    if (msg.includes("abort") || msg.includes("cancel")) {
+      showToast("Đã huỷ chia sẻ");
+      return;
+    }
+
+    await copyShareTextFallback(
+      text,
+      hasImages
+        ? "Không gửi được ảnh trực tiếp — đã copy nội dung"
+        : undefined
+    );
+  } finally {
+    setSharing(false);
   }
-
-  const ok = await copyText(text);
-  showToast(ok ? "Đã copy nội dung — mở Zalo/Messenger và dán vào" : "Không thể copy — hãy chọn và copy thủ công");
 }
-
 
   useEffect(() => {
   const checkAdmin = async () => {
@@ -775,18 +855,139 @@ useEffect(() => {
   };
 }, [adminLevel, room?.id, room?.link_zalo, room?.zalo_phone]);
 
-  const imageUrls = useMemo(() => {
-  // ✅ ưu tiên field chuẩn hoá từ RPC (đọc room_media)
-  const v = normalizeImageUrls(room?.image_urls);
-  if (v.length) return v;
+ const imageUrls = useMemo<string[]>(() => {
+  // ✅ Ưu tiên room.media từ view room_media_agg
+  // Vì view này đã lấy từ bảng room_media và có is_cover + sort_order
+  if (Array.isArray(room?.media)) {
+    const fromMedia: string[] = room.media
+      .filter((m: any) => {
+        const type = String(m?.type ?? m?.kind ?? "").toLowerCase();
+        const url = String(m?.url ?? "").trim();
 
-  // ✅ fallback: nếu RPC chưa trả image_urls mà vẫn trả room.media dạng array
-  if (!Array.isArray(room?.media)) return [];
-  return room.media
-    .filter((m: any) => m?.type === "image" && m?.url)
-    .map((m: any) => String(m.url))
-    .filter(Boolean);
-}, [room?.image_urls, room?.media]);
+        return type === "image" && Boolean(url);
+      })
+      .sort((a: any, b: any) => {
+        // 1) Ảnh cover lên trước
+        const aCover = a?.is_cover === true ? 0 : 1;
+        const bCover = b?.is_cover === true ? 0 : 1;
+
+        if (aCover !== bCover) return aCover - bCover;
+
+        // 2) Sau đó sort theo sort_order
+        const aSort = Number.isFinite(Number(a?.sort_order))
+          ? Number(a.sort_order)
+          : 999999;
+
+        const bSort = Number.isFinite(Number(b?.sort_order))
+          ? Number(b.sort_order)
+          : 999999;
+
+        if (aSort !== bSort) return aSort - bSort;
+
+        // 3) Fallback theo created_at nếu có
+        const aTime = new Date(String(a?.created_at ?? "")).getTime();
+        const bTime = new Date(String(b?.created_at ?? "")).getTime();
+
+        const safeATime = Number.isFinite(aTime) ? aTime : 0;
+        const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+
+        return safeATime - safeBTime;
+      })
+      .map((m: any) => String(m.url).trim())
+      .filter((url: string) => Boolean(url));
+
+    if (fromMedia.length) {
+      // ✅ Chống trùng URL nếu dữ liệu cũ bị duplicate
+      return Array.from(new Set<string>(fromMedia));
+    }
+  }
+
+  // ✅ Fallback cuối cùng cho dữ liệu cũ nếu RPC/view nào đó vẫn trả image_urls
+  return normalizeImageUrls(room?.image_urls);
+}, [room?.media, room?.image_urls]);
+
+useEffect(() => {
+  if (!shareOpen) return;
+
+  // ✅ Mỗi lần mở modal, tự chọn toàn bộ ảnh đang có
+  setShareImageUrls(imageUrls);
+}, [shareOpen, imageUrls]);
+
+function toggleShareImage(url: string) {
+  const cleanUrl = String(url ?? "").trim();
+  if (!cleanUrl) return;
+
+  setShareImageUrls((prev) => {
+    const exists = prev.includes(cleanUrl);
+
+    if (exists) {
+      return prev.filter((x) => x !== cleanUrl);
+    }
+
+    return [...prev, cleanUrl];
+  });
+}
+
+function getImageFileExtension(mimeType: string, url: string) {
+  const type = String(mimeType || "").toLowerCase();
+  const cleanUrl = String(url || "").split("?")[0].toLowerCase();
+
+  if (type.includes("png") || cleanUrl.endsWith(".png")) return "png";
+  if (type.includes("webp") || cleanUrl.endsWith(".webp")) return "webp";
+  if (type.includes("gif") || cleanUrl.endsWith(".gif")) return "gif";
+  if (type.includes("jpeg") || type.includes("jpg")) return "jpg";
+  if (cleanUrl.endsWith(".jpeg")) return "jpg";
+  if (cleanUrl.endsWith(".jpg")) return "jpg";
+
+  return "jpg";
+}
+
+async function r2ImageUrlToFile(url: string, index: number) {
+  const cleanUrl = String(url ?? "").trim();
+
+  if (!cleanUrl) {
+    throw new Error("Ảnh không có URL hợp lệ");
+  }
+
+  const res = await fetch(cleanUrl, {
+    method: "GET",
+    mode: "cors",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Không tải được ảnh ${index + 1}`);
+  }
+
+  const blob = await res.blob();
+
+  const type = blob.type || "image/jpeg";
+  const ext = getImageFileExtension(type, cleanUrl);
+
+  const safeRoomCode = String(roomCode || id || "room")
+    .trim()
+    .replace(/[^\w-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return new File([blob], `${safeRoomCode}-${index + 1}.${ext}`, {
+    type,
+  });
+}
+
+async function copyShareTextFallback(text: string, message?: string) {
+  if (!text.trim()) {
+    showToast(message || "Thiết bị không hỗ trợ gửi ảnh trực tiếp");
+    return;
+  }
+
+  const ok = await copyText(text);
+
+  showToast(
+    ok
+      ? message || "Đã copy nội dung — mở Zalo/Messenger và dán vào"
+      : "Không thể copy — hãy chọn và copy thủ công"
+  );
+}
 
 const videoUrls = useMemo(() => {
   const singleVideoUrl = String(room?.video_url ?? "").trim();
@@ -1743,25 +1944,25 @@ activeItem.kind === "video" ? (
   </div>
 )}
 
-      {/* ===== SHARE MODAL ===== */}
-{(adminLevel === 1 || adminLevel === 2) && shareOpen && (
-  <div
-  className="
-    fixed inset-0 
-    z-[99999] 
-    flex items-end md:items-center justify-center
-    bg-black/50 
-    backdrop-blur-[8px]
-  "
-  onClick={() => setShareOpen(false)}
->
+ {/* ===== SHARE MODAL ===== */}
+    {(adminLevel === 1 || adminLevel === 2) && shareOpen && (
+      <div
+      className="
+        fixed inset-0 
+        z-[99999] 
+        flex items-end md:items-center justify-center
+        bg-black/50 
+        backdrop-blur-[8px]
+      "
+      onClick={() => setShareOpen(false)}
+    >
     <div
       className="
     w-full md:max-w-lg p-4
     rounded-t-2xl md:rounded-3xl
     border border-white/15
-    bg-[rgba(255,255,255,0.05)]
-    backdrop-blur-[40px]
+    bg-[rgba(242,136,61,0.2)]
+    backdrop-blur-[50px]
     text-white
     shadow-[0_30px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]"
       onClick={(e) => e.stopPropagation()}
@@ -1913,8 +2114,98 @@ activeItem.kind === "video" ? (
 
             <div className="pt-2 border-t border-white/20" />
 
+            {/* ===== CHỌN ẢNH GỬI KÈM ===== */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-[#F4E7D6]/80">
+                  Ảnh gửi kèm
+                </div>
+
+                <div className="text-xs text-[#F4E7D6]/60">
+                  Đã chọn {shareImageUrls.length}/{imageUrls.length}
+                </div>
+              </div>
+
+              {imageUrls.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-5 gap-2">
+                    {imageUrls.map((url, idx) => {
+                      const selected = shareImageUrls.includes(url);
+
+                      return (
+                        <button
+                          key={`${url}-${idx}`}
+                          type="button"
+                          onClick={() => toggleShareImage(url)}
+                          className={[
+                            "relative aspect-square overflow-hidden rounded-xl border transition-all",
+                            selected
+                              ? "border-sky-300 ring-2 ring-sky-300/50"
+                              : "border-white/15 opacity-70 hover:opacity-100",
+                          ].join(" ")}
+                          title={
+                            selected
+                              ? "Bấm để bỏ chọn ảnh"
+                              : "Bấm để chọn ảnh"
+                          }
+                        >
+                          <img
+                            src={url}
+                            alt={`Ảnh phòng ${idx + 1}`}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+
+                          <div
+                            className={[
+                              "absolute inset-0 flex items-center justify-center text-sm font-bold transition",
+                              selected
+                                ? "bg-black/25 text-white"
+                                : "bg-black/0 text-transparent",
+                            ].join(" ")}
+                          >
+                            ✓
+                          </div>
+
+                          {idx === 0 && (
+                            <div className="absolute left-1 top-1 rounded-full bg-black/55 px-1.5 py-[1px] text-[9px] font-medium text-white">
+                              Bìa
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setShareImageUrls(imageUrls)}
+                        className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs text-[#F4E7D6] hover:bg-white/10"
+                       >
+                        Chọn tất cả ảnh
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShareImageUrls([])}
+                      className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs text-[#F4E7D6] hover:bg-white/10"
+                    >
+                      Bỏ chọn ảnh
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-white/15 bg-white/5 p-3 text-sm text-[#F4E7D6]/65">
+                  Phòng này chưa có ảnh để gửi kèm.
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-white/20" />
+
             <div className="text-sm font-semibold text-[#F4E7D6]/80">
-              Preview
+              Preview nội dung
             </div>
 
             <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/20 bg-[rgba(255,255,255,0.06)] p-3 text-sm text-[#F4E7D6] backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
@@ -1922,28 +2213,44 @@ activeItem.kind === "video" ? (
             </pre>
 
             <div className="flex gap-2 pt-2">
-              <button
+             <button
                 type="button"
+                disabled={sharing}
                 onClick={handleShare}
-                className="flex-1 rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.08)] py-2 font-semibold text-white backdrop-blur-[24px] hover:bg-white/15"
-              >
-                Chia sẻ
+                className="
+                  flex-1 rounded-2xl border border-white/25
+                  bg-[rgba(255,255,255,0.08)]
+                  py-2 font-semibold text-white
+                  backdrop-blur-[24px]
+                  hover:bg-white/15
+                  disabled:cursor-not-allowed disabled:opacity-60
+                "
+               >
+                {sharing ? "Đang chuẩn bị ảnh..." : "Chia sẻ"}
               </button>
 
-              <button
-                type="button"
-                onClick={async () => {
-                  const text = buildShareText();
-                  const ok = await copyText(text);
-                  showToast(
-                    ok
-                      ? "Đã copy nội dung — mở Zalo/Messenger và dán vào"
-                      : "Không thể copy — hãy chọn và copy thủ công"
-                  );
-                }}
-                className="flex-1 rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.06)] py-2 font-semibold text-white backdrop-blur-[24px] hover:bg-white/12"
-              >
-                Copy
+               <button
+                  type="button"
+                  disabled={sharing}
+                  onClick={async () => {
+                    const text = buildShareText();
+                    const ok = await copyText(text);
+                    showToast(
+                      ok
+                        ? "Đã copy nội dung — mở Zalo/Messenger và dán vào"
+                        : "Không thể copy — hãy chọn và copy thủ công"
+                    );
+                  }}
+                  className="
+                    flex-1 rounded-2xl border border-white/25
+                    bg-[rgba(255,255,255,0.06)]
+                    py-2 font-semibold text-white
+                    backdrop-blur-[24px]
+                    hover:bg-white/12
+                    disabled:cursor-not-allowed disabled:opacity-60
+                  "
+                >
+                  Copy
               </button>
             </div>
           </div>

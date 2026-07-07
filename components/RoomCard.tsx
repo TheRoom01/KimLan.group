@@ -332,8 +332,8 @@ return (
   className="
     group relative z-0 overflow-hidden rounded-[18px]
 
-   bg-[rgba(100,53,9,0.78)]
-    backdrop-blur-[10px]
+   bg-[rgba(177,103,34,0.38)]
+    backdrop-blur-[16px]
     backdrop-saturate-[155%]
     border border-[#D2B48C]/30
 
@@ -341,7 +341,7 @@ return (
 
     transition-all duration-300
     hover:-translate-y-1
-    hover:bg-[rgba(70,41,27,0.92)]
+    hover:bg-[rgba(215,147,69,0.47)]
     hover:border-[#E5C9A9]/45
   "
 >
@@ -349,7 +349,7 @@ return (
   <div
     className="
       pointer-events-none absolute inset-0 rounded-[18px]
-      bg-[radial-gradient(circle_at_30%_18%,rgba(232,222,210,0.73),transparent_52%)]
+      bg-[radial-gradient(circle_at_30%_18%,rgba(255,250,244,0.95),transparent_52%)]
       opacity-34
     "
   />
