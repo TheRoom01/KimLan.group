@@ -2981,45 +2981,49 @@ return (
           </div>
 
           {/* RIGHT: ACCOUNT + SAVED */}
-          <div className="relative z-[3000] flex shrink-0 items-center gap-2 whitespace-nowrap">
-              <a
-                href="/saved"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="
-                  hidden rounded-2xl border border-[#E5C9A9]/25
-                  bg-[rgba(45,27,20,0.45)]
-                  px-4 py-2
-                  text-[11px] font-semibold text-[#E5C9A9]
-                  backdrop-blur-[20px]
-                  shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-                  transition-all
-                  hover:bg-[rgba(255,255,255,0.08)]
-                  sm:inline-flex
-                "
-              >
-                ★ Phòng đã lưu
-              </a>
+<div className="relative z-[3000] flex shrink-0 items-center gap-1.5 whitespace-nowrap sm:gap-2">
+  <a
+    href="/saved"
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label="Phòng đã lưu"
+    title="Phòng đã lưu"
+    className="
+      inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center
+      rounded-2xl border border-[#E5C9A9]/25
+      bg-[rgba(45,27,20,0.45)]
+      text-[13px] font-semibold text-[#E5C9A9]
+      backdrop-blur-[20px]
+      shadow-[0_10px_30px_rgba(0,0,0,0.35)]
+      transition-all
+      hover:bg-[rgba(255,255,255,0.08)]
+      sm:w-auto sm:px-4 sm:py-2 sm:text-[11px]
+    "
+  >
+    <span className="sm:hidden">★</span>
+    <span className="hidden sm:inline">★ Phòng đã lưu</span>
+  </a>
 
-              <div
-                id="auth-anchor"
-                className="
-                  flex h-[38px] min-w-[110px] items-center justify-center
-                  rounded-2xl border border-[#E5C9A9]/25
-                  bg-[rgba(45,27,20,0.45)]
-                  text-[#E5C9A9]
-                  backdrop-blur-[20px]
-                  shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-                "
-              />
-            </div>
+  <div
+    id="auth-anchor"
+    className="
+      flex h-[38px] min-w-[96px] shrink-0 items-center justify-center
+      rounded-2xl border border-[#E5C9A9]/25
+      bg-[rgba(45,27,20,0.45)]
+      text-[#E5C9A9]
+      backdrop-blur-[20px]
+      shadow-[0_10px_30px_rgba(0,0,0,0.35)]
+      sm:min-w-[110px]
+    "
+  />
+</div>
         </div>
       </header>
 
      {/* FILTER BAR */}
 <div className="relative z-[900]">
   <div className="w-full max-w-none px-2 pt-2 sm:px-3 lg:px-4">
-    <div className="scale-[0.85] origin-top">
+    <div className="scale-[0.95] origin-top">
       <FilterBar
               districts={districts}
               roomTypes={roomTypes}

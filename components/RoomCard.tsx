@@ -340,7 +340,7 @@ return (
       className="
         group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
-        bg-[rgba(132,90,42,0.16)]
+        bg-[rgba(247,215,180,0.16)]
         backdrop-blur-[34px]
         backdrop-saturate-[155%]
         border border-[#D2B48C]/30
