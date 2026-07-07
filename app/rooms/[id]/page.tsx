@@ -385,9 +385,9 @@ const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
 const roomShareUrl =
   typeof window !== "undefined" ? window.location.href : "";
 
-function showToast(msg: string) {
+function showToast(msg: string, duration = 4200) {
   setToast(msg);
-  window.setTimeout(() => setToast(null), 1600);
+  window.setTimeout(() => setToast(null), duration);
 }
 
 function detectInAppBrowser() {
@@ -667,9 +667,10 @@ async function handleShare() {
   try {
     // ===== CASE 1: Có ảnh được chọn =====
     if (hasImages) {
-      const files = await Promise.all(
-        selectedImageUrls.map((url, index) => r2ImageUrlToFile(url, index))
-      );
+      const files: File[] = [];
+      for (let i = 0; i < selectedImageUrls.length; i += 1) {
+        files.push(await r2ImageUrlToFile(selectedImageUrls[i], i));
+      }
 
       const canShareFiles =
         typeof navigator.canShare === "function" &&
@@ -928,18 +929,75 @@ function toggleShareImage(url: string) {
   });
 }
 
-function getImageFileExtension(mimeType: string, url: string) {
-  const type = String(mimeType || "").toLowerCase();
-  const cleanUrl = String(url || "").split("?")[0].toLowerCase();
+async function loadImageFromBlob(blob: Blob): Promise<ImageBitmap | HTMLImageElement> {
+  if (typeof createImageBitmap === "function") {
+    return await createImageBitmap(blob);
+  }
 
-  if (type.includes("png") || cleanUrl.endsWith(".png")) return "png";
-  if (type.includes("webp") || cleanUrl.endsWith(".webp")) return "webp";
-  if (type.includes("gif") || cleanUrl.endsWith(".gif")) return "gif";
-  if (type.includes("jpeg") || type.includes("jpg")) return "jpg";
-  if (cleanUrl.endsWith(".jpeg")) return "jpg";
-  if (cleanUrl.endsWith(".jpg")) return "jpg";
+  return await new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const img = new Image();
 
-  return "jpg";
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(img);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Không đọc được ảnh"));
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+async function blobToJpegBlob(blob: Blob, quality = 0.9): Promise<Blob> {
+  const image = await loadImageFromBlob(blob);
+
+  const width =
+    image instanceof HTMLImageElement ? image.naturalWidth : image.width;
+
+  const height =
+    image instanceof HTMLImageElement ? image.naturalHeight : image.height;
+
+  if (!width || !height) {
+    throw new Error("Ảnh không có kích thước hợp lệ");
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Không thể xử lý ảnh trên thiết bị này");
+  }
+
+  // Nền trắng để tránh ảnh WebP/PNG trong suốt bị đen khi đổi sang JPG
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+
+  if ("close" in image && typeof image.close === "function") {
+    image.close();
+  }
+
+  return await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (jpegBlob) => {
+        if (!jpegBlob) {
+          reject(new Error("Không thể chuyển ảnh sang JPG"));
+          return;
+        }
+
+        resolve(jpegBlob);
+      },
+      "image/jpeg",
+      quality
+    );
+  });
 }
 
 async function r2ImageUrlToFile(url: string, index: number) {
@@ -959,18 +1017,18 @@ async function r2ImageUrlToFile(url: string, index: number) {
     throw new Error(`Không tải được ảnh ${index + 1}`);
   }
 
-  const blob = await res.blob();
+  const originalBlob = await res.blob();
 
-  const type = blob.type || "image/jpeg";
-  const ext = getImageFileExtension(type, cleanUrl);
+  // ✅ Convert WebP/R2 image thành JPEG để Messenger/Zalo nhận ổn hơn
+  const jpegBlob = await blobToJpegBlob(originalBlob, 0.9);
 
   const safeRoomCode = String(roomCode || id || "room")
     .trim()
     .replace(/[^\w-]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  return new File([blob], `${safeRoomCode}-${index + 1}.${ext}`, {
-    type,
+  return new File([jpegBlob], `${safeRoomCode}-${index + 1}.jpg`, {
+    type: "image/jpeg",
   });
 }
 

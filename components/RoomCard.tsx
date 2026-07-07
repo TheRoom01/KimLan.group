@@ -332,7 +332,7 @@ return (
   className="
     group relative z-0 overflow-hidden rounded-[18px]
 
-   bg-[rgba(177,103,34,0.38)]
+   bg-[rgba(249,196,153,0.38)]
     backdrop-blur-[16px]
     backdrop-saturate-[155%]
     border border-[#D2B48C]/30
