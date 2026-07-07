@@ -7,6 +7,65 @@ import { usePathname, useRouter } from "next/navigation";
 
 type AuthView = "login" | "forgot" | "sent";
 
+function getDeviceLabel(d: any) {
+  const rawOriginal = [
+    d?.device_name,
+    d?.user_agent,
+    d?.platform,
+    d?.browser,
+    d?.device_fingerprint,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const raw = rawOriginal.toLowerCase();
+
+  // ===== iOS =====
+  // Web thường không lấy được model chính xác kiểu iPhone 17 Pro.
+  if (raw.includes("iphone")) return "iPhone";
+  if (raw.includes("ipad")) return "iPad";
+
+  // ===== Samsung =====
+  const samsungModel = rawOriginal.match(/\bSM-[A-Z0-9]+/i)?.[0];
+  if (samsungModel) return `Samsung ${samsungModel.toUpperCase()}`;
+  if (raw.includes("samsung")) return "Samsung";
+
+  // ===== Google Pixel =====
+  const pixelModel = rawOriginal.match(/\bPixel\s?[A-Za-z0-9\s]+/i)?.[0];
+  if (pixelModel) return pixelModel.trim();
+
+  // ===== Xiaomi / Redmi / POCO =====
+  if (raw.includes("redmi")) return "Redmi";
+  if (raw.includes("poco")) return "POCO";
+  if (raw.includes("xiaomi") || raw.includes("miui")) return "Xiaomi";
+
+  // ===== OPPO / Realme / Vivo =====
+  if (raw.includes("oppo")) return "OPPO";
+  if (raw.includes("realme")) return "Realme";
+  if (raw.includes("vivo")) return "Vivo";
+
+  // ===== Android chung =====
+  if (raw.includes("android") || raw.includes("mobile")) {
+    return "Điện thoại Android";
+  }
+
+  // ===== Desktop =====
+  if (raw.includes("windows")) return "Máy tính Windows";
+  if (raw.includes("macintosh") || raw.includes("mac os")) return "Mac";
+  if (raw.includes("linux")) return "Máy tính Linux";
+
+  return "Máy tính";
+}
+
+function formatLastSeen(value: any) {
+  if (!value) return "Không rõ";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Không rõ";
+
+  return d.toLocaleString("vi-VN");
+}
+
 export default function AuthControls() {
   const router = useRouter();
   const pathname = usePathname();
@@ -22,12 +81,10 @@ export default function AuthControls() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authMsg, setAuthMsg] = useState("");
 
-  const [deviceSessions, setDeviceSessions] = useState<any[]>([]);
-const [showDeviceManager, setShowDeviceManager] = useState(false);
-const [deviceLoading, setDeviceLoading] = useState(false);
+  const [showDeviceManager, setShowDeviceManager] = useState(false);
 
-const [devices, setDevices] = useState<any[]>([]);
-const [loadingDevices, setLoadingDevices] = useState(false);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const loginLockRef = useRef(false);
@@ -369,20 +426,34 @@ const handleSendReset = async () => {
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const [menuPos, setMenuPos] = useState<{ left: number; top: number; minW: number }>({
-    left: 0,
+  const MENU_WIDTH = 360;
+
+  const [menuPos, setMenuPos] = useState<{
+    right: number;
+    top: number;
+    width: number;
+  }>({
+    right: 8,
     top: 0,
-    minW: 170,
+    width: MENU_WIDTH,
   });
 
   const updateMenuPos = () => {
     const btn = btnRef.current;
     if (!btn) return;
+
     const r = btn.getBoundingClientRect();
+    const viewportW = window.innerWidth;
+
+    const width = Math.min(MENU_WIDTH, viewportW - 16);
+
+    const rawRight = viewportW - r.right;
+    const maxRight = Math.max(8, viewportW - width - 8);
+
     setMenuPos({
-      left: Math.round(r.left),
+      right: Math.min(Math.max(8, Math.round(rawRight)), maxRight),
       top: Math.round(r.bottom + 8),
-      minW: Math.max(170, Math.round(r.width)),
+      width,
     });
   };
 
@@ -433,13 +504,23 @@ const handleSendReset = async () => {
     menuOpen && typeof document !== "undefined"
       ? createPortal(
           <div
-            ref={menuRef}
-            className="fixed z-[9999] inline-block rounded-3xl border border-white/35
-              bg-[linear-gradient(rgba(255,255,255,0.045),rgba(255,255,255,0.015))]
-              backdrop-blur-[45px]
-              shadow-[0_35px_120px_rgba(0,0,0,0.75),0_0_50px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.45)]"
-            style={{ left: menuPos.left, top: menuPos.top }}
-          >
+              ref={menuRef}
+              className="
+                fixed z-[9999]
+                max-h-[72vh] overflow-y-auto
+                rounded-3xl border border-white/35
+                bg-[linear-gradient(rgba(255,255,255,0.12),rgba(255,255,255,0.05))]
+                p-2 text-white
+                backdrop-blur-[45px]
+                shadow-[0_35px_120px_rgba(0,0,0,0.75),0_0_50px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.45)]
+              "
+              style={{
+                right: menuPos.right,
+                top: menuPos.top,
+                width: menuPos.width,
+                maxWidth: "calc(100vw - 16px)",
+              }}
+            >
             <div className="py-1">
               <button
                 type="button"
@@ -470,9 +551,13 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                 onClick={() => {
                   closeMenu();
                   handleLogout();
-                }}className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85
-hover:bg-white/10 hover:text-white rounded-xl transition-all"
-                
+                }}
+                className="
+                  block w-full whitespace-nowrap rounded-xl
+                  px-3 py-2 text-left text-sm font-semibold
+                  text-red-300 transition-all
+                  hover:bg-red-500/10 hover:text-red-200
+                "
               >
                 Đăng xuất
               </button>
@@ -483,20 +568,32 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
 
               {loadingDevices ? (
                 <div className="px-3 py-2 text-xs text-white/50">Đang tải...</div>
+              ) : devices.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-white/50">
+                  Chưa có thiết bị nào.
+                </div>
               ) : (
                 devices.map((d) => (
-                  <div
-                    key={d.id}
-                    className="px-3 py-2 flex flex-col gap-1 text-sm text-white/80"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span>
-                        {d.device_name ||
-  `${d.device_fingerprint?.slice?.(0, 10) || "Device"} • ${new Date(d.last_seen_at).toLocaleString()}`}
-                      </span>
+                  <div key={d.id} className="px-1 py-1">
+                    <div className="flex items-start justify-between gap-3 rounded-2xl bg-white/5 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-white">
+                          {getDeviceLabel(d)}
+                        </div>
+
+                        <div className="mt-1 text-[11px] text-white/50">
+                          last seen: {formatLastSeen(d.last_seen_at)}
+                        </div>
+                      </div>
 
                       <button
-                        className="text-xs text-red-300 hover:text-red-200 pointer-events-auto relative z-[99999]"
+                        type="button"
+                        className="
+                          shrink-0 rounded-xl px-2.5 py-1
+                          text-xs font-semibold text-red-300
+                          transition hover:bg-red-500/10 hover:text-red-200
+                          pointer-events-auto relative z-[99999]
+                        "
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -514,10 +611,6 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                       >
                         đăng xuất
                       </button>
-                    </div>
-
-                    <div className="text-[11px] text-white/50">
-                      last seen: {new Date(d.last_seen_at).toLocaleString()}
                     </div>
                   </div>
                 ))
@@ -551,10 +644,10 @@ const controls = (
         <button
           onClick={openAuth}
           className="rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold text-white
-bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
-backdrop-blur-[30px]
-shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
-hover:bg-[rgba(255,255,255,0.1)] transition-all"
+          bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
+          backdrop-blur-[30px]
+          shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
+          hover:bg-[rgba(255,255,255,0.1)] transition-all"
         >
           Đăng nhập
         </button>
@@ -756,11 +849,10 @@ hover:bg-[rgba(255,255,255,0.1)] transition-all"
           >
             <div className="text-sm">
               <div className="text-sm font-medium">
-                {d.device_name ||
-                  `${d.platform || "Unknown"} - ${d.browser || "Browser"}`}
+                {getDeviceLabel(d)}
               </div>
               <div className="text-xs text-gray-500">
-                {new Date(d.last_seen_at).toLocaleString()}
+                last seen: {formatLastSeen(d.last_seen_at)}
               </div>
             </div>
 

@@ -667,7 +667,23 @@ async function handleShare() {
   try {
     // ===== CASE 1: Có ảnh được chọn =====
     if (hasImages) {
+      let copiedTextBeforeShare = false;
+
+      // ✅ Messenger/Zalo thường bỏ text khi share kèm file
+      // Nên copy text trước, sau đó chỉ share ảnh.
+      if (hasText) {
+        copiedTextBeforeShare = await copyText(text);
+
+        showToast(
+          copiedTextBeforeShare
+            ? "Đã copy nội dung — sau khi gửi ảnh hãy dán vào khung chat"
+            : "Không copy được nội dung — vẫn tiếp tục gửi ảnh",
+          6000
+        );
+      }
+
       const files: File[] = [];
+
       for (let i = 0; i < selectedImageUrls.length; i += 1) {
         files.push(await r2ImageUrlToFile(selectedImageUrls[i], i));
       }
@@ -684,13 +700,19 @@ async function handleShare() {
         return;
       }
 
+      // ✅ Chỉ gửi files, không gửi text ở đây
+      // Vì một số app như Messenger/Zalo sẽ bỏ text hoặc lỗi payload khi có cả files + text.
       await navigator.share({
         title: "The Room",
-        text: hasText ? text : undefined,
         files,
       });
 
-      showToast("Đã mở chia sẻ ảnh");
+      showToast(
+        copiedTextBeforeShare
+          ? "Đã gửi ảnh — nội dung đã nằm trong clipboard, hãy dán vào chat"
+          : "Đã mở chia sẻ ảnh"
+      );
+
       setShareOpen(false);
       return;
     }
@@ -706,11 +728,14 @@ async function handleShare() {
   } catch (e: any) {
     console.error("handleShare error:", e);
 
-    // Người dùng bấm huỷ share sheet thì không cần báo lỗi quá nặng
     const msg = String(e?.name || e?.message || "").toLowerCase();
 
     if (msg.includes("abort") || msg.includes("cancel")) {
-      showToast("Đã huỷ chia sẻ");
+      showToast(
+        hasText
+          ? "Đã huỷ chia sẻ ảnh — nội dung vẫn đã được copy"
+          : "Đã huỷ chia sẻ"
+      );
       return;
     }
 
@@ -2284,7 +2309,11 @@ activeItem.kind === "video" ? (
                   disabled:cursor-not-allowed disabled:opacity-60
                 "
                >
-                {sharing ? "Đang chuẩn bị ảnh..." : "Chia sẻ"}
+               {sharing
+                ? `Đang chuẩn bị ${shareImageUrls.length} ảnh...`
+                : shareImageUrls.length > 0
+                  ? "Chia sẻ ảnh + copy nội dung"
+                  : "Chia sẻ nội dung"}
               </button>
 
                <button

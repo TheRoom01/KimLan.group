@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
 import { createPortal } from "react-dom";
 
+
 type Room = {
   id: string;
   room_code?: string | null;
@@ -128,7 +129,6 @@ const [confirmStatus, setConfirmStatus] = useState<{
       : "";
 
   const rpcThumbUrl = String(room.thumb_url ?? "").trim();
-  const hasRpcThumb = !!rpcThumbUrl;
 
   // ✅ ưu tiên:
   // 1) thumb.webp tự build
@@ -238,8 +238,16 @@ useEffect(() => {
 
 
   useEffect(() => {
-    document.body.style.overflow = adminPhone ? "hidden" : "";
-  }, [adminPhone]);
+  const prevOverflow = document.body.style.overflow;
+
+  if (adminPhone) {
+    document.body.style.overflow = "hidden";
+  }
+
+  return () => {
+    document.body.style.overflow = prevOverflow;
+  };
+}, [adminPhone]);
 
   const level = Number(adminLevel) || 0;
   const isAdmin = level === 1 || level === 2;
@@ -314,37 +322,37 @@ async function confirmToggleStatus() {
   }
 }
 
-const roomMetaLabelColor = "#fce0bf";
-const roomMetaValueColor = "#E5C9A9";
+const roomMetaLabelColor = "#fff6ec";
+const roomMetaValueColor = "#f8e9d8";
 const roomMetaDividerColor = "rgba(229,201,169,0.9)";
 
 return (
   <>
-    <Link
+   <Link
       href={href}
-      className="block"
+      className="block h-full"
       onClick={(e) => {
         e.preventDefault();
         onNavigate(href);
       }}
     >
-     <div
-  className="
-    group relative z-0 overflow-hidden rounded-[18px]
+    <div
+      className="
+        group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
-   bg-[rgba(249,196,153,0.38)]
-    backdrop-blur-[16px]
-    backdrop-saturate-[155%]
-    border border-[#D2B48C]/30
+        bg-[rgba(163,121,88,0.47)]
+        backdrop-blur-[34px]
+        backdrop-saturate-[155%]
+        border border-[#D2B48C]/30
 
-    shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]
+        shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]
 
-    transition-all duration-300
-    hover:-translate-y-1
-    hover:bg-[rgba(215,147,69,0.47)]
-    hover:border-[#E5C9A9]/45
-  "
->
+        transition-all duration-300
+        hover:-translate-y-1
+        hover:bg-[rgba(215,147,69,0.47)]
+        hover:border-[#E5C9A9]/45
+      "
+    >
   {/* glass layers */}
   <div
     className="
@@ -449,9 +457,9 @@ return (
       </button>
     )}
 
-        {/* IMAGE */}
-        <div className="h-[240px] overflow-hidden bg-black/20">
-          <div className="grid grid-cols-[60%_40%] gap-1 h-full">
+       {/* IMAGE */}
+        <div className="aspect-[1.45/1] w-full overflow-hidden bg-black/20">
+          <div className="grid h-full grid-cols-[60%_40%] gap-1">
             <div className="relative w-full h-full overflow-hidden">
               {room.has_video && mainErrorStage >= 1 && room.video_url ? (
                 <video
@@ -466,7 +474,7 @@ return (
                   src={mainSrc}
                   alt={room.room_type ?? "Hình phòng"}
                   fill
-                  sizes="(max-width: 1024px) 100vw, 60vw"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1536px) 25vw, 18vw"
                   className="object-cover object-[50%_40%]"
                   priority={index < 6}
                   loading={index < 6 ? "eager" : "lazy"}
@@ -488,8 +496,6 @@ return (
               )}
             </div>
 
-          
-
             {/* SUB IMAGES */}
             <div className="grid grid-rows-2 gap-1 relative h-full">
               {showImages[1] && (
@@ -502,7 +508,7 @@ return (
                         : "Hình phòng"
                     }
                     fill
-                    sizes="(max-width: 1024px) 100vw, 40vw"
+                    sizes="(max-width: 640px) 40vw, (max-width: 1024px) 20vw, (max-width: 1536px) 10vw, 8vw"
                     className="object-cover"
                     unoptimized
                     onError={() => setSub1Ok(false)}
@@ -516,7 +522,7 @@ return (
                     src={sub2Src}
                     alt={room.room_type ?? "Hình phòng"}
                     fill
-                    sizes="(max-width: 1024px) 100vw, 40vw"
+                    sizes="(max-width: 640px) 40vw, (max-width: 1024px) 20vw, (max-width: 1536px) 10vw, 8vw"
                     className="object-cover"
                     unoptimized
                     onError={() => setSub2Ok(false)}
@@ -535,34 +541,34 @@ return (
           </div>
         </div>
 
-       {/* CONTENT */}
-<div className="p-3 flex flex-col gap-2">
-  <div className="flex items-center justify-between gap-2">
-    <h3
-      className="text-[15px] font-medium leading-5"
-      style={{ color: roomMetaLabelColor }}
-    >
-      {room.room_code && (
-        <>
-          <span>Mã: </span>
-          <span
-            className="font-semibold text-[15px]"
-            style={{ color: roomMetaValueColor }}
+     {/* CONTENT */}
+      <div className="p-3 flex flex-col gap-2">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <h3
+            className="min-w-0 flex-1 text-[13px] font-medium leading-5 line-clamp-2"
+            style={{ color: roomMetaLabelColor }}
           >
-            {room.room_code}
-          </span>
-          <span style={{ color: roomMetaDividerColor }}> | </span>
-        </>
-      )}
+            {room.room_code && (
+              <>
+                <span>Mã: </span>
+                <span
+                  className="font-semibold text-[15px]"
+                  style={{ color: roomMetaValueColor }}
+                >
+                  {room.room_code}
+                </span>
+                <span style={{ color: roomMetaDividerColor }}> | </span>
+              </>
+            )}
 
-      <span>Dạng: </span>
-      <span
-        className="font-semibold"
-        style={{ color: roomMetaValueColor }}
-      >
-        {room.room_type}
-      </span>
-    </h3>
+            <span>Dạng: </span>
+            <span
+              className="font-semibold"
+              style={{ color: roomMetaValueColor }}
+            >
+              {room.room_type}
+            </span>
+          </h3>
 
            {isAdmin ? (
               <button
@@ -591,15 +597,15 @@ return (
             )}
           </div>
 
-          <div className="flex items-start gap-3">
-            <div className="text-[18px] font-semibold text-[#60A5FA]">
+         <div className="flex min-w-0 items-start gap-3">
+            <div className="shrink-0 text-[18px] font-semibold text-[#60A5FA]">
               {price
                 ? Number(price).toLocaleString("vi-VN") + " đ"
                 : "Liên hệ"}
             </div>
 
             {room.description && (
-              <div className="flex-1 text-[13px] font-semibold text-[#E5C9A9] text-right break-words whitespace-pre-line line-clamp-2">
+              <div className="min-w-0 flex-1 text-right text-[14px] font-semibold text-[#FFF1DD] break-words whitespace-pre-line line-clamp-2">
                 {room.description}
               </div>
             )}
@@ -607,7 +613,7 @@ return (
         </div>
 
    {/* ADDRESS */}
-      <p className="px-3 pb-3 text-white font-semibold leading-6 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+      <p className="px-3 pb-3 text-white font-semibold leading-6 line-clamp-2 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
         📍{adminLevel === 1 || adminLevel === 2
           ? room.house_number
             ? `${room.house_number} `

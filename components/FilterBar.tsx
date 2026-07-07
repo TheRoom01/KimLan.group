@@ -346,7 +346,7 @@ const toggleTerm = (value: "short" | "long") => {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Tìm theo tên đường..."
-        className="w-full h-[46px] rounded-2xl border border-white/20 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
+        className="w-full h-[46px] rounded-2xl border border-white/40 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
       />
 
       {search.trim() !== "" && (
@@ -783,9 +783,9 @@ p-4 space-y-3"
 
     {/* PRICE */}
     <div className="w-full space-y-3">
-      <div className="flex w-full items-end justify-between gap-3">
+      <div className="flex w-full items-end justify-between gap-2">
         <div className="w-fit shrink-0">
-          <div className="mb-1 text-xs text-[#EAD8C0]/70">
+          <div className="mb-1 text-xs text-[#EAD8C0]/90">
             {formatMillionLabel(priceApplied[0])}
           </div>
 
@@ -818,7 +818,7 @@ p-4 space-y-3"
               setPriceApplied([appliedMin, priceApplied[1]]);
               setMinInput(formatMoneyDisplay(String(safeRaw)));
             }}
-            className="w-[120px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.19)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[28px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.33)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
+            className="w-[120px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.19)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[34px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.33)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
             placeholder="3000000"
           />
         </div>

@@ -2956,65 +2956,71 @@ return (
       ref={scrollRef}
       className="relative z-10 flex-1 overflow-y-auto pb-32 bg-transparent"
     >
-      <header className="relative z-50 h-[160px] sm:h-[190px] md:h-[260px]">
-        <div className="absolute inset-0 overflow-hidden">
-          <img
-            src="/hero.jpg"
-            alt="The Room"
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/10 to-transparent" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(229,201,169,0.12)_0%,rgba(45,27,20,0.48)_70%)]" />
-        </div>
+           <header
+        className="
+          relative z-50
+          border-b border-[#E5C9A9]/20
+          bg-[rgba(45,27,20,0.48)]
+          backdrop-blur-[28px]
+          shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]
+        "
+      >
+        <div className="flex w-full max-w-none items-center justify-between gap-4 px-4 py-3 md:px-8 2xl:px-12">
+          {/* LEFT: LOGO + TITLE */}
+          <div className="flex min-w-0 items-center gap-2 md:gap-3">
+            <LogoIntroButton logoSrc="/logo.png" />
 
-        <div className="absolute left-0 right-0 top-0 z-[1000] px-4 pt-3 md:px-8 md:pt-5">
-          <div className="mx-auto flex w-full max-w-[1240px] items-start justify-between">
-            <div className="flex items-start gap-2 md:gap-3">
-              <LogoIntroButton logoSrc="/logo.png" />
-
-              <div className="mt-[2px] leading-tight text-[#E5C9A9] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
-                <div className="whitespace-nowrap text-base font-semibold md:text-xl">
-                  The Room
-                </div>
-                <div className="text-xs text-[#A0856E] md:text-sm">
-                  Cho thuê chung cư, căn hộ &amp; phòng trọ tại TP.HCM
-                </div>
+            <div className="min-w-0 leading-tight text-[#E5C9A9] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+              <div className="truncate text-base font-semibold md:text-xl">
+                The Room
+              </div>
+              <div className="hidden text-xs text-[#C9AA8B] sm:block md:text-sm">
+                Cho thuê chung cư, căn hộ &amp; phòng trọ tại TP.HCM
               </div>
             </div>
+          </div>
 
-            <div className="relative z-[3000] flex flex-col items-end gap-10 self-start whitespace-nowrap pt-1">
-              <div
-                id="auth-anchor"
-                className="min-w-[110px] h-[38px] flex items-center justify-center rounded-2xl border border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.45)] text-[#E5C9A9] backdrop-blur-[20px] shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-              />
-
+          {/* RIGHT: ACCOUNT + SAVED */}
+          <div className="relative z-[3000] flex shrink-0 items-center gap-2 whitespace-nowrap">
               <a
                 href="/saved"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="
-                  rounded-2xl border border-[#E5C9A9]/25
+                  hidden rounded-2xl border border-[#E5C9A9]/25
                   bg-[rgba(45,27,20,0.45)]
                   px-4 py-2
                   text-[11px] font-semibold text-[#E5C9A9]
                   backdrop-blur-[20px]
                   shadow-[0_10px_30px_rgba(0,0,0,0.35)]
-                  hover:bg-[rgba(255,255,255,0.08)]
                   transition-all
+                  hover:bg-[rgba(255,255,255,0.08)]
+                  sm:inline-flex
                 "
               >
                 ★ Phòng đã lưu
               </a>
+
+              <div
+                id="auth-anchor"
+                className="
+                  flex h-[38px] min-w-[110px] items-center justify-center
+                  rounded-2xl border border-[#E5C9A9]/25
+                  bg-[rgba(45,27,20,0.45)]
+                  text-[#E5C9A9]
+                  backdrop-blur-[20px]
+                  shadow-[0_10px_30px_rgba(0,0,0,0.35)]
+                "
+              />
             </div>
-          </div>
         </div>
       </header>
 
-      {/* FILTER BAR */}
-      <div className="relative z-[900] -mt-12 md:-mt-16">
-        <div className="mx-auto w-full max-w-[1240px] px-0">
-          <div className="pt-2">
-            <FilterBar
+     {/* FILTER BAR */}
+<div className="relative z-[900]">
+  <div className="w-full max-w-none px-2 pt-2 sm:px-3 lg:px-4">
+    <div className="scale-[0.85] origin-top">
+      <FilterBar
               districts={districts}
               roomTypes={roomTypes}
               loading={loading}
@@ -3176,19 +3182,21 @@ return (
           </div>
         </div>
       )}
-      <RoomList
-        fetchError={fetchError}
-        showSkeleton={showSkeleton}
-        roomsToRender={roomsToRender}
-        adminLevel={adminLevel}
-        pageIndex={pageIndex}
-        loading={loading}
-        hasNext={hasNext}
-        goPrev={goPrev}
-        goNext={goNext}
-        onNavigate={handleNavigateToRoom}
-        isRefreshing={isRefreshing}
-      />
+      
+        <RoomList
+          fetchError={fetchError}
+          showSkeleton={showSkeleton}
+          roomsToRender={roomsToRender}
+          adminLevel={adminLevel}
+          pageIndex={pageIndex}
+          loading={loading}
+          hasNext={hasNext}
+          goPrev={goPrev}
+          goNext={goNext}
+          onNavigate={handleNavigateToRoom}
+          isRefreshing={isRefreshing}
+        />
+     
     </div>
 
     <div
