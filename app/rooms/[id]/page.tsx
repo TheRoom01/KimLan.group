@@ -1775,7 +1775,7 @@ activeItem.kind === "video" ? (
             <button
               type="button"
               onClick={() => setShareOpen(true)}
-              className="text-sm px-3 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
+              className="text-sm px-1 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
               aria-label="Chia sẻ"
               title="Chia sẻ"
             >
@@ -2030,27 +2030,35 @@ activeItem.kind === "video" ? (
  {/* ===== SHARE MODAL ===== */}
     {(adminLevel === 1 || adminLevel === 2) && shareOpen && (
       <div
-      className="
-        fixed inset-0 
-        z-[99999] 
-        flex items-end md:items-center justify-center
-        bg-black/50 
-        backdrop-blur-[8px]
-      "
-      onClick={() => setShareOpen(false)}
-    >
+        className="
+          fixed inset-0 
+          z-[99999] 
+          flex items-end justify-center
+          overflow-y-auto overscroll-contain
+          bg-black/50 
+          p-2 sm:p-4
+          backdrop-blur-[8px]
+          md:items-center
+        "
+        onClick={() => setShareOpen(false)}
+      >
     <div
       className="
-    w-full md:max-w-lg p-4
-    rounded-t-2xl md:rounded-3xl
-    border border-white/15
-    bg-[rgba(242,136,61,0.2)]
-    backdrop-blur-[50px]
-    text-white
-    shadow-[0_30px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]"
+        flex w-full flex-col overflow-hidden
+        max-h-[calc(100dvh-16px)]
+        rounded-t-2xl
+        border border-white/15
+        bg-[rgba(242,136,61,0.2)]
+        backdrop-blur-[50px]
+        text-white
+        shadow-[0_30px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]
+        md:max-h-[calc(100dvh-48px)]
+        md:max-w-lg
+        md:rounded-3xl
+      "
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="shrink-0 flex items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
         <div className="text-lg font-semibold">Chia sẻ</div>
 
         <div className="flex items-center gap-2">
@@ -2069,17 +2077,17 @@ activeItem.kind === "video" ? (
             Link phòng
           </button>
 
-          <button
+         <button
             type="button"
             onClick={() => setShareOpen(false)}
-            className="px-3 py-1 rounded-lg hover:bg-gray-100"
-          >
+            className="px-3 py-1 rounded-lg text-[#F4E7D6] hover:bg-white/10"
+           >
             Đóng
           </button>
         </div>
       </div>
 
-    <div className="mt-3 space-y-4">
+    <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
         {/* CỘT TRÁI */}
@@ -2291,18 +2299,25 @@ activeItem.kind === "video" ? (
               Preview nội dung
             </div>
 
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/20 bg-[rgba(255,255,255,0.06)] p-3 text-sm text-[#F4E7D6] backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
+           <pre className="max-h-32 md:max-h-48 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/20 bg-[rgba(255,255,255,0.06)] p-3 text-sm text-[#F4E7D6] backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
               {buildShareText()}
             </pre>
 
-            <div className="flex gap-2 pt-2">
+            <div className="
+              sticky bottom-0 z-10 -mx-1 flex gap-2
+              rounded-2xl
+              border border-white/15
+              bg-[rgba(120,63,32,0.85)]
+              px-2 pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]
+              backdrop-blur-[36px]
+            ">
              <button
                 type="button"
                 disabled={sharing}
                 onClick={handleShare}
                 className="
                   flex-1 rounded-2xl border border-white/25
-                  bg-[rgba(255,255,255,0.08)]
+                  bg-[rgba(199,149,89,0.62)]
                   py-2 font-semibold text-white
                   backdrop-blur-[24px]
                   hover:bg-white/15
