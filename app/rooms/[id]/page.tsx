@@ -519,7 +519,8 @@ type ShareKey =
   const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
   const [sharing, setSharing] = useState(false);
   const MAX_NATIVE_SHARE_FILES = 10;
-
+ 
+  const [goingHome, setGoingHome] = useState(false);
   
 
 const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
@@ -1796,7 +1797,12 @@ return (
     onClick={(e) => {
       e.preventDefault();
       e.stopPropagation();
-      router.push("/");
+
+      setGoingHome(true);
+
+      requestAnimationFrame(() => {
+        router.push("/");
+      });
     }}
     className="
       absolute left-3 top-0.5 z-50
@@ -2888,6 +2894,15 @@ return (
     {toast}
   </div>
 )}
+
+{goingHome && (
+  <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/45 backdrop-blur-[6px]">
+    <div className="rounded-2xl border border-white/20 bg-black/55 px-5 py-3 text-sm font-semibold text-white shadow-[0_20px_60px_rgba(0,0,0,0.55)]">
+      Đang về danh sách...
+    </div>
+  </div>
+)}
+
 {phoneModal && (
   <div
     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30"
