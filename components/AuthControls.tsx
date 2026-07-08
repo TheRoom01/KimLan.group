@@ -624,35 +624,52 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
   // ===== controls (portal to #auth-anchor) =====
 const controls = (
   <div className="relative z-[9999] flex items-center gap-3 pointer-events-auto">
-      {user ? (
-        <div className="relative">
-          <button
-            ref={btnRef}
-            type="button"
-            onClick={() => (menuOpen ? closeMenu() : openMenu())}
-            className="rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold text-white
-              bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
-              backdrop-blur-[30px]
-              shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
-              hover:bg-[rgba(255,255,255,0.1)] transition-all"
-            title={user?.email || "Đã đăng nhập"}
-          >
-            Tài khoản ▾
-          </button>
-        </div>
-      ) : (
+    {user ? (
+      <div className="relative">
         <button
-          onClick={openAuth}
-          className="rounded-2xl border border-white/30 px-4 py-2 text-sm font-semibold text-white
+          ref={btnRef}
+          type="button"
+          onClick={() => (menuOpen ? closeMenu() : openMenu())}
+          className="
+            inline-flex items-center justify-center gap-1
+            h-[36px] min-w-[118px]
+            px-4
+            rounded-2xl border border-white/30
+            bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
+            text-[13px] font-semibold leading-none text-white
+            backdrop-blur-[30px]
+            shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
+            hover:bg-[rgba(255,255,255,0.1)]
+            transition-all
+            whitespace-nowrap
+          "
+          title={user?.email || "Đã đăng nhập"}
+        >
+          <span>Tài khoản</span>
+          <span className="text-[10px] leading-none">▼</span>
+        </button>
+      </div>
+    ) : (
+      <button
+        onClick={openAuth}
+        className="
+          inline-flex items-center justify-center
+          h-[36px] min-w-[118px]
+          px-4
+          rounded-2xl border border-white/30
           bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.015))]
+          text-[13px] font-semibold leading-none text-white
           backdrop-blur-[30px]
           shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.45)]
-          hover:bg-[rgba(255,255,255,0.1)] transition-all"
-        >
-          Đăng nhập
-        </button>
-      )}
-    </div>
+          hover:bg-[rgba(255,255,255,0.1)]
+          transition-all
+          whitespace-nowrap
+        "
+      >
+        Đăng nhập
+      </button>
+    )}
+  </div>
   );
 
   return (

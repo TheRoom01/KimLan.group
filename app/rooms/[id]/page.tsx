@@ -1,7 +1,8 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+
 import { supabase } from "@/lib/supabase";
 import { getBrowserContext, openExternalBrowser } from "@/lib/browser";
 
@@ -100,7 +101,7 @@ function renderSmartLinks(raw: string) {
             rel="noreferrer"
             className="
               inline-flex items-center gap-3
-              w-fit max-w-full
+              w-fix max-w-full
               rounded-2xl px-3 py-2
               border border-white/20
               bg-[rgba(255,255,255,0.06)]
@@ -143,7 +144,7 @@ function renderSmartLinks(raw: string) {
             rel="noreferrer"
             className="
               inline-flex items-center gap-3
-              w-fit max-w-full
+              w-fix max-w-full
               rounded-2xl px-3 py-2
               border border-white/20
               bg-[rgba(255,255,255,0.06)]
@@ -263,16 +264,23 @@ function publicHouseNumber(value?: string | null) {
 export default function RoomDetailPage() {
   const params = useParams();
   const id = (params?.id as string) || "";
+
+  
   const [room, setRoom] = useState<any>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [phoneModal, setPhoneModal] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
 
+  const searchParams = useSearchParams();
+  const isModal = searchParams.get("modal") === "1";
+
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [adminLevel, setAdminLevel] = useState(0);
+  
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [showPlay, setShowPlay] = useState(true)
 
   // overlay (nút giữa) auto-hide khi đang play
@@ -285,6 +293,59 @@ export default function RoomDetailPage() {
       overlayTimerRef.current = null
     }
   }
+
+  const router = useRouter();
+
+  const handleCloseModal = useCallback(() => {
+    if (window.history.length > 1) {
+        router.back();
+        return;
+      }
+
+      router.replace("/");
+    }, [router]);
+
+    useEffect(() => {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }, []);
+
+        useEffect(() => {
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (viewerOpen) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setViewerOpen(false);
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goPrevMedia();
+        return;
+      }
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goNextMedia();
+        return;
+      }
+
+      return;
+    }
+
+    if (e.key === "Escape") {
+      handleCloseModal();
+    }
+  };
+
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
+}, [handleCloseModal, viewerOpen, goPrevMedia, goNextMedia]);
 
   function scheduleHideOverlay(ms = 1500) {
     clearOverlayTimer()
@@ -306,23 +367,104 @@ export default function RoomDetailPage() {
 
     const roomReqIdRef = useRef(0);
   const [fetchStatus, setFetchStatus] = useState<"loading" | "done">("loading");
- const [downloadingImages, setDownloadingImages] = useState(false);
+  
+  const [downloadingImages, setDownloadingImages] = useState(false);
+  const mediaItemsLengthRef = useRef(0);
+  const viewerDragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const viewerDragArmedRef = useRef(false);
 
-  let startX = 0;
-  const onTouchStart = (e: any) => {
-    startX = e.touches?.[0]?.clientX ?? 0;
-  };
-  const onTouchEnd = (e: any) => {
-    const endX = e.changedTouches?.[0]?.clientX ?? 0;
-    if (!mediaItems.length) return;
+    let startX = 0;
+    const onTouchStart = (e: any) => {
+      startX = e.touches?.[0]?.clientX ?? 0;
+    };
+    const onTouchEnd = (e: any) => {
+      const endX = e.changedTouches?.[0]?.clientX ?? 0;
+      const count = mediaItemsLengthRef.current;
 
-    if (startX - endX > 50 && activeIndex < mediaItems.length - 1) {
-      setActiveIndex((i: number) => i + 1);
+      if (!count) return;
+
+      if (startX - endX > 50 && activeIndex < count - 1) {
+        setActiveIndex((i: number) => i + 1);
+      }
+      if (endX - startX > 50 && activeIndex > 0) {
+        setActiveIndex((i: number) => i - 1);
+      }
+    };
+
+    function goPrevMedia() {
+      setActiveIndex((i) => Math.max(i - 1, 0));
     }
-    if (endX - startX > 50 && activeIndex > 0) {
-      setActiveIndex((i: number) => i - 1);
+
+    function goNextMedia() {
+      const count = mediaItemsLengthRef.current;
+      setActiveIndex((i) => Math.min(i + 1, Math.max(count - 1, 0)));
     }
-  };
+
+    function handleViewerPointerDown(e: any) {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      if ((e.target as HTMLElement)?.closest?.("button")) return;
+
+      viewerDragStartRef.current = { x: e.clientX, y: e.clientY };
+      viewerDragArmedRef.current = true;
+
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      } catch {}
+    }
+
+    function handleViewerPointerUp(e: any) {
+      if (e.pointerType !== "mouse") return;
+      if (!viewerDragArmedRef.current || !viewerDragStartRef.current) return;
+
+      if ((e.target as HTMLElement)?.closest?.("button")) {
+        viewerDragArmedRef.current = false;
+        viewerDragStartRef.current = null;
+        return;
+      }
+
+      const dx = e.clientX - viewerDragStartRef.current.x;
+      const dy = e.clientY - viewerDragStartRef.current.y;
+
+      viewerDragArmedRef.current = false;
+      viewerDragStartRef.current = null;
+
+      try {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      } catch {}
+
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
+
+      if (dx < 0) goNextMedia();
+      else goPrevMedia();
+    }
+
+    function handleViewerPointerCancel(e?: any) {
+      viewerDragArmedRef.current = false;
+      viewerDragStartRef.current = null;
+
+      try {
+        if (e?.currentTarget?.releasePointerCapture && e?.pointerId != null) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch {}
+    }
+
+  
+//=========== Màu modal chi tiết =========//
+  const ROOM_THEME = {
+  modalBg: "#99611dd7",
+  modalBgInner: "#664515a2",
+  modalText: "#fcf6ef",
+  modalMutedText: "rgba(255, 246, 234, 0.9)",
+  modalBorder: "rgba(255,233,214,0.14)",
+  modalAccent: "#38BDF8",
+  modalAccentSoft: "rgba(56,189,248,0.18)",
+
+  shareBg: "rgba(86,57,36,0.30)",
+  shareHeaderBg: "rgba(255,255,255,0.05)",
+  shareButtonBg: "rgba(200,155,109,0.22)",
+  shareButtonBorder: "rgba(255,233,214,0.18)",
+};
 
 useEffect(() => {
   const init = async () => {
@@ -365,6 +507,7 @@ type ShareKey =
   // Lưu ý: khi share thật qua Zalo/Messenger, nếu quá nặng có thể cần giới hạn lại sau.
   const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
   const [sharing, setSharing] = useState(false);
+  const MAX_NATIVE_SHARE_FILES = 10;
 
 const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
     room_link: false,
@@ -626,9 +769,7 @@ async function handleShare() {
   const text = buildShareText();
   const selectedImageUrls = Array.from(
     new Set(
-      shareImageUrls
-        .map((url) => String(url ?? "").trim())
-        .filter(Boolean)
+      shareImageUrls.map((url) => String(url ?? "").trim()).filter(Boolean)
     )
   );
 
@@ -640,48 +781,42 @@ async function handleShare() {
     return;
   }
 
-  // ✅ Desktop / giả mobile trên desktop: copy text để tránh share sheet bật rồi tắt
-  if (!isRealMobile()) {
-    await copyShareTextFallback(
-      text,
-      hasImages
-        ? "Desktop chưa hỗ trợ gửi ảnh trực tiếp — đã copy nội dung"
-        : undefined
-    );
-    return;
-  }
-
-  // ✅ Mobile nhưng browser không có Web Share API
-  if (!navigator?.share) {
-    await copyShareTextFallback(
-      text,
-      hasImages
-        ? "Trình duyệt không hỗ trợ gửi ảnh trực tiếp — đã copy nội dung"
-        : undefined
-    );
-    return;
-  }
-
   setSharing(true);
 
   try {
-    // ===== CASE 1: Có ảnh được chọn =====
-    if (hasImages) {
-      let copiedTextBeforeShare = false;
-
-      // ✅ Messenger/Zalo thường bỏ text khi share kèm file
-      // Nên copy text trước, sau đó chỉ share ảnh.
-      if (hasText) {
-        copiedTextBeforeShare = await copyText(text);
-
+    // copy text trước để luôn có clipboard fallback
+    if (hasText) {
+      const copied = await copyText(text);
+      if (copied) {
         showToast(
-          copiedTextBeforeShare
-            ? "Đã copy nội dung — sau khi gửi ảnh hãy dán vào khung chat"
-            : "Không copy được nội dung — vẫn tiếp tục gửi ảnh",
-          6000
+          hasImages
+            ? "Đã copy nội dung — nếu app chat bỏ text thì bạn chỉ cần dán vào"
+            : "Đã copy nội dung",
+          4500
         );
       }
+    }
 
+    // ===== 1) Không có ảnh =====
+    if (!hasImages) {
+      if (navigator?.share) {
+        try {
+          await navigator.share({ title: "The Room", text });
+          showToast("Đã mở chia sẻ");
+          setShareOpen(false);
+          return;
+        } catch {}
+      }
+
+      await copyShareTextFallback(
+        text,
+        "Thiết bị không hỗ trợ share trực tiếp — đã copy nội dung"
+      );
+      return;
+    }
+
+    // ===== 2) Có ảnh: thử share nhiều file nếu còn trong giới hạn =====
+    if (selectedImageUrls.length <= MAX_NATIVE_SHARE_FILES && navigator?.share) {
       const files: File[] = [];
 
       for (let i = 0; i < selectedImageUrls.length; i += 1) {
@@ -689,54 +824,58 @@ async function handleShare() {
       }
 
       const canShareFiles =
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files });
+        typeof navigator.canShare === "function"
+          ? navigator.canShare({ files })
+          : false;
 
-      if (!canShareFiles) {
-        await copyShareTextFallback(
-          text,
-          "Thiết bị không hỗ trợ gửi ảnh trực tiếp — đã copy nội dung"
-        );
+      if (canShareFiles) {
+        await navigator.share({
+          title: "The Room",
+          files,
+        });
+
+        showToast("Đã mở chia sẻ ảnh");
+        setShareOpen(false);
         return;
       }
+    }
 
-      // ✅ Chỉ gửi files, không gửi text ở đây
-      // Vì một số app như Messenger/Zalo sẽ bỏ text hoặc lỗi payload khi có cả files + text.
+    // ===== 3) Quá nhiều ảnh hoặc share files không hỗ trợ -> gộp thành 1 collage =====
+    const collageFile = await buildCollageFileFromUrls(selectedImageUrls);
+
+    const canShareCollage =
+      typeof navigator.canShare === "function"
+        ? navigator.canShare({ files: [collageFile] })
+        : false;
+
+    if (navigator?.share && canShareCollage) {
       await navigator.share({
         title: "The Room",
-        files,
+        files: [collageFile],
       });
 
-      showToast(
-        copiedTextBeforeShare
-          ? "Đã gửi ảnh — nội dung đã nằm trong clipboard, hãy dán vào chat"
-          : "Đã mở chia sẻ ảnh"
-      );
-
+      showToast("Đã mở chia sẻ ảnh tổng hợp");
       setShareOpen(false);
       return;
     }
 
-    // ===== CASE 2: Không chọn ảnh, share text như cũ =====
-    await navigator.share({
-      title: "The Room",
-      text,
-    });
-
-    showToast("Đã mở chia sẻ");
+    // ===== 4) Fallback cuối: tải 1 ảnh tổng hợp =====
+    downloadBlob(collageFile, collageFile.name);
+    showToast("Thiết bị không hỗ trợ share trực tiếp — đã tải 1 ảnh tổng hợp");
     setShareOpen(false);
   } catch (e: any) {
     console.error("handleShare error:", e);
 
-    const msg = String(e?.name || e?.message || "").toLowerCase();
-
-    if (msg.includes("abort") || msg.includes("cancel")) {
-      showToast(
-        hasText
-          ? "Đã huỷ chia sẻ ảnh — nội dung vẫn đã được copy"
-          : "Đã huỷ chia sẻ"
-      );
-      return;
+    try {
+      if (hasImages) {
+        const collageFile = await buildCollageFileFromUrls(selectedImageUrls);
+        downloadBlob(collageFile, collageFile.name);
+        showToast("Không share được trực tiếp — đã tải 1 ảnh tổng hợp");
+        setShareOpen(false);
+        return;
+      }
+    } catch (collageErr) {
+      console.error("collage fallback error:", collageErr);
     }
 
     await copyShareTextFallback(
@@ -1032,14 +1171,15 @@ async function r2ImageUrlToFile(url: string, index: number) {
     throw new Error("Ảnh không có URL hợp lệ");
   }
 
-  const res = await fetch(cleanUrl, {
+  const proxyUrl = `/api/share-image?url=${encodeURIComponent(cleanUrl)}`;
+
+  const res = await fetch(proxyUrl, {
     method: "GET",
-    mode: "cors",
     cache: "no-store",
   });
 
   if (!res.ok) {
-    throw new Error(`Không tải được ảnh ${index + 1}`);
+    throw new Error(`Không tải được ảnh ${index + 1} qua proxy`);
   }
 
   const originalBlob = await res.blob();
@@ -1053,6 +1193,159 @@ async function r2ImageUrlToFile(url: string, index: number) {
     .replace(/^-+|-+$/g, "");
 
   return new File([jpegBlob], `${safeRoomCode}-${index + 1}.jpg`, {
+    type: "image/jpeg",
+  });
+}
+
+function safeFileBaseName(input: string) {
+  return String(input || "room")
+    .trim()
+    .replace(/[^\w-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "room";
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D,
+  image: ImageBitmap | HTMLImageElement,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+) {
+  const sw = image.width;
+  const sh = image.height;
+
+  const srcRatio = sw / sh;
+  const dstRatio = dw / dh;
+
+  let sx = 0;
+  let sy = 0;
+  let sW = sw;
+  let sH = sh;
+
+  if (srcRatio > dstRatio) {
+    sW = sh * dstRatio;
+    sx = (sw - sW) / 2;
+  } else {
+    sH = sw / dstRatio;
+    sy = (sh - sH) / 2;
+  }
+
+  ctx.drawImage(image, sx, sy, sW, sH, dx, dy, dw, dh);
+}
+
+async function buildCollageFileFromUrls(urls: string[]) {
+  const uniqueUrls = Array.from(
+    new Set(urls.map((u) => String(u ?? "").trim()).filter(Boolean))
+  );
+
+  if (!uniqueUrls.length) {
+    throw new Error("Không có ảnh để tạo collage");
+  }
+
+  const sourceFiles: File[] = [];
+  for (let i = 0; i < uniqueUrls.length; i += 1) {
+    sourceFiles.push(await r2ImageUrlToFile(uniqueUrls[i], i));
+  }
+
+  const images = await Promise.all(sourceFiles.map((f) => loadImageFromBlob(f)));
+
+  const count = images.length;
+  const cols =
+    count <= 2 ? count : count <= 4 ? 2 : count <= 9 ? 3 : 4;
+
+  const tile =
+    count <= 2 ? 900 : count <= 4 ? 720 : count <= 9 ? 540 : 380;
+
+  const gap = 12;
+  const headerH = 104;
+  const footerH = 84;
+  const rows = Math.ceil(count / cols);
+
+  const width = cols * tile + (cols + 1) * gap;
+  const height = headerH + rows * tile + (rows + 1) * gap + footerH;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Không thể tạo canvas");
+  }
+
+  // background
+  ctx.fillStyle = "#130c09";
+  ctx.fillRect(0, 0, width, height);
+
+  // title
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.font = `700 ${Math.max(24, Math.round(tile * 0.06))}px system-ui, sans-serif`;
+  ctx.fillText("The Room", gap, 38);
+
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.font = `500 ${Math.max(14, Math.round(tile * 0.03))}px system-ui, sans-serif`;
+  ctx.fillText(`Ảnh phòng · ${count} ảnh`, gap, 68);
+
+  // tiles
+  for (let i = 0; i < images.length; i += 1) {
+    const img = images[i];
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+
+    const x = gap + col * (tile + gap);
+    const y = headerH + gap + row * (tile + gap);
+
+    ctx.fillStyle = "#1b120f";
+    ctx.fillRect(x, y, tile, tile);
+
+    drawCoverImage(ctx, img, x, y, tile, tile);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, tile - 2, tile - 2);
+
+    ctx.fillStyle = "rgba(0,0,0,0.42)";
+    ctx.fillRect(x + 10, y + 10, 44, 28);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "700 16px system-ui, sans-serif";
+    ctx.fillText(String(i + 1), x + 24, y + 30);
+
+    if ("close" in img && typeof img.close === "function") {
+      img.close();
+    }
+  }
+
+  // footer
+  ctx.fillStyle = "rgba(255,255,255,0.78)";
+  ctx.font = `500 ${Math.max(13, Math.round(tile * 0.028))}px system-ui, sans-serif`;
+  ctx.fillText("Chia sẻ từ The Room", gap, height - 32);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (!b) {
+        reject(new Error("Không thể xuất ảnh collage"));
+        return;
+      }
+      resolve(b);
+    }, "image/jpeg", 0.92);
+  });
+
+  return new File([blob], `${safeFileBaseName(roomCode || id || "room")}-collage.jpg`, {
     type: "image/jpeg",
   });
 }
@@ -1120,13 +1413,55 @@ const activeItem = useMemo(() => {
   return mediaItems[safeIndex];
 }, [activeIndex, mediaItems]);
 
+useEffect(() => {
+  mediaItemsLengthRef.current = mediaItems.length;
+}, [mediaItems.length]);
+
+useEffect(() => {
+  mediaItemsLengthRef.current = mediaItems.length;
+}, [mediaItems.length]);
+
 // ===== RENDER GUARD =====
 
 if (!id || fetchStatus === "loading") {
   return (
-    <div className="p-6 space-y-4">
-      <div className="h-[340px] bg-gray-200 rounded animate-pulse" />
-      <div className="h-24 bg-gray-200 rounded animate-pulse" />
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/45 p-3">
+      <div
+        className="
+          relative w-[355px] max-w-[calc(100vw-24px)]
+          h-[656px] max-h-[calc(100dvh-24px)]
+          overflow-hidden rounded-[24px]
+          border border-white/15
+          bg-[#E9D7C3]
+          shadow-[0_24px_80px_rgba(0,0,0,0.55)]
+        "
+      >
+        <div className="p-3 space-y-3">
+          <div className="h-[300px] md:h-[330px] rounded-[18px] bg-white/10 animate-pulse" />
+
+          <div className="flex gap-2 overflow-hidden">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-[66px] w-[82px] shrink-0 rounded-[10px] bg-white/10 animate-pulse"
+              />
+            ))}
+          </div>
+
+          <div className="space-y-3 px-2 pt-2">
+            <div className="h-7 w-32 rounded-full bg-white/10 animate-pulse" />
+            <div className="h-4 w-full rounded-full bg-white/10 animate-pulse" />
+            <div className="h-4 w-[75%] rounded-full bg-white/10 animate-pulse" />
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <div className="h-8 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-8 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-8 rounded-full bg-white/10 animate-pulse" />
+              <div className="h-8 rounded-full bg-white/10 animate-pulse" />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1373,387 +1708,496 @@ const policyCopyText = room?.chinh_sach?.trim()
 
 return (
   <div
-    className="
-      p-6 space-y-6 text-base text-white
-      bg-[url('/bg-glass.jpg')]
-      bg-cover bg-center bg-fixed
-    "
-  >
-    {showOpenBrowserBar && (
-  <div className="
-    sticky top-2 z-40
-    rounded-2xl
-    border border-white/20
-    bg-white/10
-    backdrop-blur-xl
-    shadow-[0_8px_30px_rgba(0,0,0,0.12)]
-    ring-1 ring-white/20
-  ">
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4">
-
-      {/* TEXT */}
-      <div className="text-sm text-white/90">
-        <div className="font-semibold">
-          Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
-        </div>
-        <div className="text-white/70">
-          Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
-        </div>
-      </div>
-
-      {/* ACTIONS */}
-      <div className="flex gap-2">
-
-        <button
-          type="button"
-          onClick={() => openExternalBrowser(roomShareUrl || window.location.href)}
-          className="
-            rounded-xl
-            bg-black/80
-            backdrop-blur-md
-            px-4 py-2
-            text-sm font-medium text-white
-            shadow-lg
-            hover:bg-black
-            transition
-          "
-        >
-          Mở trình duyệt
-        </button>
-
-        <button
-          type="button"
-          onClick={async () => {
-            const ok = await copyText(roomShareUrl || window.location.href);
-
-            showToast(
-              ok
-                ? "Đã copy link phòng"
-                : "Không thể copy link — hãy copy thủ công"
-            );
-          }}
-          className="
-            rounded-xl
-            border border-white/20
-            bg-white/10
-            backdrop-blur-md
-            px-4 py-2
-            text-sm font-medium text-white
-            hover:bg-white/20
-            transition
-          "
-        >
-          Copy link
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setShowOpenBrowserBar(false)}
-          className="
-            rounded-xl
-            border border-white/10
-            bg-white/10
-            text-white/80
-            px-3 py-2 text-sm
-            hover:bg-white/20
-            transition
-          "
-          aria-label="Đóng"
-          title="Đóng"
-        >
-          ✕
-        </button>
-
-      </div>
-    </div>
-  </div>
-)}
-
-      <div className="space-y-1">
-        {mediaItems.length > 0 ? (
-  <>
-    <div
-      className="relative w-full h-[340px] md:h-[440px] rounded-xl overflow-hidden bg-black cursor-pointer"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-      onClick={() => {
-        if (activeItem?.kind !== "video") setViewerOpen(true)
-      }}
-    >
-      {activeItem ? (
-activeItem.kind === "video" ? (
+  className="
+    fixed inset-0 z-[99999]
+    flex items-center justify-center
+    bg-black/55 p-3
+    text-[#F4E7D6]
+  "
+  onClick={handleCloseModal}
+>
   <div
-    className="relative w-full h-full"
-    onClick={(e) => {
-      e.stopPropagation()
-      showOverlayAndMaybeHide()
+    className="
+      relative flex flex-col overflow-hidden
+      w-[355px] max-w-[calc(100vw-24px)]
+      md:w-[520px] md:max-w-[calc(100vw-48px)]
+      h-[720px] max-h-[calc(100dvh-24px)]
+      md:h-[860px] md:max-h-[calc(100dvh-40px)]
+      rounded-[24px]
+      border
+      shadow-[0_24px_80px_rgba(0,0,0,0.55)]
+    "
+    style={{
+      background: ROOM_THEME.modalBg,
+      borderColor: ROOM_THEME.modalBorder,
+      color: ROOM_THEME.modalText,
     }}
+    onClick={(e) => e.stopPropagation()}
   >
-    {showPlay && activeItem.thumb ? (
-      <img
-        src={activeItem.thumb}
-        className="absolute inset-0 w-full h-full object-contain z-[1]"
-      />
-    ) : null}
-
-    <video
-      ref={videoRef}
-      src={activeItem.url}
-      controls
-      preload="metadata"
-      playsInline
-      poster={activeItem.thumb || undefined}
-      className="w-full h-full object-contain bg-black"
-      onPlay={() => {
-        setShowPlay(false)
-        showOverlayAndMaybeHide()
-      }}
-      onPause={() => {
-        setShowPlay(true)
-        setOverlayVisible(true)
-        clearOverlayTimer()
-      }}
-      onEnded={() => {
-        setShowPlay(true)
-        setOverlayVisible(true)
-        clearOverlayTimer()
-      }}
+    <div
+      className="absolute inset-0 z-0 pointer-events-none"
+      style={{ background: ROOM_THEME.modalBgInner }}
     />
 
-    {(overlayVisible || showPlay) && (
-      <button
-        className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full
-                   bg-black/40 text-white text-2xl
-                   flex items-center justify-center
-                   border border-white/40 backdrop-blur"
-        onClick={(e) => {
-          e.stopPropagation()
-          const v = videoRef.current
-          if (!v) return
-
-          setOverlayVisible(true)
-          clearOverlayTimer()
-
-          if (v.paused) {
-            v.play()
-            setShowPlay(false)
-            scheduleHideOverlay(1500)
-          } else {
-            v.pause()
-            setShowPlay(true)
-          }
-        }}
-        aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
-        title={showPlay ? "Phát" : "Tạm dừng"}
-      >
-        {showPlay ? "▶" : "⏸"}
-      </button>
-    )}
-  </div>
-) : (
-    <img
-      src={activeItem.url}
-      alt={room?.room_code || ""}
-      className="w-full h-full object-contain"
-      loading="lazy"
-    />
-  )
-) : (
-  <div className="flex items-center justify-center text-gray-500 h-full">
-    Chưa có hình ảnh
-  </div>
-)}
-
-      {activeItem?.kind === "image" && (
-  <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
-)}
-      <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded pointer-events-none">
-  
-   {activeIndex + 1} / {mediaItems.length}
-    </div>
-      {activeIndex > 0 && (
-        <button
-          className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
-          onClick={(e) => {
-            e.stopPropagation();
-            setActiveIndex((i) => i - 1);
-          }}
-        >
-          ‹
-        </button>
-      )}
-
-      {activeIndex < mediaItems.length - 1 && (
-        <button
-          className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
-          onClick={(e) => {
-            e.stopPropagation();
-            setActiveIndex((i) => i + 1);
-          }}
-        >
-          ›
-        </button>
-      )}
-    </div>
-    {isAdmin && (
+      {!viewerOpen && (
   <button
     type="button"
-    disabled={downloadingImages}
-    onClick={(e) => {
-  e.stopPropagation();
-  if (downloadingImages) return;
-
-  try {
-    setDownloadingImages(true);
-
-    const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
-
-    // ✅ Mở tải bằng trình duyệt (UI không phải đợi)
-    window.open(url, "_blank");
-  } finally {
-    setDownloadingImages(false);
-  }
-}}
-
-    className="
-      absolute top-3 right-3 z-10
-      inline-flex items-center gap-1
-      rounded-full border border-gray-300
-       backdrop-blur
-      px-2 py-[1px]
-      text-[10px] font-medium
-      text-gray-700
-      hover:bg-white
-      transition
-      scale-[0.8] origin-top-right
-      disabled:opacity-60 disabled:cursor-not-allowed
-    "
-    title={downloadingImages ? "Đang chuẩn bị file..." : "Tải ảnh"}
+    onClick={handleCloseModal}
+    className="absolute right-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-[16px] shadow-[0_10px_30px_rgba(0,0,0,0.45)] hover:bg-black/50"
+    aria-label="Đóng"
+    title="Đóng"
   >
-    {downloadingImages ? "⏳ Đang chuẩn bị..." : "⬇️ Tải ảnh"}
+    ✕
   </button>
 )}
 
-    <div className="flex gap-2 overflow-x-auto pb-0">
-      {mediaItems.slice(0, 20).map((it, idx) => (
-        <button
-          key={it.kind + it.url + idx}
-          className={[
-            "relative flex-none w-20 h-14 rounded-lg overflow-hidden border bg-black",
-            idx === activeIndex ? "border-black" : "border-gray-200",
-          ].join(" ")}
-          onClick={() => setActiveIndex(idx)}
-          aria-label={`Xem ${it.kind === "video" ? "video" : "ảnh"} ${idx + 1}`}
-        >
-          {it.kind === "video" ? (
-            <>
-              <img
-                src={it.thumb || ""}
-                className="w-full h-full object-contain"
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-black/50 text-white text-xs px-2 py-1 rounded">
-                  ▶
-                </div>
-              </div>
-            </>
-          ) : (
-            <img
-              src={it.url}
-              alt=""
-              className="w-full h-full object-contain"
-              loading="lazy"
-            />
-          )}
-        </button>
-      ))}
-    </div>
-  </>
-) : (
-  <div className="h-[260px] bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
-    Chưa có hình ảnh
-  </div>
-)}
-      </div>
-      
-  {/* ===== Ngày cập nhật ===== */}
-  <div className="flex items-center justify-end gap-1 mt-1 mb-0 text-sm text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
-    {updatedText && <div>Đã cập nhật: {updatedText}</div>}
-  </div>
-
-  <div
-  className="
-    rounded-2xl p-4 space-y-2
-    border border-white/15
-    bg-[rgba(255,255,255,0.04)]
-    backdrop-blur-[28px]
-    shadow-[0_20px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]
-  "
->
- {/* Dòng 1: Mã | type  + Badge bên phải */}
-<div className="flex items-start justify-between gap-3">
-  <div className="text-[#F4E7D6]">
-    <span>Mã:</span>{" "}
-    <span className="font-semibold">{roomCode || "—"}</span>
-    {roomType && (
+      <div className="relative z-10 flex h-full min-h-0 flex-col">
+  {/* ===== TOP: BLOCK ẢNH CỐ ĐỊNH ===== */}
+<div className="shrink-0 p-3 pb-2">
+  <div className="space-y-1">
+    {mediaItems.length > 0 ? (
       <>
-        {" | "}
-        <span>Dạng :</span>{" "}
-        <span className="font-semibold">{roomType}</span>
+        <div
+          className="relative w-full h-[250px] md:h-[360px] rounded-[18px] overflow-hidden bg-black cursor-grab active:cursor-grabbing select-none"
+          tabIndex={0}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          onPointerDown={handleViewerPointerDown}
+          onPointerUp={handleViewerPointerUp}
+          onPointerCancel={handleViewerPointerCancel}
+          onPointerLeave={handleViewerPointerCancel}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              goPrevMedia();
+              return;
+            }
+
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              goNextMedia();
+              return;
+            }
+
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              if (activeItem?.kind !== "video") setViewerOpen(true);
+              return;
+            }
+
+            if (e.key === "Escape" && viewerOpen) {
+              e.preventDefault();
+              setViewerOpen(false);
+            }
+          }}
+          onClick={() => {
+            if (activeItem?.kind !== "video") setViewerOpen(true);
+          }}
+        >
+          {activeItem ? (
+            activeItem.kind === "video" ? (
+              <div
+                className="relative w-full h-full"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showOverlayAndMaybeHide();
+                }}
+              >
+                {showPlay && activeItem.thumb ? (
+                  <img
+                    src={activeItem.thumb}
+                    className="absolute inset-0 w-full h-full object-contain z-[1]"
+                  />
+                ) : null}
+
+                <video
+                  ref={videoRef}
+                  src={activeItem.url}
+                  controls
+                  preload="metadata"
+                  playsInline
+                  poster={activeItem.thumb || undefined}
+                  className="w-full h-full object-contain bg-black"
+                  onPlay={() => {
+                    setShowPlay(false);
+                    showOverlayAndMaybeHide();
+                  }}
+                  onPause={() => {
+                    setShowPlay(true);
+                    setOverlayVisible(true);
+                    clearOverlayTimer();
+                  }}
+                  onEnded={() => {
+                    setShowPlay(true);
+                    setOverlayVisible(true);
+                    clearOverlayTimer();
+                  }}
+                />
+
+                {(overlayVisible || showPlay) && (
+                  <button
+                    className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full
+                               bg-black/40 text-white text-2xl
+                               flex items-center justify-center
+                               border border-white/40 backdrop-blur"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const v = videoRef.current;
+                      if (!v) return;
+
+                      setOverlayVisible(true);
+                      clearOverlayTimer();
+
+                      if (v.paused) {
+                        v.play();
+                        setShowPlay(false);
+                        scheduleHideOverlay(1500);
+                      } else {
+                        v.pause();
+                        setShowPlay(true);
+                      }
+                    }}
+                    aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
+                    title={showPlay ? "Phát" : "Tạm dừng"}
+                  >
+                    {showPlay ? "▶" : "⏸"}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <img
+                src={activeItem.url}
+                alt={room?.room_code || ""}
+                className="w-full h-full object-contain bg-black"
+                loading="lazy"
+              />
+            )
+          ) : (
+            <div className="flex items-center justify-center text-gray-500 h-full">
+              Chưa có hình ảnh
+            </div>
+          )}
+
+          {activeItem?.kind === "image" && (
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
+          )}
+
+          <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded pointer-events-none">
+            {activeIndex + 1} / {mediaItems.length}
+          </div>
+
+          {activeIndex > 0 && (
+            <button
+              className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveIndex((i) => i - 1);
+              }}
+            >
+              ‹
+            </button>
+          )}
+
+          {activeIndex < mediaItems.length - 1 && (
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveIndex((i) => i + 1);
+              }}
+            >
+              ›
+            </button>
+          )}
+
+          {(isAdmin && activeItem?.kind === "image") && (
+            <>
+              {/* Nút tải ảnh: góc trái */}
+              <button
+                type="button"
+                disabled={downloadingImages}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (downloadingImages) return;
+
+                  try {
+                    setDownloadingImages(true);
+                    const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
+                    window.open(url, "_blank");
+                  } finally {
+                    setDownloadingImages(false);
+                  }
+                }}
+                className="
+                  absolute bottom-3 left-3 z-20
+                  inline-flex items-center gap-1
+                  rounded-full
+                  border border-white/20
+                  bg-black/65
+                  px-2 py-1
+                  text-[10px] font-medium text-white
+                  backdrop-blur-[10px]
+                  shadow-[0_8px_24px_rgba(0,0,0,0.35)]
+                  hover:bg-black/80
+                  transition
+                  disabled:opacity-60 disabled:cursor-not-allowed
+                "
+                title={downloadingImages ? "Đang chuẩn bị file..." : "Tải ảnh"}
+              >
+                {downloadingImages ? "⏳" : "⬇️"}
+              </button>
+
+              {/* Nút chia sẻ: góc phải */}
+             <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    setShareOpen(true);
+  }}
+  className="
+    absolute bottom-3 right-3 z-20
+    inline-flex items-center justify-center
+    h-10 w-10
+    rounded-full
+    border border-white/20
+    bg-black/65
+    backdrop-blur-[10px]
+    shadow-[0_8px_24px_rgba(0,0,0,0.35)]
+    hover:bg-black/80
+    transition
+  "
+  title="Chia sẻ"
+  aria-label="Chia sẻ"
+>
+  <svg
+    viewBox="0 0 24 24"
+    className="h-5 w-5 shrink-0 text-white"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <path d="M8.6 13.1 15.4 17" />
+    <path d="M15.4 7 8.6 10.9" />
+  </svg>
+</button>
+            </>
+          )}
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-0">
+          {mediaItems.slice(0, 20).map((it, idx) => (
+            <button
+              key={it.kind + it.url + idx}
+              className={[
+                "relative flex-none w-[82px] h-[66px] rounded-[10px] overflow-hidden border bg-black",
+                idx === activeIndex
+                  ? "border-[#D7B08A] ring-2 ring-[#D7B08A]"
+                  : "border-white/25",
+              ].join(" ")}
+              onClick={() => setActiveIndex(idx)}
+              aria-label={`Xem ${it.kind === "video" ? "video" : "ảnh"} ${idx + 1}`}
+            >
+              {it.kind === "video" ? (
+                <>
+                  <img
+                    src={it.thumb || ""}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-black/50 text-white text-xs px-2 py-1 rounded">
+                      ▶
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <img
+                  src={it.url}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              )}
+            </button>
+          ))}
+        </div>
       </>
+    ) : (
+      <div className="h-[260px] bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
+        Chưa có hình ảnh
+      </div>
     )}
   </div>
+</div>
 
-  <div className="flex flex-col items-end gap-1">
-    {statusText && (
-      <span
-        className={[
-          "text-sm px-2 py-[2px] rounded-full whitespace-nowrap",
-          statusText === "Còn Trống"
-  ? "bg-[rgba(34,197,94,0.18)] text-green-300 border border-green-400/30 backdrop-blur"
-  : "bg-[rgba(239,68,68,0.18)] text-red-300 border border-red-400/30 backdrop-blur"
-        ].join(" ")}
-        title={statusText}
+  {/* ===== BOTTOM: PHẦN THÔNG TIN CUỘN ===== */}
+  <div
+    ref={scrollRef}
+    className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-transparent pb-3 [-webkit-overflow-scrolling:touch]"
+  >
+    <div className="px-3 space-y-2 text-sm text-white">
+      {showOpenBrowserBar && (
+        <div className="
+          sticky top-2 z-40
+          rounded-2xl
+          border border-white/20
+          bg-white/10
+          backdrop-blur-xl
+          shadow-[0_8px_30px_rgba(0,0,0,0.12)]
+          ring-1 ring-white/20
+        ">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4">
+            <div className="text-sm text-white/90">
+              <div className="font-semibold">
+                Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
+              </div>
+              <div className="text-white/70">
+                Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => openExternalBrowser(roomShareUrl || window.location.href)}
+                className="
+                  rounded-xl
+                  bg-black/80
+                  backdrop-blur-md
+                  px-4 py-2
+                  text-sm font-medium text-white
+                  shadow-lg
+                  hover:bg-black
+                  transition
+                "
+              >
+                Mở trình duyệt
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await copyText(roomShareUrl || window.location.href);
+
+                  showToast(
+                    ok
+                      ? "Đã copy link phòng"
+                      : "Không thể copy link — hãy copy thủ công"
+                  );
+                }}
+                className="
+                  rounded-xl
+                  border border-white/20
+                  bg-white/10
+                  backdrop-blur-md
+                  px-4 py-2
+                  text-sm font-medium text-white
+                  hover:bg-white/20
+                  transition
+                "
+              >
+                Copy link
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowOpenBrowserBar(false)}
+                className="
+                  rounded-xl
+                  border border-white/10
+                  bg-white/10
+                  text-white/80
+                  px-3 py-2 text-sm
+                  hover:bg-white/20
+                  transition
+                "
+                aria-label="Đóng"
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Ngày cập nhật ===== */}
+      <div className="flex items-center justify-end gap-1 mt-1 mb-0 text-sm text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
+        {updatedText && <div>Đã cập nhật: {updatedText}</div>}
+      </div>
+
+      <div
+        className="
+          rounded-2xl p-4 space-y-2
+          border border-white/15
+          bg-[rgba(255,255,255,0.04)]
+          backdrop-blur-[28px]
+          shadow-[0_20px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]
+        "
       >
-        {statusText}
-      </span>
-    )}
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-[#F4E7D6]">
+            <span>Mã:</span>{" "}
+            <span className="font-semibold">{roomCode || "—"}</span>
+            {roomType && (
+              <>
+                {" | "}
+                <span>Dạng :</span>{" "}
+                <span className="font-semibold">{roomType}</span>
+              </>
+            )}
+          </div>
 
-   
-  </div>
-</div>
+          <div className="flex flex-col items-end gap-1">
+            {statusText && (
+              <span
+                className={[
+                  "text-sm px-2 py-[2px] rounded-full whitespace-nowrap",
+                  statusText === "Còn Trống"
+                    ? "bg-[rgba(34,197,94,0.18)] text-green-300 border border-green-400/30 backdrop-blur"
+                    : "bg-[rgba(239,68,68,0.18)] text-red-300 border border-red-400/30 backdrop-blur",
+                ].join(" ")}
+                title={statusText}
+              >
+                {statusText}
+              </span>
+            )}
+          </div>
+        </div>
 
-{/* GIÁ - BLOCK RIÊNG */}
-<div className="mt-2 flex items-center gap-2">
-  <span className="font-medium text-[#F4E7D6]">Giá:</span>
-  <span className="text-sky-300 font-semibold text-[20px]">
-  {formatVND(room?.price)}
-  </span>
-</div>
+        <div className="mt-2 flex items-center gap-2">
+          <span className="font-medium text-[#F4E7D6]">Giá:</span>
+          <span
+            className="font-semibold text-[20px]"
+            style={{ color: ROOM_THEME.modalAccent }}
+          >
+            {formatVND(room?.price)}
+          </span>
+        </div>
 
+        {addressLine && (
+          <div className="flex items-start gap-1.5 text-[#F4E7D6] font-semibold">
+            <div className="min-w-0 break-words">
+              📍 {addressLine}
+            </div>
 
-  {/* Dòng 3: Địa chỉ */}
-  {addressLine && (
-    <div className="flex items-start gap-1.5 text-[#F4E7D6] font-semibold">
-      <div className="min-w-0 break-words">
-    📍 {addressLine}
+            <span className="pt-[5px]">
+              {renderCopyIcon(addressLine, "Đã copy địa chỉ")}
+            </span>
+          </div>
+        )}
+
+        {room.description && (
+          <div className="mt-2 text-red-700 text-[15px] leading-snug whitespace-pre-line">
+            {room.description}
+          </div>
+        )}
       </div>
 
-      <span className="pt-[5px]">
-        {renderCopyIcon(addressLine, "Đã copy địa chỉ")}
-      </span>
-    </div>
-  )}
-
-  {/* DESCRIPTION - FULL WIDTH (QUAN TRỌNG NHẤT) */}
-    {room.description && (
-      <div className="mt-2 text-red-700 text-[15px] leading-snug whitespace-pre-line">
-        {room.description}
-      </div>
-    )}
-
-
-  </div>
       <div
         className="
           space-y-2 pt-2 mt-2
@@ -1766,22 +2210,10 @@ activeItem.kind === "video" ? (
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">Chi phí</h2>
-
-            {feeCopyText &&
-              renderCopyIcon(feeCopyText, "Đã copy chi phí")}
+            {feeCopyText && renderCopyIcon(feeCopyText, "Đã copy chi phí")}
           </div>
 
-          {(adminLevel === 1 || adminLevel === 2) && (
-            <button
-              type="button"
-              onClick={() => setShareOpen(true)}
-              className="text-sm px-1 py-1 rounded-full border border-gray-300 hover:bg-gray-100"
-              aria-label="Chia sẻ"
-              title="Chia sẻ"
-            >
-              Chia sẻ
-            </button>
-          )}
+          
         </div>
 
         {feeRows.length > 0 ? (
@@ -1801,20 +2233,21 @@ activeItem.kind === "video" ? (
       </div>
 
       <div
-  className="
-    pt-4 mt-2
-    border-t border-white/10
-    bg-[rgba(255,255,255,0.02)]
-    backdrop-blur-[18px]
-    rounded-xl p-4
-  "
->
-    <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-lg font-semibold">Tiện ích</h2>
+        className="
+          pt-4 mt-2
+          border-t border-white/10
+          bg-[rgba(255,255,255,0.02)]
+          backdrop-blur-[18px]
+          rounded-xl p-4
+        "
+      >
+        <div className="mb-2 flex items-center gap-2">
+          <h2 className="text-lg font-semibold">Tiện ích</h2>
 
-        {amenitiesCopyText &&
-          renderCopyIcon(amenitiesCopyText, "Đã copy tiện ích")}
-      </div>
+          {amenitiesCopyText &&
+            renderCopyIcon(amenitiesCopyText, "Đã copy tiện ích")}
+        </div>
+
         <ul className="grid grid-cols-2 gap-2">
           {detail?.has_elevator && <li>✔️ Thang máy</li>}
           {detail?.has_stairs && <li>✔️ Thang bộ</li>}
@@ -1828,10 +2261,7 @@ activeItem.kind === "video" ? (
           {detail?.allow_pet && <li>✔️ Nuôi thú cưng</li>}
           {detail?.allow_cat && <li>✔️ Nuôi mèo</li>}
           {detail?.allow_dog && <li>✔️ Nuôi chó</li>}
-          {/* ===== PET POLICY ===== */}
           {detail?.no_pet && <li>✔️ Không thú cưng</li>}
-
-          {/* ===== CONTRACT TERM ===== */}
           {detail?.short_term && <li>✔️ Ngắn hạn</li>}
           {detail?.long_term && <li>✔️ Dài hạn</li>}
           {detail?.other_amenities && (
@@ -1850,85 +2280,85 @@ activeItem.kind === "video" ? (
         </ul>
       </div>
 
-  {isAdmin && (
-    <div className="pt-4 border-t space-y-2">
-    <div className="flex items-center justify-between gap-3">
+      {isAdmin && (
+        <div className="pt-4 border-t space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPolicyOpen(true)}
+                className="
+                  rounded-full px-4 py-2 text-sm font-semibold text-white
+                  border border-white/25
+                  bg-[rgba(255, 255, 255, 0.26)]
+                  backdrop-blur-[20px]
+                  shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
+                  hover:bg-[rgba(255, 255, 255, 0.38)]
+                  active:scale-[0.97]
+                  transition-all
+                "
+                title="Xem chính sách"
+              >
+                📄 Chính sách & Quy định
+              </button>
+            </div>
+          </div>
 
-  <div className="flex items-center gap-2">
-    <button
-      type="button"
-      onClick={() => setPolicyOpen(true)}
-      className="
-        rounded-full px-4 py-2 text-sm font-semibold text-white
-        border border-white/25
-        bg-[rgba(255, 255, 255, 0.26)]
-        backdrop-blur-[20px]
-        shadow-[0_8px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.25)]
-        hover:bg-[rgba(255, 255, 255, 0.38)]
-        active:scale-[0.97]
-        transition-all
-      "
-      title="Xem chính sách"
-    >
-      📄 Chính sách & Quy định
-    </button>
+          {isAdmin && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[#F4E7D6]">
+              <div className="min-w-0">
+                {zaloLinkRaw ? (
+                  renderSmartLinks(zaloLinkRaw)
+                ) : (
+                  <div className="text-gray-500">-</div>
+                )}
+              </div>
 
-    </div>
-  </div>
-
-    {/* ✅ L1 + L2 luôn thấy link_zalo + zalo_phone (kể cả rỗng) */}
-{isAdmin && (
-  <div className="grid grid-cols-1 sm:grid-cols-[auto_220px] gap-3 text-[#F4E7D6]">
-    {/* LEFT: Link */}
-  <div className="min-w-0">
-      
-      {zaloLinkRaw ? (
-        renderSmartLinks(zaloLinkRaw)
-      ) : (
-        <div className="text-gray-500">-</div>
-      )}
-    </div>
-
-    {/* RIGHT: Phones */}
-    <div>
-      <div className="font-medium mb-1"> SĐT chủ nhà </div>
-      {zaloPhones.length > 0 ? (
-        <div className="space-y-1">
-          {zaloPhones.map((p, i) => (
-          <button
-            key={`${p}-${i}`}
-            onClick={() => setPhoneModal(p)}
-            className="
-              text-left w-full break-all
-              text-red-400 font-semibold
-              hover:text-red-300 hover:underline
-              transition-colors
-            "
-          >
-            {p}
-          </button>
-          ))}
+              <div>
+                <div className="font-medium mb-1"> SĐT chủ nhà </div>
+                {zaloPhones.length > 0 ? (
+                  <div className="space-y-1">
+                    {zaloPhones.map((p, i) => (
+                      <button
+                        key={`${p}-${i}`}
+                        onClick={() => setPhoneModal(p)}
+                        className="
+                          text-left w-full break-all
+                          text-red-400 font-semibold
+                          hover:text-red-300 hover:underline
+                          transition-colors
+                        "
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500">-</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="text-gray-500">-</div>
       )}
     </div>
   </div>
-)}
-  </div>
-)}
+</div>
 
 {viewerOpen && mediaItems.length > 0 && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-[12px]"
+    className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/95 backdrop-blur-[14px]"
     onClick={() => setViewerOpen(false)}
   >
     <div
-      className="relative flex h-full w-full items-center justify-center"
+      className="relative flex h-full w-full items-center justify-center select-none cursor-grab active:cursor-grabbing"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
+      onPointerDown={handleViewerPointerDown}
+      onPointerUp={handleViewerPointerUp}
+      onPointerCancel={handleViewerPointerCancel}
+      onPointerLeave={handleViewerPointerCancel}
       onClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
     >
       {activeItem?.kind === "video" ? (
         <div className="relative h-full w-full">
@@ -1993,14 +2423,15 @@ activeItem.kind === "video" ? (
       ) : (
         <img
           src={activeItem?.url || ""}
-          alt={room?.title || roomCode || ""}
-          className="h-full w-full object-contain"
+          alt={room?.title || room?.room_code || ""}
+          className="h-full w-full object-contain select-none pointer-events-none"
+          draggable={false}
           loading="lazy"
         />
       )}
 
       <button
-        className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+        className="absolute right-4 top-4 z-[2147483647] flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
         onClick={() => setViewerOpen(false)}
       >
         ✕
@@ -2008,7 +2439,7 @@ activeItem.kind === "video" ? (
 
       {activeIndex > 0 && (
         <button
-          className="absolute left-4 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+          className="absolute left-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
           onClick={() => setActiveIndex((i) => i - 1)}
         >
           ‹
@@ -2017,7 +2448,7 @@ activeItem.kind === "video" ? (
 
       {activeIndex < mediaItems.length - 1 && (
         <button
-          className="absolute right-4 z-10 flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+          className="absolute right-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
           onClick={() => setActiveIndex((i) => i + 1)}
         >
           ›
@@ -2027,7 +2458,119 @@ activeItem.kind === "video" ? (
   </div>
 )}
 
- {/* ===== SHARE MODAL ===== */}
+{viewerOpen && mediaItems.length > 0 && (
+  <div
+    className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/95 backdrop-blur-[14px]"
+    onClick={() => setViewerOpen(false)}
+  >
+    <div
+      className="relative flex h-full w-full items-center justify-center select-none cursor-grab active:cursor-grabbing"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onPointerDown={handleViewerPointerDown}
+      onPointerUp={handleViewerPointerUp}
+      onPointerCancel={handleViewerPointerCancel}
+      onPointerLeave={handleViewerPointerCancel}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {activeItem?.kind === "video" ? (
+        <div className="relative h-full w-full">
+          <div
+            className="relative h-full w-full"
+            onClick={(e) => {
+              e.stopPropagation();
+              showOverlayAndMaybeHide();
+            }}
+          >
+            <video
+              ref={videoRef}
+              src={activeItem.url}
+              controls
+              playsInline
+              preload="none"
+              className="h-full w-full object-contain bg-black/40"
+              onPlay={() => {
+                setShowPlay(false);
+                showOverlayAndMaybeHide();
+              }}
+              onPause={() => {
+                setShowPlay(true);
+                setOverlayVisible(true);
+                clearOverlayTimer();
+              }}
+              onEnded={() => {
+                setShowPlay(true);
+                setOverlayVisible(true);
+                clearOverlayTimer();
+              }}
+            />
+
+            {(overlayVisible || showPlay) && (
+              <button
+                className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const v = videoRef.current;
+                  if (!v) return;
+
+                  setOverlayVisible(true);
+                  clearOverlayTimer();
+
+                  if (v.paused) {
+                    v.play();
+                    setShowPlay(false);
+                    scheduleHideOverlay(1500);
+                  } else {
+                    v.pause();
+                    setShowPlay(true);
+                  }
+                }}
+                aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
+                title={showPlay ? "Phát" : "Tạm dừng"}
+              >
+                {showPlay ? "▶" : "⏸"}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <img
+          src={activeItem?.url || ""}
+          alt={room?.title || room?.room_code || ""}
+          className="h-full w-full object-contain select-none pointer-events-none"
+          draggable={false}
+          loading="lazy"
+        />
+      )}
+
+      <button
+        className="absolute right-4 top-4 z-[2147483647] flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+        onClick={() => setViewerOpen(false)}
+      >
+        ✕
+      </button>
+
+      {activeIndex > 0 && (
+        <button
+          className="absolute left-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+          onClick={goPrevMedia}
+        >
+          ‹
+        </button>
+      )}
+
+      {activeIndex < mediaItems.length - 1 && (
+        <button
+          className="absolute right-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
+          onClick={goNextMedia}
+        >
+          ›
+        </button>
+      )}
+    </div>
+  </div>
+)}
+      {/* ===== SHARE MODAL ===== */}
     {(adminLevel === 1 || adminLevel === 2) && shareOpen && (
       <div
         className="
@@ -2048,7 +2591,7 @@ activeItem.kind === "video" ? (
         max-h-[calc(100dvh-16px)]
         rounded-t-2xl
         border border-white/15
-        bg-[rgba(252,202,141,0.25)]
+        bg-[rgba(158,106,57,0.25)]
         backdrop-blur-[50px]
         text-white
         shadow-[0_30px_100px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]
@@ -2071,7 +2614,7 @@ activeItem.kind === "video" ? (
               "px-3 py-1 rounded-lg border transition-colors",
              shareSel.room_link
             ? "bg-white/15 text-white border-white/30"
-            : "bg-white/5 text-[#F4E7D6] border-white/20 hover:bg-white/10 hover:border-white/35",
+            : "bg-white/5 text-[#F4E7D6] border-white/20 hover:bg-white/10 hover:border-white/55",
             ].join(" ")}
           >
             Link phòng
@@ -2209,7 +2752,7 @@ activeItem.kind === "video" ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-[#F4E7D6]/80">
-                  Ảnh gửi kèm
+                  Ảnh gửi kèm (ưu tiên dưới 10 ảnh)
                 </div>
 
                 <div className="text-xs text-[#F4E7D6]/60">
@@ -2259,7 +2802,7 @@ activeItem.kind === "video" ? (
                           </div>
 
                           {idx === 0 && (
-                            <div className="absolute left-1 top-1 rounded-full bg-black/55 px-1.5 py-[1px] text-[9px] font-medium text-white">
+                            <div className="absolute left-1 top-1 rounded-full bg-black/45 backdrop-blur-[2px] px-1.5 py-[1px] text-[9px] font-medium text-white">
                               Bìa
                             </div>
                           )}
@@ -2465,6 +3008,7 @@ activeItem.kind === "video" ? (
   </div>
 )}
 
+        </div>
     </div>
   );
 }

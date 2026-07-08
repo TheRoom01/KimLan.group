@@ -2929,7 +2929,20 @@ const handleNavigateToRoom = useCallback((href: string) => {
     );
   } catch {}
 
-  router.push(href);
+  const nextHref = (() => {
+    if (!href.includes("/rooms/")) return href;
+
+    const [pathPart, hashPart = ""] = href.split("#");
+    const [pathnamePart, queryPart = ""] = pathPart.split("?");
+
+    const sp = new URLSearchParams(queryPart);
+    sp.set("modal", "1");
+
+    const nextQs = sp.toString();
+    return `${pathnamePart}${nextQs ? `?${nextQs}` : ""}${hashPart ? `#${hashPart}` : ""}`;
+  })();
+
+  router.push(nextHref);
 }, [
   router,
   writeBackSnapshotNow,
@@ -2937,6 +2950,7 @@ const handleNavigateToRoom = useCallback((href: string) => {
   pageIndex,
   displayPageIndex,
 ]);
+
 // ================== RENDER ==================
 return (
   <div className="relative flex h-screen flex-col overflow-hidden bg-[#FFF8DC] text-[#3f2f24]">
@@ -2980,52 +2994,77 @@ return (
             </div>
           </div>
 
-         {/* RIGHT: ACCOUNT + SAVED */}
-<div className="relative z-[3000] flex shrink-0 flex-col items-end gap-1.5 whitespace-nowrap self-start">
-  {/* ACCOUNT */}
-  <div
-    id="auth-anchor"
-    className="
-      flex h-[36px] min-w-[118px] items-center justify-center
-      rounded-2xl border border-[#E5C9A9]/25
-      bg-[rgba(45,27,20,0.55)]
-      px-0
-      text-[12px] font-semibold text-[#E5C9A9]
-      backdrop-blur-[20px]
-      shadow-[0_10px_26px_rgba(0,0,0,0.35)]
-    "
-  />
+    {/* RIGHT: ACCOUNT + SAVED */}
+        <div className="relative z-[3000] flex shrink-0 flex-col items-end gap-1.5 whitespace-nowrap self-start">
+          {/* ACCOUNT */}
+          <div
+            id="auth-anchor"
+            className="
+              flex h-[36px] min-w-[118px] items-center justify-center
+              rounded-2xl border border-[#E5C9A9]/25
+              bg-[rgba(45,27,20,0.55)]
+              px-0
+              text-[12px] font-semibold text-[#E5C9A9]
+              backdrop-blur-[20px]
+              shadow-[0_10px_26px_rgba(0,0,0,0.35)]
+            "
+          />
 
-  {/* SAVED */}
-  <a
-    href="/saved"
-    target="_blank"
-    rel="noopener noreferrer"
-    aria-label="Phòng đã lưu"
-    title="Phòng đã lưu"
-    className="
-      flex h-[34px] min-w-[118px] items-center justify-center
-      rounded-2xl border border-[#E5C9A9]/25
-      bg-[rgba(45,27,20,0.55)]
-      px-4
-      text-[12px] font-semibold text-[#E5C9A9]
-      backdrop-blur-[20px]
-      shadow-[0_10px_26px_rgba(0,0,0,0.35)]
-      transition
-      hover:bg-[rgba(255,255,255,0.08)]
-    "
-  >
-    ★ Phòng đã lưu
-  </a>
-</div>
+     {/* SAVED */}
+      <a
+        href="/saved"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Phòng đã lưu"
+        title="Phòng đã lưu"
+        className="
+          flex h-[34px] min-w-[118px] items-center justify-center
+          rounded-2xl border border-[#E5C9A9]/25
+          bg-[rgba(45,27,20,0.55)]
+          px-4
+          text-[12px] font-semibold text-[#E5C9A9]
+          backdrop-blur-[20px]
+          shadow-[0_10px_26px_rgba(0,0,0,0.35)]
+          transition
+          hover:bg-[rgba(255,255,255,0.08)]
+        "
+      >
+        ★ Phòng đã lưu
+      </a>
+    </div>
         </div>
       </header>
 
      {/* FILTER BAR */}
-<div className="relative z-[900]">
-  <div className="w-full max-w-none px-0.5 pt-0.5 sm:px-3 lg:px-4">
-    <div className="scale-[0.88] origin-top">
-      <FilterBar
+      <div className="relative z-[900]">
+        <div className="w-full max-w-none px-0.5 pt-0.5 sm:px-3 lg:px-4">
+          <div
+            className="
+              [&_button]:inline-flex
+              [&_button]:items-center
+              [&_button]:justify-center
+              [&_button]:whitespace-nowrap
+              [&_button]:w-fit
+              [&_button]:max-w-full
+              [&_button]:h-auto
+              [&_button]:min-h-[35px]
+              [&_button]:px-2
+              [&_button]:py-0.5
+              [&_button]:text-[11px]
+              [&_button]:leading-none
+              [&_button]:rounded-full
+              [&_button]:box-border
+
+              [&_input]:h-8
+              [&_input]:px-2
+              [&_input]:text-[11px]
+              [&_select]:h-8
+              [&_select]:px-2
+              [&_select]:text-[11px]
+              [&_label]:text-[11px]
+            "
+          >
+            <FilterBar
               districts={districts}
               roomTypes={roomTypes}
               loading={loading}
@@ -3122,33 +3161,33 @@ return (
             </div>
 
             <pre className="whitespace-pre-wrap break-words">
-{JSON.stringify(
-  {
-    at: pageDebug.at,
-    event: pageDebug.event,
-    targetIndex: pageDebug.targetIndex,
-    pageIndex: pageDebug.pageIndex,
-    displayPageIndex: pageDebug.displayPageIndex,
-    total: pageDebug.total,
-    rawLen: pageDebug.rawLen,
-    dedupedLen: pageDebug.dedupedLen,
-    limit: pageDebug.limit,
-    sortMode: pageDebug.sortMode,
-    hasNextBefore: pageDebug.hasNextBefore,
-    finalHasNext: pageDebug.finalHasNext,
-    cursorUsedForThisPage: pageDebug.cursorUsedForThisPage,
-    nextCursor: pageDebug.nextCursor,
-    cachedState: pageDebug.cachedState,
-    filterSig: pageDebug.filterSig,
-    pagePriceMin: pageDebug.pagePriceMin,
-    pagePriceMax: pageDebug.pagePriceMax,
-    firstRows: pageDebug.firstRows,
-    lastRows: pageDebug.lastRows,
-    note: pageDebug.note,
-  },
-  null,
-  2
-)}
+              {JSON.stringify(
+                {
+                  at: pageDebug.at,
+                  event: pageDebug.event,
+                  targetIndex: pageDebug.targetIndex,
+                  pageIndex: pageDebug.pageIndex,
+                  displayPageIndex: pageDebug.displayPageIndex,
+                  total: pageDebug.total,
+                  rawLen: pageDebug.rawLen,
+                  dedupedLen: pageDebug.dedupedLen,
+                  limit: pageDebug.limit,
+                  sortMode: pageDebug.sortMode,
+                  hasNextBefore: pageDebug.hasNextBefore,
+                  finalHasNext: pageDebug.finalHasNext,
+                  cursorUsedForThisPage: pageDebug.cursorUsedForThisPage,
+                  nextCursor: pageDebug.nextCursor,
+                  cachedState: pageDebug.cachedState,
+                  filterSig: pageDebug.filterSig,
+                  pagePriceMin: pageDebug.pagePriceMin,
+                  pagePriceMax: pageDebug.pagePriceMax,
+                  firstRows: pageDebug.firstRows,
+                  lastRows: pageDebug.lastRows,
+                  note: pageDebug.note,
+                },
+                null,
+                2
+              )}
             </pre>
           </div>
 

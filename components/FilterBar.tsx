@@ -58,8 +58,8 @@ const parseMoneyInput = (raw: string) => {
 };
 
 const optionClass = (checked: boolean) => `
-  group flex cursor-pointer items-center gap-3
-  rounded-xl px-3 py-2 text-sm transition-all
+  group flex cursor-pointer items-center gap-2
+  rounded-xl px-2.5 py-1.5 text-[13px] transition-all
   ${
     checked
       ? "bg-[rgba(216,180,135,0.22)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
@@ -372,414 +372,442 @@ const toggleTerm = (value: "short" | "long") => {
     )}
 
     {/* HÀNG NÚT */}
-    <div ref={filterRowRef} className="flex items-center justify-between gap-2">
-      <div ref={filterButtonsRef} className="flex flex-nowrap items-center gap-2">
-        {/* QUẬN */}
-        <div className="relative z-[1500]">
-          <button
-            type="button"
-            onClick={() =>
-              setOpenFilter((v) => (v === "district" ? null : "district"))
-            }
-            className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
-              openFilter === "district"
-                ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
-                : "border-white/20"
-            }`}
-          >
-            Quận
-            {selectedDistricts.length > 0 && (
-              <span className="text-xs text-white/65">
-                ({selectedDistricts.length})
-              </span>
-            )}
-          </button>
+<div ref={filterRowRef} className="flex items-center justify-between gap-2">
+  <div ref={filterButtonsRef} className="flex flex-nowrap items-center gap-2">
+    {/* QUẬN */}
+    <div className="relative z-[1500]">
+      <button
+        type="button"
+        onClick={() =>
+          setOpenFilter((v) => (v === "district" ? null : "district"))
+        }
+        className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
+          openFilter === "district"
+            ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
+            : "border-white/20"
+        }`}
+      >
+        Quận
+        {selectedDistricts.length > 0 && (
+          <span className="text-xs text-white/65">
+            ({selectedDistricts.length})
+          </span>
+        )}
+      </button>
 
-          {openFilter === "district" && (
-            <div
-              ref={(el) => {
-                if (openFilter === "district") openPanelRef.current = el;
-              }}
-             className="absolute left-0 mt-3 z-[9999] w-[200px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.0015)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-4"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
+      {openFilter === "district" && (
+        <div
+          ref={(el) => {
+            if (openFilter === "district") openPanelRef.current = el;
+          }}
+          className="absolute left-0 mt-3 z-[9999] w-[210px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.0015)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <div className="text-[14px] font-semibold text-white">Chọn quận</div>
+
+            <button
+              type="button"
+              className="text-[11px] text-[#FFE7BE]/75 hover:text-white"
+              onClick={() => setSelectedDistricts([])}
             >
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-sm font-semibold text-white">Chọn quận</div>
+              Clear
+            </button>
+          </div>
 
-                <button
-                  type="button"
-                  className="text-xs text-[#FFE7BE]/75 hover:text-white"
-                  onClick={() => setSelectedDistricts([])}
-                >
-                  Clear
-                </button>
+          <div className="liquid-glass-scroll max-h-64 overflow-y-auto space-y-0.5 pr-2">
+            {districts.map((d) => {
+              const checked = selectedDistricts.includes(d);
+              return (
+                <label key={d} className={optionClass(checked)}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    className="
+                      h-4 w-4 rounded-[5px]
+                      border border-white/40
+                      bg-white/20
+                      accent-[#D8B487]
+                      transition-all
+                    "
+                    onChange={() => {
+                      setSelectedDistricts((prev) =>
+                        checked ? prev.filter((x) => x !== d) : [...prev, d]
+                      );
+                    }}
+                  />
+
+                  <span className="text-[14px] font-medium leading-tight drop-shadow-[0_1px_6px_rgba(0,0,0,0.35)]">
+                    {d}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+
+    {/* LOẠI PHÒNG */}
+    <div className="relative z-[1500]">
+      <button
+        type="button"
+        onClick={() =>
+          setOpenFilter((v) => (v === "roomType" ? null : "roomType"))
+        }
+        className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
+          openFilter === "roomType"
+            ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
+            : "border-white/20"
+        }`}
+      >
+        Loại phòng
+        {selectedRoomTypes.length > 0 && (
+          <span className="text-xs text-white/65">
+            ({selectedRoomTypes.length})
+          </span>
+        )}
+      </button>
+
+      {openFilter === "roomType" && (
+        <div
+          ref={(el) => {
+            if (openFilter === "roomType") openPanelRef.current = el;
+          }}
+          className="absolute right-0 mt-3 z-[9999] w-fit min-w-[190px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.005)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3 space-y-2"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[14px] font-semibold text-white">Dạng phòng</div>
+
+            <button
+              type="button"
+              className="text-[11px] text-[#FFE7BE]/75 hover:text-white"
+              onClick={() => setSelectedRoomTypes([])}
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="liquid-glass-scroll max-h-64 overflow-auto space-y-0.5 pr-1">
+            {roomTypes.map((t) => {
+              const checked = selectedRoomTypes.includes(t);
+              return (
+                <label key={t} className={optionClass(checked)}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    className="
+                      h-4 w-4 rounded-[5px]
+                      border border-white/40
+                      bg-white/5
+                      accent-[#D8B487]
+                    "
+                    onChange={() => {
+                      setSelectedRoomTypes((prev) =>
+                        checked ? prev.filter((x) => x !== t) : [...prev, t]
+                      );
+                    }}
+                  />
+                  <span className="text-[14px] font-medium leading-tight drop-shadow-[0_1px_6px_rgba(0,0,0,0.35)]">
+                    {t}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+
+    {/* TIỆN NGHI */}
+    <div className="relative z-[1500] flex flex-wrap items-start gap-2">
+      <button
+        type="button"
+        onClick={() =>
+          setOpenFilter((v) => (v === "amenities" ? null : "amenities"))
+        }
+        className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
+          openFilter === "amenities"
+            ? "border-[#E0B77A] bg-[rgba(143,82,38,0.42)]"
+            : "border-white/20"
+        }`}
+        disabled={loading}
+      >
+        Tiện Nghi
+      </button>
+
+      {openFilter === "amenities" && (
+        <div
+          className="fixed inset-0 z-[1200] flex items-center justify-center p-3 sm:p-4"
+          onPointerDown={closeAllFilters}
+          onClick={closeAllFilters}
+        >
+          <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
+
+          <div
+            ref={(el) => {
+              if (openFilter === "amenities") openPanelRef.current = el;
+            }}
+            className="
+              relative z-10
+
+              w-[60%] max-w-[350px]
+              max-h-[50vh]
+              overflow-y-auto
+
+              rounded-2xl
+              border border-white/25
+
+              bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))]
+              text-white
+
+              backdrop-blur-[24px]
+
+              shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.35)]
+
+              p-3
+            "
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-[15px] font-semibold text-white">
+                Tiện Nghi
               </div>
 
-              <div className="liquid-glass-scroll max-h-64 overflow-y-auto space-y-1 pr-2">
-              {districts.map((d) => {
-                const checked = selectedDistricts.includes(d);
-                return (
+              <button
+                type="button"
+                className="text-[12px] text-[#FFE7BE]/75 hover:text-white"
+                onClick={() => {
+                  setMoveFilter(null);
+                  setPetFilters([]);
+                  setTermFilters(["long"]);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
+                  Di chuyển
+                </div>
+
+                {[
+                  [null, "Tất cả"],
+                  ["elevator", "Thang máy"],
+                  ["stairs", "Thang bộ"],
+                ].map(([value, label]) => (
                   <label
-                    key={d}
-                    className={`
-                      group flex cursor-pointer items-center gap-3
-                      rounded-xl px-3 py-2 text-sm transition-all
-                      ${
-                        checked
-                          ? "bg-[rgba(216,180,135,0.22)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
-                          : "text-white/90 hover:bg-[rgba(216,180,135,0.14)] hover:text-white"
-                      }
-                    `}
+                    key={String(value)}
+                    className={optionClass(moveFilter === value)}
                   >
                     <input
-                      type="checkbox"
-                      checked={checked}
+                      type="radio"
+                      name="moveFilter"
+                      checked={moveFilter === value}
                       className="
-                        h-4 w-4 rounded-[5px]
-                        border border-white/40
-                        bg-white/5
+                        h-4 w-4
                         accent-[#D8B487]
-                        transition-all
                       "
-                      onChange={() => {
-                        setSelectedDistricts((prev) =>
-                          checked ? prev.filter((x) => x !== d) : [...prev, d]
-                        );
-                      }}
+                      onChange={() => setMoveFilter(value as any)}
                     />
-
-                    <span className="font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.35)]">
-                      {d}
+                    <span className="text-[14px] font-medium leading-tight">
+                      {label}
                     </span>
                   </label>
-                );
-              })}
-            </div>
-            </div>
-          )}
-        </div>
+                ))}
 
-        {/* LOẠI PHÒNG */}
-        <div className="relative z-[1500]">
-          <button
-            type="button"
-            onClick={() =>
-              setOpenFilter((v) => (v === "roomType" ? null : "roomType"))
-            }
-            className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
-              openFilter === "roomType"
-                ? "border-[#E0B77A] bg-[rgba(180,160,135,0.45)]"
-                : "border-white/20"
-            }`}
-          >
-            Loại phòng
-            {selectedRoomTypes.length > 0 && (
-              <span className="text-xs text-white/65">
-                ({selectedRoomTypes.length})
-              </span>
-            )}
-          </button>
-
-          {openFilter === "roomType" && (
-            <div
-              ref={(el) => {
-                if (openFilter === "roomType") openPanelRef.current = el;
-              }}
-            className="absolute right-0 mt-3 z-[9999] w-fit min-w-[190px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.005)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-4 space-y-3"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-white">Dạng phòng</div>
-
-                <button
-                  type="button"
-                  className="text-xs text-[#FFE7BE]/75 hover:text-white"
-                  onClick={() => setSelectedRoomTypes([])}
-                >
-                  Clear
-                </button>
+                <div className="mt-1 border-t border-white/20 pt-0.5 md:hidden" />
               </div>
 
-              <div className="liquid-glass-scroll max-h-64 overflow-auto space-y-1 pr-1">
-                {roomTypes.map((t) => {
-                  const checked = selectedRoomTypes.includes(t);
+              <div className="space-y-1.5">
+                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
+                  Thú Cưng
+                </div>
+
+                {[
+                  ["cat", "Nuôi mèo"],
+                  ["dog", "Nuôi chó"],
+                  ["nopet", "Không pet"],
+                ].map(([value, label]) => {
+                  const checked = petFilters.includes(
+                    value as "cat" | "dog" | "nopet"
+                  );
+
                   return (
-                    <label key={t} className={optionClass(checked)}>
+                    <label key={value} className={optionClass(checked)}>
                       <input
                         type="checkbox"
                         checked={checked}
-                        className={checkboxClass}
-                        onChange={() => {
-                          setSelectedRoomTypes((prev) =>
-                            checked ? prev.filter((x) => x !== t) : [...prev, t]
-                          );
-                        }}
+                        className="
+                          h-4 w-4 rounded-[5px]
+                          border border-white/40
+                          bg-white/5
+                          accent-[#D8B487]
+                        "
+                        onChange={() =>
+                          togglePet(value as "cat" | "dog" | "nopet")
+                        }
                       />
-                      <span className="font-medium drop-shadow-[0_1px_6px_rgba(0,0,0,0.35)]">
-                        {t}
+                      <span className="text-[14px] font-medium leading-tight">
+                        {label}
+                      </span>
+                    </label>
+                  );
+                })}
+
+                <div className="mt-1 border-t border-white/20 pt-0.5 md:hidden" />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
+                  Thời hạn HĐ
+                </div>
+
+                {[
+                  ["short", "Ngắn hạn"],
+                  ["long", "Dài hạn"],
+                ].map(([value, label]) => {
+                  const checked = termFilters.includes(
+                    value as "short" | "long"
+                  );
+
+                  return (
+                    <label key={value} className={optionClass(checked)}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        className="
+                          h-4 w-4 rounded-[5px]
+                          border border-white/40
+                          bg-white/5
+                          accent-[#D8B487]
+                        "
+                        onChange={() =>
+                          toggleTerm(value as "short" | "long")
+                        }
+                      />
+                      <span className="text-[14px] font-medium leading-tight">
+                        {label}
                       </span>
                     </label>
                   );
                 })}
               </div>
             </div>
-          )}
-        </div>
 
-        {/* TIỆN NGHI */}
-        <div className="relative z-[1500] flex flex-wrap items-start gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setOpenFilter((v) => (v === "amenities" ? null : "amenities"))
-            }
-            className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
-              openFilter === "amenities"
-                ? "border-[#E0B77A] bg-[rgba(143,82,38,0.42)]"
-                : "border-white/20"
-            }`}
-            disabled={loading}
-          >
-            Tiện Nghi
-          </button>
-
-          {openFilter === "amenities" && (
-            <div
-              className="fixed inset-0 z-[1200] flex items-center justify-center p-3 sm:p-4"
-              onPointerDown={closeAllFilters}
-              onClick={closeAllFilters}
-            >
-              <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
-
-              <div
-                ref={(el) => {
-                  if (openFilter === "amenities") openPanelRef.current = el;
-                }}
-               className="
-                relative z-10
-
-                w-[60%] max-w-[350px]
-                max-h-[50vh]
-                overflow-y-auto
-
-                rounded-2xl
-                border border-white/25
-
-                bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))]
-                text-white
-
-                backdrop-blur-[24px]
-
-                shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.35)]
-
-                p-2
-                "
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                className="rounded-xl border border-white/20 bg-white/12 px-4 py-1.5 text-[13px] font-semibold text-white backdrop-blur-xl hover:bg-white/20"
+                onClick={() => setOpenFilter(null)}
               >
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="text-base font-semibold text-white">
-                    Tiện Nghi
-                  </div>
-
-                  <button
-                    type="button"
-                    className="text-sm text-[#FFE7BE]/75 hover:text-white"
-                    onClick={() => {
-                      setMoveFilter(null);
-                      setPetFilters([]);
-                      setTermFilters(["long"]);
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-                  <div className="space-y-3">
-                    <div className="text-sm font-semibold text-[#FFE7BE]/75">
-                      Di chuyển
-                    </div>
-
-                    {[
-                      [null, "Tất cả"],
-                      ["elevator", "Thang máy"],
-                      ["stairs", "Thang bộ"],
-                    ].map(([value, label]) => (
-                      <label key={String(value)} className={optionClass(moveFilter === value)}>
-                        <input
-                          type="radio"
-                          name="moveFilter"
-                          checked={moveFilter === value}
-                          className={radioClass}
-                          onChange={() => setMoveFilter(value as any)}
-                        />
-                        <span className="font-medium">{label}</span>
-                      </label>
-                    ))}
-
-                    <div className="mt-2 border-t border-white/20 pt-1 md:hidden" />
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="text-sm font-semibold text-[#FFE7BE]/75">
-                      Thú Cưng
-                    </div>
-
-                    {[
-                      ["cat", "Nuôi mèo"],
-                      ["dog", "Nuôi chó"],
-                      ["nopet", "Không pet"],
-                    ].map(([value, label]) => {
-                      const checked = petFilters.includes(value as "cat" | "dog" | "nopet");
-
-                      return (
-                        <label key={value} className={optionClass(checked)}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            className={checkboxClass}
-                            onChange={() => togglePet(value as "cat" | "dog" | "nopet")}
-                          />
-                          <span className="font-medium">{label}</span>
-                        </label>
-                      );
-                    })}
-
-                    <div className="mt-2 border-t border-white/20 pt-1 md:hidden" />
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="text-sm font-semibold text-[#FFE7BE]/75">
-                      Thời hạn HĐ
-                    </div>
-
-                    {[
-                      ["short", "Ngắn hạn"],
-                      ["long", "Dài hạn"],
-                    ].map(([value, label]) => {
-                      const checked = termFilters.includes(value as "short" | "long");
-
-                      return (
-                        <label key={value} className={optionClass(checked)}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            className={checkboxClass}
-                            onChange={() => toggleTerm(value as "short" | "long")}
-                          />
-                          <span className="font-medium">{label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="mt-5 flex justify-end">
-                  <button
-                    type="button"
-                    className="rounded-xl border border-white/20 bg-white/12 px-5 py-2 text-sm font-semibold text-white backdrop-blur-xl hover:bg-white/20"
-                    onClick={() => setOpenFilter(null)}
-                  >
-                    Xong
-                  </button>
-                </div>
-              </div>
+                Xong
+              </button>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* RIGHT: Sắp Xếp */}
-      <div
-        className={`relative z-[1500] shrink-0 ${
-          openFilter === "amenities" ? "invisible pointer-events-none" : ""
-        }`}
-      >
-        <button
-          type="button"
-          onClick={() =>
-            setOpenFilter((v) => (v === "sort" ? null : "sort"))
-          }
-          className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
-            openFilter === "sort"
-              ? "border-[#E0B77A] bg-[rgba(215,215,215,0.22)]"
-              : "border-white/20"
-          }`}
-        >
-          Sắp xếp
-        </button>
-
-        {openFilter === "sort" && (
-          <div
-            ref={(el) => {
-              if (openFilter === "sort") openPanelRef.current = el;
-            }}
-           className="absolute right-0 mt-3 z-[9999] w-fit min-w-[200px] rounded-3xl 
-border border-white/40 
-bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))] 
-text-white 
-backdrop-blur-[48px] 
-shadow-[0_40px_140px_rgba(0,0,0,0.85),0_0_60px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.5)] 
-p-4 space-y-3"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-sm font-semibold text-white">Thứ tự</div>
-
-            {(
-              [
-                ["updated_desc", "Mới cập nhật"],
-                ["price_asc", "Giá tăng dần"],
-                ["price_desc", "Giá giảm dần"],
-              ] as const
-            ).map(([v, label]) => (
-              <label key={v} className={optionClass(sortMode === v)}>
-  <input
-    type="radio"
-    name="sortMode"
-    checked={sortMode === v}
-    className={radioClass}
-    onChange={() => {
-      setSortMode(v);
-      setOpenFilter(null);
-    }}
-  />
-  <span className="font-medium">{label}</span>
-</label>
-            ))}
-
-            <div className="border-t border-white/20 pt-3" />
-
-            <div className="text-sm font-semibold text-white">Trạng thái</div>
-
-            {(
-              [
-                [null, "Tất cả"],
-                ["Trống", "Trống"],
-                ["Đã thuê", "Đã thuê"],
-              ] as const
-            ).map(([v, label]) => (
-              <label key={label} className={optionClass(statusFilter === v)}>
-                <input
-                  type="radio"
-                  name="statusFilter"
-                  checked={statusFilter === v}
-                  className={radioClass}
-                  onChange={() => {
-                    setStatusFilter(v);
-                    setOpenFilter(null);
-                  }}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
+  </div>
+
+  {/* RIGHT: Sắp Xếp */}
+  <div
+    className={`relative z-[1500] shrink-0 ${
+      openFilter === "amenities" ? "invisible pointer-events-none" : ""
+    }`}
+  >
+    <button
+      type="button"
+      onClick={() =>
+        setOpenFilter((v) => (v === "sort" ? null : "sort"))
+      }
+      className={`${pillBtnBase} ${compactFilterText ? "!text-[11.7px]" : ""} ${loading ? "opacity-60" : ""} ${
+        openFilter === "sort"
+          ? "border-[#E0B77A] bg-[rgba(215,215,215,0.22)]"
+          : "border-white/20"
+      }`}
+    >
+      Sắp xếp
+    </button>
+
+    {openFilter === "sort" && (
+      <div
+        ref={(el) => {
+          if (openFilter === "sort") openPanelRef.current = el;
+        }}
+        className="absolute right-0 mt-3 z-[9999] w-fit min-w-[200px] rounded-3xl border border-white/40 bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))] text-white backdrop-blur-[48px] shadow-[0_40px_140px_rgba(0,0,0,0.85),0_0_60px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.5)] p-3 space-y-2"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-[14px] font-semibold text-white">Thứ tự</div>
+
+        {(
+          [
+            ["updated_desc", "Mới cập nhật"],
+            ["price_asc", "Giá tăng dần"],
+            ["price_desc", "Giá giảm dần"],
+          ] as const
+        ).map(([v, label]) => (
+          <label key={v} className={optionClass(sortMode === v)}>
+            <input
+              type="radio"
+              name="sortMode"
+              checked={sortMode === v}
+              className="
+                h-4 w-4
+                accent-[#D8B487]
+              "
+              onChange={() => {
+                setSortMode(v);
+                setOpenFilter(null);
+              }}
+            />
+            <span className="text-[14px] font-medium leading-tight">
+              {label}
+            </span>
+          </label>
+        ))}
+
+        <div className="border-t border-white/20 pt-2" />
+
+        <div className="text-[14px] font-semibold text-white">Trạng thái</div>
+
+        {(
+          [
+            [null, "Tất cả"],
+            ["Trống", "Trống"],
+            ["Đã thuê", "Đã thuê"],
+          ] as const
+        ).map(([v, label]) => (
+          <label key={label} className={optionClass(statusFilter === v)}>
+            <input
+              type="radio"
+              name="statusFilter"
+              checked={statusFilter === v}
+              className="
+                h-4 w-4
+                accent-[#D8B487]
+              "
+              onChange={() => {
+                setStatusFilter(v);
+                setOpenFilter(null);
+              }}
+            />
+            <span className="text-[14px] font-medium leading-tight">
+              {label}
+            </span>
+          </label>
+        ))}
+      </div>
+    )}
+  </div>
+</div>
 
     {/* PRICE */}
     <div className="w-full space-y-3">

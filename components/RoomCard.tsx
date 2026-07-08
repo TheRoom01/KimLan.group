@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
 import { createPortal } from "react-dom";
+import ShareRoomModal from "@/components/share/ShareRoomModal";
 
 
 type Room = {
@@ -93,6 +94,10 @@ const [currentStatus, setCurrentStatus] = useState(
   normalizeStatus(room.status)
 );
 
+// đặt trước return, cùng chỗ với các const khác
+const safeAdminLevel: 0 | 1 | 2 =
+  adminLevel === 1 || adminLevel === 2 ? adminLevel : 0;
+
 const [updatingStatus, setUpdatingStatus] = useState(false);
 
 const [confirmStatus, setConfirmStatus] = useState<{
@@ -155,6 +160,8 @@ const [confirmStatus, setConfirmStatus] = useState<{
 const [saved, setSaved] = useState(false);
 const [animating, setAnimating] = useState(false);
 const [copiedAddress, setCopiedAddress] = useState(false);
+
+const [shareOpen, setShareOpen] = useState(false);
 
 useEffect(() => {
   setSaved(isRoomSaved(room.id));
@@ -236,6 +243,43 @@ useEffect(() => {
       }
     }
 
+  // 1) THÊM HÀM NÀY ngay sau handleCopyAddress(...)
+async function handleShareRoom(e: React.MouseEvent<HTMLButtonElement>) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const url =
+    typeof window !== "undefined"
+      ? `${window.location.origin}${href}`
+      : href;
+
+  const title = room.room_code
+    ? `Phòng ${room.room_code}`
+    : "The Room";
+
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title,
+        url,
+      });
+      return;
+    }
+  } catch {}
+
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = url;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  }
+}
 
   useEffect(() => {
   const prevOverflow = document.body.style.overflow;
@@ -252,7 +296,7 @@ useEffect(() => {
   const level = Number(adminLevel) || 0;
   const isAdmin = level === 1 || level === 2;
 
-  const href = `/rooms/${room.id}`;
+  const href = `/rooms/${room.id}?modal=1`;
 
   const isRoomAvailable = currentStatus === "Trống";
 
@@ -340,9 +384,9 @@ return (
       className="
         group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
-        bg-[rgba(215,215,215,0.22)]
+        bg-[rgba(129,77,43,0.45)]
         backdrop-blur-[34px]
-        backdrop-saturate-[155%]
+        backdrop-saturate-[225%]
         border border-[#D2B48C]/30
 
         shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]
@@ -480,12 +524,12 @@ return (
                   loading={index < 6 ? "eager" : "lazy"}
                   unoptimized
                   onError={() => {
-                    setMainErrorStage((s) =>
-                      s < 2 ? ((s + 1) as 0 | 1 | 2) : 2
-                    );
+                    setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));
                   }}
                 />
               )}
+
+              
 
               {room.has_video && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -540,7 +584,7 @@ return (
             </div>
           </div>
         </div>
-
+     
      {/* CONTENT */}
       <div className="p-3 flex flex-col gap-2">
         <div className="flex min-w-0 items-start justify-between gap-2">
@@ -657,10 +701,55 @@ return (
             </svg>
           )}
         </button>
-      </p>
+            </p>
+
+            <div className="px-3 pb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShareOpen(true);
+                }}
+                className="
+                  inline-flex h-10 w-10 items-center justify-center
+                  rounded-full border border-white/20
+                  bg-black/65 backdrop-blur-[10px]
+                  shadow-[0_8px_24px_rgba(0,0,0,0.35)]
+                  hover:bg-black/80 transition
+                "
+                title="Chia sẻ"
+                aria-label="Chia sẻ"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <path d="M8.6 13.1 15.4 17" />
+                  <path d="M15.4 7 8.6 10.9" />
+                </svg>
+              </button>
+            </div>
 
       </div>
        </Link>
+
+    <ShareRoomModal
+      open={shareOpen}
+      onClose={() => setShareOpen(false)}
+      room={room}
+      images={images}
+      roomUrl={href}
+      adminLevel={safeAdminLevel}
+    />
 
     {/* STATUS CONFIRM MODAL */}
     {confirmStatus &&

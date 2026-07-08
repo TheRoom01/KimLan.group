@@ -24,9 +24,6 @@ export default function LogoIntroButton({ logoSrc = "/logo.png" }: Props) {
         alt="Logo"
         className="h-14 w-14 object-contain rounded-lg"
        />
-<span className="mt-1 text-[12px] font-bold text-red-600 animate-pulse">
-  👆Liên hệ Admin
-</span>
 
       </div>
     </button>

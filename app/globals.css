@@ -39,9 +39,8 @@ textarea:focus {
   box-shadow: none;
 }
 
-button {
-  min-height: 40px;
-  font-size: 16px;
+button:not(.keep-global-button) {
+  font-size: inherit;
 }
 
 input[type="checkbox"],
@@ -79,11 +78,12 @@ input[type="radio"] {
 }
 
 @media (max-width: 640px) {
-  .room-modal {
+  .room-modal-fullscreen {
     height: 100vh;
     max-height: 100vh;
     border-radius: 0;
   }
+}
 
   .admin-table-header {
     display: none;
@@ -108,7 +108,7 @@ input[type="radio"] {
     justify-content: flex-end;
     margin-top: 8px;
   }
-}
+
 
 /* ===== KL dual range ===== */
 .range-wrap {
@@ -331,3 +331,13 @@ input[type="radio"] {
   }
 }
 
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
