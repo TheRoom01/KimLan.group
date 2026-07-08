@@ -719,26 +719,32 @@ return (
             </p>
 
             {room.description && (
-  <div
-    className="
-      mt-1 max-w-full truncate
-      text-[14px] font-semibold leading-5
-      text-red-400
-    "
-    title={String(room.description).trim()}
-  >
-    {String(room.description).split(/\r?\n/)[0]?.trim()}
-    {String(room.description).includes("\n") ? "..." : ""}
-  </div>
-)}
+         <div
+            className="
+              mt-1 max-w-full truncate
+              text-[14px] font-semibold leading-5
+              text-red-400
+            "
+            title={String(room.description).trim()}
+          >
+            {String(room.description).split(/\r?\n/)[0]?.trim()}
+            {String(room.description).includes("\n") ? "..." : ""}
           </div>
+        )}
+         </div>
 
           <button
             type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setShareOpen(true);
+
+              if (safeAdminLevel === 1 || safeAdminLevel === 2) {
+                setShareOpen(true);
+                return;
+              }
+
+              handleShareRoom(e);
             }}
             className="
               shrink-0 inline-flex h-8 w-8 items-center justify-center
@@ -769,16 +775,18 @@ return (
         </div>
       </div>
     </div>
-       </Link>
+  </Link>
 
-    <ShareRoomModal
-      open={shareOpen}
-      onClose={() => setShareOpen(false)}
-      room={room}
-      images={images}
-      roomUrl={href}
-      adminLevel={safeAdminLevel}
-    />
+    {(safeAdminLevel === 1 || safeAdminLevel === 2) && (
+      <ShareRoomModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          room={room}
+          images={images}
+          roomUrl={href}
+          adminLevel={safeAdminLevel}
+        />
+      )}
 
     {/* STATUS CONFIRM MODAL */}
     {confirmStatus &&
