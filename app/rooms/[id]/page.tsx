@@ -373,23 +373,34 @@ export default function RoomDetailPage() {
   const viewerDragStartRef = useRef<{ x: number; y: number } | null>(null);
   const viewerDragArmedRef = useRef(false);
 
-    let startX = 0;
-    const onTouchStart = (e: any) => {
-      startX = e.touches?.[0]?.clientX ?? 0;
-    };
-    const onTouchEnd = (e: any) => {
-      const endX = e.changedTouches?.[0]?.clientX ?? 0;
-      const count = mediaItemsLengthRef.current;
+    const touchStartXRef = useRef(0);
 
-      if (!count) return;
+  const onTouchStart = (e: any) => {
+    touchStartXRef.current = e.touches?.[0]?.clientX ?? 0;
+    showMediaControlsTemporarily();
+  };
 
-      if (startX - endX > 50 && activeIndex < count - 1) {
+  const onTouchEnd = (e: any) => {
+    const endX = e.changedTouches?.[0]?.clientX ?? 0;
+    const count = mediaItemsLengthRef.current;
+    const startX = touchStartXRef.current;
+
+    if (!count) return;
+
+    const diffX = startX - endX;
+
+    if (Math.abs(diffX) > 50) {
+      showMediaControlsTemporarily();
+
+      if (diffX > 0 && activeIndex < count - 1) {
         setActiveIndex((i: number) => i + 1);
       }
-      if (endX - startX > 50 && activeIndex > 0) {
+
+      if (diffX < 0 && activeIndex > 0) {
         setActiveIndex((i: number) => i - 1);
       }
-    };
+    }
+  };
 
     function goPrevMedia() {
       setActiveIndex((i) => Math.max(i - 1, 0));
@@ -452,8 +463,8 @@ export default function RoomDetailPage() {
   
 //=========== Màu modal chi tiết =========//
   const ROOM_THEME = {
-  modalBg: "#99611dd7",
-  modalBgInner: "#664515a2",
+  modalBg: "#a06a29be",
+  modalBgInner: "#74573094",
   modalText: "#fcf6ef",
   modalMutedText: "rgba(255, 246, 234, 0.9)",
   modalBorder: "rgba(255,233,214,0.14)",
@@ -509,6 +520,8 @@ type ShareKey =
   const [sharing, setSharing] = useState(false);
   const MAX_NATIVE_SHARE_FILES = 10;
 
+  
+
 const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
     room_link: false,
   // ✅ tick sẵn theo yêu cầu + thứ tự build text
@@ -532,6 +545,30 @@ function showToast(msg: string, duration = 4200) {
   setToast(msg);
   window.setTimeout(() => setToast(null), duration);
 }
+
+const [mediaControlsVisible, setMediaControlsVisible] = useState(false);
+const mediaControlsTimerRef = useRef<number | null>(null);
+
+function showMediaControlsTemporarily() {
+  setMediaControlsVisible(true);
+
+  if (mediaControlsTimerRef.current) {
+    window.clearTimeout(mediaControlsTimerRef.current);
+  }
+
+  mediaControlsTimerRef.current = window.setTimeout(() => {
+    setMediaControlsVisible(false);
+  }, 1000);
+}
+
+useEffect(() => {
+  return () => {
+    if (mediaControlsTimerRef.current) {
+      window.clearTimeout(mediaControlsTimerRef.current);
+    }
+  };
+}, []);
+
 
 function detectInAppBrowser() {
   if (typeof navigator === "undefined") return false;
@@ -1742,14 +1779,53 @@ return (
     />
 
       {!viewerOpen && (
+      <button
+        type="button"
+        onClick={handleCloseModal}
+        className="absolute right-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-[16px] shadow-[0_10px_30px_rgba(0,0,0,0.45)] hover:bg-black/50"
+        aria-label="Đóng"
+        title="Đóng"
+      >
+        ✕
+      </button>
+    )}
+
+{!viewerOpen && (
   <button
     type="button"
-    onClick={handleCloseModal}
-    className="absolute right-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-[16px] shadow-[0_10px_30px_rgba(0,0,0,0.45)] hover:bg-black/50"
-    aria-label="Đóng"
-    title="Đóng"
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      router.push("/");
+    }}
+    className="
+      absolute left-3 top-0.5 z-50
+      flex h-8 items-center justify-center gap-1.5
+      rounded-full border border-white/20
+      bg-black/45 px-2
+      text-[10px] font-semibold text-white
+      backdrop-blur-[10px]
+      shadow-[0_10px_30px_rgba(0,0,0,0.45)]
+      hover:bg-black/50
+      transition
+    "
+    aria-label="Về trang chủ"
+    title="Về trang chủ"
   >
-    ✕
+    <svg
+  viewBox="0 0 24 24"
+  className="h-5 w-5"
+  fill="none"
+  stroke="currentColor"
+  strokeWidth="2.4"
+  strokeLinecap="round"
+  strokeLinejoin="round"
+>
+  <path d="M3 10.5 12 3l9 7.5" />
+  <path d="M5 9.5V21h14V9.5" />
+  <path d="M9 21v-6h6v6" />
+</svg>
+<span>Home</span>
   </button>
 )}
 
@@ -1884,11 +1960,13 @@ return (
             <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
           )}
 
-          <div className="absolute top-3 left-3 text-white bg-black/40 px-2 py-1 rounded pointer-events-none">
-            {activeIndex + 1} / {mediaItems.length}
-          </div>
+          {mediaControlsVisible && (
+            <div className="absolute top-1 left-1/2 -translate-x-1/2 text-white bg-black/40 px-2 py-1 rounded pointer-events-none">
+              {activeIndex + 1} / {mediaItems.length}
+            </div>
+          )}
 
-          {activeIndex > 0 && (
+          {mediaControlsVisible && activeIndex > 0 && (
             <button
               className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
               onClick={(e) => {
@@ -1900,7 +1978,7 @@ return (
             </button>
           )}
 
-          {activeIndex < mediaItems.length - 1 && (
+          {mediaControlsVisible && activeIndex < mediaItems.length - 1 && (
             <button
               className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
               onClick={(e) => {
@@ -1935,7 +2013,7 @@ return (
                   inline-flex items-center gap-1
                   rounded-full
                   border border-white/20
-                  bg-black/65
+                  bg-black/35
                   px-2 py-1
                   text-[10px] font-medium text-white
                   backdrop-blur-[10px]
@@ -1951,42 +2029,42 @@ return (
 
               {/* Nút chia sẻ: góc phải */}
              <button
-  type="button"
-  onClick={(e) => {
-    e.stopPropagation();
-    setShareOpen(true);
-  }}
-  className="
-    absolute bottom-3 right-3 z-20
-    inline-flex items-center justify-center
-    h-10 w-10
-    rounded-full
-    border border-white/20
-    bg-black/65
-    backdrop-blur-[10px]
-    shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-    hover:bg-black/80
-    transition
-  "
-  title="Chia sẻ"
-  aria-label="Chia sẻ"
->
-  <svg
-    viewBox="0 0 24 24"
-    className="h-5 w-5 shrink-0 text-white"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="18" cy="5" r="3" />
-    <circle cx="6" cy="12" r="3" />
-    <circle cx="18" cy="19" r="3" />
-    <path d="M8.6 13.1 15.4 17" />
-    <path d="M15.4 7 8.6 10.9" />
-  </svg>
-</button>
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShareOpen(true);
+                }}
+                className="
+                  absolute bottom-3 right-3 z-20
+                  inline-flex items-center justify-center
+                  h-10 w-10
+                  rounded-full
+                  border border-white/20
+                  bg-black/35
+                  backdrop-blur-[10px]
+                  shadow-[0_8px_24px_rgba(0,0,0,0.35)]
+                  hover:bg-black/80
+                  transition
+                "
+                title="Chia sẻ"
+                aria-label="Chia sẻ"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 shrink-0 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <path d="M8.6 13.1 15.4 17" />
+                  <path d="M15.4 7 8.6 10.9" />
+                </svg>
+              </button>
             </>
           )}
         </div>
@@ -2440,7 +2518,7 @@ return (
         ✕
       </button>
 
-      {activeIndex > 0 && (
+      {mediaControlsVisible && activeIndex > 0 && (
         <button
           className="absolute left-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
           onClick={goPrevMedia}
@@ -2449,7 +2527,7 @@ return (
         </button>
       )}
 
-      {activeIndex < mediaItems.length - 1 && (
+      {mediaControlsVisible && activeIndex < mediaItems.length - 1 && (
         <button
           className="absolute right-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
           onClick={goNextMedia}

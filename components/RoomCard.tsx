@@ -460,12 +460,13 @@ return (
 
           w-[34px] aspect-square rounded-full
           
-          bg-[rgba(225, 225, 225, 0.69)]
-          backdrop-blur-[18px]
+          bg-black/35
+          backdrop-blur-[10px]
 
-          border border-white/30
+          border border-white/20
 
-          shadow-[0_8px_24px_rgba(0,0,0,0.5)]
+          shadow-[0_8px_24px_rgba(0,0,0,0.35)]
+          hover:bg-black/80
 
           transition-all duration-200
           hover:scale-110
@@ -479,7 +480,7 @@ return (
             ${
               saved
                 ? "fill-yellow-400 stroke-yellow-400 drop-shadow-[0_0_10px_rgba(255,214,0,0.8)]"
-                : "fill-transparent stroke-white"
+                : "fill-transparent stroke-white/90"
             }
           `}
           strokeWidth="2"
