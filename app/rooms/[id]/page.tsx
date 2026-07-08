@@ -1429,7 +1429,9 @@ if (!id || fetchStatus === "loading") {
       <div
         className="
           relative w-[355px] max-w-[calc(100vw-24px)]
-          h-[656px] max-h-[calc(100dvh-24px)]
+          md:w-[520px] md:max-w-[calc(100vw-48px)]
+          h-[720px] max-h-[calc(100dvh-24px)]
+          md:h-[860px] md:max-h-[calc(100dvh-40px)]
           overflow-hidden rounded-[24px]
           border border-white/15
           bg-[#E9D7C3]
@@ -1910,7 +1912,7 @@ return (
             </button>
           )}
 
-          {(isAdmin && activeItem?.kind === "image") && (
+          {isAdmin && imageUrls.length > 0 && (
             <>
               {/* Nút tải ảnh: góc trái */}
               <button
@@ -2345,118 +2347,6 @@ return (
   </div>
 </div>
 
-{viewerOpen && mediaItems.length > 0 && (
-  <div
-    className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/95 backdrop-blur-[14px]"
-    onClick={() => setViewerOpen(false)}
-  >
-    <div
-      className="relative flex h-full w-full items-center justify-center select-none cursor-grab active:cursor-grabbing"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-      onPointerDown={handleViewerPointerDown}
-      onPointerUp={handleViewerPointerUp}
-      onPointerCancel={handleViewerPointerCancel}
-      onPointerLeave={handleViewerPointerCancel}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {activeItem?.kind === "video" ? (
-        <div className="relative h-full w-full">
-          <div
-            className="relative h-full w-full"
-            onClick={(e) => {
-              e.stopPropagation();
-              showOverlayAndMaybeHide();
-            }}
-          >
-            <video
-              ref={videoRef}
-              src={activeItem.url}
-              controls
-              playsInline
-              preload="none"
-              className="h-full w-full object-contain bg-black/40"
-              onPlay={() => {
-                setShowPlay(false);
-                showOverlayAndMaybeHide();
-              }}
-              onPause={() => {
-                setShowPlay(true);
-                setOverlayVisible(true);
-                clearOverlayTimer();
-              }}
-              onEnded={() => {
-                setShowPlay(true);
-                setOverlayVisible(true);
-                clearOverlayTimer();
-              }}
-            />
-
-            {(overlayVisible || showPlay) && (
-              <button
-                className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const v = videoRef.current;
-                  if (!v) return;
-
-                  setOverlayVisible(true);
-                  clearOverlayTimer();
-
-                  if (v.paused) {
-                    v.play();
-                    setShowPlay(false);
-                    scheduleHideOverlay(1500);
-                  } else {
-                    v.pause();
-                    setShowPlay(true);
-                  }
-                }}
-                aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
-                title={showPlay ? "Phát" : "Tạm dừng"}
-              >
-                {showPlay ? "▶" : "⏸"}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <img
-          src={activeItem?.url || ""}
-          alt={room?.title || room?.room_code || ""}
-          className="h-full w-full object-contain select-none pointer-events-none"
-          draggable={false}
-          loading="lazy"
-        />
-      )}
-
-      <button
-        className="absolute right-4 top-4 z-[2147483647] flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
-        onClick={() => setViewerOpen(false)}
-      >
-        ✕
-      </button>
-
-      {activeIndex > 0 && (
-        <button
-          className="absolute left-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
-          onClick={() => setActiveIndex((i) => i - 1)}
-        >
-          ‹
-        </button>
-      )}
-
-      {activeIndex < mediaItems.length - 1 && (
-        <button
-          className="absolute right-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
-          onClick={() => setActiveIndex((i) => i + 1)}
-        >
-          ›
-        </button>
-      )}
-    </div>
-  </div>
-)}
 
 {viewerOpen && mediaItems.length > 0 && (
   <div

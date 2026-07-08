@@ -19,6 +19,7 @@ type Room = {
   price: number;
   description?: string | null;
   status: "Trống" | "Đã thuê" | string;
+  updated_at?: string | null;
 
   image_urls?: string[] | null;
   image_count?: number | null;
@@ -62,6 +63,24 @@ function publicHouseNumber(value?: string | null) {
   return "...";
 }
 
+function formatTimeAgo(value?: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+
+  const minutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(diffMs / 86400000);
+
+  if (minutes < 1) return "vừa cập nhật";
+  if (minutes < 60) return `${minutes} phút trước`;
+  if (hours < 24) return `${hours} giờ trước`;
+  if (days < 30) return `${days} ngày trước`;
+
+  return date.toLocaleDateString("vi-VN");
+}
+
 function normalizeStatus(v?: string | null) {
   const s = String(v ?? "").toLowerCase().trim();
 
@@ -89,6 +108,12 @@ export default function RoomCard({
     const s = (src ?? "").trim();
     return s ? s : FALLBACK;
   };
+
+  const updatedAt =
+  (room as any).updated_at ??
+  (room as any).updatedAt ??
+  (room as any).last_updated_at ??
+  null;
 
 const [currentStatus, setCurrentStatus] = useState(
   normalizeStatus(room.status)
@@ -370,6 +395,8 @@ const roomMetaLabelColor = "#fff6ec";
 const roomMetaValueColor = "#f8e9d8";
 const roomMetaDividerColor = "rgba(229,201,169,0.9)";
 
+console.log(room.updated_at, room);
+
 return (
   <>
    <Link
@@ -595,10 +622,7 @@ return (
             {room.room_code && (
               <>
                 <span>Mã: </span>
-                <span
-                  className="font-semibold text-[15px]"
-                  style={{ color: roomMetaValueColor }}
-                >
+                <span className="font-semibold text-[15px]" style={{ color: roomMetaValueColor }}>
                   {room.room_code}
                 </span>
                 <span style={{ color: roomMetaDividerColor }}> | </span>
@@ -606,140 +630,144 @@ return (
             )}
 
             <span>Dạng: </span>
-            <span
-              className="font-semibold"
-              style={{ color: roomMetaValueColor }}
-            >
+            <span className="font-semibold" style={{ color: roomMetaValueColor }}>
               {room.room_type}
             </span>
           </h3>
 
-           {isAdmin ? (
-              <button
-                type="button"
-                disabled={updatingStatus}
-                onClick={handleToggleStatus}
-                title="Bấm để đổi trạng thái phòng"
-                className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
-                  updatingStatus
-                    ? "cursor-wait opacity-70"
-                    : "cursor-pointer hover:scale-105"
-                }`}
-              >
-                {updatingStatus
-                  ? "Đang lưu"
-                  : isRoomAvailable
-                  ? "Còn Trống"
-                  : "Đã thuê"}
-              </button>
-            ) : (
-              <span
-              className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass}`}
-              >
-                {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
-              </span>
-            )}
-          </div>
-
-         <div className="flex min-w-0 items-start gap-3">
-            <div className="shrink-0 text-[18px] font-semibold text-[#60A5FA]">
-              {price
-                ? Number(price).toLocaleString("vi-VN") + " đ"
-                : "Liên hệ"}
+          {updatedAt && (
+            <div className="shrink-0 text-right text-[12px] font-semibold leading-5 text-[#F4E7D6]/90">
+              Cập nhật: {formatTimeAgo(updatedAt)}
             </div>
-
-            {room.description && (
-              <div className="min-w-0 flex-1 text-right text-[14px] font-semibold text-[#FFF1DD] break-words whitespace-pre-line line-clamp-2">
-                {room.description}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-   {/* ADDRESS */}
-      <p className="px-3 pb-3 text-white font-semibold leading-6 line-clamp-2 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
-        📍{adminLevel === 1 || adminLevel === 2
-          ? room.house_number
-            ? `${room.house_number} `
-            : ""
-          : `${publicHouseNumber(room.house_number)} `}
-        {address}
-        {ward && `, P. ${ward}`}
-        {district && `, ${district}`}
+        <div className="flex items-center justify-between gap-3">
+          <div className="shrink-0 text-[18px] font-semibold text-[#60A5FA]">
+            {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
+          </div>
 
-        <button
-          type="button"
-          onClick={handleCopyAddress}
-          title={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
-          className="
-            !min-h-0 !h-[20px] !w-[20px]
-            ml-1 inline-flex align-[-2px]
-            items-center justify-center
-            rounded-[3px]
-            bg-white/10
-            text-white/75
-            backdrop-blur-[10px]
-            transition
-            hover:bg-white/20 hover:text-white
-            active:scale-90
-          "
-        >
-          {copiedAddress ? (
-            <span className="text-[10px] leading-none text-green-300">✓</span>
+          {isAdmin ? (
+            <button
+              type="button"
+              disabled={updatingStatus}
+              onClick={handleToggleStatus}
+              title="Bấm để đổi trạng thái phòng"
+              className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
+                updatingStatus ? "cursor-wait opacity-70" : "cursor-pointer hover:scale-105"
+              }`}
+            >
+              {updatingStatus ? "Đang lưu" : isRoomAvailable ? "Còn Trống" : "Đã thuê"}
+            </button>
           ) : (
+            <span className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass}`}>
+              {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ADDRESS + DESCRIPTION + SHARE */}
+      <div className="px-3 pb-3">
+        <div className="flex items-end gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-white font-semibold leading-6 line-clamp-2 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+              📍{adminLevel === 1 || adminLevel === 2
+                ? room.house_number
+                  ? `${room.house_number} `
+                  : ""
+                : `${publicHouseNumber(room.house_number)} `}
+              {address}
+              {ward && `, P. ${ward}`}
+              {district && `, ${district}`}
+
+              <button
+                type="button"
+                onClick={handleCopyAddress}
+                title={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
+                className="
+                  !min-h-0 !h-[20px] !w-[20px]
+                  ml-1 inline-flex align-[-2px]
+                  items-center justify-center
+                  rounded-[3px]
+                  bg-white/10
+                  text-white/75
+                  backdrop-blur-[10px]
+                  transition
+                  hover:bg-white/20 hover:text-white
+                  active:scale-90
+                "
+              >
+                {copiedAddress ? (
+                  <span className="text-[10px] leading-none text-green-300">✓</span>
+                ) : (
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-[20px] w-[20px]"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="8" y="8" width="11" height="11" rx="2.5" />
+                    <path d="M5 16V7.5A2.5 2.5 0 0 1 7.5 5H16" />
+                  </svg>
+                )}
+              </button>
+            </p>
+
+            {room.description && (
+  <div
+    className="
+      mt-1 max-w-full truncate
+      text-[14px] font-semibold leading-5
+      text-red-400
+    "
+    title={String(room.description).trim()}
+  >
+    {String(room.description).split(/\r?\n/)[0]?.trim()}
+    {String(room.description).includes("\n") ? "..." : ""}
+  </div>
+)}
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShareOpen(true);
+            }}
+            className="
+              shrink-0 inline-flex h-8 w-8 items-center justify-center
+              rounded-full border border-white/20
+              bg-black/35 backdrop-blur-[10px]
+              shadow-[0_8px_24px_rgba(0,0,0,0.35)]
+              hover:bg-black/80 transition
+            "
+            title="Chia sẻ"
+            aria-label="Chia sẻ"
+          >
             <svg
               viewBox="0 0 24 24"
-              className="h-[20px] w-[20px]"
+              className="h-4 w-4 text-white"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2.4"
+              strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <rect x="8" y="8" width="11" height="11" rx="2.5" />
-              <path d="M5 16V7.5A2.5 2.5 0 0 1 7.5 5H16" />
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <path d="M8.6 13.1 15.4 17" />
+              <path d="M15.4 7 8.6 10.9" />
             </svg>
-          )}
-        </button>
-            </p>
-
-            <div className="px-3 pb-3 flex justify-end">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShareOpen(true);
-                }}
-                className="
-                  inline-flex h-10 w-10 items-center justify-center
-                  rounded-full border border-white/20
-                  bg-black/65 backdrop-blur-[10px]
-                  shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-                  hover:bg-black/80 transition
-                "
-                title="Chia sẻ"
-                aria-label="Chia sẻ"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-5 w-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="18" cy="5" r="3" />
-                  <circle cx="6" cy="12" r="3" />
-                  <circle cx="18" cy="19" r="3" />
-                  <path d="M8.6 13.1 15.4 17" />
-                  <path d="M15.4 7 8.6 10.9" />
-                </svg>
-              </button>
-            </div>
-
+          </button>
+        </div>
       </div>
+    </div>
        </Link>
 
     <ShareRoomModal
