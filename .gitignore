@@ -28,3 +28,6 @@ Thumbs.db
 
 # Misc
 *.log
+
+.env.local
+.zalo-reader/
