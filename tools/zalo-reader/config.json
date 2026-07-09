@@ -1,6 +1,6 @@
 {
   "webBaseUrl": "https://canhodichvu.vercel.app",
-  "internalSecret": "dev-zalo-reader-secret",
+  "internalSecret": "",
   "scanIntervalMs": 240000,
   "maxMessagesPerGroup": 40,
   "maxImagesPerBatch": 12,

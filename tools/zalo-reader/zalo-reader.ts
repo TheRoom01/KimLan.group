@@ -33,8 +33,46 @@ const CONFIG_PATH = path.join(ROOT, "tools/zalo-reader/config.json");
 const STATE_PATH = path.join(ROOT, "tools/zalo-reader/state.json");
 const PROFILE_DIR = path.join(ROOT, ".zalo-reader/profile");
 
+function loadDotEnvLocal() {
+  const envPath = path.join(ROOT, ".env.local");
+  if (!fs.existsSync(envPath)) return;
+
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const idx = trimmed.indexOf("=");
+    if (idx <= 0) continue;
+
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, "");
+
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
+
 function readConfig(): Config {
-  return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  loadDotEnvLocal();
+
+  const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+
+  config.webBaseUrl =
+    process.env.ZALO_READER_WEB_BASE_URL ||
+    config.webBaseUrl;
+
+  config.internalSecret =
+    process.env.ZALO_READER_INTERNAL_SECRET ||
+    config.internalSecret;
+
+  if (!config.internalSecret) {
+    throw new Error("Missing ZALO_READER_INTERNAL_SECRET");
+  }
+
+  return config;
 }
 
 function readState(): Record<string, true> {
