@@ -1,0 +1,32 @@
+{
+  "webBaseUrl": "https://canhodichvu.vercel.app",
+  "internalSecret": "dev-zalo-reader-secret",
+  "scanIntervalMs": 240000,
+  "maxMessagesPerGroup": 40,
+  "maxImagesPerBatch": 12,
+  "maxFollowingImageMessages": 8,
+  "groups": [
+    "PHÒNG TRỌ Q1",
+    "PHÒNG TRỌ GÒ VẤP",
+    "PHÒNG TRỌ BÌNH THẠNH"
+  ],
+  "roomTextKeywords": [
+    "phòng",
+    "phong",
+    "trống",
+    "trong",
+    "đã thuê",
+    "da thue",
+    "giá",
+    "gia",
+    "quận",
+    "quan"
+  ],
+  "selectors": {
+    "searchBox": "input[type='text']",
+    "messageItems": "[role='row'], .chat-message, .msg-item, div[class*='message']",
+    "messageText": "",
+    "messageSender": "",
+    "imageNodes": "img"
+  }
+}

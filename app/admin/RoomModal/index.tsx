@@ -74,6 +74,11 @@ type Props = {
   editingRoom: Room | null
   activeTab: TabKey
   setActiveTab: (tab: TabKey) => void
+  mode?: 'room' | 'pending'
+  pendingId?: string | null
+  pendingRoomPayload?: Record<string, any> | null
+  pendingDetailPayload?: Record<string, any> | null
+  onPendingSaved?: () => void | Promise<void>
 
   // ✅ onSaved nhận room mới để trang admin cập nhật ngay
   onSaved: (updatedRoom: Room, opts?: { isNew?: boolean }) => void | Promise<void>
@@ -89,7 +94,11 @@ function normalizeStatus(v?: RoomStatus | string | null) {
 /* ================= COMPONENT ================= */
 
 export default function RoomModal({
-  
+  mode = 'room',
+  pendingId = null,
+  pendingRoomPayload = null,
+  pendingDetailPayload = null,
+  onPendingSaved,
   open,
   onClose,
   editingRoom,
@@ -98,7 +107,7 @@ export default function RoomModal({
   setActiveTab,
   onSaved,
 }: Props) {
-  const isEdit = Boolean(editingRoom?.id)
+ 
  const isClone = (editingRoom as any)?._isClone;
    const [roomForm, setRoomForm] = useState<RoomForm>({
     room_code: '',
@@ -117,7 +126,9 @@ export default function RoomModal({
     chinh_sach: '',
     
   })
-
+ 
+    const isPending = mode === 'pending'
+    const isEdit = !isPending && Boolean(editingRoom?.id)
   const [detailForm, setDetailForm] = useState<RoomDetail>(defaultDetailForm)
   const [feeAutofillDone, setFeeAutofillDone] = useState(false)
 
@@ -790,6 +801,36 @@ const detailSample =
   setErrorMsg(null)
   setShowCloseConfirm(false)
 
+    if (isPending) {
+    draftRoomIdRef.current = ''
+    initialCoverUrlRef.current = ''
+
+    setRoomForm({
+      room_code: pendingRoomPayload?.room_code ?? '',
+      room_type: pendingRoomPayload?.room_type ?? '',
+      house_number: pendingRoomPayload?.house_number ?? '',
+      address: pendingRoomPayload?.address ?? '',
+      ward: pendingRoomPayload?.ward ?? '',
+      district: pendingRoomPayload?.district ?? '',
+      price: Number(pendingRoomPayload?.price ?? 0),
+      status: normalizeStatus(pendingRoomPayload?.status ?? 'Trống'),
+      description: pendingRoomPayload?.description ?? '',
+      link_zalo: pendingRoomPayload?.link_zalo ?? '',
+      zalo_phone: pendingRoomPayload?.zalo_phone ?? '',
+      media: [],
+      chinh_sach: pendingRoomPayload?.chinh_sach ?? '',
+    })
+
+    setDetailForm(
+      pendingDetailPayload
+        ? { ...defaultDetailForm, ...(pendingDetailPayload as RoomDetail) }
+        : defaultDetailForm
+    )
+
+    setFeeAutofillDone(false)
+    return
+  }
+
   const base = editingRoom ?? ({} as any)
   const isCloneMode = Boolean(base?._isClone)
   const isEdit = Boolean(base?.id && !isCloneMode)
@@ -916,7 +957,7 @@ const detailSample =
       setErrorMsg(e?.message ?? "Load phòng thất bại")
     }
   })()
-}, [editingRoom])
+}, [editingRoom, isPending, pendingRoomPayload, pendingDetailPayload])
 
 const closeNow = () => {
   setShowCloseConfirm(false)
@@ -1044,6 +1085,58 @@ const cancelCloseConfirm = () => {
   if (v) {
     setErrorMsg(v)
     return
+  }
+
+    if (isPending) {
+    if (!pendingId) {
+      setErrorMsg('Thiếu pendingId.')
+      return
+    }
+
+    try {
+      setSaving(true)
+      setErrorMsg(null)
+
+      const roomPayload = {
+        room_code: roomForm.room_code,
+        room_type: roomForm.room_type,
+        house_number: roomForm.house_number,
+        address: roomForm.address,
+        ward: roomForm.ward,
+        district: roomForm.district,
+        price: roomForm.price,
+        status: normalizeStatus(roomForm.status),
+        description: roomForm.description,
+        link_zalo: roomForm.link_zalo,
+        zalo_phone: roomForm.zalo_phone,
+        chinh_sach: roomForm.chinh_sach,
+      }
+
+      const res = await fetch(`/api/admin/zalo-imports/${pendingId}/draft`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_payload: roomPayload,
+          detail_payload: detailForm,
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || 'Lưu nháp pending thất bại')
+      }
+
+      onNotify?.('Đã lưu nháp import.')
+      await onPendingSaved?.()
+      onClose()
+      return
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Lưu nháp pending thất bại')
+      return
+    } finally {
+      setSaving(false)
+    }
   }
 
   try {
@@ -1254,7 +1347,7 @@ const stopBackdropEvents = (e: any) => {
         onTouchStart={stopBackdropEvents}
       >
         <div style={modalBody}>
-          <h3>{isEdit ? 'Chỉnh sửa phòng' : 'Thêm phòng mới'}</h3>
+          <h3>{isPending ? 'Chỉnh sửa import Zalo' : isEdit ? 'Chỉnh sửa phòng' : 'Thêm phòng mới'}</h3>
 
           {errorMsg && <div style={errorBox}>Lỗi: {errorMsg}</div>}
 
@@ -1277,7 +1370,13 @@ const stopBackdropEvents = (e: any) => {
               onChange={setRoomForm}
               updatedAt={editingRoom?.updated_at ?? null}
               uploading={uploading}
-              onUploadFiles={handleUploadFiles}
+              onUploadFiles={
+                isPending
+                  ? async () => {
+                      alert('Ảnh pending đang lấy từ Zalo Import. Chức năng thêm ảnh sẽ làm ở bước sau.')
+                    }
+                  : handleUploadFiles
+              }
               chinh_sach={roomForm.chinh_sach}
              onChangeChinhSach={(v: string) => setRoomForm(prev => ({ ...prev, chinh_sach: v }))}
              onAutofillByAddress={tryAutofillByAddress}
@@ -1342,7 +1441,7 @@ const stopBackdropEvents = (e: any) => {
   {/* RIGHT */}
   <div style={{ display: "flex", justifyContent: "flex-end" }}>
     <button onClick={handleSubmit} style={btnSaveLight} disabled={saving} type="button">
-      {saving ? "Đang lưu..." : "Lưu"}
+      {saving ? "Đang lưu..." : isPending ? "Lưu nháp" : "Lưu"}
     </button>
   </div>
 </div>
