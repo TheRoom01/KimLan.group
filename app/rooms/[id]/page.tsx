@@ -516,10 +516,21 @@ type ShareKey =
   // ===== SHARE IMAGES =====
   // Auto chọn toàn bộ ảnh đang có.
   // Lưu ý: khi share thật qua Zalo/Messenger, nếu quá nặng có thể cần giới hạn lại sau.
-  const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
-  const [sharing, setSharing] = useState(false);
-  const MAX_NATIVE_SHARE_FILES = 10;
- 
+const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
+const [shareVideoUrls, setShareVideoUrls] = useState<string[]>([]);
+const [includeVideos, setIncludeVideos] = useState(false);
+
+const [sharing, setSharing] = useState(false);
+const [preparingImages, setPreparingImages] = useState(false);
+const [preparingVideos, setPreparingVideos] = useState(false);
+const [openingShareModal, setOpeningShareModal] = useState(false);
+
+const [preparedFiles, setPreparedFiles] = useState<Record<string, File>>({});
+const [preparedVideoFiles, setPreparedVideoFiles] = useState<Record<string, File>>({});
+
+const MAX_NATIVE_SHARE_FILES = 10;
+const MAX_NATIVE_SHARE_VIDEOS = 2;
+
   const [goingHome, setGoingHome] = useState(false);
   
 
@@ -805,17 +816,32 @@ async function handleShare() {
   if (sharing) return;
 
   const text = buildShareText();
-  const selectedImageUrls = Array.from(
-    new Set(
-      shareImageUrls.map((url) => String(url ?? "").trim()).filter(Boolean)
+  const selectedImageUrls: string[] = Array.from(
+    new Set<string>(
+      shareImageUrls
+        .map((url: string) => String(url ?? "").trim())
+        .filter((url: string) => Boolean(url))
     )
   );
 
+  const selectedVideoUrls: string[] = includeVideos
+    ? Array.from(
+        new Set<string>(
+          shareVideoUrls
+            .map((url: string) => String(url ?? "").trim())
+            .filter((url: string) => Boolean(url))
+        )
+      ).slice(0, MAX_NATIVE_SHARE_VIDEOS)
+    : [];
+    
+
   const hasText = text.trim().length > 0;
   const hasImages = selectedImageUrls.length > 0;
+  const hasVideos = selectedVideoUrls.length > 0;
+  const hasMedia = hasImages || hasVideos;
 
-  if (!hasText && !hasImages) {
-    showToast("Không có nội dung hoặc ảnh để chia sẻ");
+  if (!hasText && !hasMedia) {
+    showToast("Không có nội dung, ảnh hoặc video để chia sẻ");
     return;
   }
 
@@ -836,7 +862,7 @@ async function handleShare() {
     }
 
     // ===== 1) Không có ảnh =====
-    if (!hasImages) {
+    if (!hasMedia) {
       if (navigator?.share) {
         try {
           await navigator.share({ title: "The Room", text });
@@ -853,30 +879,53 @@ async function handleShare() {
       return;
     }
 
-    // ===== 2) Có ảnh: thử share nhiều file nếu còn trong giới hạn =====
-    if (selectedImageUrls.length <= MAX_NATIVE_SHARE_FILES && navigator?.share) {
-      const files: File[] = [];
+    // ===== 2) Có ảnh/video: thử share file trực tiếp nếu thiết bị hỗ trợ =====
+      if (
+        selectedImageUrls.length <= MAX_NATIVE_SHARE_FILES &&
+        selectedVideoUrls.length <= MAX_NATIVE_SHARE_VIDEOS &&
+        navigator?.share
+      ) {
+        const imageFiles = selectedImageUrls
+          .map((url: string) => preparedFiles[url])
+          .filter(Boolean) as File[];
 
-      for (let i = 0; i < selectedImageUrls.length; i += 1) {
-        files.push(await r2ImageUrlToFile(selectedImageUrls[i], i));
+        const videoFiles = selectedVideoUrls
+          .map((url: string) => preparedVideoFiles[url])
+          .filter(Boolean) as File[];
+
+        if (imageFiles.length !== selectedImageUrls.length) {
+          showToast("Ảnh đang chuẩn bị, thử lại sau vài giây");
+          return;
+        }
+
+        if (videoFiles.length !== selectedVideoUrls.length) {
+          showToast("Video đang chuẩn bị, thử lại sau vài giây");
+          return;
+        }
+
+        const files = [...imageFiles, ...videoFiles];
+
+        const canShareFiles =
+          typeof navigator.canShare === "function"
+            ? navigator.canShare({ files })
+            : false;
+
+        if (canShareFiles) {
+          await navigator.share({
+            title: "The Room",
+            files,
+          });
+
+          showToast(
+            selectedVideoUrls.length > 0
+              ? "Đã mở chia sẻ ảnh/video"
+              : "Đã mở chia sẻ ảnh"
+          );
+
+          setShareOpen(false);
+          return;
+        }
       }
-
-      const canShareFiles =
-        typeof navigator.canShare === "function"
-          ? navigator.canShare({ files })
-          : false;
-
-      if (canShareFiles) {
-        await navigator.share({
-          title: "The Room",
-          files,
-        });
-
-        showToast("Đã mở chia sẻ ảnh");
-        setShareOpen(false);
-        return;
-      }
-    }
 
     // ===== 3) Quá nhiều ảnh hoặc share files không hỗ trợ -> gộp thành 1 collage =====
     const collageFile = await buildCollageFileFromUrls(selectedImageUrls);
@@ -1112,23 +1161,170 @@ useEffect(() => {
 useEffect(() => {
   if (!shareOpen) return;
 
-  // ✅ Mỗi lần mở modal, tự chọn toàn bộ ảnh đang có
   setShareImageUrls(imageUrls);
+  setPreparedFiles({});
+}, [shareOpen, imageUrls]);
+
+useEffect(() => {
+  if (!shareOpen || !includeVideos || shareVideoUrls.length === 0) return;
+
+  const selectedVideoUrls: string[] = Array.from(
+    new Set<string>(
+      shareVideoUrls
+        .map((url: string) => String(url ?? "").trim())
+        .filter((url: string) => Boolean(url))
+    )
+  ).slice(0, MAX_NATIVE_SHARE_VIDEOS);
+
+  const allPrepared = selectedVideoUrls.every((url) => preparedVideoFiles[url]);
+  if (allPrepared) return;
+
+  let cancelled = false;
+
+  async function prepareVideos() {
+    setPreparingVideos(true);
+
+    const next: Record<string, File> = { ...preparedVideoFiles };
+
+    for (let i = 0; i < selectedVideoUrls.length; i += 1) {
+      const url = selectedVideoUrls[i];
+
+      if (next[url]) continue;
+
+      try {
+        next[url] = await r2VideoUrlToFile(url, i);
+      } catch (e) {
+        console.error("prepare video error:", e);
+      }
+    }
+
+    if (!cancelled) {
+      setPreparedVideoFiles(next);
+      setPreparingVideos(false);
+    }
+  }
+
+  prepareVideos();
+
+  return () => {
+    cancelled = true;
+  };
+}, [shareOpen, includeVideos, shareVideoUrls]);
+
+useEffect(() => {
+  if (!shareOpen || imageUrls.length === 0) return;
+
+ const selectedUrls: string[] = Array.from(
+    new Set<string>(
+      imageUrls
+        .map((url: string) => String(url ?? "").trim())
+        .filter((url: string) => Boolean(url))
+    )
+  );
+
+  const allPrepared = selectedUrls.every((url) => preparedFiles[url]);
+  if (allPrepared) return;
+
+  let cancelled = false;
+
+  async function prepareImages() {
+    setPreparingImages(true);
+
+    const next: Record<string, File> = { ...preparedFiles };
+
+    for (let i = 0; i < selectedUrls.length; i += 1) {
+      const url = selectedUrls[i];
+
+      if (next[url]) continue;
+
+      try {
+        next[url] = await r2ImageUrlToFile(url, i);
+      } catch (e) {
+        console.error("prepare image error:", e);
+      }
+    }
+
+    if (!cancelled) {
+      setPreparedFiles(next);
+      setPreparingImages(false);
+    }
+  }
+
+  prepareImages();
+
+  return () => {
+    cancelled = true;
+  };
 }, [shareOpen, imageUrls]);
 
 function toggleShareImage(url: string) {
   const cleanUrl = String(url ?? "").trim();
   if (!cleanUrl) return;
 
-  setShareImageUrls((prev) => {
+  setShareImageUrls((prev: string[]) => {
     const exists = prev.includes(cleanUrl);
 
     if (exists) {
-      return prev.filter((x) => x !== cleanUrl);
+      return prev.filter((x: string) => x !== cleanUrl);
     }
 
     return [...prev, cleanUrl];
   });
+}
+
+async function openShareModalWithPreparedImages(
+  e?: React.MouseEvent<HTMLButtonElement>
+) {
+  e?.preventDefault();
+  e?.stopPropagation();
+
+  if (openingShareModal || !room?.id) return;
+
+  setOpeningShareModal(true);
+  setPreparingImages(true);
+
+  try {
+    const selectedImageUrls: string[] = Array.from(
+      new Set<string>(
+        imageUrls
+          .map((url: string) => String(url ?? "").trim())
+          .filter((url: string) => Boolean(url))
+      )
+    );
+
+    const selectedVideoUrls: string[] = Array.from(
+      new Set<string>(
+        videoUrls
+          .map((url: string) => String(url ?? "").trim())
+          .filter((url: string) => Boolean(url))
+      )
+    ).slice(0, MAX_NATIVE_SHARE_VIDEOS);
+
+    setShareImageUrls(selectedImageUrls);
+    setShareVideoUrls(selectedVideoUrls);
+    setIncludeVideos(false);
+
+    setPreparedFiles({});
+    setPreparedVideoFiles({});
+    setShareOpen(true);
+
+    const nextImages: Record<string, File> = {};
+
+    for (let i = 0; i < selectedImageUrls.length; i += 1) {
+      const url = selectedImageUrls[i];
+
+      try {
+        nextImages[url] = await r2ImageUrlToFile(url, i);
+      } catch (err) {
+        console.error("prepare image before share modal error:", err);
+      }
+    }
+
+    setPreparedFiles(nextImages);
+  } finally {
+    setPreparingImages(false);
+    setOpeningShareModal(false);
+  }
 }
 
 async function loadImageFromBlob(blob: Blob): Promise<ImageBitmap | HTMLImageElement> {
@@ -1232,6 +1428,36 @@ async function r2ImageUrlToFile(url: string, index: number) {
 
   return new File([jpegBlob], `${safeRoomCode}-${index + 1}.jpg`, {
     type: "image/jpeg",
+  });
+}
+
+async function r2VideoUrlToFile(url: string, index: number) {
+  const cleanUrl = String(url ?? "").trim();
+
+  if (!cleanUrl) {
+    throw new Error("Video không có URL hợp lệ");
+  }
+
+  const proxyUrl = `/api/share-image?url=${encodeURIComponent(cleanUrl)}`;
+
+  const res = await fetch(proxyUrl, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Không tải được video ${index + 1} qua proxy`);
+  }
+
+  const blob = await res.blob();
+
+  const safeRoomCode = String(roomCode || id || "room")
+    .trim()
+    .replace(/[^\w-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return new File([blob], `${safeRoomCode}-video-${index + 1}.mp4`, {
+    type: blob.type || "video/mp4",
   });
 }
 
@@ -1463,17 +1689,18 @@ useEffect(() => {
 
 if (!id || fetchStatus === "loading") {
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/45 p-3">
+    <div className="fixed inset-0 z-[99999] flex items-end justify-center bg-black/45 px-0 pb-0 pt-[52px]">
       <div
         className="
-          relative w-[355px] max-w-[calc(100vw-24px)]
-          md:w-[520px] md:max-w-[calc(100vw-48px)]
-          h-[720px] max-h-[calc(100dvh-24px)]
-          md:h-[860px] md:max-h-[calc(100dvh-40px)]
-          overflow-hidden rounded-[24px]
-          border border-white/15
+          relative
+          w-screen max-w-none
+          md:w-[720px] md:max-w-[calc(100vw-48px)]
+          h-[calc(100dvh-52px)]
+          overflow-hidden rounded-t-[28px]
+          border-x border-t border-b-0 border-white/15
           bg-[#E9D7C3]
-          shadow-[0_24px_80px_rgba(0,0,0,0.55)]
+          shadow-[0_-24px_80px_rgba(0,0,0,0.55)]
+          animate-[slideUp_0.22s_ease-out]
         "
       >
         <div className="p-3 space-y-3">
@@ -1748,25 +1975,26 @@ const policyCopyText = room?.chinh_sach?.trim()
 
 return (
   <div
-  className="
-    fixed inset-0 z-[99999]
-    flex items-center justify-center
-    bg-black/55 p-3
-    text-[#F4E7D6]
-  "
-  onClick={handleCloseModal}
->
+      className="
+        fixed inset-0 z-[99999]
+        flex items-end justify-center
+        bg-black/55
+        px-0 pb-0 pt-[52px]
+        text-[#F4E7D6]
+      "
+      onClick={handleCloseModal}
+    >
   <div
-    className="
-      relative flex flex-col overflow-hidden
-      w-[355px] max-w-[calc(100vw-24px)]
-      md:w-[520px] md:max-w-[calc(100vw-48px)]
-      h-[720px] max-h-[calc(100dvh-24px)]
-      md:h-[860px] md:max-h-[calc(100dvh-40px)]
-      rounded-[24px]
-      border
-      shadow-[0_24px_80px_rgba(0,0,0,0.55)]
-    "
+  className="
+    relative flex flex-col overflow-hidden
+    w-screen max-w-none
+    md:w-[720px] md:max-w-[calc(100vw-48px)]
+    h-[calc(100dvh-52px)]
+    rounded-t-[28px]
+    border-x border-t border-b-0
+    shadow-[0_-24px_80px_rgba(0,0,0,0.55)]
+    animate-[slideUp_0.22s_ease-out]
+  "
     style={{
       background: ROOM_THEME.modalBg,
       borderColor: ROOM_THEME.modalBorder,
@@ -2035,26 +2263,25 @@ return (
 
               {/* Nút chia sẻ: góc phải */}
              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShareOpen(true);
-                }}
-                className="
-                  absolute bottom-3 right-3 z-20
-                  inline-flex items-center justify-center
-                  h-10 w-10
-                  rounded-full
-                  border border-white/20
-                  bg-black/35
-                  backdrop-blur-[10px]
-                  shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-                  hover:bg-black/80
-                  transition
-                "
-                title="Chia sẻ"
-                aria-label="Chia sẻ"
-              >
+  type="button"
+  disabled={openingShareModal}
+  onClick={openShareModalWithPreparedImages}
+  className="
+    absolute bottom-3 right-3 z-20
+    inline-flex items-center justify-center
+    h-10 w-10
+    rounded-full
+    border border-white/20
+    bg-black/35
+    backdrop-blur-[10px]
+    shadow-[0_8px_24px_rgba(0,0,0,0.35)]
+    hover:bg-black/80
+    transition
+    disabled:cursor-wait disabled:opacity-60
+  "
+  title={openingShareModal ? "Đang chuẩn bị ảnh..." : "Chia sẻ"}
+  aria-label="Chia sẻ"
+>
                 <svg
                   viewBox="0 0 24 24"
                   className="h-5 w-5 shrink-0 text-white"
@@ -2719,8 +2946,37 @@ return (
           </label>
               </div>
             </div>
-
+         
             <div className="pt-2 border-t border-white/20" />
+
+            {/* ===== CHỌN Video GỬI KÈM ===== */}
+             {shareVideoUrls.length > 0 && (
+            <div className="rounded-2xl border border-white/15 bg-white/5 p-3">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={includeVideos}
+                  onChange={(e) => setIncludeVideos(e.target.checked)}
+                  className="mt-1"
+                />
+
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-[#F4E7D6]">
+                    Gửi video kèm theo
+                  </div>
+
+                  
+                  {includeVideos && (
+                    <div className="mt-2 text-xs text-[#F4E7D6]/75">
+                      {preparingVideos
+                        ? "Đang chuẩn bị video..."
+                        : "Video đã sẵn sàng hoặc sẽ được chuẩn bị khi bấm chia sẻ."}
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+          )}
 
             {/* ===== CHỌN ẢNH GỬI KÈM ===== */}
             <div className="space-y-2">
@@ -2841,11 +3097,15 @@ return (
                   disabled:cursor-not-allowed disabled:opacity-60
                 "
                >
-               {sharing
-                ? `Đang chuẩn bị ${shareImageUrls.length} ảnh...`
-                : shareImageUrls.length > 0
-                  ? "Chia sẻ ảnh + copy nội dung"
-                  : "Chia sẻ nội dung"}
+               {sharing || preparingImages || preparingVideos
+                ? includeVideos && shareVideoUrls.length > 0
+                  ? `Đang chuẩn bị ${shareImageUrls.length} ảnh + ${shareVideoUrls.length} video...`
+                  : `Đang chuẩn bị ${shareImageUrls.length} ảnh...`
+                : includeVideos && shareVideoUrls.length > 0
+                  ? "Chia sẻ ảnh/video + copy nội dung"
+                  : shareImageUrls.length > 0
+                    ? "Chia sẻ"
+                    : "Chia sẻ nội dung"}
               </button>
 
                <button

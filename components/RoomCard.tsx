@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
 import { createPortal } from "react-dom";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
+import { supabase } from "@/lib/supabase";
 
 
 type Room = {
@@ -25,8 +26,9 @@ type Room = {
   image_count?: number | null;
 
   has_video?: boolean;
-  video_url?: string | null;
-  thumb_url?: string | null;
+video_url?: string | null;
+video_urls?: string[] | null;
+thumb_url?: string | null;
 
   creator_admin_phone?: string | null;
   creator_admin_name?: string | null;
@@ -90,16 +92,88 @@ function normalizeStatus(v?: string | null) {
   return "Trống";
 }
 
+function getFullImageUrls(roomData: any): string[] {
+  const fromMedia = Array.isArray(roomData?.media)
+    ? roomData.media
+        .filter((m: any) => {
+          const type = String(m?.type ?? m?.kind ?? "").toLowerCase();
+          const url = String(m?.url ?? "").trim();
+          return type === "image" && Boolean(url);
+        })
+        .sort((a: any, b: any) => {
+          const aCover = a?.is_cover === true ? 0 : 1;
+          const bCover = b?.is_cover === true ? 0 : 1;
+
+          if (aCover !== bCover) return aCover - bCover;
+
+          const aSort = Number.isFinite(Number(a?.sort_order))
+            ? Number(a.sort_order)
+            : 999999;
+
+          const bSort = Number.isFinite(Number(b?.sort_order))
+            ? Number(b.sort_order)
+            : 999999;
+
+          return aSort - bSort;
+        })
+        .map((m: any) => String(m.url).trim())
+        .filter(Boolean)
+    : [];
+
+  const fromImageUrls = Array.isArray(roomData?.image_urls)
+    ? roomData.image_urls.map((x: any) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+
+  return Array.from(new Set(fromMedia.length ? fromMedia : fromImageUrls));
+}
+
+function getFullVideoUrls(roomData: any): string[] {
+  const fromMedia = Array.isArray(roomData?.media)
+    ? roomData.media
+        .filter((m: any) => {
+          const type = String(m?.type ?? m?.kind ?? "").toLowerCase();
+          const url = String(m?.url ?? "").trim();
+          return type === "video" && Boolean(url);
+        })
+        .sort((a: any, b: any) => {
+          const aSort = Number.isFinite(Number(a?.sort_order))
+            ? Number(a.sort_order)
+            : 999999;
+
+          const bSort = Number.isFinite(Number(b?.sort_order))
+            ? Number(b.sort_order)
+            : 999999;
+
+          return aSort - bSort;
+        })
+        .map((m: any) => String(m.url).trim())
+        .filter(Boolean)
+    : [];
+
+  const fromVideoUrls = Array.isArray(roomData?.video_urls)
+    ? roomData.video_urls.map((x: any) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+
+  const singleVideo = String(roomData?.video_url ?? "").trim();
+
+  return Array.from(
+    new Set([
+      ...fromMedia,
+      ...fromVideoUrls,
+      ...(singleVideo ? [singleVideo] : []),
+    ])
+  );
+}
+
 export default function RoomCard({
   room,
   adminLevel,
   index = 0,
   onNavigate,
 }: RoomCardProps) {
-  const images = Array.isArray(room.image_urls)
-    ? room.image_urls.map((x) => String(x ?? "").trim()).filter(Boolean)
-    : [];
 
+  const images = getFullImageUrls(room);
+  const videos = getFullVideoUrls(room);
   const showImages = images.slice(0, 3);
 
   const FALLBACK = "/no-image.png";
@@ -187,6 +261,10 @@ const [animating, setAnimating] = useState(false);
 const [copiedAddress, setCopiedAddress] = useState(false);
 
 const [shareOpen, setShareOpen] = useState(false);
+const [shareRoomData, setShareRoomData] = useState<any>(room);
+const [shareImages, setShareImages] = useState<string[]>(images);
+const [shareVideos, setShareVideos] = useState<string[]>(videos);
+const [loadingShareDetail, setLoadingShareDetail] = useState(false);
 
 useEffect(() => {
   setSaved(isRoomSaved(room.id));
@@ -306,6 +384,43 @@ async function handleShareRoom(e: React.MouseEvent<HTMLButtonElement>) {
   }
 }
 
+async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (loadingShareDetail) return;
+
+  setLoadingShareDetail(true);
+
+  try {
+    const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+      p_id: room.id,
+      p_role: 0,
+    });
+
+    if (error) throw error;
+
+    const fullRoom = data ?? room;
+    const fullImages = getFullImageUrls(fullRoom);
+    const fullVideos = getFullVideoUrls(fullRoom);
+
+    setShareRoomData(fullRoom);
+    setShareImages(fullImages.length ? fullImages : images);
+    setShareVideos(fullVideos.length ? fullVideos : videos);
+    setShareOpen(true);
+    
+  } catch (err) {
+    console.error("openAdminShareModal error:", err);
+
+    setShareRoomData(room);
+    setShareImages(images);
+    setShareVideos(videos);
+    setShareOpen(true);
+
+  } finally {
+    setLoadingShareDetail(false);
+  }
+}
   useEffect(() => {
   const prevOverflow = document.body.style.overflow;
 
@@ -740,11 +855,12 @@ return (
               e.stopPropagation();
 
               if (safeAdminLevel === 1 || safeAdminLevel === 2) {
-                setShareOpen(true);
+                openAdminShareModal(e);
                 return;
               }
 
               handleShareRoom(e);
+
             }}
             className="
               shrink-0 inline-flex h-8 w-8 items-center justify-center
@@ -778,14 +894,22 @@ return (
   </Link>
 
     {(safeAdminLevel === 1 || safeAdminLevel === 2) && (
-      <ShareRoomModal
-          open={shareOpen}
-          onClose={() => setShareOpen(false)}
-          room={room}
-          images={images}
-          roomUrl={href}
-          adminLevel={safeAdminLevel}
-        />
+     <ShareRoomModal
+      open={shareOpen}
+      onClose={() => setShareOpen(false)}
+      room={shareRoomData}
+      images={shareImages}
+      videos={shareVideos}
+      roomUrl={href}
+      adminLevel={safeAdminLevel}
+      detail={
+        shareRoomData?.room_detail ??
+        shareRoomData?.room_details ??
+        shareRoomData?.detail ??
+        shareRoomData?.details ??
+        shareRoomData
+      }
+    />
       )}
 
     {/* STATUS CONFIRM MODAL */}

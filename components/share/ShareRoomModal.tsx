@@ -30,10 +30,11 @@ type RoomLike = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  room: RoomLike;
+  room: any;
   images: string[];
+  videos?: string[];
   roomUrl: string;
-  adminLevel?: 0 | 1 | 2;
+  adminLevel: 0 | 1 | 2;
   detail?: any;
 };
 
@@ -326,18 +327,62 @@ async function r2ImageUrlToFile(
   });
 }
 
+async function r2VideoUrlToFile(
+  url: string,
+  index: number,
+  roomCodeOrId: string
+) {
+  const cleanUrl = String(url ?? "").trim();
+  if (!cleanUrl) throw new Error("Video không có URL hợp lệ");
+
+  const proxyUrl = `/api/share-image?url=${encodeURIComponent(cleanUrl)}`;
+
+  const res = await fetch(proxyUrl, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Không tải được video ${index + 1} qua proxy`);
+  }
+
+  const blob = await res.blob();
+
+  return new File(
+    [blob],
+    `${safeFileBaseName(roomCodeOrId)}-video-${index + 1}.mp4`,
+    {
+      type: blob.type || "video/mp4",
+    }
+  );
+}
+
 export default function ShareRoomModal({
   open,
   onClose,
   room,
   images,
+  videos = [],
   roomUrl,
-  adminLevel = 0,
+  adminLevel,
   detail,
 }: Props) {
   const [toast, setToast] = useState<string | null>(null);
-  const [sharing, setSharing] = useState(false);
-  const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
+
+const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
+const [shareVideoUrls, setShareVideoUrls] = useState<string[]>([]);
+const [includeVideos, setIncludeVideos] = useState(false);
+
+const [sharing, setSharing] = useState(false);
+const [preparingImages, setPreparingImages] = useState(false);
+const [preparingVideos, setPreparingVideos] = useState(false);
+
+const [preparedFiles, setPreparedFiles] = useState<Record<string, File>>({});
+const [preparedVideoFiles, setPreparedVideoFiles] = useState<Record<string, File>>({});
+
+const MAX_NATIVE_SHARE_FILES = 10;
+const MAX_NATIVE_SHARE_VIDEOS = 2;
+
   const [shareSel, setShareSel] = useState<Record<ShareKey, boolean>>({
     room_link: false,
     house_number: true,
@@ -379,8 +424,119 @@ export default function ShareRoomModal({
 
   useEffect(() => {
     if (!open) return;
+
+    const cleanVideos: string[] = Array.from(
+      new Set<string>(
+        (Array.isArray(videos) ? videos : [])
+          .map((url: string) => String(url ?? "").trim())
+          .filter((url: string) => Boolean(url))
+      )
+    ).slice(0, MAX_NATIVE_SHARE_VIDEOS);
+
     setShareImageUrls(selectedImageUrls);
-  }, [open, selectedImageUrls]);
+    setShareVideoUrls(cleanVideos);
+    setIncludeVideos(false);
+
+    setPreparedFiles({});
+    setPreparedVideoFiles({});
+  }, [open, selectedImageUrls, videos]);
+
+useEffect(() => {
+  if (!open || selectedImageUrls.length === 0) return;
+
+  let cancelled = false;
+
+  async function prepareImages() {
+    setPreparingImages(true);
+
+    const next: Record<string, File> = {};
+
+    for (let i = 0; i < selectedImageUrls.length; i += 1) {
+      const url = selectedImageUrls[i];
+
+      try {
+        next[url] = await r2ImageUrlToFile(
+          url,
+          i,
+          room.room_code || room.id
+        );
+      } catch (e) {
+        console.error("prepare image error:", e);
+      }
+    }
+
+    if (!cancelled) {
+      setPreparedFiles(next);
+      setPreparingImages(false);
+    }
+  }
+
+  prepareImages();
+
+  return () => {
+    cancelled = true;
+  };
+}, [open, selectedImageUrls, room.room_code, room.id]);
+
+useEffect(() => {
+  if (!open || !includeVideos || shareVideoUrls.length === 0) return;
+
+  const selectedVideoUrls: string[] = Array.from(
+    new Set<string>(
+      shareVideoUrls
+        .map((url: string) => String(url ?? "").trim())
+        .filter((url: string) => Boolean(url))
+    )
+  ).slice(0, MAX_NATIVE_SHARE_VIDEOS);
+
+  const allPrepared = selectedVideoUrls.every(
+    (url: string) => preparedVideoFiles[url]
+  );
+
+  if (allPrepared) return;
+
+  let cancelled = false;
+
+  async function prepareVideos() {
+    setPreparingVideos(true);
+
+    const next: Record<string, File> = { ...preparedVideoFiles };
+
+    for (let i = 0; i < selectedVideoUrls.length; i += 1) {
+      const url = selectedVideoUrls[i];
+
+      if (next[url]) continue;
+
+      try {
+        next[url] = await r2VideoUrlToFile(
+          url,
+          i,
+          room.room_code || room.id
+        );
+      } catch (e) {
+        console.error("prepare video error:", e);
+      }
+    }
+
+    if (!cancelled) {
+      setPreparedVideoFiles(next);
+      setPreparingVideos(false);
+    }
+  }
+
+  prepareVideos();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  open,
+  includeVideos,
+  shareVideoUrls,
+  preparedVideoFiles,
+  room.room_code,
+  room.id,
+]);
 
   useEffect(() => {
     if (!open) return;
@@ -627,15 +783,31 @@ export default function ShareRoomModal({
     if (sharing) return;
 
     const text = buildShareText();
-    const selected = Array.from(
-      new Set(shareImageUrls.map((url) => String(url ?? "").trim()).filter(Boolean))
+    const selected: string[] = Array.from(
+      new Set<string>(
+        shareImageUrls
+          .map((url: string) => String(url ?? "").trim())
+          .filter((url: string) => Boolean(url))
+      )
     );
+
+    const selectedVideos: string[] = includeVideos
+      ? Array.from(
+          new Set<string>(
+            shareVideoUrls
+              .map((url: string) => String(url ?? "").trim())
+              .filter((url: string) => Boolean(url))
+          )
+        ).slice(0, MAX_NATIVE_SHARE_VIDEOS)
+      : [];
 
     const hasText = text.trim().length > 0;
     const hasImages = selected.length > 0;
+    const hasVideos = selectedVideos.length > 0;
+    const hasMedia = hasImages || hasVideos;
 
-    if (!hasText && !hasImages) {
-      showToast("Không có nội dung hoặc ảnh để chia sẻ");
+    if (!hasText && !hasMedia) {
+      showToast("Không có nội dung, ảnh hoặc video để chia sẻ");
       return;
     }
 
@@ -646,7 +818,7 @@ export default function ShareRoomModal({
         await copyText(text);
       }
 
-      if (!hasImages) {
+      if (!hasMedia) {
         if (navigator?.share) {
           try {
             await navigator.share({
@@ -663,29 +835,47 @@ export default function ShareRoomModal({
         return;
       }
 
-      if (selected.length <= 10 && navigator?.share) {
-        const files: File[] = [];
+      if (
+  selected.length <= MAX_NATIVE_SHARE_FILES &&
+  selectedVideos.length <= MAX_NATIVE_SHARE_VIDEOS &&
+  navigator?.share
+) {
+  const imageFiles = selected
+    .map((url: string) => preparedFiles[url])
+    .filter(Boolean) as File[];
 
-        for (let i = 0; i < selected.length; i += 1) {
-          files.push(await r2ImageUrlToFile(selected[i], i, room.room_code || room.id));
-        }
+  const videoFiles = selectedVideos
+    .map((url: string) => preparedVideoFiles[url])
+    .filter(Boolean) as File[];
 
-        const canShareFiles =
-          typeof navigator.canShare === "function"
-            ? navigator.canShare({ files })
-            : false;
-
-        if (canShareFiles) {
-          await navigator.share({
-            title: "The Room",
-            text,
-            files,
-          });
-
-          onClose();
-          return;
-        }
+   if (imageFiles.length !== selected.length) {
+        showToast("Ảnh đang chuẩn bị, thử lại sau vài giây");
+        return;
       }
+
+      if (videoFiles.length !== selectedVideos.length) {
+        showToast("Video đang chuẩn bị, thử lại sau vài giây");
+        return;
+      }
+
+      const files = [...imageFiles, ...videoFiles];
+
+      const canShareFiles =
+        typeof navigator.canShare === "function"
+          ? navigator.canShare({ files })
+          : false;
+
+      if (canShareFiles) {
+        await navigator.share({
+          title: "The Room",
+          text,
+          files,
+        });
+
+        onClose();
+        return;
+      }
+    }
 
       const collageFile = await buildCollageFileFromUrls(
         selected,
@@ -899,6 +1089,32 @@ export default function ShareRoomModal({
             </div>
 
             <div className="pt-2 border-t border-white/20" />
+            {shareVideoUrls.length > 0 && (
+              <div className="rounded-2xl border border-white/15 bg-white/5 p-3">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={includeVideos}
+                    onChange={(e) => setIncludeVideos(e.target.checked)}
+                    className="mt-1"
+                  />
+
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-[#F4E7D6]">
+                      Gửi video kèm theo
+                    </div>
+                    
+                    {includeVideos && (
+                      <div className="mt-2 text-xs text-[#F4E7D6]/75">
+                        {preparingVideos
+                          ? "Đang chuẩn bị video..."
+                          : "Video sẽ được gửi nếu thiết bị hỗ trợ."}
+                      </div>
+                    )}
+                  </div>
+                </label>
+              </div>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
@@ -1014,10 +1230,14 @@ export default function ShareRoomModal({
                   disabled:cursor-not-allowed disabled:opacity-60
                 "
               >
-                {sharing
-                  ? `Đang chuẩn bị ${shareImageUrls.length} ảnh...`
+                {sharing || preparingImages || preparingVideos
+                ? includeVideos && shareVideoUrls.length > 0
+                  ? `Đang chuẩn bị ${shareImageUrls.length} ảnh + ${shareVideoUrls.length} video...`
+                  : `Đang chuẩn bị ${shareImageUrls.length} ảnh...`
+                : includeVideos && shareVideoUrls.length > 0
+                  ? "Chia sẻ ảnh/video + copy nội dung"
                   : shareImageUrls.length > 0
-                    ? "Chia sẻ ảnh + copy nội dung"
+                    ? "Chia sẻ"
                     : "Chia sẻ nội dung"}
               </button>
 
