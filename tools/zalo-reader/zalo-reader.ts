@@ -1648,17 +1648,231 @@ function buildRoomUnitsFromMessages(
 }
 
 
-async function openGroup(page: Page, groupName: string, config: Config) {
-  const search = page.locator(config.selectors.searchBox).first();
-  await search.click({ timeout: 10000 });
-  await search.fill(groupName);
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(2500);
+async function openGroup(
+  page: Page,
+  groupName: string,
+  config: Config
+) {
+  const maxAttempts = 3;
 
-  const exact = page.getByText(groupName, { exact: false }).first();
-  if (await exact.count().catch(() => 0)) {
-    await exact.click().catch(() => {});
-    await page.waitForTimeout(2500);
+  for (
+    let attempt = 1;
+    attempt <= maxAttempts;
+    attempt++
+  ) {
+    try {
+      console.log(
+        `Đang mở nhóm "${groupName}" - lần ${attempt}/${maxAttempts}`
+      );
+
+      /*
+       * Đóng dropdown, popup hoặc menu đang che
+       * thanh tìm kiếm của Zalo.
+       */
+      await page.keyboard
+        .press("Escape")
+        .catch(() => {});
+
+      await page.waitForTimeout(300);
+
+      /*
+       * Ưu tiên selector chính xác của Zalo.
+       * Nếu Zalo đổi ID thì fallback về config.
+       */
+      let search = page
+        .locator(
+          "#contact-search-input"
+        )
+        .first();
+
+      const exactSearchExists =
+        await search
+          .count()
+          .catch(() => 0);
+
+      if (
+        exactSearchExists === 0
+      ) {
+        search = page
+          .locator(
+            config.selectors
+              .searchBox
+          )
+          .first();
+      }
+
+      await search.waitFor({
+        state: "visible",
+        timeout: 15_000,
+      });
+
+      /*
+       * Không dùng click() thông thường.
+       *
+       * Input của Zalo đôi khi bị một lớp giao diện
+       * trong suốt chặn pointer event. focus() không
+       * phụ thuộc vào việc element có nhận click hay không.
+       */
+      await search
+        .focus({
+          timeout: 5_000,
+        })
+        .catch(async () => {
+          await search.evaluate(
+            (
+              element:
+                HTMLInputElement
+            ) => {
+              element.focus();
+            }
+          );
+        });
+
+      /*
+       * Xóa nội dung tìm kiếm cũ trước khi
+       * nhập tên nhóm tiếp theo.
+       */
+      await search.fill("", {
+        timeout: 10_000,
+      });
+
+      await search.fill(
+        groupName,
+        {
+          timeout: 10_000,
+        }
+      );
+
+      /*
+       * Chờ Zalo render kết quả tìm kiếm.
+       */
+      await page.waitForTimeout(
+        1_200
+      );
+
+      const candidates =
+        page.getByText(
+          groupName,
+          {
+            exact: true,
+          }
+        );
+
+      const candidateCount =
+        await candidates
+          .count()
+          .catch(() => 0);
+
+      let clickedResult =
+        false;
+
+      /*
+       * Tìm kết quả nằm ở cột trái.
+       *
+       * Không dùng .first() ngay vì tên nhóm có thể
+       * đồng thời xuất hiện ở tiêu đề cuộc trò chuyện.
+       */
+      for (
+        let index = 0;
+        index < candidateCount;
+        index++
+      ) {
+        const candidate =
+          candidates.nth(index);
+
+        const visible =
+          await candidate
+            .isVisible()
+            .catch(() => false);
+
+        if (!visible) {
+          continue;
+        }
+
+        const box =
+          await candidate
+            .boundingBox()
+            .catch(() => null);
+
+        if (!box) {
+          continue;
+        }
+
+        /*
+         * Kết quả tìm kiếm nằm bên trái màn hình.
+         * Tiêu đề chat thường nằm xa hơn về bên phải.
+         */
+        if (box.x > 500) {
+          continue;
+        }
+
+        await candidate.click({
+          timeout: 10_000,
+          force: true,
+        });
+
+        clickedResult = true;
+        break;
+      }
+
+      /*
+       * Trường hợp Zalo không render text theo cách
+       * getByText nhận diện được, dùng Enter chọn
+       * kết quả đầu tiên.
+       */
+      if (!clickedResult) {
+        await search.press(
+          "Enter"
+        );
+      }
+
+      /*
+       * Chờ Zalo chuyển cuộc trò chuyện và
+       * ghi dữ liệu nhóm vào IndexedDB.
+       */
+      await page.waitForTimeout(
+        3_000
+      );
+
+      console.log(
+        `Đã mở nhóm: ${groupName}`
+      );
+
+      return;
+    } catch (error: any) {
+      console.warn(
+        [
+          `Mở nhóm thất bại lần ${attempt}/${maxAttempts}:`,
+          groupName,
+          error?.message ||
+            String(error),
+        ].join(" ")
+      );
+
+      if (
+        attempt >= maxAttempts
+      ) {
+        throw new Error(
+          [
+            `Không mở được nhóm sau ${maxAttempts} lần:`,
+            groupName,
+            error?.message ||
+              String(error),
+          ].join(" ")
+        );
+      }
+
+      /*
+       * Làm sạch trạng thái giao diện rồi thử lại.
+       */
+      await page.keyboard
+        .press("Escape")
+        .catch(() => {});
+
+      await page.waitForTimeout(
+        1_500
+      );
+    }
   }
 }
 

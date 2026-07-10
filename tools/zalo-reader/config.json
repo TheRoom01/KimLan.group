@@ -75,7 +75,7 @@
   ],
 
   "selectors": {
-    "searchBox": "input[type='text']",
+    "searchBox": "#contact-search-input",
     "messageItems": "[role='row'], .chat-message, .msg-item, div[class*='message']",
     "messageText": "",
     "messageSender": "",
