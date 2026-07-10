@@ -81,6 +81,37 @@ export default function ZaloImportsClient() {
     [total]
   );
 
+    async function deleteAllCurrentRows() {
+    if (rows.length === 0) return;
+
+    const ok = window.confirm(
+      `Bạn có chắc muốn xoá tất cả ${rows.length} card đang hiển thị trên trang này? Ảnh tạm R2 cũng sẽ bị xoá.`
+    );
+
+    if (!ok) return;
+
+    const res = await fetch("/api/admin/zalo-imports/bulk-remove", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ids: rows.map((r) => r.id),
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok || !json?.ok) {
+      alert(json?.error || "Xoá tất cả thất bại");
+      return;
+    }
+
+    alert(`Đã xoá ${json.deleted || rows.length} import.`);
+    await loadData(0, status);
+    setOffset(0);
+  }
+
   return (
     <main style={wrap}>
       <div style={topBar}>
@@ -110,6 +141,14 @@ export default function ZaloImportsClient() {
 
         <button onClick={() => loadData(offset, status)} style={refreshBtn}>
           Tải lại
+        </button>
+
+        <button
+          onClick={deleteAllCurrentRows}
+          style={bulkDeleteBtn}
+          disabled={loading || rows.length === 0}
+        >
+          Xóa tất cả phòng
         </button>
       </div>
 
@@ -233,6 +272,28 @@ function ImportCard({
     onChanged?.();
   }
 
+    async function deleteImport() {
+    const ok = window.confirm(
+      "Bạn có chắc muốn xoá hẳn import này? Dữ liệu pending và ảnh tạm R2 sẽ bị xoá."
+    );
+
+    if (!ok) return;
+
+    const res = await fetch(`/api/admin/zalo-imports/${row.id}/remove`, {
+      method: "POST",
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok || !json?.ok) {
+      alert(json?.error || "Xoá thất bại");
+      return;
+    }
+
+    alert("Đã xoá import.");
+    onChanged?.();
+  }
+
      async function approveImport(mode: "create_room" | "update_status") {
     const text =
       mode === "update_status"
@@ -337,6 +398,8 @@ function ImportCard({
           <Field label="Giá" value={formatPrice(room.price)} field="price" source={source} inherited={inherited} />
           <Field label="Trạng thái" value={room.status} field="status" source={source} inherited={inherited} />
           <Field label="Zalo/Phone" value={room.zalo_phone || room.link_zalo} field="zalo_phone" source={source} inherited={inherited} />
+          <Field label="Mô tả" value={room.description} field="description" source={source} inherited={inherited} />
+          <Field label="Chính sách" value={room.chinh_sach} field="chinh_sach" source={source} inherited={inherited} />
         </div>
 
         <div style={panel}>
@@ -346,8 +409,27 @@ function ImportCard({
           <Field label="Nước" value={formatFee(detail.water_fee_value, detail.water_fee_unit)} field="water_fee_value" source={source} inherited={inherited} />
           <Field label="Dịch vụ" value={formatFee(detail.service_fee_value, detail.service_fee_unit)} field="service_fee_value" source={source} inherited={inherited} />
           <Field label="Giữ xe" value={formatFee(detail.parking_fee_value, detail.parking_fee_unit)} field="parking_fee_value" source={source} inherited={inherited} />
+          <Field label="Các phí khác" value={formatOtherFee(detail.other_fee_value, detail.other_fee_note)} field={["other_fee_value", "other_fee_note"]} source={source} inherited={inherited} />
+
+          <Field label="Các tiện ích khác" value={String(detail.other_amenities || "").trim()} field="other_amenities" source={source} inherited={inherited} />
           <Field label="Thang máy" value={detail.has_elevator ? "Có" : "Không"} field="has_elevator" source={source} inherited={inherited} />
-          <Field label="Pet" value={detail.allow_pet ? "Có cho pet" : detail.no_pet ? "Không pet" : "-"} field="allow_pet" source={source} inherited={inherited} />
+          <Field label="Thang bộ" value={detail.has_stairs ? "Có" : "Không"} field="has_stairs" source={source} inherited={inherited} />
+          <Field label="Khóa vân tay" value={detail.fingerprint_lock ? "Có" : "Không"} field="fingerprint_lock" source={source} inherited={inherited} />
+
+          <Field label="Cho mèo" value={detail.allow_cat ? "Có" : "Không"} field="allow_cat" source={source} inherited={inherited} />
+          <Field label="Cho chó" value={detail.allow_dog ? "Có" : "Không"} field="allow_dog" source={source} inherited={inherited} />
+          <Field label="Không pet" value={detail.no_pet ? "Có" : "Không"} field="no_pet" source={source} inherited={inherited} />
+
+          <Field label="Gửi xe" value={detail.has_parking ? "Có" : "Không"} field="has_parking" source={source} inherited={inherited} />
+          <Field label="Hầm xe" value={detail.has_basement ? "Có" : "Không"} field="has_basement" source={source} inherited={inherited} />
+
+          <Field label="Máy giặt riêng" value={detail.private_washer ? "Có" : "Không"} field="private_washer" source={source} inherited={inherited} />
+          <Field label="Máy giặt chung" value={detail.shared_washer ? "Có" : "Không"} field="shared_washer" source={source} inherited={inherited} />
+          <Field label="Máy sấy riêng" value={detail.private_dryer ? "Có" : "Không"} field="private_dryer" source={source} inherited={inherited} />
+          <Field label="Máy sấy chung" value={detail.shared_dryer ? "Có" : "Không"} field="shared_dryer" source={source} inherited={inherited} />
+
+          <Field label="Ngắn hạn" value={detail.short_term ? "Có" : "Không"} field="short_term" source={source} inherited={inherited} />
+          <Field label="Dài hạn" value={detail.long_term ? "Có" : "Không"} field="long_term" source={source} inherited={inherited} />
         </div>
       </div>
 
@@ -408,13 +490,21 @@ function ImportCard({
             Chỉnh sửa
         </button>
 
-        <button
+                <button
             style={dangerBtn}
             type="button"
             onClick={rejectImport}
             disabled={row.status === "Đã duyệt" || row.status === "Từ chối"}
         >
             Từ chối
+        </button>
+
+        <button
+            style={deleteBtn}
+            type="button"
+            onClick={deleteImport}
+        >
+            Xóa
         </button>
         </div>
     </section>
@@ -430,19 +520,84 @@ function Field({
 }: {
   label: string;
   value: any;
-  field: string;
+
+  /*
+   * Cho phép một dòng giao diện đại diện cho nhiều field.
+   *
+   * Ví dụ "Các phí khác" gồm:
+   * - other_fee_value
+   * - other_fee_note
+   */
+  field: string | string[];
+
   source: Record<string, string>;
   inherited: Record<string, string>;
 }) {
-  const tag = inherited[field] || source[field] || "";
+  const fieldNames =
+    Array.isArray(field)
+      ? field
+      : [field];
+
+  const inheritedField =
+    fieldNames.find(
+      (fieldName) =>
+        Boolean(inherited[fieldName])
+    );
+
+  const sourceField =
+    fieldNames.find(
+      (fieldName) =>
+        Boolean(source[fieldName])
+    );
+
+  const isInherited =
+    Boolean(inheritedField);
+
+  const tag =
+    inheritedField
+      ? inherited[inheritedField]
+      : sourceField
+        ? source[sourceField]
+        : "";
+
+  const hasValue =
+    value !== null &&
+    value !== undefined &&
+    String(value).trim() !== "";
 
   return (
     <div style={fieldRow}>
-      <div style={fieldLabel}>{label}</div>
-      <div style={fieldValue}>{value || "-"}</div>
+      <div style={fieldLabel}>
+        {label}
+      </div>
+
+      <div
+        style={{
+          ...fieldValue,
+
+          /*
+           * Hiển thị đúng các dòng xuống hàng trong:
+           * - ghi chú phí;
+           * - tiện ích khác.
+           */
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+        }}
+      >
+        {hasValue ? value : "-"}
+      </div>
+
       {tag && (
-        <span style={inherited[field] ? tagInherited : tagSource}>
-          {inherited[field] ? "Tự điền" : "Tin Zalo"}
+        <span
+          style={
+            isInherited
+              ? tagInherited
+              : tagSource
+          }
+        >
+          {isInherited
+            ? "Tự điền"
+            : "Tin Zalo"}
         </span>
       )}
     </div>
@@ -459,6 +614,40 @@ function formatFee(v: any, unit?: string) {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return "-";
   return `${n.toLocaleString("vi-VN")} đ/${unit || ""}`;
+}
+
+function formatOtherFee(
+  value: any,
+  note: any
+) {
+  const amount =
+    Number(value);
+
+  const amountText =
+    Number.isFinite(amount) &&
+    amount > 0
+      ? `${amount.toLocaleString(
+          "vi-VN"
+        )} đ`
+      : "";
+
+  const noteText =
+    String(note || "").trim();
+
+  /*
+   * Ví dụ kết quả:
+   *
+   * 130.000 đ
+   * Phí wifi: 50k
+   * Phí giặt: 50k
+   * Phí rác: 30k
+   */
+  return [
+    amountText,
+    noteText,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function formatDateTime(input?: string | null) {
@@ -732,6 +921,16 @@ const dangerBtn: CSSProperties = {
   cursor: "pointer",
 };
 
+const deleteBtn: CSSProperties = {
+  background: "#7f1d1d",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "10px 14px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
 const errorBox: CSSProperties = {
   padding: 12,
   borderRadius: 12,
@@ -768,4 +967,14 @@ const pageBtn: CSSProperties = {
 const muted: CSSProperties = {
   color: "#6b7280",
   fontSize: 13,
+};
+
+const bulkDeleteBtn: CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "none",
+  background: "#7f1d1d",
+  color: "#fff",
+  fontWeight: 700,
+  cursor: "pointer",
 };

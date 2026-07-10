@@ -30,5 +30,7 @@ Thumbs.db
 *.log
 
 .env.local
+
 .zalo-reader/
 tools/zalo-reader/state.json
+

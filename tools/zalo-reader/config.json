@@ -1,15 +1,65 @@
 {
   "webBaseUrl": "https://canhodichvu.vercel.app",
   "internalSecret": "",
-  "scanIntervalMs": 240000,
-  "maxMessagesPerGroup": 40,
-  "maxImagesPerBatch": 12,
-  "maxFollowingImageMessages": 8,
-  "groups": [
-    "PHÒNG TRỌ Q1",
-    "PHÒNG TRỌ GÒ VẤP",
-    "PHÒNG TRỌ BÌNH THẠNH"
+  "scanIntervalMs": 60000,
+
+  "networkDebug": false,
+  "networkDebugOnly": false,
+  "debugRetentionDays": 7,
+  "debugMaxSessions": 10,
+
+  "indexedDbDebug": false,
+  "indexedDbDebugOnly": true,
+  "indexedDbSampleLimit": 5,
+  "indexedDbRecordMaxStringChars": 4000,
+
+  "indexedDbGroupExport": true,
+
+  "indexedDbGroupScanLimit": 100000,
+  "indexedDbGroupMessageLimit": 5000,
+
+  "indexedDbGroupContextBeforeMs": 3600000,
+  "indexedDbGroupContextAfterMs": 3600000,
+
+  "indexedDbRoomPreview": true,
+  "indexedDbRoomPreviewMaxGapMs": 300000,
+
+  "indexedDbImportEnabled": true,
+
+  "indexedDbScrollStepRatio": 0.85,
+  "indexedDbScrollWaitMs": 2200,
+  "indexedDbScrollSettleMs": 3500,
+  "indexedDbScrollStepsPerBatch": 3,
+  "indexedDbScrollMaxBatches": 80,
+  "indexedDbStopOnKnownRoom": true,
+
+  "networkCaptureKeywords": [
+    "message",
+    "messages",
+    "msg",
+    "chat",
+    "thread",
+    "group",
+    "conversation",
+    "attachment",
+    "photo",
+    "image",
+    "media",
+    "sender",
+    "timestamp",
+    "msgid",
+    "messageid",
+    "climsgid"
   ],
+
+  "maxMessagesPerGroup": 300,
+  "maxImagesPerBatch": 30,
+  "maxFollowingImageMessages": 8,
+
+  "groups": [
+    "Top Dự Án Quận 5"
+  ],
+
   "roomTextKeywords": [
     "phòng",
     "phong",
@@ -22,6 +72,7 @@
     "quận",
     "quan"
   ],
+
   "selectors": {
     "searchBox": "input[type='text']",
     "messageItems": "[role='row'], .chat-message, .msg-item, div[class*='message']",

@@ -40,9 +40,37 @@ function normalizeStatus(v: any) {
   return String(v || "Trống").trim() || "Trống";
 }
 
-function extFromKey(key: string) {
-  const m = String(key || "").match(/\.([a-zA-Z0-9]+)$/);
-  return m?.[1]?.toLowerCase() || "webp";
+function extFromKey(
+  key: string,
+  fallback = "webp"
+) {
+  const m = String(key || "").match(
+    /\.([a-zA-Z0-9]+)$/
+  );
+
+  return (
+    m?.[1]?.toLowerCase() ||
+    fallback
+  );
+}
+
+function makeRoomVideoKey(
+  roomId: string,
+  videoId: string,
+  extension = "mp4"
+) {
+  const safeExtension =
+    String(extension || "mp4")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "") ||
+    "mp4";
+
+  return [
+    "rooms",
+    roomId,
+    "videos",
+    `${videoId}.${safeExtension}`,
+  ].join("/");
 }
 
 export async function POST(
@@ -254,64 +282,304 @@ export async function POST(
 
     if (detailSave.error) throw detailSave.error;
 
-    const { data: images, error: imgErr } = await supabase
+    const batchId = String(
+  (pending as any).batch_id || ""
+).trim();
+
+/*
+ * =========================
+ * LẤY ẢNH TẠM
+ * =========================
+ */
+const {
+  data: images,
+  error: imgErr,
+} = await supabase
+  .from("zalo_import_images")
+  .select("*")
+  .eq("batch_id", batchId)
+  .eq("selected", true)
+  .order("sort_order", {
+    ascending: true,
+  });
+
+if (imgErr) {
+  throw imgErr;
+}
+
+/*
+ * =========================
+ * LẤY VIDEO TẠM
+ * =========================
+ */
+const {
+  data: videos,
+  error: videoErr,
+} = await supabase
+  .from("zalo_import_videos")
+  .select("*")
+  .eq("batch_id", batchId)
+  .eq("selected", true)
+  .order("sort_order", {
+    ascending: true,
+  });
+
+if (videoErr) {
+  throw videoErr;
+}
+
+const mediaRows: any[] = [];
+
+const tempKeysToDelete:
+  string[] = [];
+
+let imageMediaCount = 0;
+let videoMediaCount = 0;
+
+/*
+ * =========================
+ * COPY ẢNH SANG THƯ MỤC PHÒNG
+ * =========================
+ */
+for (
+  const imageRow of images ?? []
+) {
+  const img: any = imageRow;
+
+  const fromKey = String(
+    img.temp_r2_key || ""
+  ).trim();
+
+  if (!fromKey) {
+    continue;
+  }
+
+  const extension =
+    extFromKey(fromKey, "webp");
+
+  const imageId =
+    crypto.randomUUID();
+
+  const toKey =
+    makeRoomImageKey(
+      roomId,
+      imageId,
+      extension
+    );
+
+  const copied =
+    await copyR2Object({
+      fromKey,
+      toKey,
+
+      contentType:
+        img.mime_type ||
+        "image/webp",
+
+      cacheControl:
+        "public, max-age=31536000, immutable",
+    });
+
+  const sortOrder =
+    mediaRows.length;
+
+  mediaRows.push({
+    room_id: roomId,
+    provider: "r2",
+    type: "image",
+
+    url: copied.url,
+    path: copied.url,
+
+    /*
+     * Ảnh hợp lệ đầu tiên làm cover.
+     */
+    is_cover:
+      mediaRows.length === 0,
+
+    sort_order:
+      sortOrder,
+  });
+
+  imageMediaCount += 1;
+
+  tempKeysToDelete.push(
+    fromKey
+  );
+
+  const imageTrackingUpdate =
+    await supabase
       .from("zalo_import_images")
-      .select("*")
-      .eq("batch_id", (pending as any).batch_id)
-      .eq("selected", true)
-      .order("sort_order", { ascending: true });
+      .update({
+        copied_room_id:
+          roomId,
 
-    if (imgErr) throw imgErr;
+        final_r2_key:
+          copied.key,
 
-    const mediaRows: any[] = [];
-    const tempKeysToDelete: string[] = [];
+        final_image_url:
+          copied.url,
+      })
+      .eq("id", img.id);
 
-    for (let i = 0; i < (images ?? []).length; i++) {
-      const img: any = images![i];
-      const fromKey = String(img.temp_r2_key || "").trim();
-      if (!fromKey) continue;
+  if (imageTrackingUpdate.error) {
+    throw imageTrackingUpdate.error;
+  }
+}
 
-      const ext = extFromKey(fromKey);
-      const imageId = crypto.randomUUID();
-      const toKey = makeRoomImageKey(roomId, imageId, ext);
+/*
+ * =========================
+ * COPY VIDEO SANG THƯ MỤC PHÒNG
+ * =========================
+ */
+for (
+  const videoRow of videos ?? []
+) {
+  const video: any =
+    videoRow;
 
-      const copied = await copyR2Object({
-        fromKey,
-        toKey,
-        contentType: img.mime_type || "image/webp",
-        cacheControl: "public, max-age=31536000, immutable",
-      });
+  const fromKey = String(
+    video.temp_r2_key || ""
+  ).trim();
 
-      tempKeysToDelete.push(fromKey);
+  if (!fromKey) {
+    continue;
+  }
 
-      mediaRows.push({
-        room_id: roomId,
-        provider: "r2",
-        type: "image",
-        url: copied.url,
-        path: copied.url,
-        is_cover: i === 0,
-        sort_order: i,
-      });
+  const extension =
+    extFromKey(
+      fromKey,
+      "mp4"
+    );
 
-      await supabase
-        .from("zalo_import_images")
-        .update({
-          copied_room_id: roomId,
-          final_r2_key: copied.key,
-          final_image_url: copied.url,
-        })
-        .eq("id", img.id);
-    }
+  const videoId =
+    crypto.randomUUID();
 
-    if (mediaRows.length > 0) {
-      const mediaIns = await supabase.from("room_media").insert(mediaRows);
-      if (mediaIns.error) throw mediaIns.error;
-    }
+  const toKey =
+    makeRoomVideoKey(
+      roomId,
+      videoId,
+      extension
+    );
 
-    if (tempKeysToDelete.length > 0) {
-      await deleteR2Keys(tempKeysToDelete);
-    }
+  const copied =
+    await copyR2Object({
+      fromKey,
+      toKey,
+
+      contentType:
+        video.mime_type ||
+        "video/mp4",
+
+      cacheControl:
+        "public, max-age=31536000, immutable",
+    });
+
+  const sortOrder =
+    mediaRows.length;
+
+  /*
+   * Bình thường phòng có ảnh nên video
+   * không làm cover.
+   *
+   * Nếu phòng hoàn toàn không có ảnh,
+   * video đầu tiên được đánh dấu cover
+   * để giữ logic media hiện tại.
+   */
+  const isCover =
+    mediaRows.length === 0;
+
+  mediaRows.push({
+    room_id: roomId,
+    provider: "r2",
+    type: "video",
+
+    url: copied.url,
+    path: copied.url,
+
+    is_cover: isCover,
+
+    sort_order:
+      sortOrder,
+  });
+
+  videoMediaCount += 1;
+
+  tempKeysToDelete.push(
+    fromKey
+  );
+
+  /*
+   * Thumbnail video tạm hiện chưa có cột
+   * tương ứng trong room_media.
+   *
+   * UI đang dùng ảnh cover/thumb của phòng,
+   * nên sau khi approve có thể xóa thumbnail
+   * video tạm.
+   */
+  const tempThumbKey = String(
+    video.temp_thumb_r2_key || ""
+  ).trim();
+
+  if (tempThumbKey) {
+    tempKeysToDelete.push(
+      tempThumbKey
+    );
+  }
+
+  const videoTrackingUpdate =
+    await supabase
+      .from(
+        "zalo_import_videos"
+      )
+      .update({
+        copied_room_id:
+          roomId,
+
+        final_r2_key:
+          copied.key,
+
+        final_video_url:
+          copied.url,
+      })
+      .eq("id", video.id);
+
+  if (videoTrackingUpdate.error) {
+    throw videoTrackingUpdate.error;
+  }
+}
+
+/*
+ * =========================
+ * INSERT CHUNG ẢNH + VIDEO
+ * =========================
+ */
+if (mediaRows.length > 0) {
+  const mediaInsert =
+    await supabase
+      .from("room_media")
+      .insert(mediaRows);
+
+  if (mediaInsert.error) {
+    throw mediaInsert.error;
+  }
+}
+
+/*
+ * Chỉ xóa file tạm sau khi room_media
+ * đã được insert thành công.
+ */
+if (
+  tempKeysToDelete.length > 0
+) {
+  await deleteR2Keys(
+    Array.from(
+      new Set(
+        tempKeysToDelete
+      )
+    )
+  );
+}
 
     const now = new Date().toISOString();
 
@@ -338,7 +606,15 @@ export async function POST(
       ok: true,
       mode,
       roomId,
-      mediaCount: mediaRows.length,
+
+      mediaCount:
+        mediaRows.length,
+
+      imageCount:
+        imageMediaCount,
+
+      videoCount:
+        videoMediaCount,
     });
   } catch (e: any) {
     console.error("approve zalo import failed:", e);
