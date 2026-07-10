@@ -143,6 +143,11 @@ type Msg = {
   top: number;
 };
 
+type IndexedDbGroupRef = {
+  groupId: string;
+  databaseName: string;
+};
+
 type IndexedDbGroupMessage = {
   msgId: string;
   cliMsgId: string;
@@ -2054,6 +2059,11 @@ async function triggerNetworkHistoryLoad(
     state: Record<string, true>;
   }
 ): Promise<IndexedDbHistoryLoadResult> {
+
+  let cachedGroupRef:
+  | IndexedDbGroupRef
+  | null = null;
+
   const {
     page,
     groupName,
@@ -2213,12 +2223,59 @@ async function triggerNetworkHistoryLoad(
       settleMs
     );
 
-    const indexedDbExport =
-      await dumpActiveGroupMessages(
-        page,
-        groupName,
-        config
-      );
+   const indexedDbExport =
+  await dumpActiveGroupMessages(
+    page,
+    groupName,
+    config,
+    cachedGroupRef
+  );
+
+  const detectedGroupId =
+  String(
+    indexedDbExport?.result
+      ?.groupId || ""
+  ).trim();
+
+const detectedDatabaseName =
+  String(
+    indexedDbExport?.result
+      ?.databaseName || ""
+  ).trim();
+
+if (
+  detectedGroupId.startsWith(
+    "g"
+  ) &&
+  detectedDatabaseName.startsWith(
+    "sidx_"
+  )
+) {
+  const groupChanged =
+    !cachedGroupRef ||
+    cachedGroupRef.groupId !==
+      detectedGroupId ||
+    cachedGroupRef.databaseName !==
+      detectedDatabaseName;
+
+  cachedGroupRef = {
+    groupId:
+      detectedGroupId,
+
+    databaseName:
+      detectedDatabaseName,
+  };
+
+  if (groupChanged) {
+    console.log(
+      [
+        "Đã cache group IndexedDB:",
+        `groupId=${detectedGroupId}`,
+        `database=${detectedDatabaseName}`,
+      ].join(" ")
+    );
+  }
+}
 
     if (
       !indexedDbExport
@@ -4879,7 +4936,10 @@ async function importIndexedDbRoomPreviews(
 async function dumpActiveGroupMessages(
   page: Page,
   groupName: string,
-  config: Config
+  config: Config,
+  preferredGroupRef:
+    | IndexedDbGroupRef
+    | null = null
 ) {
   const rawScanLimit = Number(
     config.indexedDbGroupScanLimit ?? 30000
@@ -4929,7 +4989,7 @@ async function dumpActiveGroupMessages(
       10 * 60 * 1000
   );
 
-  const contextAfterMs = Math.max(
+   const contextAfterMs = Math.max(
     0,
     Math.min(
       60 * 60 * 1000,
@@ -4952,14 +5012,16 @@ async function dumpActiveGroupMessages(
   );
 
     const result = await page.evaluate(
-    async ({
-      messageItemsSelector,
-      messageTextSelector,
-      scanLimit,
-      messageLimit,
-      contextBeforeMs,
-      contextAfterMs,
-    }) => {
+  async ({
+    messageItemsSelector,
+    messageTextSelector,
+    scanLimit,
+    messageLimit,
+    contextBeforeMs,
+    contextAfterMs,
+    preferredGroupId,
+    preferredDatabaseName,
+  }) => {
       function requestToPromise<T>(
         request: IDBRequest<T>
       ): Promise<T> {
@@ -5566,11 +5628,67 @@ const visibleTextCandidates =
       };
 
       const candidateMap =
-        new Map<string, Candidate>();
+  new Map<string, Candidate>();
 
-      for (
-        const databaseName of searchDatabaseNames
-      ) {
+/*
+ * Nếu batch trước đã xác định được group ID và database,
+ * ưu tiên tuyệt đối dữ liệu đó.
+ *
+ * Không cần text đang hiển thị tiếp tục khớp ở mọi batch.
+ */
+const normalizedPreferredGroupId =
+  String(
+    preferredGroupId || ""
+  ).trim();
+
+const normalizedPreferredDatabaseName =
+  String(
+    preferredDatabaseName || ""
+  ).trim();
+
+const canUsePreferredGroup =
+  normalizedPreferredGroupId.startsWith(
+    "g"
+  ) &&
+  normalizedPreferredDatabaseName.startsWith(
+    "sidx_"
+  ) &&
+  searchDatabaseNames.includes(
+    normalizedPreferredDatabaseName
+  );
+
+if (canUsePreferredGroup) {
+  const preferredKey =
+    `${normalizedPreferredDatabaseName}__${normalizedPreferredGroupId}`;
+
+  candidateMap.set(
+    preferredKey,
+    {
+      databaseName:
+        normalizedPreferredDatabaseName,
+
+      groupId:
+        normalizedPreferredGroupId,
+
+      /*
+       * Điểm rất cao để cache luôn được ưu tiên
+       * trước các candidate dò lại bằng text DOM.
+       */
+      score:
+        Number.MAX_SAFE_INTEGER,
+
+      matches: [],
+
+      latestTimestamp: 0,
+
+      matchedTimestamps: [],
+    }
+  );
+}
+
+for (
+  const databaseName of searchDatabaseNames
+) {
         let db: IDBDatabase | null = null;
 
         try {
@@ -5745,8 +5863,21 @@ const visibleTextCandidates =
         );
       });
 
-            const bestCandidate =
-        candidates[0] || null;
+       const preferredCandidate =
+        canUsePreferredGroup
+          ? candidates.find(
+              (candidate) =>
+                candidate.groupId ===
+                  normalizedPreferredGroupId &&
+                candidate.databaseName ===
+                  normalizedPreferredDatabaseName
+            ) || null
+          : null;
+
+      const bestCandidate =
+        preferredCandidate ||
+        candidates[0] ||
+        null;
 
       if (!bestCandidate) {
         return {
@@ -6261,18 +6392,26 @@ const visibleTextCandidates =
         selectedDb?.close();
       }
     },
-        {
-      messageItemsSelector:
-        config.selectors.messageItems,
+       {
+        messageItemsSelector:
+          config.selectors.messageItems,
 
-      messageTextSelector:
-        config.selectors.messageText || "",
+        messageTextSelector:
+          config.selectors.messageText || "",
 
-      scanLimit,
-      messageLimit,
-      contextBeforeMs,
-      contextAfterMs,
-    }
+        scanLimit,
+        messageLimit,
+        contextBeforeMs,
+        contextAfterMs,
+
+        preferredGroupId:
+          preferredGroupRef?.groupId ||
+          "",
+
+        preferredDatabaseName:
+          preferredGroupRef?.databaseName ||
+          "",
+      }
   );
 
   const outputDirectory =
@@ -6402,6 +6541,12 @@ const visibleTextCandidates =
     result,
     previewRooms,
   };
+}
+
+if (preferredGroupRef) {
+  console.log(
+    `Đã tái sử dụng group ID cache: ${result.groupId}`
+  );
 }
 
   const textCount =
