@@ -512,6 +512,25 @@ function hash(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
+function sleep(
+  milliseconds: number
+): Promise<void> {
+  const safeMilliseconds =
+    Math.max(
+      0,
+      Number(milliseconds) || 0
+    );
+
+  return new Promise<void>(
+    (resolve) => {
+      setTimeout(
+        resolve,
+        safeMilliseconds
+      );
+    }
+  );
+}
+
 function isRoomText(text: string, keywords: string[]) {
   const s = text.toLowerCase();
   return keywords.some((k) => s.includes(k.toLowerCase()));
@@ -7164,13 +7183,35 @@ async function main() {
     }
   );
 
-  console.log(
-    "Nếu chưa login Zalo Web, hãy quét QR trong cửa sổ Chrome."
+ console.log(
+  "Sau khi login xong tool sẽ tự quét nhóm."
+);
+
+/*
+ * IndexedDB không còn phụ thuộc vào
+ * indexedDbDebugOnly.
+ *
+ * Chỉ cần một chức năng IndexedDB được bật
+ * thì Reader dùng pipeline IndexedDB.
+ */
+const useIndexedDbPipeline =
+  Boolean(
+    config.indexedDbGroupExport
+  ) ||
+  Boolean(
+    config.indexedDbImportEnabled
+  ) ||
+  Boolean(
+    config.indexedDbRoomPreview
+  ) ||
+  Boolean(
+    config.indexedDbDebug
+  ) ||
+  Boolean(
+    config.indexedDbDebugOnly
   );
 
-  console.log("Sau khi login xong tool sẽ tự quét nhóm.");
-
-  while (true) {
+while (true) {
         for (const groupName of config.groups) {
       try {
         activeGroupName = groupName;
@@ -7192,14 +7233,22 @@ async function main() {
          * - Không gọi API import.
          * - Không ghi state.
          */
-                if (
-          config.networkDebugOnly ||
-          config.indexedDbDebugOnly
-        ) {
+          if (
+            config.networkDebugOnly ||
+            useIndexedDbPipeline
+          ) {
           console.log(
             `Đang tải lịch sử nhóm: ${groupName}`
           );               
           
+          const historyLoadResult =
+            await triggerNetworkHistoryLoad({
+              page,
+              groupName,
+              config,
+              state,
+            });
+
           if (config.indexedDbDebug) {
             await dumpIndexedDb(
               page,
@@ -7207,14 +7256,6 @@ async function main() {
               config
             );
           }
-
-      const historyLoadResult =
-      await triggerNetworkHistoryLoad({
-        page,
-        groupName,
-        config,
-        state,
-      });
 
     console.log(
       [
@@ -7248,12 +7289,13 @@ async function main() {
     }
 
           console.log(
-            `Đã hoàn tất debug nhóm ${groupName}`
+            `Đã hoàn tất quét/import IndexedDB nhóm ${groupName}`
           );
 
           /*
-           * Không chạy import và không ghi state.json.
-           */
+          * Đã hoàn thành pipeline IndexedDB.
+          * Không chạy tiếp luồng DOM cũ cho cùng nhóm.
+          */
           continue;
         }
 
@@ -7308,14 +7350,55 @@ async function main() {
       return;
     }
 
+    const configuredIntervalMs =
+  Number(
+    config.scanIntervalMs
+  );
+
+const idleIntervalMs =
+  Number.isFinite(
+    configuredIntervalMs
+  )
+    ? Math.max(
+        60_000,
+        configuredIntervalMs
+      )
+    : 15 * 60 * 1000;
+
+const nextScanAt =
+  new Date(
+    Date.now() +
+      idleIntervalMs
+  );
+
     console.log(
-      `\nNghỉ ${Math.round(
-        config.scanIntervalMs / 1000
-      )}s...`
+      [
+        "",
+        "Đã hoàn tất lượt quét và import.",
+        `Bắt đầu nghỉ ${Math.round(
+          idleIntervalMs / 60_000
+        )} phút.`,
+        `Lượt quét tiếp theo: ${nextScanAt.toLocaleString(
+          "vi-VN",
+          {
+            timeZone:
+              "Asia/Ho_Chi_Minh",
+          }
+        )}`,
+      ].join("\n")
     );
 
-    await page.waitForTimeout(
-      config.scanIntervalMs
+    /*
+    * Timer bắt đầu sau khi:
+    * - đã quét xong tất cả nhóm;
+    * - đã import xong tất cả phòng;
+    * - đã ghi xong state.json.
+    *
+    * Không có lượt quét mới chạy chồng
+    * trong khi lượt hiện tại đang import.
+    */
+    await sleep(
+      idleIntervalMs
     );
   }
 }
