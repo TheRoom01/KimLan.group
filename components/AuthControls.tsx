@@ -534,6 +534,16 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                 Admin
               </button>
 
+              <a
+                href="https://canhodichvu.vercel.app/admin/zalo-imports"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={closeMenu}
+                className="block w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-semibold text-white/85 transition-all hover:bg-white/10 hover:text-white"
+              >
+                Trang duyệt phòng
+              </a>
+
               <button
                 type="button"
                 onClick={() => {

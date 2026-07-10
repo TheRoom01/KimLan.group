@@ -26,17 +26,20 @@ type ImportRow = {
   images?: any[];
 };
 
+type CardBusyAction = "approve" | "delete" | "reject" | null;
+
 const PAGE_SIZE = 20;
 
 export default function ZaloImportsClient() {
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("Chờ duyệt");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
 
-    const [editingPending, setEditingPending] = useState<ImportRow | null>(null);
+  const [editingPending, setEditingPending] = useState<ImportRow | null>(null);
   const [openPendingModal, setOpenPendingModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
 
@@ -48,68 +51,122 @@ export default function ZaloImportsClient() {
       const qs = new URLSearchParams();
       qs.set("limit", String(PAGE_SIZE));
       qs.set("offset", String(nextOffset));
-      if (nextStatus) qs.set("status", nextStatus);
+
+      if (nextStatus) {
+        qs.set("status", nextStatus);
+      }
 
       const res = await fetch(`/api/admin/zalo-imports?${qs.toString()}`, {
         cache: "no-store",
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
 
       if (!res.ok || !json?.ok) {
         throw new Error(json?.error || "Load thất bại");
       }
 
-      setRows(json.data ?? []);
+      setRows(Array.isArray(json.data) ? json.data : []);
       setTotal(Number(json.total ?? 0));
-    } catch (e: any) {
-      setErrorMsg(e?.message ?? "Load thất bại");
+    } catch (error: any) {
+      setErrorMsg(error?.message ?? "Load thất bại");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadData(0, status);
     setOffset(0);
+    void loadData(0, status);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  const page = useMemo(() => Math.floor(offset / PAGE_SIZE) + 1, [offset]);
+  const page = useMemo(
+    () => Math.floor(offset / PAGE_SIZE) + 1,
+    [offset]
+  );
+
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(total / PAGE_SIZE)),
     [total]
   );
 
-    async function deleteAllCurrentRows() {
-    if (rows.length === 0) return;
-
-    const ok = window.confirm(
-      `Bạn có chắc muốn xoá tất cả ${rows.length} card đang hiển thị trên trang này? Ảnh tạm R2 cũng sẽ bị xoá.`
+  function removeRowFromList(id: string) {
+    setRows((currentRows) =>
+      currentRows.filter((row) => row.id !== id)
     );
 
-    if (!ok) return;
+    setTotal((currentTotal) =>
+      Math.max(0, currentTotal - 1)
+    );
 
-    const res = await fetch("/api/admin/zalo-imports/bulk-remove", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ids: rows.map((r) => r.id),
-      }),
-    });
+    if (editingPending?.id === id) {
+      setEditingPending(null);
+      setOpenPendingModal(false);
+    }
+  }
 
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok || !json?.ok) {
-      alert(json?.error || "Xoá tất cả thất bại");
+  async function deleteAllCurrentRows() {
+    if (rows.length === 0 || bulkDeleting) {
       return;
     }
 
-    alert(`Đã xoá ${json.deleted || rows.length} import.`);
-    await loadData(0, status);
-    setOffset(0);
+    const ids = rows.map((row) => row.id);
+
+    const ok = window.confirm(
+      `Bạn có chắc muốn xoá tất cả ${ids.length} card đang hiển thị trên trang này? Ảnh tạm R2 cũng sẽ bị xoá.`
+    );
+
+    if (!ok) {
+      return;
+    }
+
+    setBulkDeleting(true);
+
+    try {
+      const res = await fetch("/api/admin/zalo-imports/bulk-remove", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(
+          json?.error || "Xoá tất cả thất bại"
+        );
+      }
+
+      const deletedCount = Number(
+        json.deleted ?? ids.length
+      );
+
+      /*
+       * Không tải lại toàn bộ list.
+       * Xóa ngay các card đã xử lý khỏi giao diện.
+       */
+      setRows((currentRows) =>
+        currentRows.filter(
+          (row) => !ids.includes(row.id)
+        )
+      );
+
+      setTotal((currentTotal) =>
+        Math.max(0, currentTotal - deletedCount)
+      );
+
+      setEditingPending(null);
+      setOpenPendingModal(false);
+    } catch (error: any) {
+      alert(
+        error?.message || "Xoá tất cả thất bại"
+      );
+    } finally {
+      setBulkDeleting(false);
+    }
   }
 
   return (
@@ -117,7 +174,9 @@ export default function ZaloImportsClient() {
       <div style={topBar}>
         <div>
           <h1 style={title}>Zalo Imports</h1>
-          <div style={subTitle}>Tin phòng tự động đọc từ nhóm Zalo</div>
+          <div style={subTitle}>
+            Tin phòng tự động đọc từ nhóm Zalo
+          </div>
         </div>
 
         <a href="/admin" style={backBtn}>
@@ -128,7 +187,9 @@ export default function ZaloImportsClient() {
       <div style={filterBar}>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(event) =>
+            setStatus(event.target.value)
+          }
           style={select}
         >
           <option value="">Tất cả</option>
@@ -139,37 +200,65 @@ export default function ZaloImportsClient() {
           <option value="Hết hạn">Hết hạn</option>
         </select>
 
-        <button onClick={() => loadData(offset, status)} style={refreshBtn}>
-          Tải lại
+        <button
+          type="button"
+          onClick={() =>
+            void loadData(offset, status)
+          }
+          style={refreshBtn}
+          disabled={loading}
+        >
+          {loading && rows.length > 0
+            ? "Đang tải..."
+            : "Tải lại"}
         </button>
 
         <button
-          onClick={deleteAllCurrentRows}
+          type="button"
+          onClick={() =>
+            void deleteAllCurrentRows()
+          }
           style={bulkDeleteBtn}
-          disabled={loading || rows.length === 0}
+          disabled={
+            bulkDeleting ||
+            loading ||
+            rows.length === 0
+          }
         >
-          Xóa tất cả phòng
+          {bulkDeleting
+            ? "Đang xóa..."
+            : "Xóa tất cả phòng"}
         </button>
       </div>
 
-      {errorMsg && <div style={errorBox}>{errorMsg}</div>}
+      {errorMsg && (
+        <div style={errorBox}>
+          {errorMsg}
+        </div>
+      )}
 
-      {loading ? (
+      {/*
+       * Chỉ hiện trạng thái tải toàn màn hình ở lần mở đầu tiên.
+       * Khi refresh nền, danh sách cũ vẫn được giữ nguyên.
+       */}
+      {loading && rows.length === 0 ? (
         <div style={emptyBox}>Đang tải...</div>
       ) : rows.length === 0 ? (
-        <div style={emptyBox}>Chưa có import nào.</div>
+        <div style={emptyBox}>
+          Chưa có import nào.
+        </div>
       ) : (
         <div style={list}>
           {rows.map((row) => (
             <ImportCard
-            key={row.id}
-            row={row}
-            onChanged={() => loadData(offset, status)}
-            onEdit={(r) => {
-                setEditingPending(r);
+              key={row.id}
+              row={row}
+              onRemoved={removeRowFromList}
+              onEdit={(selectedRow) => {
+                setEditingPending(selectedRow);
                 setActiveTab("info");
                 setOpenPendingModal(true);
-            }}
+              }}
             />
           ))}
         </div>
@@ -177,204 +266,355 @@ export default function ZaloImportsClient() {
 
       <div style={pagination}>
         <button
+          type="button"
           style={pageBtn}
           disabled={offset <= 0 || loading}
           onClick={() => {
-            const next = Math.max(0, offset - PAGE_SIZE);
+            const next = Math.max(
+              0,
+              offset - PAGE_SIZE
+            );
+
             setOffset(next);
-            loadData(next, status);
+            void loadData(next, status);
           }}
         >
           ← Trước
         </button>
 
         <div style={muted}>
-          Trang <b>{page}</b> / <b>{totalPages}</b> · Tổng <b>{total}</b>
+          Trang <b>{page}</b> /{" "}
+          <b>{totalPages}</b> · Tổng{" "}
+          <b>{total}</b>
         </div>
 
         <button
+          type="button"
           style={pageBtn}
-          disabled={offset + PAGE_SIZE >= total || loading}
+          disabled={
+            offset + PAGE_SIZE >= total ||
+            loading
+          }
           onClick={() => {
             const next = offset + PAGE_SIZE;
+
             setOffset(next);
-            loadData(next, status);
+            void loadData(next, status);
           }}
         >
           Sau →
         </button>
       </div>
 
-            {openPendingModal && editingPending && (
+      {openPendingModal && editingPending && (
         <RoomModal
           mode="pending"
           pendingId={editingPending.id}
-          pendingRoomPayload={editingPending.room_payload ?? {}}
-          pendingDetailPayload={editingPending.detail_payload ?? {}}
+          pendingRoomPayload={
+            editingPending.room_payload ?? {}
+          }
+          pendingDetailPayload={
+            editingPending.detail_payload ?? {}
+          }
           open={openPendingModal}
-          onClose={() => setOpenPendingModal(false)}
+          onClose={() =>
+            setOpenPendingModal(false)
+          }
           editingRoom={null}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
-          onNotify={(msg) => alert(msg)}
+          onNotify={(message) =>
+            alert(message)
+          }
           onPendingSaved={async () => {
+            /*
+             * Refresh nền: danh sách hiện tại không biến mất
+             * vì phần render chỉ hiện loading khi rows rỗng.
+             */
             await loadData(offset, status);
           }}
           onSaved={async () => {}}
         />
       )}
-
     </main>
   );
 }
 
 function ImportCard({
   row,
-  onChanged,
+  onRemoved,
   onEdit,
 }: {
   row: ImportRow;
-  onChanged?: () => void;
+  onRemoved?: (id: string) => void;
   onEdit?: (row: ImportRow) => void;
 }) {
+  const [busyAction, setBusyAction] =
+    useState<CardBusyAction>(null);
+
   const room = row.room_payload ?? {};
   const detail = row.detail_payload ?? {};
   const batch = row.batch ?? {};
-  const inherited = row.inherited_field_map ?? {};
-  const source = row.source_field_map ?? {};
-  const isDuplicate = row.status === "Trùng phòng";
+  const inherited =
+    row.inherited_field_map ?? {};
+  const source =
+    row.source_field_map ?? {};
 
-    async function rejectImport() {
+  const isDuplicate =
+    row.status === "Trùng phòng";
+
+  const isLockedStatus =
+    row.status === "Đã duyệt" ||
+    row.status === "Từ chối";
+
+  const actionDisabled =
+    busyAction !== null ||
+    isLockedStatus;
+
+  async function rejectImport() {
+    if (busyAction) {
+      return;
+    }
+
     const ok = window.confirm(
       "Bạn có chắc muốn từ chối import này? Ảnh tạm trên R2 sẽ bị xoá."
     );
 
-    if (!ok) return;
-
-    const reason = window.prompt("Lý do từ chối (có thể bỏ trống):") || "";
-
-    const res = await fetch(`/api/admin/zalo-imports/${row.id}/reject`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ reason }),
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok || !json?.ok) {
-      alert(json?.error || "Từ chối thất bại");
+    if (!ok) {
       return;
     }
 
-    alert("Đã từ chối import.");
-    onChanged?.();
+    const reason =
+      window.prompt(
+        "Lý do từ chối (có thể bỏ trống):"
+      ) || "";
+
+    setBusyAction("reject");
+
+    try {
+      const res = await fetch(
+        `/api/admin/zalo-imports/${row.id}/reject`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ reason }),
+        }
+      );
+
+      const json = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(
+          json?.error || "Từ chối thất bại"
+        );
+      }
+
+      /*
+       * Không reload toàn bộ list.
+       * Chỉ xóa card vừa từ chối khỏi giao diện.
+       */
+      onRemoved?.(row.id);
+    } catch (error: any) {
+      alert(
+        error?.message || "Từ chối thất bại"
+      );
+
+      setBusyAction(null);
+    }
   }
 
-    async function deleteImport() {
+  async function deleteImport() {
+    if (busyAction) {
+      return;
+    }
+
     const ok = window.confirm(
       "Bạn có chắc muốn xoá hẳn import này? Dữ liệu pending và ảnh tạm R2 sẽ bị xoá."
     );
 
-    if (!ok) return;
-
-    const res = await fetch(`/api/admin/zalo-imports/${row.id}/remove`, {
-      method: "POST",
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok || !json?.ok) {
-      alert(json?.error || "Xoá thất bại");
+    if (!ok) {
       return;
     }
 
-    alert("Đã xoá import.");
-    onChanged?.();
+    setBusyAction("delete");
+
+    try {
+      const res = await fetch(
+        `/api/admin/zalo-imports/${row.id}/remove`,
+        {
+          method: "POST",
+        }
+      );
+
+      const json = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(
+          json?.error || "Xoá thất bại"
+        );
+      }
+
+      /*
+       * Không gọi loadData().
+       * Card biến mất ngay sau khi API thành công.
+       */
+      onRemoved?.(row.id);
+    } catch (error: any) {
+      alert(
+        error?.message || "Xoá thất bại"
+      );
+
+      setBusyAction(null);
+    }
   }
 
-     async function approveImport(mode: "create_room" | "update_status") {
-    const text =
+  async function approveImport(
+    mode: "create_room" | "update_status"
+  ) {
+    if (busyAction) {
+      return;
+    }
+
+    const confirmText =
       mode === "update_status"
         ? "Xác nhận cập nhật trạng thái phòng đã tồn tại?"
         : "Xác nhận duyệt và tạo phòng mới?";
 
-    const ok = window.confirm(text);
-    if (!ok) return;
+    const ok =
+      window.confirm(confirmText);
 
-    const res = await fetch(`/api/admin/zalo-imports/${row.id}/approve`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ mode }),
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok || !json?.ok) {
-      alert(json?.error || "Duyệt thất bại");
+    if (!ok) {
       return;
     }
 
-    alert(
-      mode === "update_status"
-        ? "Đã cập nhật trạng thái phòng."
-        : "Đã tạo phòng mới."
-    );
+    setBusyAction("approve");
 
-    onChanged?.();
+    try {
+      const res = await fetch(
+        `/api/admin/zalo-imports/${row.id}/approve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ mode }),
+        }
+      );
 
-    if (json.roomId) {
-      window.open(`/rooms/${json.roomId}`, "_blank", "noopener,noreferrer");
+      const json = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(
+          json?.error || "Duyệt thất bại"
+        );
+      }
+
+      /*
+       * Không reload toàn bộ list.
+       * Card biến mất và card phía dưới tự dồn lên.
+       */
+      onRemoved?.(row.id);
+
+      if (json.roomId) {
+        window.open(
+          `/rooms/${json.roomId}`,
+          "_blank",
+          "noopener,noreferrer"
+        );
+      }
+    } catch (error: any) {
+      alert(
+        error?.message || "Duyệt thất bại"
+      );
+
+      setBusyAction(null);
     }
   }
 
   return (
-    <section style={card}>
+    <section
+      style={{
+        ...card,
+        opacity: busyAction ? 0.72 : 1,
+        transition: "opacity 160ms ease",
+      }}
+    >
       <div style={cardHeader}>
         <div>
           <div style={statusLine}>
-            <span style={isDuplicate ? badgeOrange : badgeBlue}>
+            <span
+              style={
+                isDuplicate
+                  ? badgeOrange
+                  : badgeBlue
+              }
+            >
               {row.status}
             </span>
 
             {row.confidence_score != null && (
               <span style={confidence}>
-                Confidence: {Math.round(Number(row.confidence_score) * 100)}%
+                Confidence:{" "}
+                {Math.round(
+                  Number(
+                    row.confidence_score
+                  ) * 100
+                )}
+                %
               </span>
             )}
           </div>
 
           <div style={meta}>
-            Nhóm: <b>{batch.group_name || "-"}</b> · Người gửi:{" "}
+            Nhóm:{" "}
+            <b>{batch.group_name || "-"}</b>{" "}
+            · Người gửi:{" "}
             <b>{batch.sender_name || "-"}</b>
           </div>
 
           <div style={meta}>
-            Thời gian: {formatDateTime(batch.sent_at || row.created_at)}
+            Thời gian:{" "}
+            {formatDateTime(
+              batch.sent_at ||
+                row.created_at
+            )}
           </div>
         </div>
 
-        {isDuplicate && row.matched_room_id && (
-          <a
-            href={`/rooms/${row.matched_room_id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={viewRoomBtn}
-          >
-            Xem phòng
-          </a>
-        )}
+        {isDuplicate &&
+          row.matched_room_id && (
+            <a
+              href={`/rooms/${row.matched_room_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={viewRoomBtn}
+            >
+              Xem phòng
+            </a>
+          )}
       </div>
 
       {isDuplicate && (
         <div style={duplicateBox}>
           <b>Phòng đã tồn tại</b>
-          <div>Lý do: {row.matched_reason || "-"}</div>
+
           <div>
-            Trạng thái cũ: <b>{row.old_status || "-"}</b> → Trạng thái mới:{" "}
+            Lý do:{" "}
+            {row.matched_reason || "-"}
+          </div>
+
+          <div>
+            Trạng thái cũ:{" "}
+            <b>{row.old_status || "-"}</b>{" "}
+            → Trạng thái mới:{" "}
             <b>{row.new_status || "-"}</b>
           </div>
         </div>
@@ -382,12 +622,19 @@ function ImportCard({
 
       <div style={grid}>
         <div style={panel}>
-          <div style={panelTitle}>Tin gốc Zalo</div>
-          <pre style={rawText}>{batch.raw_text || "-"}</pre>
+          <div style={panelTitle}>
+            Tin gốc Zalo
+          </div>
+
+          <pre style={rawText}>
+            {batch.raw_text || "-"}
+          </pre>
         </div>
 
         <div style={panel}>
-          <div style={panelTitle}>Dữ liệu phòng</div>
+          <div style={panelTitle}>
+            Dữ liệu phòng
+          </div>
 
           <Field label="Mã phòng" value={room.room_code} field="room_code" source={source} inherited={inherited} />
           <Field label="Loại phòng" value={room.room_type} field="room_type" source={source} inherited={inherited} />
@@ -403,14 +650,15 @@ function ImportCard({
         </div>
 
         <div style={panel}>
-          <div style={panelTitle}>Chi phí / tiện ích</div>
+          <div style={panelTitle}>
+            Chi phí / tiện ích
+          </div>
 
           <Field label="Điện" value={formatFee(detail.electric_fee_value, detail.electric_fee_unit)} field="electric_fee_value" source={source} inherited={inherited} />
           <Field label="Nước" value={formatFee(detail.water_fee_value, detail.water_fee_unit)} field="water_fee_value" source={source} inherited={inherited} />
           <Field label="Dịch vụ" value={formatFee(detail.service_fee_value, detail.service_fee_unit)} field="service_fee_value" source={source} inherited={inherited} />
           <Field label="Giữ xe" value={formatFee(detail.parking_fee_value, detail.parking_fee_unit)} field="parking_fee_value" source={source} inherited={inherited} />
           <Field label="Các phí khác" value={formatOtherFee(detail.other_fee_value, detail.other_fee_note)} field={["other_fee_value", "other_fee_note"]} source={source} inherited={inherited} />
-
           <Field label="Các tiện ích khác" value={String(detail.other_amenities || "").trim()} field="other_amenities" source={source} inherited={inherited} />
           <Field label="Thang máy" value={detail.has_elevator ? "Có" : "Không"} field="has_elevator" source={source} inherited={inherited} />
           <Field label="Thang bộ" value={detail.has_stairs ? "Có" : "Không"} field="has_stairs" source={source} inherited={inherited} />
@@ -433,80 +681,117 @@ function ImportCard({
         </div>
       </div>
 
-      {Array.isArray(row.images) && row.images.length > 0 && (
-        <div style={imagesWrap}>
-          <div style={panelTitle}>Ảnh tạm</div>
-          <div style={imagesGrid}>
-            {row.images.map((img: any) => (
-              <img
-                key={img.id}
-                src={img.temp_image_url}
-                alt=""
-                style={thumb}
-              />
-            ))}
+      {Array.isArray(row.images) &&
+        row.images.length > 0 && (
+          <div style={imagesWrap}>
+            <div style={panelTitle}>
+              Ảnh tạm
+            </div>
+
+            <div style={imagesGrid}>
+              {row.images.map(
+                (image: any) => (
+                  <img
+                    key={image.id}
+                    src={
+                      image.temp_image_url
+                    }
+                    alt=""
+                    style={thumb}
+                  />
+                )
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       <div style={actions}>
         {isDuplicate ? (
-            <>
+          <>
             <button
-                style={primaryBtn}
-                type="button"
-                onClick={() => approveImport("update_status")}
-                disabled={row.status === "Đã duyệt" || row.status === "Từ chối"}
+              style={primaryBtn}
+              type="button"
+              onClick={() =>
+                void approveImport(
+                  "update_status"
+                )
+              }
+              disabled={actionDisabled}
             >
-                Duyệt cập nhật
+              {busyAction === "approve"
+                ? "Đang duyệt..."
+                : "Duyệt cập nhật"}
             </button>
 
             <button
-                style={ghostBtn}
-                type="button"
-                onClick={() => approveImport("create_room")}
-                disabled={row.status === "Đã duyệt" || row.status === "Từ chối"}
+              style={ghostBtn}
+              type="button"
+              onClick={() =>
+                void approveImport(
+                  "create_room"
+                )
+              }
+              disabled={actionDisabled}
             >
-                Tạo phòng mới
+              {busyAction === "approve"
+                ? "Đang duyệt..."
+                : "Tạo phòng mới"}
             </button>
-            </>
+          </>
         ) : (
-            <button
+          <button
             style={primaryBtn}
             type="button"
-            onClick={() => approveImport("create_room")}
-            disabled={row.status === "Đã duyệt" || row.status === "Từ chối"}
-            >
-            Duyệt đăng
-            </button>
+            onClick={() =>
+              void approveImport(
+                "create_room"
+              )
+            }
+            disabled={actionDisabled}
+          >
+            {busyAction === "approve"
+              ? "Đang duyệt..."
+              : "Duyệt đăng"}
+          </button>
         )}
 
         <button
-            style={ghostBtn}
-            type="button"
-            onClick={() => onEdit?.(row)}
-            disabled={row.status === "Đã duyệt" || row.status === "Từ chối"}
+          style={ghostBtn}
+          type="button"
+          onClick={() =>
+            onEdit?.(row)
+          }
+          disabled={actionDisabled}
         >
-            Chỉnh sửa
-        </button>
-
-                <button
-            style={dangerBtn}
-            type="button"
-            onClick={rejectImport}
-            disabled={row.status === "Đã duyệt" || row.status === "Từ chối"}
-        >
-            Từ chối
+          Chỉnh sửa
         </button>
 
         <button
-            style={deleteBtn}
-            type="button"
-            onClick={deleteImport}
+          style={dangerBtn}
+          type="button"
+          onClick={() =>
+            void rejectImport()
+          }
+          disabled={actionDisabled}
         >
-            Xóa
+          {busyAction === "reject"
+            ? "Đang từ chối..."
+            : "Từ chối"}
         </button>
-        </div>
+
+        <button
+          style={deleteBtn}
+          type="button"
+          onClick={() =>
+            void deleteImport()
+          }
+          disabled={busyAction !== null}
+        >
+          {busyAction === "delete"
+            ? "Đang xóa..."
+            : "Xóa"}
+        </button>
+      </div>
     </section>
   );
 }
