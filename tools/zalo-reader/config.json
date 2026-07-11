@@ -5,32 +5,33 @@
 
   "networkDebug": false,
   "networkDebugOnly": false,
+
   "debugRetentionDays": 7,
   "debugMaxSessions": 10,
 
-  "indexedDbDebug": false,
+  "indexedDbDebug": true,
   "indexedDbDebugOnly": false,
   "indexedDbSampleLimit": 5,
   "indexedDbRecordMaxStringChars": 4000,
 
   "indexedDbGroupExport": true,
 
-  "indexedDbGroupScanLimit": 100000,
-  "indexedDbGroupMessageLimit": 5000,
+  "indexedDbGroupScanLimit": 300000,
+  "indexedDbGroupMessageLimit": 20000,
 
-  "indexedDbGroupContextBeforeMs": 3600000,
+  "indexedDbGroupContextBeforeMs": 86400000,
   "indexedDbGroupContextAfterMs": 3600000,
 
   "indexedDbRoomPreview": true,
-  "indexedDbRoomPreviewMaxGapMs": 300000,
+  "indexedDbRoomPreviewMaxGapMs": 600000,
 
   "indexedDbImportEnabled": true,
 
   "indexedDbScrollStepRatio": 0.85,
-  "indexedDbScrollWaitMs": 2200,
-  "indexedDbScrollSettleMs": 3500,
-  "indexedDbScrollStepsPerBatch": 3,
-  "indexedDbScrollMaxBatches": 80,
+  "indexedDbScrollWaitMs": 2500,
+  "indexedDbScrollSettleMs": 4500,
+  "indexedDbScrollStepsPerBatch": 4,
+  "indexedDbScrollMaxBatches": 150,
   "indexedDbStopOnKnownRoom": true,
 
   "networkCaptureKeywords": [
@@ -52,15 +53,15 @@
     "climsgid"
   ],
 
-  "maxMessagesPerGroup": 300,
-  "maxImagesPerBatch": 30,
-  "maxFollowingImageMessages": 8,
+  "maxMessagesPerGroup": 5000,
+  "maxImagesPerBatch": 100,
+  "maxFollowingImageMessages": 30,
 
   "groups": [
-    "TÂY NAM - TOP DỰ ÁN TRÊN 5tr",
-    "Top Dự Án Quận 5",
-    "TOP DỰ ÁN QUẬN 10 TRÊN 6TR"
-    
+    {
+      "key": "Top-Du-An-Quan-5",
+      "name": "Top Dự Án Quận 5"
+    }
   ],
 
   "roomTextKeywords": [
