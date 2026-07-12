@@ -58,13 +58,47 @@ export function normalizeRoomCode(input?: string | null) {
   const raw = String(input || "").trim();
   if (!raw) return "";
 
-  const x = raw
-    .replace(/\b(?:phòng|phong|room|mã|ma)\b/gi, "")
-    .replace(/[:\-\s]+/g, "")
-    .replace(/^P(?=\d)/i, "P.")
-    .toUpperCase();
+  const withoutLabel = raw
+    .replace(
+      /\b(?:mã\s*phòng|ma\s*phong|phòng|phong|room|mã|ma)\b/gi,
+      " "
+    )
+    .replace(/^[\s:|/\-–—]+|[\s:|/\-–—]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  return x;
+  const normalized = normalizeForCompare(withoutLabel)
+    .replace(/[._/\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (
+    /^(?:tret|tang tret|ground|ground floor)$/.test(
+      normalized
+    )
+  ) {
+    return "Trệt";
+  }
+
+  if (
+    /^(?:lung|tang lung|mezzanine)$/.test(
+      normalized
+    )
+  ) {
+    return "Lửng";
+  }
+
+  const floorMatch = normalized.match(
+    /^(?:lau|tang|floor)\s*(\d{1,2})$/
+  );
+
+  if (floorMatch?.[1]) {
+    return `L${Number(floorMatch[1])}`;
+  }
+
+  return removeVietnameseTone(withoutLabel)
+    .replace(/[\s:._/\-–—]+/g, "")
+    .toUpperCase();
 }
 
 /**
@@ -319,6 +353,253 @@ function titleCaseStreet(input: string) {
     .join(" ");
 }
 
+
+type ExtractedAddressParts = {
+  houseNumber: string;
+  address: string;
+  ward: string;
+  district: string;
+};
+
+function normalizeRoomTypeFromText(
+  input: string
+) {
+  const normalized =
+    normalizeForCompare(input);
+
+  if (!normalized) return "";
+
+  if (/\bduplex\b/.test(normalized)) {
+    return "Duplex";
+  }
+
+  if (/\bloft\b/.test(normalized)) {
+    return "Loft";
+  }
+
+  if (/\bpenthouse\b/.test(normalized)) {
+    return "Penthouse";
+  }
+
+  if (/\bstudio\b/.test(normalized)) {
+    return "Studio";
+  }
+
+  const bedroomMatch =
+    normalized.match(
+      /\b([1-9])\s*(?:pn|phong ngu|bedroom|br)\b/
+    );
+
+  if (bedroomMatch?.[1]) {
+    return `${Number(bedroomMatch[1])}PN`;
+  }
+
+  return "";
+}
+
+function extractRoomCodeFromMarker(
+  markerText: string
+) {
+  const text = String(markerText || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+
+  if (!text) return "";
+
+  const codeToken =
+    "(?:trệt|tret|lửng|lung|lầu\\s*\\d{1,2}|lau\\s*\\d{1,2}|tầng\\s*\\d{1,2}|tang\\s*\\d{1,2}|[A-Z]{1,3}\\.?\\d{1,4}[A-Z]?|\\d{2,4}[A-Z]?)";
+
+  const explicitPatterns = [
+    new RegExp(
+      `\\b(?:mã\\s*phòng|ma\\s*phong|mã|ma|phòng|phong|room)\\s*[:\\-]?\\s*(${codeToken})\\b`,
+      "i"
+    ),
+
+    new RegExp(
+      `\\b(?:trống|trong|còn\\s*trống|con\\s*trong)\\s*(?:mã|ma)?\\s*[:\\-]?\\s*(${codeToken})\\b`,
+      "i"
+    ),
+
+    new RegExp(
+      `^\\s*(${codeToken})\\s*(?=(?:[-–—:|]\\s*)?(?:giá|gia|\\d+(?:[.,]\\d+)?\\s*(?:tr|triệu|trieu|k)))`,
+      "i"
+    ),
+  ];
+
+  for (const pattern of explicitPatterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return normalizeRoomCode(match[1]);
+    }
+  }
+
+  return "";
+}
+
+function extractAddressParts(
+  input: string
+): ExtractedAddressParts {
+  const rawText = String(input || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+
+  const result: ExtractedAddressParts = {
+    houseNumber: "",
+    address: "",
+    ward: "",
+    district: "",
+  };
+
+  if (!rawText) return result;
+
+  const districtMatch = rawText.match(
+    /\b(?:q\.?|quận|quan)\s*[:\-]?\s*(\d{1,2}|bình thạnh|binh thanh|gò vấp|go vap|phú nhuận|phu nhuan|tân bình|tan binh|tân phú|tan phu|thủ đức|thu duc|bình tân|binh tan)\b/i
+  );
+
+  if (districtMatch?.[1]) {
+    result.district =
+      normalizeDistrict(districtMatch[1]);
+  }
+
+  const wardMatch = rawText.match(
+    /(?:^|[\s,;|])(?:phường|phuong|p(?:\.|\b))\s*[:\-]?\s*([0-9]{1,3}|[A-Za-zÀ-ỹ][A-Za-zÀ-ỹ\s]{1,30}?)(?=\s*(?:[,;|/\n]|\s+-\s+|q\.?\s*\d|quận|quan|$))/i
+  );
+
+  if (wardMatch?.[1]) {
+    result.ward =
+      normalizeWard(wardMatch[1]);
+  }
+
+  const lines = rawText
+    .split("\n")
+    .map((line) => cleanListPrefix(line))
+    .filter(Boolean);
+
+  let addressCandidate = "";
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const normalized = normalizeForCompare(line);
+
+    if (
+      /^(?:dia chi(?: du an)?|vi tri|dc)\b/.test(
+        normalized
+      )
+    ) {
+      const afterLabel = line
+        .replace(
+          /^(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]?\s*/i,
+          ""
+        )
+        .trim();
+
+      if (
+        /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*\s+\S+/.test(
+          afterLabel
+        )
+      ) {
+        addressCandidate = afterLabel;
+        break;
+      }
+
+      for (
+        let nextIndex = index + 1;
+        nextIndex < Math.min(lines.length, index + 4);
+        nextIndex++
+      ) {
+        if (
+          /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*\s+\S+/.test(
+            lines[nextIndex]
+          )
+        ) {
+          addressCandidate = lines[nextIndex];
+          break;
+        }
+      }
+
+      if (addressCandidate) break;
+    }
+  }
+
+  if (!addressCandidate) {
+    addressCandidate =
+      lines.find((line) =>
+        /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*\s+[A-Za-zÀ-ỹ]/.test(
+          line
+        )
+      ) || "";
+  }
+
+  if (!addressCandidate) {
+    return result;
+  }
+
+  const segments = addressCandidate
+    .replace(
+      /\b(?:q\.?|quận|quan)\s*[:\-]?\s*(?:\d{1,2}|bình thạnh|binh thanh|gò vấp|go vap|phú nhuận|phu nhuan|tân bình|tan binh|tân phú|tan phu|thủ đức|thu duc|bình tân|binh tan)\b.*$/i,
+      ""
+    )
+    .split(/\s*(?:,|;|\||\s+-\s+)\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const streetSegment = segments[0] || "";
+
+  if (!result.ward && segments.length > 1) {
+    const possibleWard = segments[1];
+    const possibleWardNormalized =
+      normalizeForCompare(possibleWard);
+
+    if (
+      possibleWardNormalized &&
+      !/^(?:q|quan)\s*\d/.test(
+        possibleWardNormalized
+      ) &&
+      !/^(?:dien|nuoc|gia|phong|ma|toa nha)/.test(
+        possibleWardNormalized
+      )
+    ) {
+      result.ward = normalizeWard(possibleWard);
+    }
+  }
+
+  const streetMatch = streetSegment.match(
+    /^(\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*)(?:\s+)(.+)$/i
+  );
+
+  if (!streetMatch?.[1] || !streetMatch?.[2]) {
+    return result;
+  }
+
+  const street = streetMatch[2]
+    .replace(
+      /\b(?:p\.?|phường|phuong)\s*[:\-]?\s*(?:\d{1,3}|[A-Za-zÀ-ỹ][A-Za-zÀ-ỹ\s]{1,30})$/i,
+      ""
+    )
+    .replace(
+      /\b(?:phòng|phong|room|giá|gia|trống|trong|còn|con)\b.*$/i,
+      ""
+    )
+    .replace(/[,:;|\-–—]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (street.length >= 2) {
+    result.houseNumber = streetMatch[1].trim();
+    result.address = titleCaseStreet(street);
+  }
+
+  return result;
+}
+
+function isRoomTypeOnlyText(
+  normalized: string
+) {
+  return /^(?:loai phong\s*[:\-]?\s*)?(?:studio|duplex|loft|penthouse|[1-9]\s*(?:pn|phong ngu|bedroom|br))$/.test(
+    normalized
+  );
+}
+
 function getCleanZaloLines(
   rawText: string
 ) {
@@ -393,14 +674,21 @@ function looksLikeRoomMarkerText(
       normalized
     );
 
+  const hasRoomTypeSignal =
+    /\b(studio|duplex|loft|penthouse|[1-9]\s*(?:pn|phong ngu|bedroom|br))\b/.test(
+      normalized
+    );
+
   /*
    * Hỗ trợ marker không có chữ "phòng":
    *
    * 203 giá 8tr
    * G001 giá 8tr
+   * Trệt giá 9tr
+   * Lầu 1 giá 8tr
    */
   const startsWithRoomCode =
-    /^(?:[a-z]?\d{2,4}[a-z]?|[a-z]\d{2,4}|[a-z0-9]+[-/][a-z0-9-]+)\b/.test(
+    /^(?:(?:trong|con trong)\s+)?(?:ma\s+)?(?:tret|lung|lau\s*\d{1,2}|tang\s*\d{1,2}|[a-z]{1,3}\.?\d{1,4}[a-z]?|\d{2,4}[a-z]?)\b/.test(
       normalized
     );
 
@@ -421,7 +709,8 @@ function looksLikeRoomMarkerText(
   return (
     (
       hasRoomSignal ||
-      startsWithRoomCode
+      startsWithRoomCode ||
+      hasRoomTypeSignal
     ) &&
     hasPrice
   );
@@ -870,6 +1159,22 @@ function pickDescriptionFromRoomMarker(
     }
 
     /*
+     * Không đưa phân loại phòng, giá hoặc hoa hồng
+     * vào phần mô tả.
+     */
+    if (
+      isRoomTypeOnlyText(normalized) ||
+      /^(?:gia|gia thue)\b/.test(normalized) ||
+      /^(?:hoa hong|hh|commission)\b/.test(normalized) ||
+      /\b(?:hoa hong|commission)\b/.test(normalized) ||
+      /^(?:(?:khong co|ko co|co|khong|ko)\s+)?(?:may giat|mg|giat chung|giat rieng|may say|say chung|say rieng|thang may|thang bo|khoa van tay|gui xe|giu xe|ham xe)\b/.test(
+        normalized
+      )
+    ) {
+      continue;
+    }
+
+    /*
      * Bỏ những dòng chỉ chứa field riêng.
      */
     if (
@@ -929,10 +1234,20 @@ function pickDescriptionFromRoomMarker(
         )
 
         /*
-         * Bỏ mã phòng.
+         * Bỏ mã phòng có nhãn:
+         * mã P601, phòng G01, mã Trệt, mã Lầu 1...
          */
         .replace(
-          /\b(?:mã|ma|phòng|phong|room)\s*[:\-]?\s*[A-Z0-9][A-Z0-9./_-]*\b/gi,
+          /\b(?:mã\s*phòng|ma\s*phong|mã|ma|phòng|phong|room)\s*[:\-]?\s*(?:trệt|tret|lửng|lung|lầu\s*\d{1,2}|lau\s*\d{1,2}|tầng\s*\d{1,2}|tang\s*\d{1,2}|[A-Z]{1,3}\.?\d{1,4}[A-Z]?|\d{2,4}[A-Z]?)\b/gi,
+          " "
+        )
+
+        /*
+         * Bỏ mã đứng đầu marker nhưng không có chữ "mã":
+         * G01 giá 7tr, Lầu 1 giá 8tr, 202 giá 6tr...
+         */
+        .replace(
+          /^\s*(?:trệt|tret|lửng|lung|lầu\s*\d{1,2}|lau\s*\d{1,2}|tầng\s*\d{1,2}|tang\s*\d{1,2}|[A-Z]{1,3}\.?\d{1,4}[A-Z]?|\d{2,4}[A-Z]?)\s*(?=(?:[-–—:|]\s*)?(?:giá|gia|\d+(?:[.,]\d+)?\s*(?:tr|triệu|trieu|k)))/i,
           " "
         )
 
@@ -950,6 +1265,24 @@ function pickDescriptionFromRoomMarker(
          */
         .replace(
           /(?:^|\s)[\-–—|:]?\s*(?:\d+\s*(?:tr|triệu|trieu)\d{1,3}|\d+(?:[.,]\d+)?\s*(?:tr|triệu|trieu|k|nghìn|ngan|ngàn)|\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:đ|d|đồng|dong)?)(?=\s|$)/gi,
+          " "
+        )
+
+        /*
+         * Bỏ phân loại phòng khỏi mô tả.
+         * Nếu cùng dòng còn nội dung thật như "có ban công"
+         * thì phần nội dung đó vẫn được giữ lại.
+         */
+        .replace(
+          /\b(?:studio|duplex|loft|penthouse|[1-9]\s*(?:pn|phòng\s*ngủ|phong\s*ngu|bedroom|br))\b/gi,
+          " "
+        )
+
+        /*
+         * Hoa hồng có field chính sách riêng, không đưa vào mô tả.
+         */
+        .replace(
+          /\b(?:hoa\s*hồng|hoa\s*hong|commission|hh)\b.*$/gi,
           " "
         )
 
@@ -974,6 +1307,10 @@ function pickDescriptionFromRoomMarker(
 
     if (
       /^(trong|trong san)$/.test(
+        cleanedNormalized
+      ) ||
+      isRoomTypeOnlyText(cleanedNormalized) ||
+      /^(?:gia|gia thue|hoa hong|hh|commission)\b/.test(
         cleanedNormalized
       )
     ) {
@@ -1222,7 +1559,12 @@ function defaultDetailPayload(): Record<string, any> {
 
     has_elevator: false,
     has_stairs: false,
-    shared_washer: false,
+    /*
+     * Mặc định mọi phòng có máy giặt chung.
+     * Phần nhận diện phía dưới sẽ tắt mặc định này
+     * khi tin Zalo nói rõ máy giặt riêng hoặc không có máy giặt.
+     */
+    shared_washer: true,
     private_washer: false,
     shared_dryer: false,
     private_dryer: false,
@@ -1331,17 +1673,30 @@ if (otherAmenities) {
     "Tin Zalo";
 }
 
-  const codeMatch =
-    markerText.match(
-      /\b(?:mã|ma|phòng|phong|room)\s*[:\-]?\s*([A-Z0-9][A-Z0-9./_-]{1,30})\b/i
-    ) ||
-    markerText.match(
-      /\b([A-Z]\.?\d{2,4}[A-Z]?)\b/i
+  const detectedRoomType =
+    normalizeRoomTypeFromText(
+      markerText
     );
 
-  if (codeMatch?.[1]) {
-    roomPayload.room_code = normalizeRoomCode(codeMatch[1]);
-    sourceFieldMap.room_code = "Tin Zalo";
+  if (detectedRoomType) {
+    roomPayload.room_type =
+      detectedRoomType;
+
+    sourceFieldMap.room_type =
+      "Tin Zalo";
+  }
+
+  const detectedRoomCode =
+    extractRoomCodeFromMarker(
+      markerText
+    );
+
+  if (detectedRoomCode) {
+    roomPayload.room_code =
+      detectedRoomCode;
+
+    sourceFieldMap.room_code =
+      "Tin Zalo";
   }
 
   /*
@@ -1411,34 +1766,49 @@ const explicitPriceMatch =
     }
   }
 
-  const districtMatch =
-    text.match(/\b(?:q\.?|quận|quan)\s*([0-9]{1,2}|bình thạnh|binh thanh|gò vấp|go vap|phú nhuận|phu nhuan|tân bình|tan binh|tân phú|tan phu|thủ đức|thu duc|bình tân|binh tan)\b/i);
+  /*
+   * ============================
+   * ĐỊA CHỈ TÒA NHÀ
+   * ============================
+   *
+   * Chỉ đọc từ phần thông tin tòa nhà để tránh
+   * lấy nhầm mã phòng hoặc giá làm số nhà.
+   */
+  const addressParts =
+    extractAddressParts(
+      houseInfoText || text
+    );
 
-  if (districtMatch?.[1]) {
-    roomPayload.district = normalizeDistrict(districtMatch[1]);
-    sourceFieldMap.district = "Tin Zalo";
+  if (addressParts.houseNumber) {
+    roomPayload.house_number =
+      addressParts.houseNumber;
+
+    sourceFieldMap.house_number =
+      "Tin Zalo";
   }
 
-  const wardMatch = text.match(/\b(?:p\.?|phường|phuong)\s*([0-9]{1,3}|[A-Za-zÀ-ỹ\s]{3,30})(?=,|\n|\.|\-|q\.?|quận|quan|$)/i);
-  if (wardMatch?.[1]) {
-    roomPayload.ward = normalizeWard(wardMatch[1]);
-    sourceFieldMap.ward = "Tin Zalo";
+  if (addressParts.address) {
+    roomPayload.address =
+      addressParts.address;
+
+    sourceFieldMap.address =
+      "Tin Zalo";
   }
 
-  const addressMatch =
-    text.match(/\b(\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)?)\s+([A-Za-zÀ-ỹ\s]+?)(?=,|\n|\.|\s+q\.?|\s+quận|\s+quan|$)/i);
+  if (addressParts.ward) {
+    roomPayload.ward =
+      addressParts.ward;
 
-  if (addressMatch?.[1] && addressMatch?.[2]) {
-    const street = addressMatch[2]
-      .replace(/\b(?:phòng|phong|room|giá|gia|trống|trong|còn|con)\b.*$/i, "")
-      .trim();
+    sourceFieldMap.ward =
+      "Tin Zalo";
+  }
 
-    if (street.length >= 3) {
-      roomPayload.house_number = addressMatch[1].trim();
-      roomPayload.address = titleCaseStreet(street);
-      sourceFieldMap.house_number = "Tin Zalo";
-      sourceFieldMap.address = "Tin Zalo";
-    }
+  if (addressParts.district) {
+    roomPayload.district =
+      addressParts.district;
+
+    sourceFieldMap.district =
+      "Tin Zalo";
   }
 
   const phoneMatch = text.match(/(?:\+?84|0)(?:\d[\s.-]?){8,10}\d/);
@@ -1547,14 +1917,58 @@ if (parkingOutside) {
   }
 }
 
-  if (/máy giặt riêng|may giat rieng|mg riêng|mg rieng/i.test(textNoTone)) {
-    detailPayload.private_washer = true;
-    sourceFieldMap.private_washer = "Tin Zalo";
-  }
+  const washerDenied =
+    /\b(?:khong|ko)\s*(?:co\s*)?(?:may\s*)?giat\b/.test(
+      textNoTone
+    ) ||
+    /\bkhong\s*co\s*may\s*giat\b/.test(
+      textNoTone
+    );
 
-  if (/máy giặt chung|may giat chung|giặt chung|giat chung/i.test(textNoTone)) {
-    detailPayload.shared_washer = true;
-    sourceFieldMap.shared_washer = "Tin Zalo";
+  const privateWasherMentioned =
+    /\b(?:may giat rieng|mg rieng|giat rieng)\b/.test(
+      textNoTone
+    );
+
+  const sharedWasherMentioned =
+    /\b(?:may giat chung|mg chung|giat chung)\b/.test(
+      textNoTone
+    );
+
+  if (washerDenied) {
+    detailPayload.shared_washer = false;
+    detailPayload.private_washer = false;
+
+    sourceFieldMap.shared_washer =
+      "Tin Zalo";
+
+    sourceFieldMap.private_washer =
+      "Tin Zalo";
+  } else {
+    if (privateWasherMentioned) {
+      detailPayload.private_washer = true;
+
+      /*
+       * Tin chỉ nói máy giặt riêng thì tắt mặc định máy giặt chung.
+       * Nếu tin nói rõ có cả hai, shared_washer sẽ được bật lại bên dưới.
+       */
+      if (!sharedWasherMentioned) {
+        detailPayload.shared_washer = false;
+      }
+
+      sourceFieldMap.private_washer =
+        "Tin Zalo";
+
+      sourceFieldMap.shared_washer =
+        "Tin Zalo";
+    }
+
+    if (sharedWasherMentioned) {
+      detailPayload.shared_washer = true;
+
+      sourceFieldMap.shared_washer =
+        "Tin Zalo";
+    }
   }
 
   if (/máy sấy riêng|may say rieng|sấy riêng|say rieng/i.test(textNoTone)) {

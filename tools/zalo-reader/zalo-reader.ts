@@ -1505,343 +1505,18 @@ function buildRoomUnitsFromMessages(groupName: string, messages: Msg[]): RoomUni
 }
 
 
-async function openGroup(
-  page: Page,
-  groupName: string,
-  config: Config
-) {
-  if (page.isClosed()) {
-    throw new Error(
-      "Trang Zalo đã bị đóng trước khi mở nhóm"
-    );
+async function openGroup(page: Page, groupName: string, config: Config) {
+  const search = page.locator(config.selectors.searchBox).first();
+  await search.click({ timeout: 10000 });
+  await search.fill(groupName);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(2500);
+
+  const exact = page.getByText(groupName, { exact: false }).first();
+  if (await exact.count().catch(() => 0)) {
+    await exact.click().catch(() => {});
+    await page.waitForTimeout(2500);
   }
-
-  /**
-   * tsx/esbuild có thể chèn helper __name vào các hàm
-   * nằm bên trong page.evaluate(). Helper này tồn tại ở Node.js
-   * nhưng không tồn tại trong context của trình duyệt.
-   * Khai báo helper no-op trước khi chạy evaluate để tránh lỗi.
-   */
-  await page.evaluate(
-    "globalThis.__name = globalThis.__name || Object"
-  );
-
-  const normalizedTarget =
-    makeStableText(groupName);
-
-  const search = page
-    .locator(
-      config.selectors.searchBox
-    )
-    .first();
-
-  await search.waitFor({
-    state: "visible",
-    timeout: 15_000,
-  });
-
-  /*
-   * Xóa từ khóa cũ trước khi tìm nhóm mới.
-   */
-  await search.click({
-    timeout: 10_000,
-  });
-
-  await search.fill("");
-
-  await page.waitForTimeout(
-    300
-  );
-
-  await search.fill(
-    groupName
-  );
-
-  /*
-   * Không nhấn Enter ngay.
-   * Enter có thể giữ nguyên cuộc trò chuyện đang mở
-   * nếu kết quả tìm kiếm chưa tải xong.
-   */
-  await page.waitForTimeout(
-    1_500
-  );
-
-  let clicked = false;
-
-  /*
-   * Ưu tiên kết quả có nội dung khớp chính xác.
-   * Chỉ nhận phần tử nằm trong sidebar bên trái.
-   */
-  const exactResults =
-    page.getByText(
-      groupName,
-      {
-        exact: true,
-      }
-    );
-
-  const exactResultCount =
-    await exactResults
-      .count()
-      .catch(() => 0);
-
-  for (
-    let index = 0;
-    index < exactResultCount;
-    index++
-  ) {
-    const candidate =
-      exactResults.nth(index);
-
-    const box =
-      await candidate
-        .boundingBox()
-        .catch(() => null);
-
-    if (!box) {
-      continue;
-    }
-
-    if (
-      box.x >= 0 &&
-      box.x < 340
-    ) {
-      await candidate.click({
-        timeout: 10_000,
-      });
-
-      clicked = true;
-      break;
-    }
-  }
-
-  /*
-   * Fallback:
-   * Zalo đôi lúc thay đổi chữ hoa/chữ thường
-   * hoặc bọc tên nhóm trong nhiều phần tử.
-   */
-  if (!clicked) {
-    const fallbackResult =
-      await page.evaluate(
-        ({
-          normalizedTarget,
-        }) => {
-          function normalize(
-            value: string
-          ) {
-            return String(
-              value || ""
-            )
-              .toLowerCase()
-              .normalize("NFD")
-              .replace(
-                /[\u0300-\u036f]/g,
-                ""
-              )
-              .replace(
-                /đ/g,
-                "d"
-              )
-              .replace(
-                /\s+/g,
-                " "
-              )
-              .trim();
-          }
-
-          const elements =
-            Array.from(
-              document.querySelectorAll(
-                "div, span"
-              )
-            );
-
-          for (
-            let index = 0;
-            index < elements.length;
-            index++
-          ) {
-            const element =
-              elements[index] as HTMLElement;
-
-            const rect =
-              element.getBoundingClientRect();
-
-            if (
-              rect.width <= 0 ||
-              rect.height <= 0 ||
-              rect.x < 0 ||
-              rect.x >= 340
-            ) {
-              continue;
-            }
-
-            const ownText =
-              String(
-                element.innerText ||
-                  element.textContent ||
-                  ""
-              ).trim();
-
-            if (
-              normalize(ownText) !==
-              normalizedTarget
-            ) {
-              continue;
-            }
-
-            element.click();
-
-            return {
-              clicked: true,
-              text: ownText,
-            };
-          }
-
-          return {
-            clicked: false,
-            text: "",
-          };
-        },
-        {
-          normalizedTarget,
-        }
-      );
-
-    clicked =
-      fallbackResult.clicked;
-  }
-
-  if (!clicked) {
-    throw new Error(
-      `Không tìm thấy nhóm trong danh sách bên trái: ${groupName}`
-    );
-  }
-
-  /*
-   * Chờ Zalo chuyển sang cuộc trò chuyện vừa chọn.
-   */
-  await page.waitForTimeout(
-    2_000
-  );
-
-  if (page.isClosed()) {
-    throw new Error(
-      "Trang Zalo đã bị đóng sau khi chọn nhóm"
-    );
-  }
-
-  /*
-   * Kiểm tra tiêu đề nhóm ở header bên phải.
-   * Nếu tiêu đề chưa đúng thì dừng ngay,
-   * tránh đọc/import dữ liệu của nhóm đang mở trước đó.
-   */
-  const activeGroupName =
-    await page.evaluate(
-      ({
-        normalizedTarget,
-      }) => {
-        function normalize(
-          value: string
-        ) {
-          return String(
-            value || ""
-          )
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(
-              /[\u0300-\u036f]/g,
-              ""
-            )
-            .replace(
-              /đ/g,
-              "d"
-            )
-            .replace(
-              /\s+/g,
-              " "
-            )
-            .trim();
-        }
-
-        const elements =
-          Array.from(
-            document.querySelectorAll(
-              "div, span"
-            )
-          );
-
-        for (
-          const rawElement of
-          elements
-        ) {
-          const element =
-            rawElement as HTMLElement;
-
-          const rect =
-            element.getBoundingClientRect();
-
-          /*
-           * Header cuộc trò chuyện nằm:
-           * - bên phải sidebar;
-           * - gần đầu cửa sổ.
-           */
-          if (
-            rect.x < 300 ||
-            rect.y < 0 ||
-            rect.y > 110 ||
-            rect.width <= 0 ||
-            rect.height <= 0
-          ) {
-            continue;
-          }
-
-          const text =
-            String(
-              element.innerText ||
-                element.textContent ||
-                ""
-            ).trim();
-
-          if (
-            normalize(text) ===
-            normalizedTarget
-          ) {
-            return text;
-          }
-        }
-
-        return "";
-      },
-      {
-        normalizedTarget,
-      }
-    );
-
-  if (!activeGroupName) {
-    throw new Error(
-      [
-        "Zalo chưa mở đúng nhóm.",
-        `Nhóm cần mở: ${groupName}.`,
-        "Reader đã dừng để tránh đọc nhầm nhóm.",
-      ].join(" ")
-    );
-  }
-
-  console.log(
-    `Đã mở đúng nhóm: ${activeGroupName}`
-  );
-
-  /*
-   * Xóa từ khóa tìm kiếm sau khi đã xác nhận nhóm.
-   */
-  await search
-    .fill("")
-    .catch(() => {});
-
-  await page.waitForTimeout(
-    500
-  );
 }
 
 async function scrollChatAndCollect(
@@ -1988,429 +1663,81 @@ async function scrollChatToBottom(page: Page) {
 
 async function triggerNetworkHistoryLoad(
   page: Page,
-  config: Config
+  steps = 10
 ) {
   /*
-   * DOM chỉ dùng để điều khiển thanh cuộn.
-   * Dữ liệu phòng vẫn được đọc từ IndexedDB.
+   * DOM ở đây chỉ được dùng để điều khiển thanh cuộn,
+   * không dùng để lấy text, ảnh hay xác định phòng.
    */
-  const rawStepRatio = Number(
-    config.indexedDbScrollStepRatio ??
-      0.85
-  );
-
-  const stepRatio =
-    Number.isFinite(rawStepRatio)
-      ? Math.max(
-          0.2,
-          Math.min(
-            rawStepRatio,
-            1.5
-          )
-        )
-      : 0.85;
-
-  const rawWaitMs = Number(
-    config.indexedDbScrollWaitMs ??
-      2200
-  );
-
-  const waitMs =
-    Number.isFinite(rawWaitMs)
-      ? Math.max(
-          500,
-          Math.min(
-            rawWaitMs,
-            15_000
-          )
-        )
-      : 2200;
-
-  const rawSettleMs = Number(
-    config.indexedDbScrollSettleMs ??
-      3500
-  );
-
-  const settleMs =
-    Number.isFinite(rawSettleMs)
-      ? Math.max(
-          1000,
-          Math.min(
-            rawSettleMs,
-            30_000
-          )
-        )
-      : 3500;
-
-  const rawStepsPerBatch = Number(
-    config.indexedDbScrollStepsPerBatch ??
-      3
-  );
-
-  const stepsPerBatch =
-    Number.isFinite(
-      rawStepsPerBatch
-    )
-      ? Math.max(
-          1,
-          Math.min(
-            Math.floor(
-              rawStepsPerBatch
-            ),
-            20
-          )
-        )
-      : 3;
-
-  const rawMaxBatches = Number(
-    config.indexedDbScrollMaxBatches ??
-      80
-  );
-
-  const maxBatches =
-    Number.isFinite(
-      rawMaxBatches
-    )
-      ? Math.max(
-          1,
-          Math.min(
-            Math.floor(
-              rawMaxBatches
-            ),
-            1000
-          )
-        )
-      : 80;
-
+  await scrollChatToBottom(page);
   /*
-   * Ban đầu đưa chat về cuối để xác định
-   * đúng vùng tin nhắn mới nhất.
-   */
-  await scrollChatToBottom(
-    page
-  );
+ * Chờ các message cuối cùng ổn định
+ * trước khi đọc IndexedDB.
+ */
+await page.waitForTimeout(
+  2_500
+);
 
-  /*
-   * Chờ Zalo ghi các message cuối
-   * vào IndexedDB trước khi cuộn.
-   */
-  await page.waitForTimeout(
-    settleMs
-  );
+  for (let i = 0; i < steps; i++) {
+    const moved = await page.evaluate(() => {
+      const candidates = Array.from(
+        document.querySelectorAll("div")
+      ).filter((el: any) => {
+        const style =
+          window.getComputedStyle(el);
 
-  let consecutiveNoProgress =
-    0;
+        const rect =
+          el.getBoundingClientRect();
 
-  let previousSnapshot:
-    | {
-        scrollTop: number;
-        scrollHeight: number;
-      }
-    | null = null;
-
-  for (
-    let batchIndex = 0;
-    batchIndex < maxBatches;
-    batchIndex++
-  ) {
-    let batchMoved = false;
-
-    for (
-      let stepIndex = 0;
-      stepIndex <
-      stepsPerBatch;
-      stepIndex++
-    ) {
-      const scrollResult =
-        await page.evaluate(
-          ({
-            stepRatio,
-          }) => {
-            const candidates =
-              Array.from(
-                document.querySelectorAll(
-                  "div"
-                )
-              ).filter(
-                (el: any) => {
-                  const style =
-                    window.getComputedStyle(
-                      el
-                    );
-
-                  const rect =
-                    el.getBoundingClientRect();
-
-                  return (
-                    (
-                      style.overflowY ===
-                        "auto" ||
-                      style.overflowY ===
-                        "scroll"
-                    ) &&
-                    el.scrollHeight >
-                      el.clientHeight +
-                        200 &&
-                    rect.left > 350 &&
-                    rect.width > 300 &&
-                    rect.height > 200
-                  );
-                }
-              );
-
-            const chatScroller =
-              candidates.sort(
-                (
-                  a: any,
-                  b: any
-                ) =>
-                  b.scrollHeight -
-                  a.scrollHeight
-              )[0] as
-                | HTMLElement
-                | undefined;
-
-            if (!chatScroller) {
-              return {
-                found: false,
-                moved: false,
-                scrollTop: 0,
-                scrollHeight: 0,
-                clientHeight: 0,
-                reachedTop: false,
-              };
-            }
-
-            const oldTop =
-              chatScroller.scrollTop;
-
-            const oldHeight =
-              chatScroller.scrollHeight;
-
-            const distance =
-              Math.max(
-                200,
-                chatScroller
-                  .clientHeight *
-                  stepRatio
-              );
-
-            chatScroller.scrollTop =
-              Math.max(
-                0,
-                oldTop - distance
-              );
-
-            return {
-              found: true,
-
-              moved:
-                chatScroller
-                  .scrollTop !==
-                oldTop,
-
-              scrollTop:
-                chatScroller
-                  .scrollTop,
-
-              scrollHeight:
-                oldHeight,
-
-              clientHeight:
-                chatScroller
-                  .clientHeight,
-
-              reachedTop:
-                chatScroller
-                  .scrollTop <= 1,
-            };
-          },
-          {
-            stepRatio,
-          }
+        return (
+          (style.overflowY === "auto" ||
+            style.overflowY === "scroll") &&
+          el.scrollHeight >
+            el.clientHeight + 200 &&
+          rect.left > 350
         );
+      });
 
-      if (
-        !scrollResult.found
-      ) {
-        console.warn(
-          "Không tìm thấy vùng cuộn tin nhắn Zalo."
-        );
+      const chatScroller =
+        candidates.sort(
+          (a: any, b: any) =>
+            b.scrollHeight -
+            a.scrollHeight
+        )[0] as HTMLElement | undefined;
 
-        consecutiveNoProgress +=
-          1;
+      if (!chatScroller) return false;
 
-        break;
-      }
+      const oldTop =
+        chatScroller.scrollTop;
 
-      if (
-        scrollResult.moved
-      ) {
-        batchMoved = true;
-      }
-
-      /*
-       * Chờ Zalo:
-       * - render message cũ;
-       * - tải metadata ảnh/video;
-       * - ghi message vào IndexedDB.
-       */
-      await page.waitForTimeout(
-        waitMs
+      chatScroller.scrollTop = Math.max(
+        0,
+        oldTop -
+          chatScroller.clientHeight * 0.4
       );
-    }
+
+      return (
+        chatScroller.scrollTop !== oldTop
+      );
+    });
 
     /*
-     * Sau mỗi batch chờ thêm để Zalo hoàn tất
-     * request tải lịch sử và cập nhật scrollHeight.
-     */
+    * Chờ Zalo:
+    * - render message;
+    * - tải media metadata;
+    * - ghi message vào IndexedDB.
+    */
     await page.waitForTimeout(
-      settleMs
+      2_200
     );
 
-    const currentSnapshot =
-      await page.evaluate(
-        () => {
-          const candidates =
-            Array.from(
-              document.querySelectorAll(
-                "div"
-              )
-            ).filter(
-              (el: any) => {
-                const style =
-                  window.getComputedStyle(
-                    el
-                  );
-
-                const rect =
-                  el.getBoundingClientRect();
-
-                return (
-                  (
-                    style.overflowY ===
-                      "auto" ||
-                    style.overflowY ===
-                      "scroll"
-                  ) &&
-                  el.scrollHeight >
-                    el.clientHeight +
-                      200 &&
-                  rect.left > 350 &&
-                  rect.width > 300 &&
-                  rect.height > 200
-                );
-              }
-            );
-
-          const chatScroller =
-            candidates.sort(
-              (
-                a: any,
-                b: any
-              ) =>
-                b.scrollHeight -
-                a.scrollHeight
-            )[0] as
-              | HTMLElement
-              | undefined;
-
-          if (!chatScroller) {
-            return null;
-          }
-
-          return {
-            scrollTop:
-              chatScroller.scrollTop,
-
-            scrollHeight:
-              chatScroller.scrollHeight,
-          };
-        }
-      );
-
-    if (!currentSnapshot) {
-      consecutiveNoProgress +=
-        1;
-    } else {
-      const sameAsPrevious =
-        previousSnapshot !==
-          null &&
-        Math.abs(
-          currentSnapshot
-            .scrollTop -
-            previousSnapshot
-              .scrollTop
-        ) <= 1 &&
-        currentSnapshot
-          .scrollHeight ===
-          previousSnapshot
-            .scrollHeight;
-
-      if (
-        !batchMoved &&
-        sameAsPrevious
-      ) {
-        consecutiveNoProgress +=
-          1;
-      } else {
-        consecutiveNoProgress =
-          0;
-      }
-
-      previousSnapshot =
-        currentSnapshot;
-    }
-
-    console.log(
-      [
-        `Đã cuộn lịch sử batch ${
-          batchIndex + 1
-        }/${maxBatches}.`,
-        currentSnapshot
-          ? `scrollTop=${Math.round(
-              currentSnapshot.scrollTop
-            )}, scrollHeight=${Math.round(
-              currentSnapshot.scrollHeight
-            )}.`
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    );
-
-    /*
-     * Không dừng chỉ sau một lần không di chuyển,
-     * vì Zalo có thể đang tải thêm message.
-     *
-     * Chỉ dừng sau 3 batch liên tiếp không có
-     * thay đổi scrollTop hoặc scrollHeight.
-     */
-    if (
-      consecutiveNoProgress >=
-      3
-    ) {
-      console.log(
-        "Đã chạm đầu lịch sử hoặc Zalo không còn tải thêm message."
-      );
-
-      break;
-    }
+    if (!moved) break;
   }
 
   /*
-   * Chờ IndexedDB ghi xong dữ liệu vừa tải.
+   * Trở về cuối chat để nhận thêm message/network mới.
    */
-  await page.waitForTimeout(
-    settleMs
-  );
-
-  /*
- * Không quay lại cuối nhóm ở đây.
- *
- * Giữ nguyên vị trí sau khi cuộn để bước đọc IndexedDB
- * có thể lấy anchor từ vùng lịch sử cũ nhất vừa tải.
- */
+  await scrollChatToBottom(page);
 }
 
 async function dumpIndexedDb(
@@ -3390,19 +2717,12 @@ function getIndexedDbVideoPayload(
 }
 
 /**
- * Tạo block bắt đầu sau dấu phân cách.
- *
- * Block cuối vẫn được xử lý dù chưa có dấu đóng,
- * để bài đăng mới nhất trong nhóm không bị bỏ sót.
+ * Chỉ tạo block nằm giữa hai dấu phân cách.
  *
  * Ví dụ:
  * Dấu 1
  * Nội dung block
  * Dấu 2
- *
- * Hoặc:
- * Dấu 1
- * Nội dung block cuối chưa có dấu đóng
  */
 function splitIndexedDbClosedBlocks(
   messages: IndexedDbGroupMessage[]
@@ -3468,18 +2788,9 @@ function splitIndexedDbClosedBlocks(
   }
 
   /*
-   * Vẫn lấy block cuối dù chưa có dấu phân cách đóng.
-   * Đây thường là bài đăng mới nhất trong nhóm.
+   * Không push currentBlock tại đây.
+   * Nếu không có dấu đóng thì block chưa hoàn chỉnh.
    */
-  if (
-    currentBlock &&
-    currentBlock.length > 0
-  ) {
-    blocks.push(
-      currentBlock
-    );
-  }
-
   return blocks;
 }
 
@@ -3528,8 +2839,8 @@ function buildRoomsFromIndexedDbMessages(
   });
 
   /*
-   * Mỗi phần tử là một block bắt đầu sau dấu phân cách.
-   * Block cuối không bắt buộc phải có dấu đóng.
+   * Mỗi phần tử là một block hoàn chỉnh
+   * nằm giữa hai dấu phân cách.
    */
   const blocks =
     splitIndexedDbClosedBlocks(
@@ -4582,28 +3893,28 @@ async function dumpActiveGroupMessages(
   );
 
   const scanLimit = Math.max(
-  1000,
-  Math.min(
-    500000,
-    Number.isFinite(rawScanLimit)
-      ? rawScanLimit
-      : 100000
-  )
-);
+    1000,
+    Math.min(
+      100000,
+      Number.isFinite(rawScanLimit)
+        ? rawScanLimit
+        : 30000
+    )
+  );
 
   const rawMessageLimit = Number(
     config.indexedDbGroupMessageLimit ?? 1000
   );
 
     const messageLimit = Math.max(
-      50,
-      Math.min(
-        50000,
-        Number.isFinite(rawMessageLimit)
-          ? rawMessageLimit
-          : 5000
-      )
-    );
+    50,
+    Math.min(
+      5000,
+      Number.isFinite(rawMessageLimit)
+        ? rawMessageLimit
+        : 2000
+    )
+  );
 
   const rawContextBeforeMs = Number(
     config.indexedDbGroupContextBeforeMs ??
@@ -4611,14 +3922,14 @@ async function dumpActiveGroupMessages(
   );
 
   const contextBeforeMs = Math.max(
-  0,
-  Math.min(
-    7 * 24 * 60 * 60 * 1000,
-    Number.isFinite(rawContextBeforeMs)
-      ? rawContextBeforeMs
-      : 6 * 60 * 60 * 1000
-  )
-);
+    0,
+    Math.min(
+      60 * 60 * 1000,
+      Number.isFinite(rawContextBeforeMs)
+        ? rawContextBeforeMs
+        : 10 * 60 * 1000
+    )
+  );
 
   const rawContextAfterMs = Number(
     config.indexedDbGroupContextAfterMs ??
@@ -4626,14 +3937,14 @@ async function dumpActiveGroupMessages(
   );
 
   const contextAfterMs = Math.max(
-  0,
-  Math.min(
-    7 * 24 * 60 * 60 * 1000,
-    Number.isFinite(rawContextAfterMs)
-      ? rawContextAfterMs
-      : 6 * 60 * 60 * 1000
-  )
-);
+    0,
+    Math.min(
+      60 * 60 * 1000,
+      Number.isFinite(rawContextAfterMs)
+        ? rawContextAfterMs
+        : 10 * 60 * 1000
+    )
+  );
 
   console.log(
     `Đang tìm group ID trong IndexedDB: ${groupName}`
@@ -6523,7 +5834,7 @@ if (activeGroupHint) {
                 return;
               }
 
-              const messageTimestamp =
+                            const messageTimestamp =
                 Number(
                   value.sendDttm ||
                     value.serverTime ||
@@ -6531,14 +5842,21 @@ if (activeGroupHint) {
                     0
                 );
 
-              /*
-              * Đã xác định chính xác Group ID bằng:
-              * - Group ID đã lưu; hoặc
-              * - Group ID lấy từ giao diện nhóm đang mở.
-              *
-              * Vì vậy không lọc message theo anchorTimestamp nữa.
-              * Lấy toàn bộ message thuộc đúng groupId trong idx_queue.
-              */
+              const isInsideExportWindow =
+                exportWindowStart == null ||
+                exportWindowEnd == null ||
+                (
+                  messageTimestamp >=
+                    exportWindowStart &&
+                  messageTimestamp <=
+                    exportWindowEnd
+                );
+
+              if (!isInsideExportWindow) {
+                cursor.continue();
+                return;
+              }
+
               const msgType = Number(
                 value.msgType || 0
               );
@@ -8339,12 +7657,6 @@ async function main() {
           `\nĐang quét nhóm: ${groupName}`
         );
 
-        if (page.isClosed()) {
-          throw new Error(
-            "Tab Zalo đã bị đóng. Hãy khởi động lại Reader."
-          );
-        }
-
         await openGroup(
           page,
           groupName,
@@ -8372,7 +7684,7 @@ async function main() {
            */
           await triggerNetworkHistoryLoad(
             page,
-            config
+            15
           );
 
           /*

@@ -3,37 +3,36 @@
   "internalSecret": "",
   "scanIntervalMs": 900000,
 
-  "networkDebug": false,
-  "networkDebugOnly": false,
+ "networkDebug": false,
+"networkDebugOnly": false,
 
-  "debugRetentionDays": 7,
-  "debugMaxSessions": 10,
+"debugRetentionDays": 7,
+"debugMaxSessions": 10,
 
-  "indexedDbDebug": true,
-  "indexedDbDebugOnly": false,
-  "indexedDbSampleLimit": 5,
-  "indexedDbRecordMaxStringChars": 4000,
+"indexedDbDebug": true,
+"indexedDbDebugOnly": false,
+"indexedDbSampleLimit": 5,
+"indexedDbRecordMaxStringChars": 4000,
 
-  "indexedDbGroupExport": true,
+"indexedDbGroupExport": true,
+"indexedDbGroupScanLimit": 30000,
+"indexedDbGroupMessageLimit": 2000,
+"indexedDbHistoryLookbackMs": 86400000,
 
-  "indexedDbGroupScanLimit": 300000,
-  "indexedDbGroupMessageLimit": 20000,
+"indexedDbGroupContextBeforeMs": 86400000,
+"indexedDbGroupContextAfterMs": 3600000,
 
-  "indexedDbGroupContextBeforeMs": 86400000,
-  "indexedDbGroupContextAfterMs": 3600000,
+"indexedDbRoomPreview": true,
+"indexedDbRoomPreviewMaxGapMs": 600000,
 
-  "indexedDbRoomPreview": true,
-  "indexedDbRoomPreviewMaxGapMs": 600000,
+"indexedDbImportEnabled": true,
 
-  "indexedDbImportEnabled": true,
-
-  "indexedDbScrollStepRatio": 0.85,
-  "indexedDbScrollWaitMs": 2500,
-  "indexedDbScrollSettleMs": 4500,
-  "indexedDbScrollStepsPerBatch": 4,
-  "indexedDbScrollMaxBatches": 150,
-  "indexedDbStopOnKnownRoom": true,
-
+"indexedDbScrollStepRatio": 0.7,
+"indexedDbScrollWaitMs": 800,
+"indexedDbScrollSettleMs": 1200,
+"indexedDbScrollStepsPerBatch": 1,
+"indexedDbScrollMaxBatches": 20,
+"indexedDbStopOnKnownRoom": true,
   "networkCaptureKeywords": [
     "message",
     "messages",
