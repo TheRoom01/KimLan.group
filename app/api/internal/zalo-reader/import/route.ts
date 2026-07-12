@@ -128,6 +128,241 @@ function getErrorMessage(
   }
 }
 
+type ImportStage =
+  | "request"
+  | "auth"
+  | "parse-request"
+  | "lookup-existing"
+  | "parse-room"
+  | "resolve-room"
+  | "batch-insert"
+  | "image-upload"
+  | "image-insert"
+  | "video-upload"
+  | "video-insert"
+  | "batch-update"
+  | "pending-insert"
+  | "response";
+
+function sanitizePostgrestString(
+  input: string
+) {
+  let output = "";
+
+  for (
+    let index = 0;
+    index < input.length;
+    index++
+  ) {
+    const code =
+      input.charCodeAt(index);
+
+    if (code === 0) {
+      continue;
+    }
+
+    if (
+      code >= 0xd800 &&
+      code <= 0xdbff
+    ) {
+      const nextCode =
+        input.charCodeAt(index + 1);
+
+      if (
+        nextCode >= 0xdc00 &&
+        nextCode <= 0xdfff
+      ) {
+        output +=
+          input[index] +
+          input[index + 1];
+        index++;
+      } else {
+        output += "\uFFFD";
+      }
+
+      continue;
+    }
+
+    if (
+      code >= 0xdc00 &&
+      code <= 0xdfff
+    ) {
+      output += "\uFFFD";
+      continue;
+    }
+
+    output += input[index];
+  }
+
+  return output;
+}
+
+function toPostgrestJsonValue(
+  value: unknown,
+  seen = new WeakSet<object>()
+): unknown {
+  if (value === null) {
+    return null;
+  }
+
+  const valueType =
+    typeof value;
+
+  if (valueType === "string") {
+    return sanitizePostgrestString(
+      value as string
+    );
+  }
+
+  if (valueType === "number") {
+    return Number.isFinite(
+      value as number
+    )
+      ? value
+      : null;
+  }
+
+  if (valueType === "boolean") {
+    return value;
+  }
+
+  if (valueType === "bigint") {
+    return String(value);
+  }
+
+  if (
+    valueType === "undefined" ||
+    valueType === "function" ||
+    valueType === "symbol"
+  ) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(
+      value.getTime()
+    )
+      ? null
+      : value.toISOString();
+  }
+
+  if (
+    value &&
+    typeof value === "object"
+  ) {
+    if (seen.has(value)) {
+      return null;
+    }
+
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      const output =
+        value.map((item) =>
+          toPostgrestJsonValue(
+            item,
+            seen
+          )
+        );
+
+      seen.delete(value);
+      return output;
+    }
+
+    const output:
+      Record<string, unknown> = {};
+
+    for (
+      const [key, child] of
+      Object.entries(value)
+    ) {
+      const childType =
+        typeof child;
+
+      if (
+        childType === "undefined" ||
+        childType === "function" ||
+        childType === "symbol"
+      ) {
+        continue;
+      }
+
+      output[
+        sanitizePostgrestString(
+          key
+        )
+      ] = toPostgrestJsonValue(
+        child,
+        seen
+      );
+    }
+
+    seen.delete(value);
+    return output;
+  }
+
+  return null;
+}
+
+function makePostgrestPayload<T>(
+  value: T,
+  label: string
+): T {
+  try {
+    const safeValue =
+      toPostgrestJsonValue(value);
+
+    const serialized =
+      JSON.stringify(safeValue);
+
+    if (
+      !serialized ||
+      serialized === "null"
+    ) {
+      throw new Error(
+        "Payload JSON bị rỗng"
+      );
+    }
+
+    return JSON.parse(
+      serialized
+    ) as T;
+  } catch (error) {
+    throw new Error(
+      `${label}: ${getErrorMessage(error)}`
+    );
+  }
+}
+
+function getErrorDetails(
+  error: unknown
+) {
+  if (
+    !error ||
+    typeof error !== "object"
+  ) {
+    return null;
+  }
+
+  const candidate =
+    error as Record<string, unknown>;
+
+  return {
+    name:
+      candidate.name ?? null,
+    code:
+      candidate.code ?? null,
+    message:
+      candidate.message ?? null,
+    details:
+      candidate.details ?? null,
+    hint:
+      candidate.hint ?? null,
+    status:
+      candidate.status ?? null,
+  };
+}
+
 function toPositiveInt(
   value: unknown
 ): number | null {
@@ -475,7 +710,18 @@ function normalizeReaderIssues(
 export async function POST(
   req: Request
 ) {
+  let stage:
+    ImportStage = "request";
+
+  let currentSourceHash:
+    string | null = null;
+
+  let currentSourceMessageId:
+    string | null = null;
+
   try {
+    stage = "auth";
+
     if (!checkSecret(req)) {
       return NextResponse.json(
         {
@@ -488,6 +734,8 @@ export async function POST(
         }
       );
     }
+
+    stage = "parse-request";
 
     const body =
       await req
@@ -512,30 +760,43 @@ export async function POST(
     }
 
     const groupName =
-      String(
-        body.groupName || ""
-      ).trim();
+      sanitizePostgrestString(
+        String(
+          body.groupName || ""
+        ).trim()
+      );
 
     const senderName =
-      String(
-        body.senderName || ""
-      ).trim();
+      sanitizePostgrestString(
+        String(
+          body.senderName || ""
+        ).trim()
+      );
 
     const rawText =
-      String(
-        body.rawText || ""
-      ).trim();
+      sanitizePostgrestString(
+        String(
+          body.rawText || ""
+        ).trim()
+      );
 
     const sourceMessageId =
-      String(
-        body.sourceMessageId ||
-          ""
-      ).trim() || null;
+      sanitizePostgrestString(
+        String(
+          body.sourceMessageId ||
+            ""
+        ).trim()
+      ) || null;
+
+    currentSourceMessageId =
+      sourceMessageId;
 
     const sentAt =
-      String(
-        body.sentAt || ""
-      ).trim() || null;
+      sanitizePostgrestString(
+        String(
+          body.sentAt || ""
+        ).trim()
+      ) || null;
 
     const images:
       IncomingImage[] =
@@ -593,9 +854,11 @@ export async function POST(
     }
 
     const sourceHash =
-      String(
-        body.sourceHash || ""
-      ).trim() ||
+      sanitizePostgrestString(
+        String(
+          body.sourceHash || ""
+        ).trim()
+      ) ||
       makeHash({
         groupName,
         senderName,
@@ -604,8 +867,13 @@ export async function POST(
         sourceMessageId,
       });
 
+    currentSourceHash =
+      sourceHash;
+
     const supabase =
       createSupabaseAdminClient();
+
+    stage = "lookup-existing";
 
     const existed =
       await supabase
@@ -691,10 +959,14 @@ export async function POST(
       });
     }
 
+    stage = "parse-room";
+
     const parsed =
       parseZaloRoomText(
         rawText
       );
+
+    stage = "resolve-room";
 
     const resolved =
       await resolveZaloImportRoom({
@@ -707,12 +979,11 @@ export async function POST(
           parsed.detailPayload,
       });
 
-    const batchIns =
-      await supabase
-        .from(
-          "zalo_import_batches"
-        )
-        .insert({
+    stage = "batch-insert";
+
+    const batchInsertPayload =
+      makePostgrestPayload(
+        {
           group_name:
             groupName,
 
@@ -786,7 +1057,18 @@ export async function POST(
                 importIssues,
             },
           },
-        })
+        },
+        "zalo_import_batches.insert"
+      );
+
+    const batchIns =
+      await supabase
+        .from(
+          "zalo_import_batches"
+        )
+        .insert(
+          batchInsertPayload
+        )
         .select("id")
         .single();
 
@@ -803,6 +1085,8 @@ export async function POST(
 
     const uploadedImages:
       any[] = [];
+
+    stage = "image-upload";
 
     for (
       let i = 0;
@@ -934,13 +1218,21 @@ export async function POST(
       uploadedImages.length >
       0
     ) {
+      stage = "image-insert";
+
+      const imageInsertPayload =
+        makePostgrestPayload(
+          uploadedImages,
+          "zalo_import_images.insert"
+        );
+
       const imgIns =
         await supabase
           .from(
             "zalo_import_images"
           )
           .insert(
-            uploadedImages
+            imageInsertPayload
           );
 
       if (imgIns.error) {
@@ -969,6 +1261,8 @@ export async function POST(
 
     const uploadedVideos:
       any[] = [];
+
+    stage = "video-upload";
 
     for (
       let i = 0;
@@ -1243,13 +1537,21 @@ export async function POST(
       uploadedVideos.length >
       0
     ) {
+      stage = "video-insert";
+
+      const videoInsertPayload =
+        makePostgrestPayload(
+          uploadedVideos,
+          "zalo_import_videos.insert"
+        );
+
       const videoInsert =
         await supabase
           .from(
             "zalo_import_videos"
           )
           .insert(
-            uploadedVideos
+            videoInsertPayload
           );
 
       if (
@@ -1528,15 +1830,25 @@ export async function POST(
         },
       };
 
+    stage = "batch-update";
+
+    const batchUpdatePayload =
+      makePostgrestPayload(
+        {
+          parser_result:
+            batchParserResult,
+        },
+        "zalo_import_batches.update"
+      );
+
     const batchUpdate =
       await supabase
         .from(
           "zalo_import_batches"
         )
-        .update({
-          parser_result:
-            batchParserResult,
-        })
+        .update(
+          batchUpdatePayload
+        )
         .eq(
           "id",
           batchId
@@ -1548,12 +1860,11 @@ export async function POST(
       throw batchUpdate.error;
     }
 
-    const pendingIns =
-      await supabase
-        .from(
-          "pending_room_versions"
-        )
-        .insert({
+    stage = "pending-insert";
+
+    const pendingInsertPayload =
+      makePostgrestPayload(
+        {
           batch_id:
             batchId,
 
@@ -1594,7 +1905,18 @@ export async function POST(
               ? resolved.roomPayload
                   .status ?? null
               : null,
-        })
+        },
+        "pending_room_versions.insert"
+      );
+
+    const pendingIns =
+      await supabase
+        .from(
+          "pending_room_versions"
+        )
+        .insert(
+          pendingInsertPayload
+        )
         .select("id")
         .single();
 
@@ -1603,6 +1925,8 @@ export async function POST(
     ) {
       throw pendingIns.error;
     }
+
+    stage = "response";
 
     return NextResponse.json({
       ok: true,
@@ -1638,20 +1962,42 @@ export async function POST(
         ),
     });
   } catch (error) {
+    const errorDetails =
+      getErrorDetails(error);
+
     console.error(
       "zalo-reader import failed:",
-      error
+      {
+        stage,
+        sourceHash:
+          currentSourceHash,
+        sourceMessageId:
+          currentSourceMessageId,
+        error:
+          getErrorMessage(error),
+        errorDetails,
+      }
     );
 
     return NextResponse.json(
       {
         ok: false,
 
+        stage,
+
+        sourceHash:
+          currentSourceHash,
+
+        sourceMessageId:
+          currentSourceMessageId,
+
         error:
           getErrorMessage(
             error
           ) ||
           "Import failed",
+
+        errorDetails,
       },
       {
         status: 500,

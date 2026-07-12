@@ -5,6 +5,7 @@ import crypto from "crypto";
 import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const execFileAsync =
   promisify(execFile);
@@ -121,6 +122,20 @@ type Config = {
  */
 indexedDbImportEnabled?: boolean;
 
+/**
+ * Khi khai báo, Reader chỉ import các phòng
+ * có sourceHash nằm trong danh sách này.
+ *
+ * Mảng rỗng = không import phòng nào.
+ */
+indexedDbImportSourceHashes?: string[];
+
+/**
+ * Giới hạn số phòng được thử import trong
+ * một lượt quét. Tính cả lần thành công và lỗi.
+ */
+indexedDbImportLimit?: number;
+
   debugRetentionDays?: number;
   debugMaxSessions?: number;
 
@@ -182,6 +197,21 @@ type IndexedDbGroupMessage = {
      * Đã giới hạn kích thước.
      */
     videoDebug?: any;
+
+    /**
+     * Nguồn đã cung cấp nội dung đọc được cho message.
+     * zdb chỉ giữ timeline; sidx/DOM bổ sung payload đã giải mã.
+     */
+    contentSource?:
+      | "zdb"
+      | "sidx"
+      | "dom";
+
+    domHydration?: {
+      order: number;
+      timeText?: string;
+      approxTimestamp?: number | null;
+    };
   };
 
 type IndexedDbRoomPreviewAlbum = {
@@ -1635,98 +1665,308 @@ async function scrollChatAndCollect(
     .filter((msg): msg is Msg => Boolean(msg));
 }
 
-async function scrollChatToBottom(page: Page) {
-  await page.evaluate(() => {
-    const candidates = Array.from(document.querySelectorAll("div"))
-      .filter((el: any) => {
-        const style = window.getComputedStyle(el);
-        const rect = el.getBoundingClientRect();
+async function scrollChatToBottom(
+  page: Page,
+  messageItemsSelector = ""
+) {
+  await page.evaluate(
+    ({ messageItemsSelector }) => {
+      function isScrollable(
+        element: Element
+      ) {
+        const style =
+          window.getComputedStyle(
+            element
+          );
+
+        const rect =
+          element.getBoundingClientRect();
 
         return (
-          (style.overflowY === "auto" || style.overflowY === "scroll") &&
-          el.scrollHeight > el.clientHeight + 200 &&
-          rect.left > 350
+          (
+            style.overflowY ===
+              "auto" ||
+            style.overflowY ===
+              "scroll"
+          ) &&
+          element.scrollHeight >
+            element.clientHeight + 120 &&
+          rect.width > 250 &&
+          rect.height > 180 &&
+          rect.right >
+            window.innerWidth * 0.55
         );
-      });
+      }
 
-    const chatScroller = candidates.sort(
-      (a: any, b: any) => b.scrollHeight - a.scrollHeight
-    )[0] as HTMLElement | undefined;
+      function findChatScroller() {
+        const scores =
+          new Map<
+            HTMLElement,
+            number
+          >();
 
-    if (chatScroller) {
-      chatScroller.scrollTop = chatScroller.scrollHeight;
+        if (messageItemsSelector) {
+          const messageItems =
+            Array.from(
+              document.querySelectorAll(
+                messageItemsSelector
+              )
+            ).slice(-200);
+
+          for (
+            const messageItem of
+            messageItems
+          ) {
+            let current:
+              | HTMLElement
+              | null =
+              messageItem.parentElement;
+
+            let depth = 0;
+
+            while (
+              current &&
+              depth < 12
+            ) {
+              if (
+                isScrollable(current)
+              ) {
+                scores.set(
+                  current,
+                  (
+                    scores.get(
+                      current
+                    ) || 0
+                  ) +
+                    Math.max(
+                      1,
+                      12 - depth
+                    )
+                );
+              }
+
+              current =
+                current.parentElement;
+              depth += 1;
+            }
+          }
+        }
+
+        const rankedFromMessages =
+          Array.from(
+            scores.entries()
+          )
+            .sort(
+              (a, b) =>
+                b[1] - a[1] ||
+                b[0].scrollHeight -
+                  a[0].scrollHeight
+            )
+            .map(
+              ([element]) =>
+                element
+            );
+
+        if (
+          rankedFromMessages.length > 0
+        ) {
+          return rankedFromMessages[0];
+        }
+
+        return Array.from(
+          document.querySelectorAll(
+            "div"
+          )
+        )
+          .filter(
+            (element) =>
+              isScrollable(
+                element
+              )
+          )
+          .sort(
+            (a, b) =>
+              b.scrollHeight -
+              a.scrollHeight
+          )[0] as
+          | HTMLElement
+          | undefined;
+      }
+
+      const chatScroller =
+        findChatScroller();
+
+      if (chatScroller) {
+        chatScroller.scrollTop =
+          chatScroller.scrollHeight;
+      }
+    },
+    {
+      messageItemsSelector,
     }
-  });
+  );
 
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(800);
 }
 
 async function triggerNetworkHistoryLoad(
   page: Page,
-  steps = 10
+  steps = 10,
+  messageItemsSelector = ""
 ) {
-  /*
-   * DOM ở đây chỉ được dùng để điều khiển thanh cuộn,
-   * không dùng để lấy text, ảnh hay xác định phòng.
-   */
-  await scrollChatToBottom(page);
-  /*
- * Chờ các message cuối cùng ổn định
- * trước khi đọc IndexedDB.
- */
-await page.waitForTimeout(
-  2_500
-);
+  await scrollChatToBottom(
+    page,
+    messageItemsSelector
+  );
+
+  await page.waitForTimeout(
+    2_500
+  );
 
   for (let i = 0; i < steps; i++) {
-    const moved = await page.evaluate(() => {
-      const candidates = Array.from(
-        document.querySelectorAll("div")
-      ).filter((el: any) => {
-        const style =
-          window.getComputedStyle(el);
+    const moved =
+      await page.evaluate(
+        ({ messageItemsSelector }) => {
+          function isScrollable(
+            element: Element
+          ) {
+            const style =
+              window.getComputedStyle(
+                element
+              );
 
-        const rect =
-          el.getBoundingClientRect();
+            const rect =
+              element.getBoundingClientRect();
 
-        return (
-          (style.overflowY === "auto" ||
-            style.overflowY === "scroll") &&
-          el.scrollHeight >
-            el.clientHeight + 200 &&
-          rect.left > 350
-        );
-      });
+            return (
+              (
+                style.overflowY ===
+                  "auto" ||
+                style.overflowY ===
+                  "scroll"
+              ) &&
+              element.scrollHeight >
+                element.clientHeight +
+                  120 &&
+              rect.width > 250 &&
+              rect.height > 180 &&
+              rect.right >
+                window.innerWidth *
+                  0.55
+            );
+          }
 
-      const chatScroller =
-        candidates.sort(
-          (a: any, b: any) =>
-            b.scrollHeight -
-            a.scrollHeight
-        )[0] as HTMLElement | undefined;
+          const scores =
+            new Map<
+              HTMLElement,
+              number
+            >();
 
-      if (!chatScroller) return false;
+          if (messageItemsSelector) {
+            const messageItems =
+              Array.from(
+                document.querySelectorAll(
+                  messageItemsSelector
+                )
+              ).slice(-200);
 
-      const oldTop =
-        chatScroller.scrollTop;
+            for (
+              const messageItem of
+              messageItems
+            ) {
+              let current:
+                | HTMLElement
+                | null =
+                messageItem.parentElement;
 
-      chatScroller.scrollTop = Math.max(
-        0,
-        oldTop -
-          chatScroller.clientHeight * 0.4
+              let depth = 0;
+
+              while (
+                current &&
+                depth < 12
+              ) {
+                if (
+                  isScrollable(
+                    current
+                  )
+                ) {
+                  scores.set(
+                    current,
+                    (
+                      scores.get(
+                        current
+                      ) || 0
+                    ) +
+                      Math.max(
+                        1,
+                        12 - depth
+                      )
+                  );
+                }
+
+                current =
+                  current.parentElement;
+                depth += 1;
+              }
+            }
+          }
+
+          const chatScroller =
+            Array.from(
+              scores.entries()
+            )
+              .sort(
+                (a, b) =>
+                  b[1] - a[1] ||
+                  b[0].scrollHeight -
+                    a[0].scrollHeight
+              )[0]?.[0] ||
+            (
+              Array.from(
+                document.querySelectorAll(
+                  "div"
+                )
+              )
+                .filter(
+                  (element) =>
+                    isScrollable(
+                      element
+                    )
+                )
+                .sort(
+                  (a, b) =>
+                    b.scrollHeight -
+                    a.scrollHeight
+                )[0] as
+                | HTMLElement
+                | undefined
+            );
+
+          if (!chatScroller) {
+            return false;
+          }
+
+          const oldTop =
+            chatScroller.scrollTop;
+
+          chatScroller.scrollTop =
+            Math.max(
+              0,
+              oldTop -
+                chatScroller.clientHeight *
+                  0.4
+            );
+
+          return (
+            chatScroller.scrollTop !==
+            oldTop
+          );
+        },
+        {
+          messageItemsSelector,
+        }
       );
 
-      return (
-        chatScroller.scrollTop !== oldTop
-      );
-    });
-
-    /*
-    * Chờ Zalo:
-    * - render message;
-    * - tải media metadata;
-    * - ghi message vào IndexedDB.
-    */
     await page.waitForTimeout(
       2_200
     );
@@ -1734,10 +1974,2155 @@ await page.waitForTimeout(
     if (!moved) break;
   }
 
-  /*
-   * Trở về cuối chat để nhận thêm message/network mới.
+  await scrollChatToBottom(
+    page,
+    messageItemsSelector
+  );
+
+  await page.waitForTimeout(
+    1_500
+  );
+}
+
+type DomMessageSnapshot = {
+  order: number;
+  top: number;
+  bottom: number;
+  text: string;
+  senderName: string;
+  timeText: string;
+  approxTimestamp: number | null;
+  idCandidates: string[];
+  images: Array<{
+    url: string;
+    idCandidates: string[];
+
+    /** URL blob ban đầu của Zalo, chỉ dùng debug. */
+    originalUrl?: string;
+
+    /** Ảnh blob đã được chép ra file cục bộ khi bubble còn trong DOM. */
+    cachedLocalFile?: boolean;
+    mimeType?: string;
+    sizeBytes?: number;
+  }>;
+  videoUrls: string[];
+
+  /**
+   * identity: phần tử được dựng từ node có msgId/cliMsgId thật.
+   * selector: phần tử fallback từ config.selectors.messageItems.
    */
-  await scrollChatToBottom(page);
+  sourceType: "identity" | "selector";
+
+  /**
+   * Dùng để phát hiện selector bắt nhầm container chứa nhiều message con.
+   */
+  descendantIdentityCount: number;
+  textLength: number;
+};
+
+async function captureVisibleDomMessages(
+  page: Page,
+  config: Config
+): Promise<DomMessageSnapshot[]> {
+  return page.evaluate(
+    ({
+      messageItemsSelector,
+      messageTextSelector,
+      messageSenderSelector,
+      imageNodesSelector,
+    }) => {
+      const identitySelector = [
+        "[id]",
+        "[data-id]",
+        "[data-msg-id]",
+        "[data-msgid]",
+        "[data-cli-msg-id]",
+        "[data-climsgid]",
+      ].join(", ");
+
+      function cleanText(input: any) {
+        return String(input || "")
+          .replace(/\u00a0/g, " ")
+          .replace(/[ \t]+\n/g, "\n")
+          .replace(/\n[ \t]+/g, "\n")
+          .replace(/[ \t]{2,}/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function normalizeText(input: any) {
+        return cleanText(input)
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/đ/g, "d")
+          .toLowerCase();
+      }
+
+      function isUiOnlyLine(input: string) {
+        const line = cleanText(input);
+        const normalized = normalizeText(line);
+
+        if (!line) return true;
+
+        if (
+          /^\/-(?:strong|heart)$/i.test(line) ||
+          /^:(?:>|o|-\(\(|-h)$/i.test(line)
+        ) {
+          return true;
+        }
+
+        if (/^\d{1,2}:\d{2}$/.test(line)) {
+          return true;
+        }
+
+        if (
+          /^(?:hom qua|hom nay|hôm qua|hôm nay)$/i.test(
+            line
+          )
+        ) {
+          return true;
+        }
+
+        if (
+          /^(?:t[2-7]|cn)\s+\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?$/i.test(
+            normalized
+          ) ||
+          /^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(
+            normalized
+          )
+        ) {
+          return true;
+        }
+
+        return false;
+      }
+
+      function cleanMessageText(input: any) {
+        return cleanText(
+          cleanText(input)
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(
+              (line) =>
+                Boolean(line) &&
+                !isUiOnlyLine(line)
+            )
+            .join("\n")
+        );
+      }
+
+      function isScrollable(
+        element: Element
+      ) {
+        const style =
+          window.getComputedStyle(
+            element
+          );
+
+        const rect =
+          element.getBoundingClientRect();
+
+        return (
+          (
+            style.overflowY ===
+              "auto" ||
+            style.overflowY ===
+              "scroll"
+          ) &&
+          element.scrollHeight >
+            element.clientHeight + 120 &&
+          rect.width > 250 &&
+          rect.height > 180 &&
+          rect.right >
+            window.innerWidth * 0.55
+        );
+      }
+
+      function findChatScroller() {
+        const scores =
+          new Map<
+            HTMLElement,
+            number
+          >();
+
+        const messageItems =
+          messageItemsSelector
+            ? Array.from(
+                document.querySelectorAll(
+                  messageItemsSelector
+                )
+              ).slice(-250)
+            : [];
+
+        for (
+          const messageItem of
+          messageItems
+        ) {
+          let current:
+            | HTMLElement
+            | null =
+            messageItem.parentElement;
+
+          let depth = 0;
+
+          while (
+            current &&
+            depth < 12
+          ) {
+            if (
+              isScrollable(current)
+            ) {
+              scores.set(
+                current,
+                (
+                  scores.get(
+                    current
+                  ) || 0
+                ) +
+                  Math.max(
+                    1,
+                    12 - depth
+                  )
+              );
+            }
+
+            current =
+              current.parentElement;
+            depth += 1;
+          }
+        }
+
+        return (
+          Array.from(
+            scores.entries()
+          )
+            .sort(
+              (a, b) =>
+                b[1] - a[1] ||
+                b[0].scrollHeight -
+                  a[0].scrollHeight
+            )[0]?.[0] ||
+          (
+            Array.from(
+              document.querySelectorAll(
+                "div"
+              )
+            )
+              .filter(
+                (element) =>
+                  isScrollable(
+                    element
+                  )
+              )
+              .sort(
+                (a, b) =>
+                  b.scrollHeight -
+                  a.scrollHeight
+              )[0] as
+              | HTMLElement
+              | undefined
+          )
+        );
+      }
+
+      function idsFromAttributes(
+        element: Element
+      ) {
+        const ids = new Set<string>();
+
+        for (
+          const attribute of
+          Array.from(
+            element.attributes || []
+          )
+        ) {
+          const value = String(
+            attribute.value || ""
+          );
+
+          for (
+            const match of
+            value.matchAll(
+              /\d{12,16}/g
+            )
+          ) {
+            ids.add(match[0]);
+          }
+        }
+
+        return Array.from(ids);
+      }
+
+      function collectDescendantIds(
+        root: Element,
+        maxIds = 12
+      ) {
+        const ids = new Set<string>();
+
+        const nodes = [
+          root,
+          ...Array.from(
+            root.querySelectorAll(
+              identitySelector
+            )
+          ).slice(0, 180),
+        ];
+
+        for (const node of nodes) {
+          for (
+            const id of
+            idsFromAttributes(node)
+          ) {
+            ids.add(id);
+
+            if (
+              ids.size >= maxIds
+            ) {
+              return Array.from(ids);
+            }
+          }
+        }
+
+        return Array.from(ids);
+      }
+
+      function collectNearestIds(
+        root: Element
+      ) {
+        let current:
+          | Element
+          | null = root;
+
+        for (
+          let depth = 0;
+          current && depth < 8;
+          depth++
+        ) {
+          const ownIds =
+            idsFromAttributes(
+              current
+            );
+
+          if (ownIds.length > 0) {
+            return ownIds.slice(0, 4);
+          }
+
+          current =
+            current.parentElement;
+        }
+
+        return [];
+      }
+
+      function extractCssUrl(
+        input: string
+      ) {
+        const match =
+          String(input || "").match(
+            /url\(["']?([^"')]+)["']?\)/i
+          );
+
+        return match?.[1] || "";
+      }
+
+      function isUsefulMediaUrl(
+        input: any
+      ) {
+        const url = String(
+          input || ""
+        ).trim();
+
+        if (!url) return false;
+
+        const lower =
+          url.toLowerCase();
+
+        return !(
+          lower.includes("emoji") ||
+          lower.includes("sticker") ||
+          lower.includes("avatar") ||
+          lower.includes("reaction") ||
+          lower.includes("icon") ||
+          lower.includes("logo")
+        );
+      }
+
+      function extractTimeLabel(
+        input: any
+      ) {
+        const lines = cleanText(input)
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        const timeLine =
+          lines.find((line) =>
+            /^\d{1,2}:\d{2}$/.test(
+              line
+            )
+          ) || "";
+
+        const dayLine =
+          lines.find((line) => {
+            const normalized =
+              normalizeText(line);
+
+            return (
+              /^(?:hom qua|hom nay)$/.test(
+                normalized
+              ) ||
+              /^(?:t[2-7]|cn)\s+\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?$/.test(
+                normalized
+              ) ||
+              /^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(
+                normalized
+              )
+            );
+          }) || "";
+
+        return cleanText(
+          [dayLine, timeLine]
+            .filter(Boolean)
+            .join(" ")
+        );
+      }
+
+      function parseApproxTimestamp(
+        input: string
+      ) {
+        const text =
+          normalizeText(input);
+
+        const timeMatch =
+          text.match(
+            /\b(\d{1,2}):(\d{2})\b/
+          );
+
+        if (!timeMatch) {
+          return null;
+        }
+
+        const hour =
+          Number(timeMatch[1]);
+        const minute =
+          Number(timeMatch[2]);
+
+        if (
+          hour < 0 ||
+          hour > 23 ||
+          minute < 0 ||
+          minute > 59
+        ) {
+          return null;
+        }
+
+        const now = new Date();
+        let target = new Date(now);
+
+        const dateMatch =
+          text.match(
+            /\b(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?\b/
+          );
+
+        if (dateMatch) {
+          let year = dateMatch[3]
+            ? Number(dateMatch[3])
+            : now.getFullYear();
+
+          if (year < 100) {
+            year += 2000;
+          }
+
+          target = new Date(
+            year,
+            Number(dateMatch[2]) - 1,
+            Number(dateMatch[1]),
+            hour,
+            minute,
+            0,
+            0
+          );
+        } else {
+          target.setHours(
+            hour,
+            minute,
+            0,
+            0
+          );
+
+          if (
+            text.includes("hom qua")
+          ) {
+            target.setDate(
+              target.getDate() - 1
+            );
+          } else if (
+            !text.includes("hom nay") &&
+            target.getTime() >
+              now.getTime() +
+                15 * 60 * 1000
+          ) {
+            target.setDate(
+              target.getDate() - 1
+            );
+          }
+        }
+
+        return target.getTime();
+      }
+
+      function isVisibleElement(
+        element: Element,
+        conversationRect: {
+          left: number;
+          right: number;
+          top: number;
+          bottom: number;
+        }
+      ) {
+        const rect =
+          element.getBoundingClientRect();
+
+        const style =
+          window.getComputedStyle(
+            element
+          );
+
+        return (
+          rect.width > 20 &&
+          rect.height > 8 &&
+          rect.right >
+            conversationRect.left &&
+          rect.left <
+            conversationRect.right &&
+          rect.bottom >
+            conversationRect.top - 40 &&
+          rect.top <
+            conversationRect.bottom + 40 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden"
+        );
+      }
+
+      const chatScroller =
+        findChatScroller();
+
+      const conversationRoot:
+        ParentNode =
+        chatScroller ||
+        document.body;
+
+      const conversationRect =
+        chatScroller
+          ? chatScroller.getBoundingClientRect()
+          : {
+              left:
+                window.innerWidth * 0.28,
+              right:
+                window.innerWidth,
+              top: 70,
+              bottom:
+                window.innerHeight - 30,
+            };
+
+      function findIdentityMessageRoot(
+        seed: Element
+      ) {
+        let current: Element = seed;
+        let best: Element = seed;
+
+        for (
+          let depth = 0;
+          depth < 9;
+          depth++
+        ) {
+          const parent =
+            current.parentElement;
+
+          if (
+            !parent ||
+            parent === chatScroller ||
+            !conversationRoot.contains(
+              parent
+            )
+          ) {
+            break;
+          }
+
+          const parentIds =
+            collectDescendantIds(
+              parent,
+              8
+            );
+
+          /**
+           * Một message thật thường chỉ có msgId và cliMsgId.
+           * Nếu ancestor chứa quá nhiều ID thì đó là container nhiều message.
+           */
+          if (parentIds.length > 4) {
+            break;
+          }
+
+          const rect =
+            parent.getBoundingClientRect();
+
+          if (
+            rect.width >
+              conversationRect.right -
+                conversationRect.left +
+                80 ||
+            rect.height > 1400
+          ) {
+            break;
+          }
+
+          const text =
+            cleanMessageText(
+              (parent as HTMLElement)
+                .innerText ||
+                parent.textContent ||
+                ""
+            );
+
+          const hasMedia =
+            parent.querySelector(
+              "img, video, [style*='background-image']"
+            ) != null;
+
+          if (text || hasMedia) {
+            best = parent;
+          }
+
+          current = parent;
+        }
+
+        return best;
+      }
+
+      const explicitIdentityNodes =
+        Array.from(
+          conversationRoot.querySelectorAll(
+            identitySelector
+          )
+        )
+          .filter(
+            (element) =>
+              idsFromAttributes(
+                element
+              ).length > 0
+          )
+          .filter((element) =>
+            isVisibleElement(
+              element,
+              conversationRect
+            )
+          )
+          .slice(-600);
+
+      const identityRoots =
+        Array.from(
+          new Set(
+            explicitIdentityNodes.map(
+              findIdentityMessageRoot
+            )
+          )
+        ).filter((element) =>
+          isVisibleElement(
+            element,
+            conversationRect
+          )
+        );
+
+      const identityRootSet =
+        new Set(identityRoots);
+
+      const selectorItems =
+        messageItemsSelector
+          ? Array.from(
+              conversationRoot.querySelectorAll(
+                messageItemsSelector
+              )
+            ).filter((element) =>
+              isVisibleElement(
+                element,
+                conversationRect
+              )
+            )
+          : [];
+
+      const allCandidateItems =
+        Array.from(
+          new Set([
+            ...identityRoots,
+            ...selectorItems,
+          ])
+        );
+
+      /**
+       * Loại selector cha đang chứa nhiều message con.
+       * Đây là nguyên nhân cũ làm cả vùng chat bị gắn vào một msgId ngày 10/7.
+       */
+      const messageItems =
+        allCandidateItems.filter(
+          (element) => {
+            if (
+              identityRootSet.has(
+                element
+              )
+            ) {
+              return true;
+            }
+
+            const containedIdentityCount =
+              identityRoots.filter(
+                (root) =>
+                  root !== element &&
+                  element.contains(root)
+              ).length;
+
+            if (
+              containedIdentityCount >= 2
+            ) {
+              return false;
+            }
+
+            const containedCandidateCount =
+              allCandidateItems.filter(
+                (candidate) =>
+                  candidate !== element &&
+                  element.contains(
+                    candidate
+                  )
+              ).length;
+
+            return (
+              containedCandidateCount < 2
+            );
+          }
+        );
+
+      const timeCandidates =
+        Array.from(
+          conversationRoot.querySelectorAll(
+            "div, span"
+          )
+        )
+          .map((element) => {
+            const rect =
+              element.getBoundingClientRect();
+
+            const rawText = cleanText(
+              (element as HTMLElement)
+                .innerText ||
+                element.textContent ||
+                ""
+            );
+
+            return {
+              top: rect.top,
+              left: rect.left,
+              text:
+                extractTimeLabel(
+                  rawText
+                ),
+            };
+          })
+          .filter(
+            (item) =>
+              Boolean(item.text) &&
+              item.left >=
+                conversationRect.left - 5 &&
+              item.top >=
+                conversationRect.top - 40 &&
+              item.top <=
+                conversationRect.bottom + 40
+          )
+          .sort(
+            (a, b) =>
+              a.top - b.top
+          );
+
+      const rows = messageItems
+        .map((element, order) => {
+          const rect =
+            element.getBoundingClientRect();
+
+          const senderElement =
+            messageSenderSelector
+              ? element.querySelector(
+                  messageSenderSelector
+                )
+              : null;
+
+          const senderName =
+            cleanMessageText(
+              (senderElement as HTMLElement)
+                ?.innerText ||
+                senderElement?.textContent ||
+                ""
+            );
+
+          const textElements =
+            messageTextSelector
+              ? Array.from(
+                  element.querySelectorAll(
+                    messageTextSelector
+                  )
+                )
+              : [];
+
+          let text =
+            cleanMessageText(
+              textElements.length > 0
+                ? Array.from(
+                    new Set(
+                      textElements
+                        .map((item) =>
+                          cleanMessageText(
+                            (
+                              item as HTMLElement
+                            ).innerText ||
+                              item.textContent ||
+                              ""
+                          )
+                        )
+                        .filter(Boolean)
+                    )
+                  ).join("\n")
+                : (
+                    element as HTMLElement
+                  ).innerText ||
+                    element.textContent ||
+                    ""
+            );
+
+          if (
+            senderName &&
+            text.startsWith(
+              senderName
+            )
+          ) {
+            text = cleanMessageText(
+              text.slice(
+                senderName.length
+              )
+            );
+          }
+
+          const nearestTime =
+            timeCandidates
+              .filter(
+                (candidate) =>
+                  candidate.top >=
+                    rect.top - 180 &&
+                  candidate.top <=
+                    rect.bottom + 30
+              )
+              .sort(
+                (a, b) =>
+                  Math.abs(
+                    a.top - rect.top
+                  ) -
+                  Math.abs(
+                    b.top - rect.top
+                  )
+              )[0] || null;
+
+          const timeText =
+            nearestTime?.text || "";
+
+          const imageNodes =
+            Array.from(
+              element.querySelectorAll(
+                imageNodesSelector ||
+                  "img"
+              )
+            );
+
+          const images =
+            imageNodes
+              .map((image) => {
+                const imageElement =
+                  image as HTMLImageElement;
+
+                const imageRect =
+                  imageElement.getBoundingClientRect();
+
+                const url = String(
+                  imageElement.currentSrc ||
+                    imageElement.src ||
+                    imageElement.getAttribute(
+                      "src"
+                    ) ||
+                    ""
+                ).trim();
+
+                return {
+                  url,
+                  width:
+                    imageRect.width ||
+                    imageElement.naturalWidth ||
+                    0,
+                  height:
+                    imageRect.height ||
+                    imageElement.naturalHeight ||
+                    0,
+                  idCandidates:
+                    collectNearestIds(
+                      imageElement
+                    ),
+                };
+              })
+              .filter(
+                (image) =>
+                  isUsefulMediaUrl(
+                    image.url
+                  ) &&
+                  image.width >= 70 &&
+                  image.height >= 70
+              );
+
+          const backgroundImages =
+            Array.from(
+              element.querySelectorAll(
+                "[style*='background-image']"
+              )
+            )
+              .map((node) => {
+                const style =
+                  window.getComputedStyle(
+                    node
+                  );
+
+                const nodeRect =
+                  node.getBoundingClientRect();
+
+                return {
+                  url: extractCssUrl(
+                    style.backgroundImage
+                  ),
+                  width: nodeRect.width,
+                  height: nodeRect.height,
+                  idCandidates:
+                    collectNearestIds(
+                      node
+                    ),
+                };
+              })
+              .filter(
+                (image) =>
+                  isUsefulMediaUrl(
+                    image.url
+                  ) &&
+                  image.width >= 70 &&
+                  image.height >= 70
+              );
+
+          const uniqueImages =
+            new Map<
+              string,
+              {
+                url: string;
+                idCandidates: string[];
+              }
+            >();
+
+          for (
+            const image of [
+              ...images,
+              ...backgroundImages,
+            ]
+          ) {
+            if (
+              !uniqueImages.has(
+                image.url
+              )
+            ) {
+              uniqueImages.set(
+                image.url,
+                {
+                  url: image.url,
+                  idCandidates:
+                    image.idCandidates,
+                }
+              );
+            }
+          }
+
+          const videoUrls =
+            Array.from(
+              new Set(
+                Array.from(
+                  element.querySelectorAll(
+                    "video, video source"
+                  )
+                )
+                  .flatMap((node) => [
+                    String(
+                      (
+                        node as HTMLVideoElement
+                      ).currentSrc || ""
+                    ),
+                    String(
+                      node.getAttribute(
+                        "src"
+                      ) || ""
+                    ),
+                  ])
+                  .map((url) =>
+                    url.trim()
+                  )
+                  .filter(Boolean)
+              )
+            );
+
+          const descendantIdentityCount =
+            identityRoots.filter(
+              (root) =>
+                root !== element &&
+                element.contains(root)
+            ).length;
+
+          const rawIds =
+            collectDescendantIds(
+              element,
+              7
+            );
+
+          const idCandidates =
+            rawIds.length <= 4
+              ? rawIds
+              : collectNearestIds(
+                  element
+                );
+
+          const sourceType =
+            identityRootSet.has(
+              element
+            )
+              ? "identity"
+              : "selector";
+
+          const separatorCount =
+            (
+              text.match(
+                /➖+\s*\/{3}\s*➖+/g
+              ) || []
+            ).length;
+
+          const visibleTimeCount =
+            (
+              text.match(
+                /\b\d{1,2}:\d{2}\b/g
+              ) || []
+            ).length;
+
+          const looksAggregate =
+            descendantIdentityCount >= 2 ||
+            rawIds.length > 4 ||
+            (
+              Array.from(
+                uniqueImages.values()
+              ).length > 20 &&
+              text.length > 300
+            ) ||
+            (
+              separatorCount >= 3 &&
+              visibleTimeCount >= 3
+            ) ||
+            (
+              text.length > 2000 &&
+              (
+                visibleTimeCount >= 3 ||
+                separatorCount >= 2
+              )
+            );
+
+          return {
+            order,
+            top: rect.top,
+            bottom: rect.bottom,
+            text,
+            senderName,
+            timeText,
+            approxTimestamp:
+              parseApproxTimestamp(
+                timeText
+              ),
+            idCandidates,
+            images:
+              Array.from(
+                uniqueImages.values()
+              ),
+            videoUrls,
+            sourceType,
+            descendantIdentityCount,
+            textLength: text.length,
+            looksAggregate,
+          };
+        })
+        .filter(
+          (row) =>
+            !row.looksAggregate &&
+            (
+              Boolean(row.text) ||
+              row.images.length > 0 ||
+              row.videoUrls.length > 0
+            )
+        )
+        .sort(
+          (a, b) =>
+            a.top - b.top ||
+            a.bottom - b.bottom
+        );
+
+      const deduped =
+        new Map<string, any>();
+
+      for (const row of rows) {
+        const signature = [
+          row.idCandidates
+            .slice()
+            .sort()
+            .join("|"),
+          normalizeText(row.text),
+          row.images
+            .map((image) =>
+              image.url
+            )
+            .sort()
+            .join("|"),
+        ].join("||");
+
+        if (!deduped.has(signature)) {
+          deduped.set(
+            signature,
+            row
+          );
+        }
+      }
+
+      return Array.from(
+        deduped.values()
+      ).map((row, order) => ({
+        order,
+        top: row.top,
+        bottom: row.bottom,
+        text: row.text,
+        senderName:
+          row.senderName,
+        timeText: row.timeText,
+        approxTimestamp:
+          row.approxTimestamp,
+        idCandidates:
+          row.idCandidates,
+        images: row.images,
+        videoUrls:
+          row.videoUrls,
+        sourceType:
+          row.sourceType,
+        descendantIdentityCount:
+          row.descendantIdentityCount,
+        textLength:
+          row.textLength,
+      }));
+    },
+    {
+      messageItemsSelector:
+        config.selectors
+          .messageItems,
+      messageTextSelector:
+        config.selectors
+          .messageText || "",
+      messageSenderSelector:
+        config.selectors
+          .messageSender || "",
+      imageNodesSelector:
+        config.selectors
+          .imageNodes || "img",
+    }
+  );
+}
+
+type DomMessageScrollCaptureResult = {
+  items: DomMessageSnapshot[];
+  viewportCount: number;
+  attemptedSteps: number;
+  movedSteps: number;
+  reachedTop: boolean;
+  consecutiveNoNewItems: number;
+
+  blobMediaCache: {
+    cacheDir: string;
+    attemptedCount: number;
+    cachedCount: number;
+    failedCount: number;
+    reusedCount: number;
+    totalBytes: number;
+    failures: Array<{
+      url: string;
+      messageId: string;
+      error: string;
+    }>;
+  };
+};
+
+/**
+ * Zalo hiển thị tin mới nhất ở dưới cùng và dùng danh sách ảo hóa.
+ * Vì vậy không thể cuộn lên để tải rồi quay xuống cuối mới chụp một lần:
+ * các bubble cũ đã rời viewport có thể đã bị gỡ khỏi DOM.
+ *
+ * Hàm này bắt đầu ở đáy, chụp từng viewport, cuộn dần lên và cộng dồn
+ * message theo msgId/cliMsgId. Thứ tự thật sau cùng vẫn lấy từ zdb.
+ */
+async function captureDomMessagesWhileScrollingUp(
+  page: Page,
+  config: Config
+): Promise<DomMessageScrollCaptureResult> {
+  const rawStepRatio = Number(
+    config.indexedDbScrollStepRatio ?? 0.65
+  );
+
+  const stepRatio = Math.max(
+    0.25,
+    Math.min(
+      0.9,
+      Number.isFinite(rawStepRatio)
+        ? rawStepRatio
+        : 0.65
+    )
+  );
+
+  const rawWaitMs = Number(
+    config.indexedDbScrollWaitMs ?? 900
+  );
+
+  const waitMs = Math.max(
+    300,
+    Math.min(
+      5_000,
+      Number.isFinite(rawWaitMs)
+        ? rawWaitMs
+        : 900
+    )
+  );
+
+  const rawSettleMs = Number(
+    config.indexedDbScrollSettleMs ?? 1_400
+  );
+
+  const settleMs = Math.max(
+    500,
+    Math.min(
+      8_000,
+      Number.isFinite(rawSettleMs)
+        ? rawSettleMs
+        : 1_400
+    )
+  );
+
+  const rawStepsPerBatch = Number(
+    config.indexedDbScrollStepsPerBatch ?? 4
+  );
+
+  const stepsPerBatch = Math.max(
+    1,
+    Math.min(
+      12,
+      Number.isFinite(rawStepsPerBatch)
+        ? Math.floor(rawStepsPerBatch)
+        : 4
+    )
+  );
+
+  const rawMaxBatches = Number(
+    config.indexedDbScrollMaxBatches ?? 5
+  );
+
+  const maxBatches = Math.max(
+    1,
+    Math.min(
+      20,
+      Number.isFinite(rawMaxBatches)
+        ? Math.floor(rawMaxBatches)
+        : 5
+    )
+  );
+
+  const maxSteps =
+    stepsPerBatch * maxBatches;
+
+  /**
+   * Blob URL của Zalo chỉ sống trong tab hiện tại và có thể bị revoke
+   * khi bubble rời khỏi danh sách ảo. Vì vậy phải chép byte ảnh ra file
+   * ngay trong lúc viewport đó còn đang hiển thị.
+   */
+  const blobMediaCacheDir =
+    path.join(
+      NETWORK_LOG_DIR,
+      "dom-media"
+    );
+
+  fs.mkdirSync(
+    blobMediaCacheDir,
+    { recursive: true }
+  );
+
+  const blobMediaCache = {
+    cacheDir:
+      blobMediaCacheDir,
+    attemptedCount: 0,
+    cachedCount: 0,
+    failedCount: 0,
+    reusedCount: 0,
+    totalBytes: 0,
+    failures: [] as Array<{
+      url: string;
+      messageId: string;
+      error: string;
+    }>,
+  };
+
+  const cachedBlobByMessage =
+    new Map<string, string>();
+
+  function normalizeBlobMimeType(
+    input: any
+  ) {
+    const mimeType = String(
+      input || ""
+    )
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+
+    if (mimeType === "image/jpg") {
+      return "image/jpeg";
+    }
+
+    return mimeType;
+  }
+
+  function getBlobFileExtension(
+    mimeType: string
+  ) {
+    switch (mimeType) {
+      case "image/jpeg":
+        return "jpg";
+      case "image/png":
+        return "png";
+      case "image/webp":
+        return "webp";
+      case "image/avif":
+        return "avif";
+      case "image/gif":
+        return "gif";
+      case "image/jxl":
+        return "jxl";
+      default:
+        return "bin";
+    }
+  }
+
+  function safeBlobMessageKey(
+    input: any
+  ) {
+    const value = String(
+      input || ""
+    )
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .slice(0, 80);
+
+    return value ||
+      crypto.randomUUID();
+  }
+
+  async function cacheViewportBlobImages(
+    items: DomMessageSnapshot[]
+  ) {
+    for (const item of items) {
+      const itemMessageId = String(
+        item.idCandidates?.[0] || ""
+      ).trim();
+
+      for (
+        let imageIndex = 0;
+        imageIndex <
+        (item.images || []).length;
+        imageIndex++
+      ) {
+        const image =
+          item.images[imageIndex];
+
+        const originalUrl = String(
+          image?.url || ""
+        ).trim();
+
+        if (
+          !originalUrl ||
+          !originalUrl
+            .toLowerCase()
+            .startsWith("blob:")
+        ) {
+          continue;
+        }
+
+        blobMediaCache.attemptedCount += 1;
+
+        const imageMessageId = String(
+          image.idCandidates?.[0] ||
+            itemMessageId ||
+            hash(originalUrl).slice(0, 24)
+        ).trim();
+
+        const cacheKey = [
+          imageMessageId,
+          imageIndex,
+        ].join(":");
+
+        const reusedLocalUrl =
+          cachedBlobByMessage.get(
+            cacheKey
+          );
+
+        if (reusedLocalUrl) {
+          image.originalUrl =
+            originalUrl;
+          image.url =
+            reusedLocalUrl;
+          image.cachedLocalFile =
+            true;
+
+          blobMediaCache.reusedCount += 1;
+          continue;
+        }
+
+        try {
+          const payload =
+            await page.evaluate(
+              async (blobUrl) => {
+                const response =
+                  await fetch(blobUrl);
+
+                if (!response.ok) {
+                  throw new Error(
+                    `HTTP ${response.status}`
+                  );
+                }
+
+                const blob =
+                  await response.blob();
+
+                const arrayBuffer =
+                  await blob.arrayBuffer();
+
+                const bytes =
+                  new Uint8Array(
+                    arrayBuffer
+                  );
+
+                let binary = "";
+                const chunkSize =
+                  0x8000;
+
+                for (
+                  let offset = 0;
+                  offset < bytes.length;
+                  offset += chunkSize
+                ) {
+                  const chunk =
+                    bytes.subarray(
+                      offset,
+                      Math.min(
+                        offset +
+                          chunkSize,
+                        bytes.length
+                      )
+                    );
+
+                  binary +=
+                    String.fromCharCode(
+                      ...chunk
+                    );
+                }
+
+                return {
+                  base64:
+                    btoa(binary),
+                  mimeType:
+                    blob.type ||
+                    response.headers.get(
+                      "content-type"
+                    ) ||
+                    "application/octet-stream",
+                  sizeBytes:
+                    bytes.length,
+                };
+              },
+              originalUrl
+            );
+
+          const sourceBuffer =
+            Buffer.from(
+              payload.base64,
+              "base64"
+            );
+
+          if (sourceBuffer.length === 0) {
+            throw new Error(
+              "Blob ảnh trả về dữ liệu rỗng"
+            );
+          }
+
+          const mimeType =
+            normalizeBlobMimeType(
+              payload.mimeType
+            );
+
+          if (
+            !mimeType.startsWith(
+              "image/"
+            )
+          ) {
+            throw new Error(
+              `Blob không phải ảnh: ${mimeType || "unknown"}`
+            );
+          }
+
+          const extension =
+            getBlobFileExtension(
+              mimeType
+            );
+
+          const fileName = [
+            safeBlobMessageKey(
+              imageMessageId
+            ),
+            imageIndex,
+          ].join("-") +
+            `.${extension}`;
+
+          const filePath =
+            path.join(
+              blobMediaCacheDir,
+              fileName
+            );
+
+          fs.writeFileSync(
+            filePath,
+            sourceBuffer
+          );
+
+          const localFileUrl =
+            pathToFileURL(
+              filePath
+            ).href;
+
+          cachedBlobByMessage.set(
+            cacheKey,
+            localFileUrl
+          );
+
+          image.originalUrl =
+            originalUrl;
+          image.url =
+            localFileUrl;
+          image.cachedLocalFile =
+            true;
+          image.mimeType =
+            mimeType;
+          image.sizeBytes =
+            sourceBuffer.length;
+
+          blobMediaCache.cachedCount += 1;
+          blobMediaCache.totalBytes +=
+            sourceBuffer.length;
+        } catch (error: any) {
+          const errorMessage =
+            error?.message ||
+            String(error);
+
+          blobMediaCache.failedCount += 1;
+
+          if (
+            blobMediaCache.failures.length <
+            50
+          ) {
+            blobMediaCache.failures.push({
+              url: originalUrl,
+              messageId:
+                imageMessageId,
+              error:
+                errorMessage,
+            });
+          }
+
+          console.warn(
+            [
+              "Không lưu được blob ảnh DOM:",
+              imageMessageId ||
+                "không rõ ID",
+              errorMessage,
+            ].join(" ")
+          );
+        }
+      }
+    }
+  }
+
+  const collected =
+    new Map<string, DomMessageSnapshot>();
+
+  /**
+   * orderedKeys luôn giữ thứ tự cũ → mới:
+   * - viewport đầu tiên ở đáy được append;
+   * - các item mới tìm thấy khi cuộn lên được prepend.
+   */
+  const orderedKeys: string[] = [];
+
+  function normalizeSnapshotText(
+    input: string
+  ) {
+    return String(input || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function getSnapshotKey(
+    item: DomMessageSnapshot
+  ) {
+    const ids = Array.isArray(
+      item.idCandidates
+    )
+      ? item.idCandidates
+          .map((value) =>
+            String(value || "").trim()
+          )
+          .filter(Boolean)
+      : [];
+
+    /**
+     * captureVisibleDomMessages đặt msgId/cliMsgId gần nhất lên đầu.
+     * Dùng ID đầu tiên giúp cùng một bubble không bị nhân đôi giữa
+     * hai viewport chồng lấn.
+     */
+    if (ids[0]) {
+      return `id:${ids[0]}`;
+    }
+
+    const mediaSignature = [
+      ...(Array.isArray(item.images)
+        ? item.images.map((image) =>
+            String(image?.url || "").trim()
+          )
+        : []),
+      ...(Array.isArray(item.videoUrls)
+        ? item.videoUrls.map((url) =>
+            String(url || "").trim()
+          )
+        : []),
+    ]
+      .filter(Boolean)
+      .sort()
+      .join("|");
+
+    return [
+      "fallback",
+      normalizeSnapshotText(item.text),
+      String(item.timeText || ""),
+      mediaSignature,
+    ].join(":");
+  }
+
+  function mergeSnapshotItem(
+    current: DomMessageSnapshot,
+    incoming: DomMessageSnapshot
+  ): DomMessageSnapshot {
+    const currentText =
+      String(current.text || "");
+
+    const incomingText =
+      String(incoming.text || "");
+
+    const useIncomingText =
+      incomingText.length >
+      currentText.length;
+
+    const currentImages =
+      Array.isArray(current.images)
+        ? current.images
+        : [];
+
+    const incomingImages =
+      Array.isArray(incoming.images)
+        ? incoming.images
+        : [];
+
+    const currentVideos =
+      Array.isArray(current.videoUrls)
+        ? current.videoUrls
+        : [];
+
+    const incomingVideos =
+      Array.isArray(incoming.videoUrls)
+        ? incoming.videoUrls
+        : [];
+
+    const idCandidates = Array.from(
+      new Set([
+        ...(current.idCandidates || []),
+        ...(incoming.idCandidates || []),
+      ])
+    ).slice(0, 4);
+
+    return {
+      ...current,
+
+      text: useIncomingText
+        ? incomingText
+        : currentText,
+
+      textLength: Math.max(
+        Number(current.textLength || 0),
+        Number(incoming.textLength || 0)
+      ),
+
+      senderName:
+        current.senderName ||
+        incoming.senderName ||
+        "",
+
+      timeText:
+        current.timeText ||
+        incoming.timeText ||
+        "",
+
+      approxTimestamp:
+        current.approxTimestamp ??
+        incoming.approxTimestamp ??
+        null,
+
+      idCandidates,
+
+      /**
+       * Một identity row ảnh tương ứng một message ảnh.
+       * Không cộng nhiều blob URL của các lần render khác nhau vào
+       * cùng message; chỉ chọn bản chụp có nhiều media hơn.
+       */
+      images:
+        (
+          incomingImages.filter(
+            (image) =>
+              image.cachedLocalFile ||
+              String(
+                image.url || ""
+              )
+                .toLowerCase()
+                .startsWith("file:")
+          ).length >
+          currentImages.filter(
+            (image) =>
+              image.cachedLocalFile ||
+              String(
+                image.url || ""
+              )
+                .toLowerCase()
+                .startsWith("file:")
+          ).length
+        ) ||
+        incomingImages.length >
+          currentImages.length
+          ? incomingImages
+          : currentImages,
+
+      videoUrls:
+        incomingVideos.length >
+        currentVideos.length
+          ? incomingVideos
+          : currentVideos,
+
+      sourceType:
+        current.sourceType === "identity" ||
+        incoming.sourceType === "identity"
+          ? "identity"
+          : "selector",
+
+      descendantIdentityCount:
+        Math.min(
+          Number(
+            current.descendantIdentityCount || 0
+          ),
+          Number(
+            incoming.descendantIdentityCount || 0
+          )
+        ),
+    };
+  }
+
+  function addViewport(
+    items: DomMessageSnapshot[],
+    prependNewItems: boolean
+  ) {
+    const newKeys: string[] = [];
+
+    for (const item of items) {
+      const key = getSnapshotKey(item);
+      const current = collected.get(key);
+
+      if (current) {
+        collected.set(
+          key,
+          mergeSnapshotItem(
+            current,
+            item
+          )
+        );
+        continue;
+      }
+
+      collected.set(key, item);
+      newKeys.push(key);
+    }
+
+    if (newKeys.length > 0) {
+      if (prependNewItems) {
+        orderedKeys.unshift(...newKeys);
+      } else {
+        orderedKeys.push(...newKeys);
+      }
+    }
+
+    return newKeys.length;
+  }
+
+  /**
+   * Bảo đảm helper __name có trong browser context trước các
+   * page.evaluate chứa function lồng nhau.
+   */
+  await page.evaluate(
+    "globalThis.__name = Object"
+  );
+
+  await scrollChatToBottom(
+    page,
+    config.selectors.messageItems
+  );
+
+  await page.waitForTimeout(settleMs);
+
+  let viewportCount = 0;
+  let attemptedSteps = 0;
+  let movedSteps = 0;
+  let reachedTop = false;
+  let consecutiveNoNewItems = 0;
+
+  try {
+    const firstViewport =
+      await captureVisibleDomMessages(
+        page,
+        config
+      );
+
+    await cacheViewportBlobImages(
+      firstViewport
+    );
+
+    viewportCount += 1;
+    addViewport(
+      firstViewport,
+      false
+    );
+
+    for (
+      let stepIndex = 0;
+      stepIndex < maxSteps;
+      stepIndex++
+    ) {
+      attemptedSteps += 1;
+
+      const moveResult =
+        await page.evaluate(
+          ({
+            messageItemsSelector,
+            stepRatio,
+          }) => {
+            function isScrollable(
+              element: Element
+            ) {
+              const style =
+                window.getComputedStyle(
+                  element
+                );
+
+              const rect =
+                element.getBoundingClientRect();
+
+              return (
+                (
+                  style.overflowY ===
+                    "auto" ||
+                  style.overflowY ===
+                    "scroll"
+                ) &&
+                element.scrollHeight >
+                  element.clientHeight + 120 &&
+                rect.width > 250 &&
+                rect.height > 180 &&
+                rect.right >
+                  window.innerWidth * 0.55
+              );
+            }
+
+            function findChatScroller() {
+              const scores =
+                new Map<
+                  HTMLElement,
+                  number
+                >();
+
+              if (messageItemsSelector) {
+                const messageItems =
+                  Array.from(
+                    document.querySelectorAll(
+                      messageItemsSelector
+                    )
+                  ).slice(-250);
+
+                for (
+                  const messageItem of
+                  messageItems
+                ) {
+                  let current:
+                    | HTMLElement
+                    | null =
+                    messageItem.parentElement;
+
+                  let depth = 0;
+
+                  while (
+                    current &&
+                    depth < 12
+                  ) {
+                    if (
+                      isScrollable(current)
+                    ) {
+                      scores.set(
+                        current,
+                        (
+                          scores.get(
+                            current
+                          ) || 0
+                        ) +
+                          Math.max(
+                            1,
+                            12 - depth
+                          )
+                      );
+                    }
+
+                    current =
+                      current.parentElement;
+                    depth += 1;
+                  }
+                }
+              }
+
+              return (
+                Array.from(
+                  scores.entries()
+                )
+                  .sort(
+                    (a, b) =>
+                      b[1] - a[1] ||
+                      b[0].scrollHeight -
+                        a[0].scrollHeight
+                  )[0]?.[0] ||
+                (
+                  Array.from(
+                    document.querySelectorAll(
+                      "div"
+                    )
+                  )
+                    .filter((element) =>
+                      isScrollable(element)
+                    )
+                    .sort(
+                      (a, b) =>
+                        b.scrollHeight -
+                        a.scrollHeight
+                    )[0] as
+                    | HTMLElement
+                    | undefined
+                )
+              );
+            }
+
+            const chatScroller =
+              findChatScroller();
+
+            if (!chatScroller) {
+              return {
+                found: false,
+                moved: false,
+                atTop: false,
+                beforeTop: 0,
+                afterTop: 0,
+              };
+            }
+
+            const beforeTop =
+              chatScroller.scrollTop;
+
+            const distance = Math.max(
+              120,
+              chatScroller.clientHeight *
+                stepRatio
+            );
+
+            chatScroller.scrollTop =
+              Math.max(
+                0,
+                beforeTop - distance
+              );
+
+            const afterTop =
+              chatScroller.scrollTop;
+
+            return {
+              found: true,
+              moved:
+                Math.abs(
+                  afterTop - beforeTop
+                ) > 1,
+              atTop: afterTop <= 1,
+              beforeTop,
+              afterTop,
+            };
+          },
+          {
+            messageItemsSelector:
+              config.selectors
+                .messageItems,
+            stepRatio,
+          }
+        );
+
+      if (moveResult.moved) {
+        movedSteps += 1;
+      }
+
+      if (moveResult.atTop) {
+        reachedTop = true;
+      }
+
+      await page.waitForTimeout(waitMs);
+
+      /**
+       * Cuối mỗi batch chờ lâu hơn để Zalo có thời gian nạp và
+       * render thêm message cũ phía trên.
+       */
+      if (
+        (stepIndex + 1) %
+          stepsPerBatch ===
+        0
+      ) {
+        await page.waitForTimeout(
+          settleMs
+        );
+      }
+
+      const viewport =
+        await captureVisibleDomMessages(
+          page,
+          config
+        );
+
+      await cacheViewportBlobImages(
+        viewport
+      );
+
+      viewportCount += 1;
+
+      const newItemCount =
+        addViewport(
+          viewport,
+          true
+        );
+
+      if (newItemCount > 0) {
+        consecutiveNoNewItems = 0;
+      } else {
+        consecutiveNoNewItems += 1;
+      }
+
+      /**
+       * Không dừng chỉ vì đang đi qua một message rất cao.
+       * - Ở đỉnh hoặc không còn di chuyển: ba viewport không có ID mới là đủ.
+       * - Khi vẫn đang cuộn: cho phép tối đa sáu viewport không có ID mới.
+       */
+      if (
+        consecutiveNoNewItems >= 3 &&
+        (
+          moveResult.atTop ||
+          !moveResult.moved
+        )
+      ) {
+        break;
+      }
+
+      if (
+        consecutiveNoNewItems >= 6
+      ) {
+        break;
+      }
+
+      if (!moveResult.found) {
+        break;
+      }
+    }
+  } finally {
+    /**
+     * Trả giao diện về cuối nhóm sau khi đã lưu snapshot trong bộ nhớ.
+     */
+    await scrollChatToBottom(
+      page,
+      config.selectors.messageItems
+    );
+
+    await page.waitForTimeout(
+      settleMs
+    );
+  }
+
+  const items = orderedKeys
+    .map((key) =>
+      collected.get(key)
+    )
+    .filter(
+      (
+        item
+      ): item is DomMessageSnapshot =>
+        Boolean(item)
+    )
+    .map((item, order) => ({
+      ...item,
+      order,
+    }));
+
+  return {
+    items,
+    viewportCount,
+    attemptedSteps,
+    movedSteps,
+    reachedTop,
+    consecutiveNoNewItems,
+    blobMediaCache,
+  };
 }
 
 async function dumpIndexedDb(
@@ -2285,10 +4670,43 @@ function isIndexedDbSeparatorText(
   input: string
 ) {
   const compact = String(input || "")
-    .replace(/\s+/g, "");
+    .replace(/\s+/g, "")
+    .trim();
 
-  return /[-–—_=➖/]{5,}/.test(
-    compact
+  if (!compact) return false;
+
+  /*
+   * Hỗ trợ các dạng separator thực tế:
+   * ➖➖///➖➖
+   * ➖➖➖➖///➖➖➖
+   * -----///-----
+   * =====///=====
+   *
+   * Không yêu cầu số lượng dấu cố định.
+   */
+  if (
+    compact.includes("///") &&
+    /^[\-–—_=➖/]{5,}$/.test(compact)
+  ) {
+    return true;
+  }
+
+  return /^[\-–—_=➖]{5,}$/.test(compact);
+}
+
+function isIndexedDbProjectHeaderText(
+  input: string
+) {
+  const text =
+    cleanIndexedDbRoomText(input);
+
+  const firstLine =
+    makeStableText(
+      text.split("\n")[0] || ""
+    );
+
+  return /^(?:.*\b)?(?:thong bao du an|du an moi|cap nhat du an|du an duy tri|cap nhat hinh anh va video phong)\b/.test(
+    firstLine
   );
 }
 
@@ -2338,26 +4756,96 @@ function isIndexedDbHouseInfoText(
   const text =
     cleanIndexedDbRoomText(input);
 
-  /*
-   * Ưu tiên dùng logic đã có của reader.
-   */
-  if (isHouseInfoText(text)) {
-    return true;
+  if (!text) {
+    return false;
   }
 
   const normalized =
     makeStableText(text);
 
+  if (!normalized) {
+    return false;
+  }
+
+  /*
+   * ============================
+   * 1. TIÊU ĐỀ BẮT ĐẦU DỰ ÁN
+   * ============================
+   *
+   * Các dạng thực tế:
+   *
+   * DỰ ÁN MỚI: 1131 Trần Hưng Đạo Q5
+   * THÔNG BÁO DỰ ÁN MỚI QUẬN 5
+   * CẬP NHẬT DỰ ÁN DUY TRÌ
+   * DỰ ÁN DUY TRÌ: 245 Nguyễn Biểu
+   */
+  const hasProjectHeader =
+    /^(?:hifriendz\s*[-–—]\s*)?(?:thong bao\s+)?(?:cap nhat\s+)?du an(?:\s+moi|\s+duy tri)?\b/.test(
+      normalized
+    );
+
+  if (hasProjectHeader) {
+    return true;
+  }
+
+  /*
+   * ============================
+   * 2. DÒNG ĐỊA CHỈ RÚT GỌN
+   * ============================
+   *
+   * Nhận:
+   * 1131 Trần Hưng Đạo Q5
+   * 298/2A Trần Phú P.An Đông Q5
+   * 245 Nguyễn Biểu Quận 5
+   *
+   * Không nhận marker phòng vì yêu cầu:
+   * - bắt đầu bằng số nhà;
+   * - có tên đường;
+   * - cuối hoặc gần cuối có Q/Quận.
+   */
+  const looksLikeAddressLine =
+    /^\d+[a-z]?(?:\/\d+[a-z]?)*\s+[a-z].*\b(?:q\.?\s*\d{1,2}|quan\s*\d{1,2})\b/.test(
+      normalized
+    );
+
+  if (looksLikeAddressLine) {
+    return true;
+  }
+
+  /*
+   * Ưu tiên logic cơ bản có sẵn.
+   */
+  if (isHouseInfoText(text)) {
+    return true;
+  }
+
+  /*
+   * ============================
+   * 3. FORM THÔNG TIN TÒA NHÀ
+   * ============================
+   */
   const signals = [
+    "du an moi",
+    "du an duy tri",
+    "thong bao du an",
     "cap nhat du an",
     "cap nhat thong tin",
+
     "dia chi",
     "quy mo",
+    "tong so phong",
+
     "phi dich vu",
+    "dien",
+    "nuoc",
+    "giu xe",
+    "gui xe",
+
     "hoa hong",
     "thu cung",
     "khach nuoc ngoai",
     "coc toi thieu",
+    "huy coc",
   ];
 
   const matchedSignals =
@@ -2365,7 +4853,169 @@ function isIndexedDbHouseInfoText(
       normalized.includes(signal)
     ).length;
 
-  return matchedSignals >= 3;
+  /*
+   * Form dài chỉ cần có ít nhất 2 nhóm tín hiệu.
+   *
+   * Ví dụ tin 1131 Trần Hưng Đạo có:
+   * - dự án mới
+   * - điện
+   * - nước
+   * - phí dịch vụ
+   * - hoa hồng
+   */
+  return matchedSignals >= 2;
+}
+
+/**
+ * Chỉ nhận một dòng là marker phòng khi chính dòng đó
+ * thể hiện rõ:
+ *
+ * - trạng thái phòng trống + mã/giá; hoặc
+ * - bắt đầu bằng mã phòng hợp lệ + giá.
+ *
+ * Không dùng dữ liệu tiền cọc, hoa hồng, phí điện nước
+ * trong phần thông tin tòa nhà để xác định phòng.
+ */
+function isStrongIndexedDbRoomMarkerLine(
+  input: string
+) {
+  const text =
+    cleanIndexedDbRoomText(input);
+
+  const normalized =
+    makeStableText(text);
+
+  if (!normalized) {
+    return false;
+  }
+
+  /*
+   * Loại các section chắc chắn không phải phòng.
+   */
+  const blockedSection =
+    /^(?:[-+•*]\s*)?(?:thong bao du an|du an moi|cap nhat du an|du an duy tri|dia chi|quy mo|tong so|so luong|dien|nuoc|xe|giu xe|gui xe|phi|phi dich vu|dich vu|giat|may giat|coc|coc toi thieu|hoa hong|hh|huy coc|hop dong|hd|thu cung|khach nuoc ngoai|so luong nguoi|lien he)\b/.test(
+      normalized
+    );
+
+  if (blockedSection) {
+    return false;
+  }
+
+  /*
+   * Chặn những câu phí có chữ "phòng":
+   *
+   * - phí rác 80k/phòng
+   * - dịch vụ 200k/phòng
+   * - giặt 150k/người
+   */
+  const looksLikeFeeLine =
+    /\b(?:phi|dich vu|dien|nuoc|giat|xe|giu xe|gui xe|coc|hoa hong|hh)\b/.test(
+      normalized
+    );
+
+  if (looksLikeFeeLine) {
+    return false;
+  }
+
+  /*
+   * Giá phòng hợp lệ.
+   */
+  const hasPrice =
+    /\b(?:gia|gia thue)\s*[:\-]?\s*\d/.test(
+      normalized
+    ) ||
+    /\b\d+\s*(?:tr|trieu)\d{0,3}\b/.test(
+      normalized
+    ) ||
+    /\b\d+(?:[.,]\d+)?\s*(?:tr|trieu)\b/.test(
+      normalized
+    ) ||
+    /\b\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:d|dong)?\b/.test(
+      normalized
+    );
+
+  if (!hasPrice) {
+    return false;
+  }
+
+  /*
+   * Trạng thái phòng rõ ràng.
+   */
+  const hasVacancySignal =
+    /\b(?:trong|trong san|phong trong|con trong|dang trong|available)\b/.test(
+      normalized
+    );
+
+  /*
+   * Mã phòng hỗ trợ:
+   *
+   * 202
+   * 303
+   * P601
+   * P001
+   * G01
+   * L1
+   * L2
+   * Trệt
+   * Lầu 1
+   * Tầng 2
+   */
+  const roomCodeToken =
+    "(?:tret|lung|lau\\s*\\d{1,2}|tang\\s*\\d{1,2}|[a-z]{1,3}\\.?\\d{1,4}[a-z]?|\\d{2,4}[a-z]?)";
+
+  /*
+   * Ví dụ:
+   *
+   * Trống L1 giá 4tr
+   * Trống mã 202 giá 6tr
+   * Còn trống P601 giá 7tr
+   */
+  const vacancyWithRoomCode =
+    new RegExp(
+      `\\b(?:trong|trong san|phong trong|con trong|dang trong)\\s*(?:phong|ma|ma phong)?\\s*[:\\-]?\\s*${roomCodeToken}\\b`,
+      "i"
+    ).test(normalized);
+
+  /*
+   * Ví dụ:
+   *
+   * L1 giá 4tr
+   * P601: 7tr
+   * 202: 8.500.000 phòng trống
+   * Trệt giá 9tr
+   */
+  const startsWithRoomCode =
+    new RegExp(
+      `^\\s*(?:phong\\s+|ma\\s+|ma phong\\s+)?${roomCodeToken}\\s*(?=[:\\-]?\\s*(?:gia\\b|\\d))`,
+      "i"
+    ).test(normalized);
+
+  /*
+   * Có chữ "phòng trống" và giá nhưng không viết mã rõ ràng.
+   *
+   * Ví dụ:
+   * Phòng trống giá 6tr
+   */
+  const explicitVacantRoom =
+    /\bphong trong\b/.test(
+      normalized
+    ) &&
+    hasPrice;
+
+  return (
+    hasPrice &&
+    (
+      vacancyWithRoomCode ||
+      startsWithRoomCode ||
+      explicitVacantRoom ||
+      (
+        hasVacancySignal &&
+        /\b(?:ma|ma phong|phong)\b/.test(
+          normalized
+        )
+      )
+    )
+  );
 }
 
 function isIndexedDbRoomMarkerText(
@@ -2381,25 +5031,22 @@ function isIndexedDbRoomMarkerText(
     return false;
   }
 
+  /*
+   * Chặn các tin giao dịch không phải thông báo phòng trống.
+   */
   const hasExplicitVacancy =
-    /\b(trong|phong trong)\b/.test(
+    /\b(?:trong|trong san|phong trong|con trong)\b/.test(
       normalized
     );
 
-  /*
-   * Chặn các tin báo giao dịch:
-   * - lock
-   * - báo lock
-   * - DT 2.500.000
-   * - pass khách
-   * - bill ok
-   */
   const looksLikeTransaction =
-    /\block\b/.test(normalized) ||
+    /\block\b/.test(
+      normalized
+    ) ||
     /\b(?:dt|đt)\s*[:\-]?\s*\d/i.test(
       normalized
     ) ||
-    /\b(pass khach|bao lock|bill ok|chot khach)\b/.test(
+    /\b(?:pass khach|bao lock|bill ok|chot khach)\b/.test(
       normalized
     );
 
@@ -2410,34 +5057,52 @@ function isIndexedDbRoomMarkerText(
     return false;
   }
 
-  if (isRoomMarkerText(text)) {
+  /*
+   * Message IndexedDB đôi khi chứa nhiều dòng:
+   *
+   * thông tin tòa nhà
+   * ...
+   * Trống L1 giá 4tr
+   *
+   * Vì vậy phải kiểm tra từng dòng riêng.
+   * Không được lấy chữ "phòng" và tiền cọc/phí ở các dòng khác
+   * rồi ghép lại thành marker giả.
+   */
+  const lines =
+    text
+      .split("\n")
+      .map((line) =>
+        line.trim()
+      )
+      .filter(Boolean);
+
+  for (const line of lines) {
+    if (
+      isStrongIndexedDbRoomMarkerLine(
+        line
+      )
+    ) {
+      return true;
+    }
+  }
+
+  /*
+   * Trường hợp marker được viết thành một đoạn ngắn
+   * nhưng có xuống dòng không thuận lợi.
+   *
+   * Chỉ chạy với text ngắn để không nhận nhầm
+   * toàn bộ form thông tin tòa nhà.
+   */
+  if (
+    text.length <= 220 &&
+    isStrongIndexedDbRoomMarkerLine(
+      text
+    )
+  ) {
     return true;
   }
 
-  const hasRoomSignal =
-    hasExplicitVacancy ||
-    /\b(phong|ma)\b/.test(
-      normalized
-    ) ||
-    /\b\d{2,4}\b/.test(
-      normalized
-    );
-
-  const hasPrice =
-    /\b\d+(?:[.,]\d+)?\s*(?:tr|trieu)\d*\b/.test(
-      normalized
-    ) ||
-    /\b\d{1,3}(?:[.,]\d{3}){1,2}\b/.test(
-      normalized
-    ) ||
-    /\b\d{3,5}\s*k\b/.test(
-      normalized
-    );
-
-  return (
-    hasRoomSignal &&
-    hasPrice
-  );
+  return false;
 }
 
 function getIndexedDbMessageTimestamp(
@@ -2606,14 +5271,34 @@ function buildIndexedDbAlbums(
 function refreshIndexedDbRoomFullText(
   room: IndexedDbRoomPreview
 ) {
-  room.fullText = [
+  const parts = [
     room.houseInfoText,
     room.markerText,
     ...room.descriptionTexts,
-  ]
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
+  ].filter(Boolean);
+
+  const uniqueParts:
+    string[] = [];
+
+  const seen =
+    new Set<string>();
+
+  for (const part of parts) {
+    const key =
+      makeStableText(part);
+
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    uniqueParts.push(part);
+  }
+
+  room.fullText =
+    uniqueParts
+      .join("\n\n")
+      .trim();
 }
 
 function isIndexedDbVideoMessage(
@@ -2732,8 +5417,15 @@ function splitIndexedDbClosedBlocks(
     [];
 
   let currentBlock:
-    IndexedDbGroupMessage[] |
-    null = null;
+    IndexedDbGroupMessage[] =
+    [];
+
+  function flushCurrentBlock() {
+    if (currentBlock.length > 0) {
+      blocks.push(currentBlock);
+      currentBlock = [];
+    }
+  }
 
   for (const message of messages) {
     const messageText =
@@ -2743,54 +5435,44 @@ function splitIndexedDbClosedBlocks(
           )
         : "";
 
-    const isSeparator =
-      Boolean(
-        messageText
-      ) &&
+   const isSeparator = 
+      Boolean(messageText) &&
       isIndexedDbSeparatorText(
         messageText
       );
 
     if (isSeparator) {
-      /*
-       * Nếu đang có block mở,
-       * dấu hiện tại đóng block đó.
-       */
-      if (
-        currentBlock &&
-        currentBlock.length >
-          0
-      ) {
-        blocks.push(
-          currentBlock
-        );
-      }
-
-      /*
-       * Dấu hiện tại đồng thời mở block mới.
-       */
-      currentBlock = [];
-
+      flushCurrentBlock();
       continue;
     }
+
+    const startsNewProject =
+      Boolean(messageText) &&
+      isIndexedDbProjectHeaderText(
+        messageText
+      );
 
     /*
-     * Không lấy message nằm ngoài
-     * hai dấu phân cách.
+     * Tin mở đầu dự án cũng là ranh giới block.
+     * Nhờ vậy Reader hoạt động cả khi nhóm không gửi
+     * separator hoặc dùng separator không đồng nhất.
      */
-    if (!currentBlock) {
-      continue;
+    if (
+      startsNewProject &&
+      currentBlock.length > 0
+    ) {
+      flushCurrentBlock();
     }
 
-    currentBlock.push(
-      message
-    );
+    currentBlock.push(message);
   }
 
   /*
-   * Không push currentBlock tại đây.
-   * Nếu không có dấu đóng thì block chưa hoàn chỉnh.
+   * Block mới nhất có thể chưa có separator đóng.
+   * Vẫn phải đọc vì đây thường chính là phòng mới nhất.
    */
+  flushCurrentBlock();
+
   return blocks;
 }
 
@@ -2805,6 +5487,7 @@ function buildRoomsFromIndexedDbMessages(
   const {
     groupName,
     groupId,
+    maxGapMs,
   } = params;
 
   /*
@@ -2942,40 +5625,116 @@ function buildRoomsFromIndexedDbMessages(
        *
        * Miễn cùng block và cùng người gửi.
        */
-      const houseInfoTexts =
-        Array.from(
-          new Set(
-            senderMessages
-              .filter(
-                (message) =>
-                  message.kind ===
-                  "text"
-              )
-              .map((message) =>
-                cleanIndexedDbRoomText(
-                  message.text
-                )
-              )
-              .filter(
-                (text) =>
-                  Boolean(text) &&
-                  isIndexedDbHouseInfoText(
-                    text
-                  )
-              )
-          )
-        );
+      const houseInfoTextMap =
+        new Map<string, string>();
 
-      const houseInfoText =
-        houseInfoTexts
-          .join("\n\n")
-          .trim();
+      for (const message of senderMessages) {
+        if (message.kind !== "text") {
+          continue;
+        }
+
+        const text =
+          cleanIndexedDbRoomText(
+            message.text
+          );
+
+        if (
+          !text ||
+          !isIndexedDbHouseInfoText(text)
+        ) {
+          continue;
+        }
+
+        const key = makeStableText(text);
+
+        if (
+          key &&
+          !houseInfoTextMap.has(key)
+        ) {
+          houseInfoTextMap.set(
+            key,
+            text
+          );
+        }
+      }
+
+      const houseInfoTexts =
+  Array.from(
+    new Map(
+      senderMessages
+        .filter(
+          (message) =>
+            message.kind === "text"
+        )
+        .map((message) =>
+          cleanIndexedDbRoomText(
+            message.text
+          )
+        )
+        .filter(
+          (text) =>
+            Boolean(text) &&
+            isIndexedDbHouseInfoText(
+              text
+            )
+        )
+        .map((text) => [
+          makeStableText(text),
+          text,
+        ])
+    ).values()
+  );
+
+const houseInfoText =
+  houseInfoTexts
+    .join("\n\n")
+    .trim();
+
+if (!houseInfoText) {
+  console.warn(
+    [
+      "Không tìm thấy dữ liệu tòa nhà trong block.",
+      `Block index: ${blockIndex}.`,
+      `Sender: ${senderKey}.`,
+      `Số message: ${senderMessages.length}.`,
+    ].join(" ")
+  );
+} else {
+  console.log(
+    [
+      "Đã ghép dữ liệu tòa nhà:",
+      houseInfoText
+        .split("\n")[0]
+        ?.slice(0, 100) || "-",
+    ].join(" ")
+  );
+}
+
+      if (!houseInfoText) {
+        console.warn(
+          [
+            "Không tìm thấy dữ liệu tòa nhà trong block.",
+            `Block index: ${blockIndex}.`,
+            `Sender: ${senderKey}.`,
+            `Số message: ${senderMessages.length}.`,
+          ].join(" ")
+        );
+      } else {
+        console.log(
+          [
+            "Đã ghép dữ liệu tòa nhà:",
+            houseInfoText
+              .split("\n")[0]
+              ?.slice(0, 100) || "-",
+          ].join(" ")
+        );
+      }
 
       /*
        * Tìm tất cả marker phòng trong block
        * của người gửi này.
        */
-      const roomMarkers =
+      const roomMarkerCandidates =
         senderMessages
           .map(
             (
@@ -3011,6 +5770,82 @@ function buildRoomsFromIndexedDbMessages(
             }
           );
 
+      /*
+       * Tin house-info đôi khi cũng có một dòng kiểu:
+       *
+       *   202: 8.500.000 phòng trống sẵn
+       *
+       * nên bản thân nó vượt qua bộ nhận diện marker. Khi phía sau
+       * có album và một marker riêng, không được tạo thêm một room
+       * từ chính house-info đó.
+       *
+       * Chỉ loại house-info candidate khi:
+       * - Có một marker độc lập nằm phía sau; và
+       * - Giữa hai message có ảnh hoặc video.
+       *
+       * Nếu block không có marker độc lập, house-info vẫn được giữ
+       * làm fallback để không bỏ sót các bài đăng gộp mọi thứ vào
+       * một message duy nhất.
+       */
+      const standaloneRoomMarkers =
+        roomMarkerCandidates.filter(
+          ({ message }) => {
+            const text =
+              cleanIndexedDbRoomText(
+                message.text
+              );
+
+            return !isIndexedDbHouseInfoText(
+              text
+            );
+          }
+        );
+
+      const roomMarkers =
+        roomMarkerCandidates.filter(
+          (candidate) => {
+            const candidateText =
+              cleanIndexedDbRoomText(
+                candidate.message.text
+              );
+
+            if (
+              !isIndexedDbHouseInfoText(
+                candidateText
+              )
+            ) {
+              return true;
+            }
+
+            const nextStandaloneMarker =
+              standaloneRoomMarkers.find(
+                (standaloneMarker) =>
+                  standaloneMarker.index >
+                  candidate.index
+              );
+
+            if (!nextStandaloneMarker) {
+              return true;
+            }
+
+            const hasMediaBetween =
+              senderMessages
+                .slice(
+                  candidate.index + 1,
+                  nextStandaloneMarker.index
+                )
+                .some(
+                  (message) =>
+                    message.kind === "image" ||
+                    isIndexedDbVideoMessage(
+                      message
+                    )
+                );
+
+            return !hasMediaBetween;
+          }
+        );
+
       for (
         let markerPosition = 0;
         markerPosition <
@@ -3043,43 +5878,137 @@ function buildRoomsFromIndexedDbMessages(
           );
 
         const markerText =
-          cleanIndexedDbRoomText(
-            markerMessage.text
-          );
+  cleanIndexedDbRoomText(
+    markerMessage.text
+  );
 
-        /*
-         * ============================
-         * MEDIA CỦA PHÒNG
-         * ============================
-         *
-         * Media của phòng hiện tại nằm:
-         * - Sau marker trước đó.
-         * - Trước marker hiện tại.
-         *
-         * Mọi ảnh/video sau marker hiện tại
-         * không thuộc phòng hiện tại.
-         */
+/*
+ * Bảo vệ lần cuối:
+ *
+ * Chỉ tiếp tục tạo phòng khi trong markerMessage
+ * thực sự có ít nhất một dòng marker phòng mạnh.
+ *
+ * Tin chỉ chứa:
+ * - thông tin dự án;
+ * - địa chỉ;
+ * - điện nước;
+ * - phí;
+ * - cọc;
+ * - hoa hồng;
+ *
+ * sẽ bị bỏ qua hoàn toàn.
+ */
+const hasStrongRoomMarker =
+  markerText
+    .split("\n")
+    .map((line) =>
+      line.trim()
+    )
+    .filter(Boolean)
+    .some((line) =>
+      isStrongIndexedDbRoomMarkerLine(
+        line
+      )
+    );
+
+if (!hasStrongRoomMarker) {
+  console.warn(
+    [
+      "Bỏ qua tin thông tin tòa nhà",
+      "vì không có marker phòng hợp lệ:",
+      markerText.slice(0, 120),
+    ].join(" ")
+  );
+
+  continue;
+}
+
+/*
+ * ============================
+ * MEDIA CỦA PHÒNG
+ * ============================
+ */
         const mediaStartIndex =
           previousMarker
-            ? previousMarker.index +
-              1
+            ? previousMarker.index + 1
             : 0;
 
-        const messagesBeforeMarker =
-          senderMessages.slice(
-            mediaStartIndex,
-            marker.index
-          );
+        const mediaEndIndex =
+          nextMarker
+            ? nextMarker.index
+            : senderMessages.length;
 
-        const imageMessages =
+        const messagesBeforeMarker =
+          senderMessages
+            .slice(
+              mediaStartIndex,
+              marker.index
+            )
+            .filter((message) => {
+              const timestamp =
+                getIndexedDbMessageTimestamp(
+                  message
+                );
+
+              return (
+                markerTimestamp <= 0 ||
+                timestamp <= 0 ||
+                markerTimestamp - timestamp <=
+                  maxGapMs
+              );
+            });
+
+        const messagesAfterMarker =
+          senderMessages
+            .slice(
+              marker.index + 1,
+              mediaEndIndex
+            )
+            .filter((message) => {
+              const timestamp =
+                getIndexedDbMessageTimestamp(
+                  message
+                );
+
+              return (
+                markerTimestamp <= 0 ||
+                timestamp <= 0 ||
+                timestamp - markerTimestamp <=
+                  maxGapMs
+              );
+            });
+
+        const beforeMediaMessages =
           messagesBeforeMarker.filter(
             (message) =>
-              message.kind ===
-              "image"
+              message.kind === "image" ||
+              isIndexedDbVideoMessage(
+                message
+              )
+          );
+
+        const afterMediaMessages =
+          messagesAfterMarker.filter(
+            (message) =>
+              message.kind === "image" ||
+              isIndexedDbVideoMessage(
+                message
+              )
+          );
+
+        const selectedMediaMessages =
+          beforeMediaMessages.length > 0
+            ? beforeMediaMessages
+            : afterMediaMessages;
+
+        const imageMessages =
+          selectedMediaMessages.filter(
+            (message) =>
+              message.kind === "image"
           );
 
         const videoMessages =
-          messagesBeforeMarker.filter(
+          selectedMediaMessages.filter(
             isIndexedDbVideoMessage
           );
 
@@ -3435,19 +6364,180 @@ function buildRoomsFromIndexedDbMessages(
   }
 
   /*
-   * Hàm build vẫn trả cũ → mới.
-   *
-   * Không đảo ở đây vì việc ghép dữ liệu cần
-   * thực hiện theo chiều thời gian.
-   *
-   * Khi import sẽ sort mới → cũ và dừng
-   * khi gặp sourceHash đã từng import.
+   * Việc ghép block phía trên vẫn chạy cũ → mới.
+   * Sau khi ghép xong, trả kết quả mới → cũ để:
+   * - preview ưu tiên phòng mới nhất;
+   * - import xử lý phòng mới trước;
+   * - dễ loại bản cập nhật cũ cùng địa chỉ + mã phòng.
    */
   return rooms.sort(
     (a, b) =>
-      a.markerTimestamp -
-      b.markerTimestamp
+      b.markerTimestamp -
+      a.markerTimestamp
   );
+}
+
+function normalizeIndexedDbFreshnessText(
+  input: any
+) {
+  return String(input || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase()
+    .replace(/[^a-z0-9/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractIndexedDbFreshnessAddress(
+  room: IndexedDbRoomPreview
+) {
+  const text = [
+    room.houseInfoText,
+    room.markerText,
+    room.fullText,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const lines = text
+    .split("\n")
+    .map((line) =>
+      line.trim()
+    )
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const normalized =
+      normalizeIndexedDbFreshnessText(
+        line
+      );
+
+    const addressMatch =
+      normalized.match(
+        /(?:^|\b)dia chi\s*[:\-]?\s*(.+)$/
+      );
+
+    const candidate =
+      normalizeIndexedDbFreshnessText(
+        addressMatch?.[1] || ""
+      );
+
+    if (
+      candidate &&
+      /\d/.test(candidate) &&
+      candidate.length >= 8 &&
+      candidate.length <= 160
+    ) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+function extractIndexedDbFreshnessRoomCode(
+  room: IndexedDbRoomPreview
+) {
+  const lines = String(
+    room.markerText || ""
+  )
+    .split("\n")
+    .map((line) =>
+      line.trim()
+    )
+    .filter(Boolean);
+
+  for (const rawLine of lines) {
+    if (
+      !isStrongIndexedDbRoomMarkerLine(
+        rawLine
+      )
+    ) {
+      continue;
+    }
+
+    const line =
+      normalizeIndexedDbFreshnessText(
+        rawLine
+      );
+
+    const patterns = [
+      /(?:^|\b)(?:trong|phong|ma|p)\s*[.:#-]?\s*([a-z]{0,3}\d{1,4})\b/,
+      /^([a-z]{0,3}\d{1,4})\b(?=\s+(?:gia\s*)?\d)/,
+      /(?:^|\b)(tret|san thuong|ap mai|lau\s*\d+|tang\s*\d+)\b/,
+    ];
+
+    for (const pattern of patterns) {
+      const match =
+        line.match(pattern);
+
+      if (match?.[1]) {
+        return match[1]
+          .replace(/\s+/g, "")
+          .trim();
+      }
+    }
+  }
+
+  return "";
+}
+
+function keepNewestIndexedDbRoomVersions(
+  rooms: IndexedDbRoomPreview[]
+) {
+  const ordered = [...rooms].sort(
+    (a, b) =>
+      b.markerTimestamp -
+      a.markerTimestamp
+  );
+
+  const seen = new Set<string>();
+  const kept:
+    IndexedDbRoomPreview[] = [];
+
+  let skippedOlderVersions = 0;
+
+  for (const room of ordered) {
+    const address =
+      extractIndexedDbFreshnessAddress(
+        room
+      );
+
+    const roomCode =
+      extractIndexedDbFreshnessRoomCode(
+        room
+      );
+
+    /**
+     * Chỉ dedupe khi cả địa chỉ và mã phòng đều chắc chắn.
+     * Nếu thiếu một trong hai thì giữ nguyên để tránh xóa nhầm.
+     */
+    const freshnessKey =
+      address && roomCode
+        ? `${address}|${roomCode}`
+        : "";
+
+    if (
+      freshnessKey &&
+      seen.has(freshnessKey)
+    ) {
+      skippedOlderVersions += 1;
+      continue;
+    }
+
+    if (freshnessKey) {
+      seen.add(freshnessKey);
+    }
+
+    kept.push(room);
+  }
+
+  return {
+    rooms: kept,
+    skippedOlderVersions,
+  };
 }
 
 function writeIndexedDbRoomPreview(
@@ -3474,13 +6564,21 @@ function writeIndexedDbRoomPreview(
     )
   );
 
-  const rooms =
+  const builtRooms =
     buildRoomsFromIndexedDbMessages({
       groupName: params.groupName,
       groupId: params.groupId,
       messages: params.messages,
       maxGapMs,
     });
+
+  const newestRoomVersions =
+    keepNewestIndexedDbRoomVersions(
+      builtRooms
+    );
+
+  const rooms =
+    newestRoomVersions.rooms;
 
   const outputPath = path.join(
     NETWORK_LOG_DIR,
@@ -3532,6 +6630,10 @@ function writeIndexedDbRoomPreview(
               (room) =>
                 room.hasVideo
             ).length,
+
+          skippedOlderVersions:
+            newestRoomVersions
+              .skippedOlderVersions,
         },
 
         rooms,
@@ -3543,7 +6645,15 @@ function writeIndexedDbRoomPreview(
   );
 
   console.log(
-    `Đã tạo preview ${rooms.length} phòng`
+    [
+      `Đã tạo preview ${rooms.length} phòng`,
+      newestRoomVersions
+        .skippedOlderVersions > 0
+        ? `(đã bỏ ${newestRoomVersions.skippedOlderVersions} bản cập nhật cũ hơn)`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
   );
 
   console.log(
@@ -3578,7 +6688,112 @@ async function importIndexedDbRoomPreviews(
   let failedCount = 0;
   let partialCount = 0;
 
-  for (const room of rooms) {
+  const orderedRooms = [...rooms].sort(
+    (a, b) =>
+      b.markerTimestamp -
+      a.markerTimestamp
+  );
+
+  /*
+   * Chỉ khi khóa indexedDbImportSourceHashes
+   * thực sự xuất hiện trong config thì Reader
+   * mới bật chế độ whitelist.
+   *
+   * Nếu khóa có mặt nhưng sai kiểu hoặc là mảng
+   * rỗng, Reader chặn toàn bộ import thay vì vô tình
+   * quay về chế độ import tất cả phòng.
+   */
+  const hasSourceHashFilter =
+    Object.prototype.hasOwnProperty.call(
+      config,
+      "indexedDbImportSourceHashes"
+    );
+
+  const configuredSourceHashes =
+    Array.isArray(
+      config.indexedDbImportSourceHashes
+    )
+      ? config.indexedDbImportSourceHashes
+      : [];
+
+  const allowedSourceHashes =
+    new Set(
+      configuredSourceHashes
+        .map((value) =>
+          String(value).trim()
+        )
+        .filter(Boolean)
+    );
+
+  if (
+    hasSourceHashFilter &&
+    !Array.isArray(
+      config.indexedDbImportSourceHashes
+    )
+  ) {
+    console.warn(
+      "indexedDbImportSourceHashes sai định dạng; Reader sẽ không import phòng nào."
+    );
+  }
+
+  /*
+   * Nếu indexedDbImportLimit có mặt nhưng không phải
+   * số hợp lệ, giới hạn được đặt về 0 để fail-safe.
+   */
+  const hasImportLimit =
+    Object.prototype.hasOwnProperty.call(
+      config,
+      "indexedDbImportLimit"
+    );
+
+  const parsedImportLimit =
+    Number(
+      config.indexedDbImportLimit
+    );
+
+  const importLimit =
+    hasImportLimit
+      ? Number.isFinite(
+          parsedImportLimit
+        )
+        ? Math.max(
+            0,
+            Math.floor(
+              parsedImportLimit
+            )
+          )
+        : 0
+      : null;
+
+  if (
+    hasImportLimit &&
+    !Number.isFinite(
+      parsedImportLimit
+    )
+  ) {
+    console.warn(
+      "indexedDbImportLimit không hợp lệ; Reader sẽ không import phòng nào."
+    );
+  }
+
+  let selectedCount = 0;
+  let filteredOutCount = 0;
+  let limitedOutCount = 0;
+
+  console.log(
+    [
+      "Bộ lọc IndexedDB import:",
+      hasSourceHashFilter
+        ? `${allowedSourceHashes.size} sourceHash được phép`
+        : "không giới hạn sourceHash",
+      importLimit === null
+        ? "không giới hạn số phòng"
+        : `tối đa ${importLimit} phòng/lượt`,
+      `${orderedRooms.length} phòng trong preview`,
+    ].join(" ")
+  );
+
+  for (const room of orderedRooms) {
     if (!room.sourceHash) {
       console.warn(
         `Không thể import phòng không có sourceHash: ${room.markerText.slice(
@@ -3587,6 +6802,17 @@ async function importIndexedDbRoomPreviews(
         )}`
       );
 
+      skippedCount += 1;
+      continue;
+    }
+
+    if (
+      hasSourceHashFilter &&
+      !allowedSourceHashes.has(
+        room.sourceHash
+      )
+    ) {
+      filteredOutCount += 1;
       skippedCount += 1;
       continue;
     }
@@ -3602,6 +6828,22 @@ async function importIndexedDbRoomPreviews(
       skippedCount += 1;
       continue;
     }
+
+    if (
+      importLimit !== null &&
+      selectedCount >=
+        importLimit
+    ) {
+      limitedOutCount += 1;
+      skippedCount += 1;
+      continue;
+    }
+
+    /*
+     * Giới hạn tính theo số phòng đã bắt đầu thử gửi,
+     * kể cả API thành công hay lỗi hoàn toàn.
+     */
+    selectedCount += 1;
 
     /*
      * Không còn bỏ qua phòng thiếu media.
@@ -3869,6 +7111,8 @@ async function importIndexedDbRoomPreviews(
       `${importedCount} đã đưa lên Imports`,
       `${partialCount} có lỗi media`,
       `${skippedCount} bỏ qua`,
+      `${filteredOutCount} ngoài whitelist`,
+      `${limitedOutCount} vượt giới hạn`,
       `${failedCount} lỗi hoàn toàn`,
     ].join(" ")
   );
@@ -3895,7 +7139,7 @@ async function dumpActiveGroupMessages(
   const scanLimit = Math.max(
     1000,
     Math.min(
-      100000,
+      300000,
       Number.isFinite(rawScanLimit)
         ? rawScanLimit
         : 30000
@@ -3909,7 +7153,7 @@ async function dumpActiveGroupMessages(
     const messageLimit = Math.max(
     50,
     Math.min(
-      5000,
+      20000,
       Number.isFinite(rawMessageLimit)
         ? rawMessageLimit
         : 2000
@@ -3924,7 +7168,7 @@ async function dumpActiveGroupMessages(
   const contextBeforeMs = Math.max(
     0,
     Math.min(
-      60 * 60 * 1000,
+      7 * 24 * 60 * 60 * 1000,
       Number.isFinite(rawContextBeforeMs)
         ? rawContextBeforeMs
         : 10 * 60 * 1000
@@ -3970,6 +7214,88 @@ if (preferredGroupId) {
 }
 
   /**
+   * Zalo đặt tin mới nhất ở dưới cùng và chỉ giữ các bubble gần viewport.
+   * Vì vậy phải chụp trong lúc cuộn từ dưới lên, không được quay xuống cuối
+   * rồi mới chụp một lần.
+   */
+  const domScrollCapture =
+    await captureDomMessagesWhileScrollingUp(
+      page,
+      config
+    );
+
+  const domMessageSnapshot =
+    domScrollCapture.items;
+
+  const domSnapshotPath =
+    path.join(
+      NETWORK_LOG_DIR,
+      "active-group-dom-snapshot.json"
+    );
+
+  fs.writeFileSync(
+    domSnapshotPath,
+    JSON.stringify(
+      {
+        capturedAt:
+          new Date().toISOString(),
+        groupName,
+        itemCount:
+          domMessageSnapshot.length,
+
+        scrollCapture: {
+          viewportCount:
+            domScrollCapture.viewportCount,
+          attemptedSteps:
+            domScrollCapture.attemptedSteps,
+          movedSteps:
+            domScrollCapture.movedSteps,
+          reachedTop:
+            domScrollCapture.reachedTop,
+          consecutiveNoNewItems:
+            domScrollCapture.consecutiveNoNewItems,
+
+          blobMediaCache:
+            domScrollCapture.blobMediaCache,
+        },
+
+        items:
+          domMessageSnapshot,
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+
+  console.log(
+    [
+      "Đã tích lũy DOM khi cuộn lên:",
+      `${domMessageSnapshot.length} item,`,
+      `${domScrollCapture.viewportCount} viewport,`,
+      `${domScrollCapture.movedSteps}/${domScrollCapture.attemptedSteps} bước có di chuyển`,
+    ].join(" ")
+  );
+
+  console.log(
+    [
+      "Đã lưu blob ảnh DOM:",
+      `${domScrollCapture.blobMediaCache.cachedCount} mới,`,
+      `${domScrollCapture.blobMediaCache.reusedCount} dùng lại,`,
+      `${domScrollCapture.blobMediaCache.failedCount} lỗi,`,
+      `${(domScrollCapture.blobMediaCache.totalBytes / 1024 / 1024).toFixed(2)} MB`,
+    ].join(" ")
+  );
+
+  console.log(
+    `Thư mục blob ảnh DOM: ${domScrollCapture.blobMediaCache.cacheDir}`
+  );
+
+  console.log(
+    `File DOM snapshot: ${domSnapshotPath}`
+  );
+
+  /**
    * Tránh lỗi tsx/esbuild:
    * ReferenceError: __name is not defined
    */
@@ -3983,6 +7309,7 @@ if (preferredGroupId) {
         preferredGroupId,
         messageItemsSelector,
         messageTextSelector,
+        domMessageSnapshot,
         scanLimit,
         messageLimit,
         contextBeforeMs,
@@ -4325,6 +7652,369 @@ if (preferredGroupId) {
         }
 
         return String(input);
+      }
+
+      /**
+       * zdb/message có thể chứa ciphertext Base64.
+       * Không được đưa chuỗi này vào parser như text thật.
+       */
+      function isLikelyEncryptedMessageText(
+        input: any
+      ) {
+        const text =
+          String(input || "")
+            .trim();
+
+        if (text.length < 24) {
+          return false;
+        }
+
+        if (/\s/.test(text)) {
+          return false;
+        }
+
+        return (
+          /^[A-Za-z0-9+/=]+$/.test(
+            text
+          ) &&
+          text.length % 4 === 0
+        );
+      }
+
+      /**
+       * Chuyển record sidx/idx_queue thành cấu trúc nội dung
+       * Reader đang sử dụng. Timeline vẫn lấy từ zdb/message;
+       * sidx chỉ bổ sung payload đã giải mã theo đúng msgId.
+       */
+      function extractDecodedSidxContent(
+        input: any
+      ) {
+        const value = input || {};
+
+        const msgType = Number(
+          value.msgType || 0
+        );
+
+        const originMsgType =
+          String(
+            value.originMsgType || ""
+          );
+
+        let kind:
+          | "text"
+          | "image"
+          | "other" = "other";
+
+        let text = "";
+        let imageUrls: string[] = [];
+
+        let groupLayoutId:
+          | string
+          | number
+          | null = null;
+
+        let imageIndex:
+          | string
+          | number
+          | null = null;
+
+        let totalImages:
+          | string
+          | number
+          | null = null;
+
+        let videoUrls: string[] = [];
+        let videoThumbUrls: string[] = [];
+        let videoDebug: any = null;
+
+        if (
+          msgType === 1 &&
+          typeof value.message ===
+            "string" &&
+          value.message.trim() &&
+          !isLikelyEncryptedMessageText(
+            value.message
+          )
+        ) {
+          kind = "text";
+          text = value.message;
+        }
+
+        const rawMessage =
+          value.message &&
+          typeof value.message ===
+            "object"
+            ? value.message
+            : safeJsonParse(
+                value.message
+              );
+
+        if (
+          (
+            msgType === 2 ||
+            originMsgType ===
+              "chat.photo"
+          ) &&
+          rawMessage &&
+          typeof rawMessage ===
+            "object"
+        ) {
+          const media = rawMessage;
+
+          const params =
+            safeJsonParse(
+              media.params
+            ) ||
+            (
+              media.params &&
+              typeof media.params ===
+                "object"
+                ? media.params
+                : {}
+            );
+
+          imageUrls = Array.from(
+            new Set(
+              [
+                media.hdUrl,
+                media.oriUrl,
+                media.normalUrl,
+                media.thumbUrl,
+                params.hd,
+                params.href,
+                params.hd_renew,
+                params.href_renew,
+              ]
+                .map((url) =>
+                  String(
+                    url || ""
+                  ).trim()
+                )
+                .filter(Boolean)
+            )
+          );
+
+          groupLayoutId =
+            params.group_layout_id ??
+            null;
+
+          imageIndex =
+            params.id_in_group ??
+            null;
+
+          totalImages =
+            params.total_item_in_group ??
+            null;
+
+          if (imageUrls.length > 0) {
+            kind = "image";
+          }
+        }
+
+        if (
+          (
+            msgType === 18 ||
+            originMsgType ===
+              "chat.video.msg"
+          ) &&
+          rawMessage &&
+          typeof rawMessage ===
+            "object"
+        ) {
+          const videoMessage =
+            rawMessage;
+
+          const videoParams =
+            safeJsonParse(
+              videoMessage.params
+            ) ||
+            (
+              videoMessage.params &&
+              typeof videoMessage.params ===
+                "object"
+                ? videoMessage.params
+                : {}
+            );
+
+          const videoSource = {
+            message:
+              value.message ?? null,
+            params:
+              value.params ?? null,
+            propertyExt:
+              value.propertyExt ?? null,
+            content:
+              value.content ?? null,
+            attachments:
+              value.attachments ?? null,
+            ext:
+              value.ext ?? null,
+            media:
+              value.media ?? null,
+            video:
+              value.video ?? null,
+            thumbUrl:
+              value.thumbUrl ?? null,
+            url:
+              value.url ?? null,
+          };
+
+          const urlEntries =
+            collectUrlEntries(
+              videoSource
+            );
+
+          const directVideoUrls = [
+            videoMessage.oriUrl,
+            videoMessage.videoUrl,
+            videoMessage.hdUrl,
+            videoMessage.normalUrl,
+            videoParams.video_url_to_renew,
+            videoParams.videoUrl,
+            videoParams.video_url,
+            videoParams.oriUrl,
+            value.videoUrl,
+            value.oriUrl,
+          ]
+            .map((url) =>
+              String(url || "").trim()
+            )
+            .filter(Boolean);
+
+          const directThumbUrls = [
+            videoMessage.thumbUrl,
+            videoMessage.thumbnailUrl,
+            videoMessage.posterUrl,
+            videoParams.thumb_url_to_renew,
+            videoParams.thumbUrl,
+            videoParams.thumbnailUrl,
+            value.thumbUrl,
+            value.thumbnailUrl,
+          ]
+            .map((url) =>
+              String(url || "").trim()
+            )
+            .filter(Boolean);
+
+          const discoveredThumbUrls =
+            urlEntries
+              .filter(
+                ({ path, url }) =>
+                  /thumb|thumbnail|poster|cover|preview/i.test(
+                    path
+                  ) ||
+                  /\.(?:jpe?g|png|webp|jxl)(?:[?#]|$)/i.test(
+                    url
+                  )
+              )
+              .map(({ url }) => url);
+
+          const discoveredVideoUrls =
+            urlEntries
+              .filter(
+                ({ path, url }) => {
+                  if (
+                    directThumbUrls.includes(
+                      url
+                    ) ||
+                    discoveredThumbUrls.includes(
+                      url
+                    )
+                  ) {
+                    return false;
+                  }
+
+                  return (
+                    /oriurl|videourl|video_url|stream|download|source|src|hdurl/i.test(
+                      path
+                    ) ||
+                    /(?:video-|video\.|\.dlmd\.me\/)/i.test(
+                      url
+                    ) ||
+                    /\.(?:mp4|mov|m4v|webm|m3u8)(?:[?#]|$)/i.test(
+                      url
+                    )
+                  );
+                }
+              )
+              .map(({ url }) => url);
+
+          videoUrls = Array.from(
+            new Set([
+              ...directVideoUrls,
+              ...discoveredVideoUrls,
+            ])
+          );
+
+          videoThumbUrls = Array.from(
+            new Set([
+              ...directThumbUrls,
+              ...discoveredThumbUrls,
+            ])
+          );
+
+          videoDebug = {
+            durationMs: Number(
+              videoMessage.duration ||
+                videoParams.duration ||
+                0
+            ),
+            fileSize: Number(
+              videoParams.fileSize ||
+                videoMessage.fileSize ||
+                0
+            ),
+            width: Number(
+              videoParams.video_width ||
+                videoMessage.width ||
+                0
+            ),
+            height: Number(
+              videoParams.video_height ||
+                videoMessage.height ||
+                0
+            ),
+            urlEntries,
+            payload:
+              sanitizeVideoDebug(
+                videoSource
+              ),
+          };
+        }
+
+        const rawSenderName =
+          String(
+            value.dName || ""
+          ).trim();
+
+        const senderName =
+          rawSenderName &&
+          !isLikelyEncryptedMessageText(
+            rawSenderName
+          )
+            ? rawSenderName
+            : "";
+
+        return {
+          msgType,
+          kind,
+          text,
+          imageUrls,
+          groupLayoutId,
+          imageIndex,
+          totalImages,
+          videoUrls,
+          videoThumbUrls,
+          videoDebug,
+          senderName,
+          originMsgType,
+          fromUid: String(
+            value.fromUid || ""
+          ),
+          toUid: String(
+            value.toUid || ""
+          ),
+        };
       }
     
       /**
@@ -5244,6 +8934,15 @@ const visibleTextCandidates =
       name.startsWith("sidx_")
     );
 
+      const zdbDatabaseNames =
+        databaseInfos
+          .map((item: any) =>
+            String(item?.name || "")
+          )
+          .filter((name: string) =>
+            name.startsWith("zdb_")
+          );
+
 /*
  * Tìm group ID từ nhóm đang mở.
  *
@@ -5321,34 +9020,215 @@ const activeGroupHintMap =
   );
 
     type Candidate = {
+      /**
+       * Nguồn chính: zdb_[account]/message.
+       * Nguồn dự phòng: sidx_[account]/idx_queue.
+       */
       databaseName: string;
+
+      messageStoreName:
+        | "message"
+        | "idx_queue";
+
       groupId: string;
       score: number;
       matches: string[];
       latestTimestamp: number;
 
-      /**
-       * group ID được xác định bằng:
-       *
-       * - active_group:
-       *   nhóm đang mở trên giao diện.
-       *
-       * - visible_text:
-       *   nội dung tin nhắn đang hiển thị.
-       */
       source?:
+        | "saved_group_ref"
+        | "active_group_ui"
         | "active_group"
         | "visible_text";
 
-      /**
-       * Timestamp được dùng làm tâm
-       * để lấy message quanh khu vực mới nhất.
-       */
       matchedTimestamps: number[];
     };
 
       const candidateMap =
         new Map<string, Candidate>();
+
+      /**
+       * ==================================
+       * NGUỒN CHÍNH: zdb_[account]/message
+       * ==================================
+       *
+       * Dùng Group ID đã lưu hoặc Group ID chắc chắn từ UI,
+       * rồi truy vấn trực tiếp index theo toUid.
+       */
+      const strongestUiHintForRead =
+        uiActiveGroupHints.find(
+          (item) =>
+            Number(
+              item.confidence
+            ) >= 95
+        ) || null;
+
+      const resolvedGroupIdForRead =
+        /^g\d{6,}$/.test(
+          normalizedPreferredGroupId
+        )
+          ? normalizedPreferredGroupId
+          : String(
+              strongestUiHintForRead
+                ?.groupId || ""
+            ).trim();
+
+      if (
+        /^g\d{6,}$/.test(
+          resolvedGroupIdForRead
+        )
+      ) {
+        for (
+          const databaseName of
+          zdbDatabaseNames
+        ) {
+          let db:
+            | IDBDatabase
+            | null = null;
+
+          try {
+            db = await openDatabase(
+              databaseName
+            );
+
+            if (
+              !db.objectStoreNames.contains(
+                "message"
+              )
+            ) {
+              continue;
+            }
+
+            const transaction =
+              db.transaction(
+                "message",
+                "readonly"
+              );
+
+            const messageStore =
+              transaction.objectStore(
+                "message"
+              );
+
+            if (
+              !messageStore.indexNames.contains(
+                "userId_sendDttm_msgId"
+              )
+            ) {
+              continue;
+            }
+
+            const messageIndex =
+              messageStore.index(
+                "userId_sendDttm_msgId"
+              );
+
+            /**
+             * Prefix range theo Group ID. Dùng [] làm upper bound
+             * để hỗ trợ sendDttm đang lưu dạng number hoặc string.
+             */
+            const groupRange =
+              IDBKeyRange.bound(
+                [resolvedGroupIdForRead],
+                [
+                  resolvedGroupIdForRead,
+                  [],
+                ]
+              );
+
+            const latestMessage =
+              await new Promise<
+                any | null
+              >(
+                (resolve, reject) => {
+                  const cursorRequest =
+                    messageIndex.openCursor(
+                      groupRange,
+                      "prev"
+                    );
+
+                  cursorRequest.onerror =
+                    () =>
+                      reject(
+                        cursorRequest.error ||
+                          new Error(
+                            `Không đọc được ${databaseName}/message`
+                          )
+                      );
+
+                  cursorRequest.onsuccess =
+                    () => {
+                      const cursor =
+                        cursorRequest.result;
+
+                      resolve(
+                        cursor
+                          ? cursor.value
+                          : null
+                      );
+                    };
+                }
+              );
+
+            if (!latestMessage) {
+              continue;
+            }
+
+            const latestTimestamp =
+              Number(
+                latestMessage.sendDttm ||
+                  latestMessage.serverTime ||
+                  latestMessage.cliMsgId ||
+                  0
+              );
+
+            const directCandidate:
+              Candidate = {
+                databaseName,
+                messageStoreName:
+                  "message",
+                groupId:
+                  resolvedGroupIdForRead,
+                score: 3_000_000,
+                matches: [
+                  `Đọc trực tiếp ${databaseName}/message`,
+                ],
+                latestTimestamp:
+                  Number.isFinite(
+                    latestTimestamp
+                  )
+                    ? latestTimestamp
+                    : 0,
+                matchedTimestamps:
+                  Number.isFinite(
+                    latestTimestamp
+                  ) &&
+                  latestTimestamp > 0
+                    ? [latestTimestamp]
+                    : [],
+                source:
+                  normalizedPreferredGroupId ===
+                  resolvedGroupIdForRead
+                    ? "saved_group_ref"
+                    : "active_group_ui",
+              };
+
+            candidateMap.set(
+              `${databaseName}__${resolvedGroupIdForRead}`,
+              directCandidate
+            );
+
+            /**
+             * Group ID chỉ thuộc một tài khoản Zalo.
+             */
+            break;
+          } catch {
+            // Thử zdb_* tiếp theo.
+          } finally {
+            db?.close();
+          }
+        }
+      }
 
       for (
         const databaseName of searchDatabaseNames
@@ -5444,6 +9324,8 @@ if (activeGroupHint) {
       candidateKey
     ) ?? {
       databaseName,
+      messageStoreName:
+        "idx_queue",
       groupId,
       score: 0,
       matches: [],
@@ -5558,6 +9440,8 @@ if (activeGroupHint) {
                   candidateKey
                 ) ?? {
                   databaseName,
+                  messageStoreName:
+                    "idx_queue",
                   groupId,
                   score: 0,
                   matches:
@@ -5683,7 +9567,7 @@ if (activeGroupHint) {
         error:
           resolvedGroupId
             ? (
-                "Đã xác định được Group ID, nhưng chưa tìm thấy message tương ứng trong idx_queue."
+                "Đã xác định được Group ID, nhưng chưa tìm thấy message tương ứng trong IndexedDB."
               )
             : (
                 "Không lấy được Group ID từ nhóm đang mở và cũng không khớp được text đang hiển thị."
@@ -5706,6 +9590,7 @@ if (activeGroupHint) {
         candidates: [],
 
         databaseName: null,
+        messageStoreName: null,
 
         groupId:
           resolvedGroupId,
@@ -5763,17 +9648,16 @@ if (activeGroupHint) {
             )
           : null;
 
-      const exportWindowStart =
-        anchorTimestamp != null
-          ? anchorTimestamp -
-            contextBeforeMs
-          : null;
+      /*
+       * Chưa chốt export window ở đây.
+       * visible text chỉ dùng để nhận diện group ID,
+       * không được dùng làm mốc chọn phòng mới nhất.
+       */
+      let exportWindowStart:
+        number | null = null;
 
-      const exportWindowEnd =
-        anchorTimestamp != null
-          ? anchorTimestamp +
-            contextAfterMs
-          : null;
+      let exportWindowEnd:
+        number | null = null;
 
       let selectedDb: IDBDatabase | null =
         null;
@@ -5785,12 +9669,14 @@ if (activeGroupHint) {
 
         const transaction =
           selectedDb.transaction(
-            "idx_queue",
+            bestCandidate.messageStoreName,
             "readonly"
           );
 
         const store =
-          transaction.objectStore("idx_queue");
+          transaction.objectStore(
+            bestCandidate.messageStoreName
+          );
 
         const groupMessages: any[] = [];
 
@@ -5798,8 +9684,44 @@ if (activeGroupHint) {
           (resolve, reject) => {
             let scanned = 0;
 
-            const cursorRequest =
-              store.openCursor(null, "prev");
+            let cursorRequest:
+              IDBRequest<
+                IDBCursorWithValue | null
+              >;
+
+            if (
+              bestCandidate.messageStoreName ===
+                "message" &&
+              store.indexNames.contains(
+                "userId_sendDttm_msgId"
+              )
+            ) {
+              const messageIndex =
+                store.index(
+                  "userId_sendDttm_msgId"
+                );
+
+              const groupRange =
+                IDBKeyRange.bound(
+                  [bestCandidate.groupId],
+                  [
+                    bestCandidate.groupId,
+                    [],
+                  ]
+                );
+
+              cursorRequest =
+                messageIndex.openCursor(
+                  groupRange,
+                  "prev"
+                );
+            } else {
+              cursorRequest =
+                store.openCursor(
+                  null,
+                  "prev"
+                );
+            }
 
             cursorRequest.onerror = () =>
               reject(
@@ -5813,9 +9735,16 @@ if (activeGroupHint) {
               const cursor =
                 cursorRequest.result;
 
+              const selectedReadLimit =
+                bestCandidate.messageStoreName ===
+                "message"
+                  ? messageLimit
+                  : scanLimit;
+
              if (
                 !cursor ||
-                scanned >= scanLimit
+                scanned >=
+                  selectedReadLimit
               ) {
                 resolve();
                 return;
@@ -5841,21 +9770,6 @@ if (activeGroupHint) {
                     value.cliMsgId ||
                     0
                 );
-
-              const isInsideExportWindow =
-                exportWindowStart == null ||
-                exportWindowEnd == null ||
-                (
-                  messageTimestamp >=
-                    exportWindowStart &&
-                  messageTimestamp <=
-                    exportWindowEnd
-                );
-
-              if (!isInsideExportWindow) {
-                cursor.continue();
-                return;
-              }
 
               const msgType = Number(
                 value.msgType || 0
@@ -5895,7 +9809,10 @@ if (activeGroupHint) {
               if (
                 msgType === 1 &&
                 typeof value.message ===
-                  "string"
+                  "string" &&
+                !isLikelyEncryptedMessageText(
+                  value.message
+                )
               ) {
                 kind = "text";
                 text = value.message;
@@ -6156,9 +10073,14 @@ if (activeGroupHint) {
                 toUid: String(
                   value.toUid || ""
                 ),
-                senderName: String(
-                  value.dName || ""
-                ),
+                senderName:
+                  isLikelyEncryptedMessageText(
+                    value.dName
+                  )
+                    ? ""
+                    : String(
+                        value.dName || ""
+                      ),
                 originMsgType,
 
                 videoUrls,
@@ -6170,6 +10092,1186 @@ if (activeGroupHint) {
             };
           }
         );
+
+        /**
+         * ==================================
+         * BỔ SUNG NỘI DUNG ĐÃ GIẢI MÃ TỪ sidx
+         * ==================================
+         *
+         * zdb/message quyết định timeline. sidx/idx_queue chỉ được
+         * tra trực tiếp theo msgId để lấy text/ảnh/video đã giải mã.
+         */
+        const contentEnrichment = {
+          attempted: false,
+          databaseName: null as
+            | string
+            | null,
+          requestedCount:
+            groupMessages.length,
+          matchedRecordCount: 0,
+          decodedTextCount: 0,
+          decodedImageCount: 0,
+          decodedVideoCount: 0,
+          photoRecordWithoutUrlCount: 0,
+        };
+
+        if (
+          bestCandidate.messageStoreName ===
+          "message"
+        ) {
+          const accountSuffix =
+            bestCandidate.databaseName
+              .startsWith("zdb_")
+              ? bestCandidate.databaseName
+                  .slice(
+                    "zdb_".length
+                  )
+              : "";
+
+          const sidxDatabaseName =
+            accountSuffix
+              ? `sidx_${accountSuffix}`
+              : "";
+
+          if (
+            sidxDatabaseName &&
+            searchDatabaseNames.includes(
+              sidxDatabaseName
+            )
+          ) {
+            let sidxDb:
+              | IDBDatabase
+              | null = null;
+
+            contentEnrichment.attempted =
+              true;
+
+            contentEnrichment.databaseName =
+              sidxDatabaseName;
+
+            try {
+              sidxDb = await openDatabase(
+                sidxDatabaseName
+              );
+
+              if (
+                sidxDb.objectStoreNames.contains(
+                  "idx_queue"
+                )
+              ) {
+                const sidxTransaction =
+                  sidxDb.transaction(
+                    "idx_queue",
+                    "readonly"
+                  );
+
+                const sidxStore =
+                  sidxTransaction.objectStore(
+                    "idx_queue"
+                  );
+
+                /**
+                 * Tạo toàn bộ request trước khi await để transaction
+                 * không tự đóng giữa chừng.
+                 */
+                const sidxRequests =
+                  groupMessages.map(
+                    (message) => {
+                      const msgId =
+                        String(
+                          message.msgId ||
+                            ""
+                        ).trim();
+
+                      if (!msgId) {
+                        return Promise.resolve(
+                          null
+                        );
+                      }
+
+                      return requestToPromise(
+                        sidxStore.get(
+                          msgId
+                        )
+                      ).catch(
+                        () => null
+                      );
+                    }
+                  );
+
+                const sidxValues =
+                  await Promise.all(
+                    sidxRequests
+                  );
+
+                for (
+                  let messageIndex = 0;
+                  messageIndex <
+                  groupMessages.length;
+                  messageIndex++
+                ) {
+                  const sidxValue =
+                    sidxValues[
+                      messageIndex
+                    ];
+
+                  if (!sidxValue) {
+                    continue;
+                  }
+
+                  contentEnrichment
+                    .matchedRecordCount += 1;
+
+                  const decoded =
+                    extractDecodedSidxContent(
+                      sidxValue
+                    );
+
+                  const message =
+                    groupMessages[
+                      messageIndex
+                    ];
+
+                  if (
+                    decoded.kind ===
+                      "text" &&
+                    decoded.text
+                  ) {
+                    message.kind =
+                      "text";
+                    message.text =
+                      decoded.text;
+                    message.contentSource =
+                      "sidx";
+
+                    contentEnrichment
+                      .decodedTextCount += 1;
+                  }
+
+                  if (
+                    decoded.kind ===
+                      "image" &&
+                    decoded.imageUrls
+                      .length > 0
+                  ) {
+                    message.kind =
+                      "image";
+                    message.imageUrls =
+                      decoded.imageUrls;
+                    message.groupLayoutId =
+                      decoded.groupLayoutId;
+                    message.imageIndex =
+                      decoded.imageIndex;
+                    message.totalImages =
+                      decoded.totalImages;
+                    message.contentSource =
+                      "sidx";
+
+                    contentEnrichment
+                      .decodedImageCount += 1;
+                  } else if (
+                    decoded.msgType === 2 ||
+                    decoded.originMsgType ===
+                      "chat.photo"
+                  ) {
+                    contentEnrichment
+                      .photoRecordWithoutUrlCount += 1;
+                  }
+
+                  if (
+                    decoded.videoUrls.length > 0 ||
+                    decoded.videoThumbUrls.length > 0
+                  ) {
+                    message.videoUrls =
+                      decoded.videoUrls;
+                    message.videoThumbUrls =
+                      decoded.videoThumbUrls;
+                    message.videoDebug =
+                      decoded.videoDebug;
+                    message.contentSource =
+                      "sidx";
+
+                    contentEnrichment
+                      .decodedVideoCount += 1;
+                  }
+
+                  if (decoded.senderName) {
+                    message.senderName =
+                      decoded.senderName;
+                  }
+
+                  if (decoded.originMsgType) {
+                    message.originMsgType =
+                      decoded.originMsgType;
+                  }
+
+                  if (
+                    !message.fromUid &&
+                    decoded.fromUid
+                  ) {
+                    message.fromUid =
+                      decoded.fromUid;
+                  }
+
+                  if (
+                    !message.toUid &&
+                    decoded.toUid
+                  ) {
+                    message.toUid =
+                      decoded.toUid;
+                  }
+                }
+              }
+            } catch {
+              /**
+               * Không làm hỏng timeline zdb khi sidx chưa sẵn sàng.
+               */
+            } finally {
+              sidxDb?.close();
+            }
+          }
+        }
+
+        /**
+         * ==================================
+         * BỔ SUNG NỘI DUNG TỪ DOM ĐANG HIỂN THỊ
+         * ==================================
+         *
+         * Chỉ áp dụng cho message zdb còn rỗng sau khi tra sidx.
+         * Ưu tiên:
+         * 1. Match trực tiếp msgId/cliMsgId từ attribute DOM.
+         * 2. Match theo mốc thời gian đang hiển thị, ví dụ "17:54 Hôm qua".
+         *
+         * Không ghi đè payload đã giải mã từ sidx.
+         */
+        const domHydration = {
+          attempted:
+            Array.isArray(
+              domMessageSnapshot
+            ) &&
+            domMessageSnapshot.length > 0,
+          itemCount:
+            Array.isArray(
+              domMessageSnapshot
+            )
+              ? domMessageSnapshot.length
+              : 0,
+          directMatchCount: 0,
+          timeMatchCount: 0,
+          decodedTextCount: 0,
+          decodedImageCount: 0,
+          decodedVideoCount: 0,
+          unmatchedItemCount: 0,
+          rejectedTextItemCount: 0,
+          ambiguousTextMatchCount: 0,
+          newestApproxTimestamp: null as
+            | number
+            | null,
+        };
+
+        if (
+          domHydration.attempted
+        ) {
+          const messageByAnyId =
+            new Map<string, any>();
+
+          for (
+            const message of
+            groupMessages
+          ) {
+            const msgId =
+              String(
+                message.msgId || ""
+              ).trim();
+
+            const cliMsgId =
+              String(
+                message.cliMsgId || ""
+              ).trim();
+
+            if (msgId) {
+              messageByAnyId.set(
+                msgId,
+                message
+              );
+            }
+
+            if (cliMsgId) {
+              messageByAnyId.set(
+                cliMsgId,
+                message
+              );
+            }
+          }
+
+          function isBlankTextMessage(
+            message: any
+          ) {
+            return (
+              Number(
+                message?.msgType || 0
+              ) === 1 &&
+              !String(
+                message?.text || ""
+              ).trim()
+            );
+          }
+
+          function isBlankImageMessage(
+            message: any
+          ) {
+            return (
+              (
+                Number(
+                  message?.msgType || 0
+                ) === 2 ||
+                String(
+                  message?.originMsgType || ""
+                ) === "chat.photo"
+              ) &&
+              !(
+                Array.isArray(
+                  message?.imageUrls
+                ) &&
+                message.imageUrls.length > 0
+              )
+            );
+          }
+
+          function isBlankVideoMessage(
+            message: any
+          ) {
+            return (
+              (
+                Number(
+                  message?.msgType || 0
+                ) === 18 ||
+                String(
+                  message?.originMsgType || ""
+                ) === "chat.video.msg"
+              ) &&
+              !(
+                Array.isArray(
+                  message?.videoUrls
+                ) &&
+                message.videoUrls.length > 0
+              )
+            );
+          }
+
+          function isSuspiciousDomTextItem(
+            domItem: any
+          ) {
+            const text = String(
+              domItem?.text || ""
+            ).trim();
+
+            if (!text) {
+              return false;
+            }
+
+            const idCount =
+              Array.isArray(
+                domItem?.idCandidates
+              )
+                ? domItem.idCandidates.length
+                : 0;
+
+            const separatorCount =
+              (
+                text.match(
+                  /➖+\s*\/{3}\s*➖+/g
+                ) || []
+              ).length;
+
+            const timeCount =
+              (
+                text.match(
+                  /\b\d{1,2}:\d{2}\b/g
+                ) || []
+              ).length;
+
+            const projectHeaderCount =
+              (
+                text.match(
+                  /(?:THÔNG BÁO DỰ ÁN|CẬP NHẬT DỰ ÁN|Địa chỉ:)/gi
+                ) || []
+              ).length;
+
+            return (
+              Number(
+                domItem?.descendantIdentityCount ||
+                  0
+              ) >= 2 ||
+              idCount > 4 ||
+              (
+                text.length > 1800 &&
+                (
+                  separatorCount >= 2 ||
+                  timeCount >= 3 ||
+                  projectHeaderCount >= 3
+                )
+              ) ||
+              (
+                separatorCount >= 3 &&
+                timeCount >= 3
+              ) ||
+              (
+                projectHeaderCount >= 4 &&
+                timeCount >= 2
+              )
+            );
+          }
+
+          function markDomSource(
+            message: any,
+            domItem: any
+          ) {
+            message.contentSource =
+              "dom";
+
+            message.domHydration = {
+              order: Number(
+                domItem?.order || 0
+              ),
+              timeText: String(
+                domItem?.timeText || ""
+              ),
+              approxTimestamp:
+                Number(
+                  domItem?.approxTimestamp || 0
+                ) || null,
+            };
+
+            if (
+              !message.senderName &&
+              domItem?.senderName
+            ) {
+              message.senderName =
+                String(
+                  domItem.senderName
+                );
+            }
+          }
+
+          function findClosestBlankMessage(
+            params: {
+              approxTimestamp: number;
+              kind:
+                | "text"
+                | "image"
+                | "video";
+              maxDistanceMs: number;
+              fromUid?: string;
+              minTimestamp?: number;
+              maxTimestamp?: number;
+              excludedMessages?: Set<any>;
+            }
+          ) {
+            const {
+              approxTimestamp,
+              kind,
+              maxDistanceMs,
+              fromUid,
+              minTimestamp,
+              maxTimestamp,
+              excludedMessages,
+            } = params;
+
+            const candidates =
+              groupMessages.filter(
+                (message) => {
+                  if (
+                    excludedMessages?.has(
+                      message
+                    )
+                  ) {
+                    return false;
+                  }
+
+                  const timestamp =
+                    Number(
+                      message.sendDttm ||
+                        message.serverTime ||
+                        0
+                    );
+
+                  if (
+                    !Number.isFinite(
+                      timestamp
+                    ) ||
+                    timestamp <= 0
+                  ) {
+                    return false;
+                  }
+
+                  if (
+                    minTimestamp != null &&
+                    timestamp <
+                      minTimestamp
+                  ) {
+                    return false;
+                  }
+
+                  if (
+                    maxTimestamp != null &&
+                    timestamp >
+                      maxTimestamp
+                  ) {
+                    return false;
+                  }
+
+                  if (
+                    fromUid &&
+                    message.fromUid &&
+                    String(
+                      message.fromUid
+                    ) !== fromUid
+                  ) {
+                    return false;
+                  }
+
+                  const blank =
+                    kind === "text"
+                      ? isBlankTextMessage(
+                          message
+                        )
+                      : kind === "image"
+                        ? isBlankImageMessage(
+                            message
+                          )
+                        : isBlankVideoMessage(
+                            message
+                          );
+
+                  return (
+                    blank &&
+                    Math.abs(
+                      timestamp -
+                        approxTimestamp
+                    ) <=
+                      maxDistanceMs
+                  );
+                }
+              );
+
+            return candidates.sort(
+              (a, b) => {
+                const distanceA =
+                  Math.abs(
+                    Number(
+                      a.sendDttm || 0
+                    ) -
+                      approxTimestamp
+                  );
+
+                const distanceB =
+                  Math.abs(
+                    Number(
+                      b.sendDttm || 0
+                    ) -
+                      approxTimestamp
+                  );
+
+                return (
+                  distanceA - distanceB ||
+                  Number(
+                    a.sendDttm || 0
+                  ) -
+                    Number(
+                      b.sendDttm || 0
+                    )
+                );
+              }
+            )[0] || null;
+          }
+
+          const assignedTextMessages =
+            new Set<any>();
+
+          const assignedImageMessages =
+            new Set<any>();
+
+          const assignedVideoMessages =
+            new Set<any>();
+
+          const assignedDomImageUrls =
+            new Set<string>();
+
+          const domItems =
+            [...domMessageSnapshot]
+              .filter(Boolean)
+              .sort(
+                (a: any, b: any) =>
+                  Number(
+                    a.order || 0
+                  ) -
+                  Number(
+                    b.order || 0
+                  )
+              );
+
+          for (
+            const domItem of
+            domItems
+          ) {
+            const approxTimestamp =
+              Number(
+                domItem.approxTimestamp ||
+                  0
+              );
+
+            if (
+              approxTimestamp > 0 &&
+              (
+                domHydration
+                  .newestApproxTimestamp ==
+                  null ||
+                approxTimestamp >
+                  domHydration
+                    .newestApproxTimestamp
+              )
+            ) {
+              domHydration
+                .newestApproxTimestamp =
+                approxTimestamp;
+            }
+
+            let itemMatched = false;
+            let textTarget: any = null;
+
+            const directTargets =
+              Array.from(
+                new Set(
+                  (
+                    Array.isArray(
+                      domItem.idCandidates
+                    )
+                      ? domItem.idCandidates
+                      : []
+                  )
+                    .map((id: any) =>
+                      messageByAnyId.get(
+                        String(id)
+                      )
+                    )
+                    .filter(Boolean)
+                )
+              );
+
+            const domText = String(
+              domItem.text || ""
+            ).trim();
+
+            if (domText) {
+              if (
+                isSuspiciousDomTextItem(
+                  domItem
+                )
+              ) {
+                domHydration
+                  .rejectedTextItemCount += 1;
+              } else {
+                const directTextTargets =
+                  directTargets.filter(
+                    (message: any) =>
+                      isBlankTextMessage(
+                        message
+                      ) &&
+                      !assignedTextMessages.has(
+                        message
+                      )
+                  );
+
+                if (
+                  directTextTargets.length ===
+                  1
+                ) {
+                  textTarget =
+                    directTextTargets[0];
+
+                  domHydration
+                    .directMatchCount += 1;
+                } else if (
+                  directTextTargets.length >
+                    1 &&
+                  approxTimestamp > 0
+                ) {
+                  textTarget =
+                    [...directTextTargets]
+                      .sort(
+                        (a: any, b: any) =>
+                          Math.abs(
+                            Number(
+                              a.sendDttm || 0
+                            ) -
+                              approxTimestamp
+                          ) -
+                          Math.abs(
+                            Number(
+                              b.sendDttm || 0
+                            ) -
+                              approxTimestamp
+                          )
+                      )[0] || null;
+
+                  if (textTarget) {
+                    domHydration
+                      .directMatchCount += 1;
+                  }
+                } else if (
+                  directTextTargets.length >
+                  1
+                ) {
+                  domHydration
+                    .ambiguousTextMatchCount += 1;
+                }
+
+                if (
+                  !textTarget &&
+                  approxTimestamp > 0
+                ) {
+                  textTarget =
+                    findClosestBlankMessage({
+                      approxTimestamp,
+                      kind: "text",
+                      maxDistanceMs:
+                        4 * 60 * 1000,
+                      excludedMessages:
+                        assignedTextMessages,
+                    });
+
+                  if (textTarget) {
+                    domHydration
+                      .timeMatchCount += 1;
+                  }
+                }
+
+                if (textTarget) {
+                  textTarget.kind =
+                    "text";
+                  textTarget.text =
+                    domText;
+
+                  markDomSource(
+                    textTarget,
+                    domItem
+                  );
+
+                  assignedTextMessages.add(
+                    textTarget
+                  );
+
+                  domHydration
+                    .decodedTextCount += 1;
+
+                  itemMatched = true;
+                }
+              }
+            }
+
+            const domImages =
+              Array.isArray(
+                domItem.images
+              )
+                ? domItem.images.filter(
+                    (image: any) =>
+                      Boolean(
+                        String(
+                          image?.url || ""
+                        ).trim()
+                      )
+                  )
+                : [];
+
+            if (
+              domImages.length > 0
+            ) {
+              for (
+                const image of
+                domImages
+              ) {
+                const imageUrl = String(
+                  image?.url || ""
+                ).trim();
+
+                if (
+                  !imageUrl ||
+                  assignedDomImageUrls.has(
+                    imageUrl
+                  )
+                ) {
+                  continue;
+                }
+
+                const imageDirectTarget =
+                  (
+                    Array.isArray(
+                      image.idCandidates
+                    )
+                      ? image.idCandidates
+                      : []
+                  )
+                    .map((id: any) =>
+                      messageByAnyId.get(
+                        String(id)
+                      )
+                    )
+                    .find(
+                      (message: any) =>
+                        isBlankImageMessage(
+                          message
+                        ) &&
+                        !assignedImageMessages.has(
+                          message
+                        )
+                    );
+
+                if (imageDirectTarget) {
+                  imageDirectTarget.kind =
+                    "image";
+                  imageDirectTarget.imageUrls = [
+                    imageUrl,
+                  ];
+
+                  markDomSource(
+                    imageDirectTarget,
+                    domItem
+                  );
+
+                  assignedImageMessages.add(
+                    imageDirectTarget
+                  );
+
+                  assignedDomImageUrls.add(
+                    imageUrl
+                  );
+
+                  domHydration
+                    .directMatchCount += 1;
+                  domHydration
+                    .decodedImageCount += 1;
+
+                  itemMatched = true;
+                }
+              }
+
+              const remainingImages =
+                domImages.filter(
+                  (image: any) => {
+                    const imageUrl =
+                      String(
+                        image?.url || ""
+                      ).trim();
+
+                    return (
+                      Boolean(imageUrl) &&
+                      !assignedDomImageUrls.has(
+                        imageUrl
+                      )
+                    );
+                  }
+                );
+
+              if (
+                remainingImages.length > 0 &&
+                approxTimestamp > 0
+              ) {
+                const anchorTimestamp =
+                  Number(
+                    textTarget?.sendDttm ||
+                      approxTimestamp
+                  );
+
+                const anchorFromUid =
+                  String(
+                    textTarget?.fromUid ||
+                      ""
+                  );
+
+                const nextTextTimestamp =
+                  groupMessages
+                    .filter(
+                      (message) => {
+                        const timestamp =
+                          Number(
+                            message.sendDttm ||
+                              0
+                          );
+
+                        return (
+                          Number(
+                            message.msgType ||
+                              0
+                          ) === 1 &&
+                          timestamp >
+                            anchorTimestamp +
+                              1000 &&
+                          timestamp <=
+                            anchorTimestamp +
+                              3 * 60 *
+                                1000 &&
+                          (
+                            !anchorFromUid ||
+                            !message.fromUid ||
+                            String(
+                              message.fromUid
+                            ) ===
+                              anchorFromUid
+                          )
+                        );
+                      }
+                    )
+                    .map((message) =>
+                      Number(
+                        message.sendDttm ||
+                          0
+                      )
+                    )
+                    .sort(
+                      (a, b) => a - b
+                    )[0] ||
+                  anchorTimestamp +
+                    3 * 60 * 1000;
+
+                const imageCandidates =
+                  groupMessages
+                    .filter(
+                      (message) => {
+                        const timestamp =
+                          Number(
+                            message.sendDttm ||
+                              0
+                          );
+
+                        return (
+                          isBlankImageMessage(
+                            message
+                          ) &&
+                          !assignedImageMessages.has(
+                            message
+                          ) &&
+                          timestamp >=
+                            anchorTimestamp -
+                              45 * 1000 &&
+                          timestamp <
+                            nextTextTimestamp &&
+                          (
+                            !anchorFromUid ||
+                            !message.fromUid ||
+                            String(
+                              message.fromUid
+                            ) ===
+                              anchorFromUid
+                          )
+                        );
+                      }
+                    )
+                    .sort(
+                      (a, b) =>
+                        Number(
+                          a.sendDttm || 0
+                        ) -
+                        Number(
+                          b.sendDttm || 0
+                        )
+                    );
+
+                const expectedAlbumImageCount =
+                  Math.max(
+                    remainingImages.length,
+                    imageCandidates.length
+                  );
+
+                const syntheticAlbumId =
+                  [
+                    "dom",
+                    String(
+                      textTarget?.msgId ||
+                        Math.round(
+                          anchorTimestamp /
+                            60_000
+                        )
+                    ),
+                    String(
+                      domItem.order || 0
+                    ),
+                  ].join(":");
+
+                const assignCount =
+                  Math.min(
+                    remainingImages.length,
+                    imageCandidates.length
+                  );
+
+                for (
+                  let imageIndex = 0;
+                  imageIndex <
+                  assignCount;
+                  imageIndex++
+                ) {
+                  const message =
+                    imageCandidates[
+                      imageIndex
+                    ];
+
+                  const image =
+                    remainingImages[
+                      imageIndex
+                    ];
+
+                  const imageUrl = String(
+                    image?.url || ""
+                  ).trim();
+
+                  if (!imageUrl) {
+                    continue;
+                  }
+
+                  message.kind =
+                    "image";
+                  message.imageUrls = [
+                    imageUrl,
+                  ];
+                  message.groupLayoutId =
+                    syntheticAlbumId;
+                  message.imageIndex =
+                    imageIndex;
+                  message.totalImages =
+                    expectedAlbumImageCount;
+
+                  markDomSource(
+                    message,
+                    domItem
+                  );
+
+                  assignedImageMessages.add(
+                    message
+                  );
+
+                  assignedDomImageUrls.add(
+                    imageUrl
+                  );
+
+                  domHydration
+                    .timeMatchCount += 1;
+                  domHydration
+                    .decodedImageCount += 1;
+
+                  itemMatched = true;
+                }
+
+                if (
+                  assignCount > 0 &&
+                  remainingImages.length >
+                    assignCount
+                ) {
+                  const firstMessage =
+                    imageCandidates[0];
+
+                  const extraImageUrls =
+                    remainingImages
+                      .slice(
+                        assignCount
+                      )
+                      .map(
+                        (image: any) =>
+                          String(
+                            image?.url || ""
+                          ).trim()
+                      )
+                      .filter(Boolean);
+
+                  firstMessage.imageUrls =
+                    Array.from(
+                      new Set([
+                        ...firstMessage.imageUrls,
+                        ...extraImageUrls,
+                      ])
+                    );
+
+                  for (
+                    const extraImageUrl of
+                    extraImageUrls
+                  ) {
+                    assignedDomImageUrls.add(
+                      extraImageUrl
+                    );
+                  }
+                }
+              }
+            }
+
+            const domVideoUrls =
+              Array.isArray(
+                domItem.videoUrls
+              )
+                ? Array.from(
+                    new Set(
+                      domItem.videoUrls
+                        .map((url: any) =>
+                          String(
+                            url || ""
+                          ).trim()
+                        )
+                        .filter(Boolean)
+                    )
+                  )
+                : [];
+
+            if (
+              domVideoUrls.length > 0 &&
+              approxTimestamp > 0
+            ) {
+              const videoTarget =
+                directTargets.find(
+                  (message: any) =>
+                    isBlankVideoMessage(
+                      message
+                    ) &&
+                    !assignedVideoMessages.has(
+                      message
+                    )
+                ) ||
+                findClosestBlankMessage({
+                  approxTimestamp,
+                  kind: "video",
+                  maxDistanceMs:
+                    4 * 60 * 1000,
+                  fromUid: String(
+                    textTarget?.fromUid ||
+                      ""
+                  ),
+                  excludedMessages:
+                    assignedVideoMessages,
+                });
+
+              if (videoTarget) {
+                videoTarget.videoUrls =
+                  domVideoUrls;
+
+                markDomSource(
+                  videoTarget,
+                  domItem
+                );
+
+                assignedVideoMessages.add(
+                  videoTarget
+                );
+
+                domHydration
+                  .decodedVideoCount += 1;
+
+                itemMatched = true;
+              }
+            }
+
+            if (!itemMatched) {
+              domHydration
+                .unmatchedItemCount += 1;
+            }
+          }
+        }
 
                 groupMessages.sort(
           (a, b) => {
@@ -6189,13 +11291,94 @@ if (activeGroupHint) {
           }
         );
 
+        const validGroupTimestamps =
+          groupMessages
+            .map((message) =>
+              Number(
+                message.sendDttm ||
+                  message.serverTime ||
+                  0
+              )
+            )
+            .filter(
+              (value) =>
+                Number.isFinite(value) &&
+                value > 0
+            );
+
+        const oldestGroupTimestamp =
+          validGroupTimestamps.length > 0
+            ? Math.min(...validGroupTimestamps)
+            : null;
+
+        const latestGroupTimestamp =
+          validGroupTimestamps.length > 0
+            ? Math.max(...validGroupTimestamps)
+            : null;
+
+        const readsDirectMessageStore =
+          bestCandidate.messageStoreName ===
+          "message";
+
+        if (readsDirectMessageStore) {
+          /**
+           * Đã truy vấn đúng Group ID bằng index nên giữ toàn bộ
+           * messageLimit tin mới nhất. Không cắt còn 10-60 phút,
+           * tránh bỏ phòng đăng từ tối hôm trước trong nhóm đông tin.
+           */
+          exportWindowStart =
+            oldestGroupTimestamp;
+          exportWindowEnd =
+            latestGroupTimestamp;
+        } else {
+          exportWindowStart =
+            latestGroupTimestamp != null
+              ? latestGroupTimestamp -
+                contextBeforeMs
+              : null;
+
+          exportWindowEnd =
+            latestGroupTimestamp != null
+              ? latestGroupTimestamp +
+                contextAfterMs
+              : null;
+        }
+
+        const messagesInLatestWindow =
+          readsDirectMessageStore
+            ? groupMessages
+            : groupMessages.filter(
+                (message) => {
+                  const timestamp =
+                    Number(
+                      message.sendDttm ||
+                        message.serverTime ||
+                        0
+                    );
+
+                  if (
+                    exportWindowStart == null ||
+                    exportWindowEnd == null
+                  ) {
+                    return true;
+                  }
+
+                  return (
+                    timestamp >=
+                      exportWindowStart &&
+                    timestamp <=
+                      exportWindowEnd
+                  );
+                }
+              );
+
         const limitedMessages =
-          groupMessages.length >
+          messagesInLatestWindow.length >
           messageLimit
-            ? groupMessages.slice(
+            ? messagesInLatestWindow.slice(
                 -messageLimit
               )
-            : groupMessages;
+            : messagesInLatestWindow;
 
         const usedSavedGroupId =
           Boolean(
@@ -6209,6 +11392,9 @@ if (activeGroupHint) {
 
           databaseName:
             bestCandidate.databaseName,
+
+          messageStoreName:
+            bestCandidate.messageStoreName,
 
           groupId:
             bestCandidate.groupId,
@@ -6230,14 +11416,32 @@ if (activeGroupHint) {
           matchedTimeEnd,
           anchorTimestamp,
 
+          oldestGroupTimestamp,
+          latestGroupTimestamp,
+
           exportWindowStart,
           exportWindowEnd,
 
           candidates:
             candidates.slice(0, 10),
 
+          contentEnrichment,
+          domHydration,
+
+          /**
+           * File debug hiển thị mới → cũ.
+           * buildRoomsFromIndexedDbMessages tự sắp lại cũ → mới khi ghép block.
+           */
           messages:
-            limitedMessages,
+            [...limitedMessages].sort(
+              (a, b) =>
+                Number(
+                  b.sendDttm || 0
+                ) -
+                Number(
+                  a.sendDttm || 0
+                )
+            ),
         };
       } finally {
         selectedDb?.close();
@@ -6255,6 +11459,8 @@ if (activeGroupHint) {
           messageTextSelector:
             config.selectors
               .messageText || "",
+
+          domMessageSnapshot,
 
           scanLimit,
           messageLimit,
@@ -6526,6 +11732,124 @@ if (activeGroupHint) {
         (result as any)
           .groupIdSource
       }`
+    );
+  }
+
+  if (
+    (result as any)
+      .databaseName &&
+    (result as any)
+      .messageStoreName
+  ) {
+    console.log(
+      [
+        "Nguồn đọc message:",
+        `${
+          (result as any)
+            .databaseName
+        }/${
+          (result as any)
+            .messageStoreName
+        }`,
+      ].join(" ")
+    );
+  }
+
+  const contentEnrichment =
+    (result as any)
+      .contentEnrichment;
+
+  if (
+    contentEnrichment
+      ?.attempted
+  ) {
+    console.log(
+      [
+        "Bổ sung nội dung từ sidx:",
+        `${contentEnrichment.matchedRecordCount}/${contentEnrichment.requestedCount} record khớp,`,
+        `${contentEnrichment.decodedTextCount} text,`,
+        `${contentEnrichment.decodedImageCount} ảnh,`,
+        `${contentEnrichment.decodedVideoCount} video`,
+      ].join(" ")
+    );
+  }
+
+  const domHydration =
+    (result as any)
+      .domHydration;
+
+  if (
+    domHydration?.attempted
+  ) {
+    console.log(
+      [
+        "Bổ sung nội dung từ DOM:",
+        `${domHydration.itemCount} item,`,
+        `${domHydration.decodedTextCount} text,`,
+        `${domHydration.decodedImageCount} ảnh,`,
+        `${domHydration.decodedVideoCount} video,`,
+        `${domHydration.directMatchCount} match ID,`,
+        `${domHydration.timeMatchCount} match thời gian,`,
+        `${domHydration.rejectedTextItemCount || 0} text cha bị loại,`,
+        `${domHydration.ambiguousTextMatchCount || 0} text mơ hồ,`,
+        `${domHydration.unmatchedItemCount} chưa ghép`,
+      ].join(" ")
+    );
+  }
+
+  const latestGroupTimestamp = Number(
+    (result as any).latestGroupTimestamp || 0
+  );
+
+  const oldestGroupTimestamp = Number(
+    (result as any).oldestGroupTimestamp || 0
+  );
+
+  const exportWindowStart = Number(
+    (result as any).exportWindowStart || 0
+  );
+
+  const exportWindowEnd = Number(
+    (result as any).exportWindowEnd || 0
+  );
+
+  if (latestGroupTimestamp > 0) {
+    console.log(
+      `Tin mới nhất của nhóm: ${new Date(
+        latestGroupTimestamp
+      ).toLocaleString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+      })}`
+    );
+  }
+
+  if (oldestGroupTimestamp > 0) {
+    console.log(
+      `Tin cũ nhất đã quét: ${new Date(
+        oldestGroupTimestamp
+      ).toLocaleString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+      })}`
+    );
+  }
+
+  if (
+    exportWindowStart > 0 &&
+    exportWindowEnd > 0
+  ) {
+    console.log(
+      [
+        "Khoảng thời gian xuất:",
+        new Date(exportWindowStart).toLocaleString(
+          "vi-VN",
+          { timeZone: "Asia/Ho_Chi_Minh" }
+        ),
+        "→",
+        new Date(exportWindowEnd).toLocaleString(
+          "vi-VN",
+          { timeZone: "Asia/Ho_Chi_Minh" }
+        ),
+      ].join(" ")
     );
   }
 
@@ -7004,132 +12328,384 @@ async function convertImageBufferToWebp(
   );
 }
 
+function normalizeImageMimeType(
+  input: any
+) {
+  const mimeType = String(
+    input || ""
+  )
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+
+  return mimeType ===
+    "image/jpg"
+    ? "image/jpeg"
+    : mimeType;
+}
+
+function detectImageMimeTypeFromBuffer(
+  sourceBuffer: Buffer,
+  fallbackMimeType = ""
+) {
+  if (
+    sourceBuffer.length >= 8 &&
+    sourceBuffer[0] === 0x89 &&
+    sourceBuffer[1] === 0x50 &&
+    sourceBuffer[2] === 0x4e &&
+    sourceBuffer[3] === 0x47
+  ) {
+    return "image/png";
+  }
+
+  if (
+    sourceBuffer.length >= 3 &&
+    sourceBuffer[0] === 0xff &&
+    sourceBuffer[1] === 0xd8 &&
+    sourceBuffer[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+
+  if (
+    sourceBuffer.length >= 12 &&
+    sourceBuffer.subarray(0, 4).toString(
+      "ascii"
+    ) === "RIFF" &&
+    sourceBuffer.subarray(8, 12).toString(
+      "ascii"
+    ) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+
+  if (
+    sourceBuffer.length >= 6 &&
+    (
+      sourceBuffer.subarray(0, 6).toString(
+        "ascii"
+      ) === "GIF87a" ||
+      sourceBuffer.subarray(0, 6).toString(
+        "ascii"
+      ) === "GIF89a"
+    )
+  ) {
+    return "image/gif";
+  }
+
+  if (
+    sourceBuffer.length >= 12 &&
+    sourceBuffer.subarray(4, 12).toString(
+      "ascii"
+    ).includes("ftypavif")
+  ) {
+    return "image/avif";
+  }
+
+  if (
+    sourceBuffer.length >= 2 &&
+    sourceBuffer[0] === 0xff &&
+    sourceBuffer[1] === 0x0a
+  ) {
+    return "image/jxl";
+  }
+
+  return normalizeImageMimeType(
+    fallbackMimeType
+  );
+}
+
+async function readBlobImageInPage(
+  page: Page,
+  src: string
+) {
+  await page.evaluate(
+    "globalThis.__name = Object"
+  );
+
+  const payload =
+    await page.evaluate(
+      async (blobUrl) => {
+        const response =
+          await fetch(blobUrl);
+
+        if (!response.ok) {
+          throw new Error(
+            `HTTP ${response.status}`
+          );
+        }
+
+        const blob =
+          await response.blob();
+
+        const arrayBuffer =
+          await blob.arrayBuffer();
+
+        const bytes =
+          new Uint8Array(
+            arrayBuffer
+          );
+
+        let binary = "";
+        const chunkSize =
+          0x8000;
+
+        for (
+          let offset = 0;
+          offset < bytes.length;
+          offset += chunkSize
+        ) {
+          const chunk =
+            bytes.subarray(
+              offset,
+              Math.min(
+                offset + chunkSize,
+                bytes.length
+              )
+            );
+
+          binary +=
+            String.fromCharCode(
+              ...chunk
+            );
+        }
+
+        return {
+          base64: btoa(binary),
+          mimeType:
+            blob.type ||
+            response.headers.get(
+              "content-type"
+            ) ||
+            "application/octet-stream",
+        };
+      },
+      src
+    );
+
+  return {
+    sourceBuffer:
+      Buffer.from(
+        payload.base64,
+        "base64"
+      ),
+    sourceMimeType:
+      normalizeImageMimeType(
+        payload.mimeType
+      ),
+  };
+}
+
 async function imageToBase64(
   page: Page,
   src: string
 ) {
-  const userAgent =
-    await page.evaluate(
-      () => navigator.userAgent
-    );
+  const normalizedSrc = String(
+    src || ""
+  ).trim();
 
-  /*
-   * Tải byte ảnh bằng APIRequestContext.
-   * Cách này không bị giới hạn CORS.
-   */
-  const response =
-    await page.context().request.get(
-      src,
-      {
-        timeout: 30_000,
-
-        failOnStatusCode: false,
-
-        headers: {
-          Accept:
-            "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-
-          Referer:
-            "https://chat.zalo.me/",
-
-          "User-Agent":
-            userAgent,
-        },
-      }
-    );
-
-  if (!response.ok()) {
+  if (!normalizedSrc) {
     throw new Error(
-      [
-        "Không tải được ảnh Zalo.",
-        `HTTP ${response.status()}.`,
-        src,
-      ].join(" ")
+      "Nguồn ảnh Zalo trống"
     );
   }
 
-  const sourceBuffer =
-    await response.body();
+  let sourceBuffer: Buffer;
+  let sourceMimeType = "";
+
+  if (
+    normalizedSrc
+      .toLowerCase()
+      .startsWith("file:")
+  ) {
+    const filePath =
+      fileURLToPath(
+        normalizedSrc
+      );
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error(
+        `File blob ảnh DOM không tồn tại: ${filePath}`
+      );
+    }
+
+    sourceBuffer =
+      fs.readFileSync(
+        filePath
+      );
+
+    const extension =
+      path.extname(filePath)
+        .toLowerCase();
+
+    const extensionMimeMap:
+      Record<string, string> = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".avif": "image/avif",
+        ".gif": "image/gif",
+        ".jxl": "image/jxl",
+      };
+
+    sourceMimeType =
+      detectImageMimeTypeFromBuffer(
+        sourceBuffer,
+        extensionMimeMap[
+          extension
+        ] || ""
+      );
+  } else if (
+    path.isAbsolute(
+      normalizedSrc
+    ) &&
+    fs.existsSync(
+      normalizedSrc
+    )
+  ) {
+    sourceBuffer =
+      fs.readFileSync(
+        normalizedSrc
+      );
+
+    sourceMimeType =
+      detectImageMimeTypeFromBuffer(
+        sourceBuffer
+      );
+  } else if (
+    normalizedSrc
+      .toLowerCase()
+      .startsWith("blob:")
+  ) {
+    /**
+     * Fallback cuối cùng: trường hợp blob không kịp được lưu trong lúc cuộn.
+     * Cách chính vẫn là dom-media/file:// để không phụ thuộc vòng đời blob URL.
+     */
+    const blobResult =
+      await readBlobImageInPage(
+        page,
+        normalizedSrc
+      );
+
+    sourceBuffer =
+      blobResult.sourceBuffer;
+    sourceMimeType =
+      detectImageMimeTypeFromBuffer(
+        sourceBuffer,
+        blobResult.sourceMimeType
+      );
+  } else {
+    const userAgent =
+      await page.evaluate(
+        () => navigator.userAgent
+      );
+
+    /*
+     * Tải byte ảnh CDN bằng APIRequestContext.
+     * Cách này không bị giới hạn CORS.
+     */
+    const response =
+      await page.context().request.get(
+        normalizedSrc,
+        {
+          timeout: 30_000,
+          failOnStatusCode: false,
+          headers: {
+            Accept:
+              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            Referer:
+              "https://chat.zalo.me/",
+            "User-Agent":
+              userAgent,
+          },
+        }
+      );
+
+    if (!response.ok()) {
+      throw new Error(
+        [
+          "Không tải được ảnh Zalo.",
+          `HTTP ${response.status()}.`,
+          normalizedSrc,
+        ].join(" ")
+      );
+    }
+
+    sourceBuffer =
+      await response.body();
+
+    const responseHeaders =
+      response.headers();
+
+    sourceMimeType =
+      detectImageMimeTypeFromBuffer(
+        sourceBuffer,
+        responseHeaders[
+          "content-type"
+        ] ||
+          "application/octet-stream"
+      );
+  }
 
   if (sourceBuffer.length === 0) {
     throw new Error(
-      `Ảnh Zalo trả về dữ liệu rỗng: ${src}`
+      `Ảnh Zalo trả về dữ liệu rỗng: ${normalizedSrc}`
     );
   }
 
-  const responseHeaders =
-    response.headers();
-
-  const sourceMimeType =
-    String(
-      responseHeaders[
-        "content-type"
-      ] ||
-        "application/octet-stream"
-    )
-      .split(";")[0]
-      .trim()
-      .toLowerCase();
+  sourceMimeType =
+    detectImageMimeTypeFromBuffer(
+      sourceBuffer,
+      sourceMimeType
+    );
 
   const isJxl =
     sourceMimeType ===
       "image/jxl" ||
-    /\/jxl\//i.test(src) ||
-    /\.jxl(?:[?#]|$)/i.test(src);
-
-  /*
-   * JPEG XL phải giải mã bằng djxl.
-   */
-  if (isJxl) {
-  const pngBuffer =
-    await decodeJxlBufferToPng(
-      sourceBuffer
+    /\/jxl\//i.test(
+      normalizedSrc
+    ) ||
+    /\.jxl(?:[?#]|$)/i.test(
+      normalizedSrc
     );
 
-  /*
-   * djxl tạo PNG lớn.
-   * Chuyển PNG sang WebP đã nén
-   * trước khi gửi lên API.
-   */
-  return convertImageBufferToWebp(
-    page,
-    pngBuffer,
-    "image/png"
-  );
-}
+  if (isJxl) {
+    const pngBuffer =
+      await decodeJxlBufferToPng(
+        sourceBuffer
+      );
 
-  /*
-   * Các định dạng trình duyệt hỗ trợ thông thường
-   * có thể gửi thẳng byte gốc.
-   */
+    return convertImageBufferToWebp(
+      page,
+      pngBuffer,
+      "image/png"
+    );
+  }
+
   if (
-  sourceMimeType ===
-    "image/png" ||
-  sourceMimeType ===
-    "image/jpeg" ||
-  sourceMimeType ===
-    "image/jpg" ||
-  sourceMimeType ===
-    "image/webp"
-) {
-  const normalizedMimeType =
-    sourceMimeType ===
-      "image/jpg"
-      ? "image/jpeg"
-      : sourceMimeType;
-
-  return convertImageBufferToWebp(
-    page,
-    sourceBuffer,
-    normalizedMimeType
-  );
-}
+    [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/avif",
+      "image/gif",
+    ].includes(
+      sourceMimeType
+    )
+  ) {
+    return convertImageBufferToWebp(
+      page,
+      sourceBuffer,
+      sourceMimeType
+    );
+  }
 
   throw new Error(
     [
       "Định dạng ảnh Zalo chưa được hỗ trợ.",
-      `Content-Type: ${sourceMimeType}.`,
-      src,
+      `Content-Type: ${sourceMimeType || "unknown"}.`,
+      normalizedSrc,
     ].join(" ")
   );
 }
@@ -7599,6 +13175,16 @@ async function main() {
     context.pages()[0] ||
     (await context.newPage());
 
+  /**
+   * tsx/esbuild có thể chèn helper __name vào callback page.evaluate().
+   * Callback đó chạy trong trình duyệt, không dùng được helper của Node.js.
+   * addInitScript phải được đăng ký trước page.goto() để helper tồn tại
+   * ngay từ document Zalo đầu tiên và cả các lần reload/navigation sau.
+   */
+  await page.addInitScript(
+    "globalThis.__name = globalThis.__name || Object;"
+  );
+
   let activeGroupName = "";
 
   /*
@@ -7679,12 +13265,15 @@ async function main() {
           );
 
           /*
-           * DOM chỉ dùng để cuộn.
-           * Không dùng DOM để lấy text hoặc ghép ảnh.
+           * DOM trước hết dùng để cuộn đúng khung chat.
+           * Sau đó Reader chụp snapshot cuối cuộc trò chuyện
+           * làm fallback cho message mới chưa có payload trong sidx.
            */
           await triggerNetworkHistoryLoad(
             page,
-            15
+            15,
+            config.selectors
+              .messageItems
           );
 
           /*
@@ -7784,7 +13373,11 @@ async function main() {
           console.log("OK:", result);
         }
 
-        await scrollChatToBottom(page);
+        await scrollChatToBottom(
+          page,
+          config.selectors
+            .messageItems
+        );
       } catch (e: any) {
         console.error(`Lỗi nhóm ${groupName}:`, e?.message || e);
       }

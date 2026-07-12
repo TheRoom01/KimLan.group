@@ -56,7 +56,7 @@ const defaultDetailForm: RoomDetail = {
   long_term: true,
 
   /* washer / dryer */
-  shared_washer: false,
+  shared_washer: true,
   private_washer: false,
   shared_dryer: false,
   private_dryer: false,
@@ -78,7 +78,12 @@ type Props = {
   pendingId?: string | null
   pendingRoomPayload?: Record<string, any> | null
   pendingDetailPayload?: Record<string, any> | null
-  onPendingSaved?: () => void | Promise<void>
+  pendingImages?: any[] | null
+  onPendingSaved?: (updated?: {
+    room_payload?: Record<string, any>
+    detail_payload?: Record<string, any>
+    images?: any[]
+  }) => void | Promise<void>
 
   // ✅ onSaved nhận room mới để trang admin cập nhật ngay
   onSaved: (updatedRoom: Room, opts?: { isNew?: boolean }) => void | Promise<void>
@@ -98,6 +103,7 @@ export default function RoomModal({
   pendingId = null,
   pendingRoomPayload = null,
   pendingDetailPayload = null,
+  pendingImages = null,
   onPendingSaved,
   open,
   onClose,
@@ -178,6 +184,7 @@ const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   // ✅ NEW (Patch 2): nhớ cover ban đầu để biết khi nào cần regenerate thumb.webp
   const initialCoverUrlRef = useRef<string>("");
+  const initialPendingImageIdsRef = useRef<string[]>([]);
 
   function genDraftId(): string {
     try {
@@ -817,9 +824,24 @@ const detailSample =
       description: pendingRoomPayload?.description ?? '',
       link_zalo: pendingRoomPayload?.link_zalo ?? '',
       zalo_phone: pendingRoomPayload?.zalo_phone ?? '',
-      media: [],
+      media: (Array.isArray(pendingImages) ? pendingImages : [])
+        .map((image: any) => ({
+          id: String(image?.id || ""),
+          type: "image" as const,
+          url: String(image?.temp_image_url || image?.url || ""),
+          path: String(image?.temp_image_url || image?.url || ""),
+          temp_r2_key: String(image?.temp_r2_key || ""),
+          sort_order: Number(image?.sort_order ?? 0),
+          __pendingImage: true,
+        }))
+        .filter((media: any) => media.url),
       chinh_sach: pendingRoomPayload?.chinh_sach ?? '',
     })
+
+    initialPendingImageIdsRef.current =
+      (Array.isArray(pendingImages) ? pendingImages : [])
+        .map((image: any) => String(image?.id || "").trim())
+        .filter(Boolean)
 
     setDetailForm(
       pendingDetailPayload
@@ -957,7 +979,7 @@ const detailSample =
       setErrorMsg(e?.message ?? "Load phòng thất bại")
     }
   })()
-}, [editingRoom, isPending, pendingRoomPayload, pendingDetailPayload])
+}, [editingRoom, isPending, pendingRoomPayload, pendingDetailPayload, pendingImages])
 
 const closeNow = () => {
   setShowCloseConfirm(false)
@@ -1093,50 +1115,91 @@ const cancelCloseConfirm = () => {
       return
     }
 
-    try {
-      setSaving(true)
-      setErrorMsg(null)
+    const roomPayload = {
+      room_code: roomForm.room_code,
+      room_type: roomForm.room_type,
+      house_number: roomForm.house_number,
+      address: roomForm.address,
+      ward: roomForm.ward,
+      district: roomForm.district,
+      price: roomForm.price,
+      status: normalizeStatus(roomForm.status),
+      description: roomForm.description,
+      link_zalo: roomForm.link_zalo,
+      zalo_phone: roomForm.zalo_phone,
+      chinh_sach: roomForm.chinh_sach,
+    }
 
-      const roomPayload = {
-        room_code: roomForm.room_code,
-        room_type: roomForm.room_type,
-        house_number: roomForm.house_number,
-        address: roomForm.address,
-        ward: roomForm.ward,
-        district: roomForm.district,
-        price: roomForm.price,
-        status: normalizeStatus(roomForm.status),
-        description: roomForm.description,
-        link_zalo: roomForm.link_zalo,
-        zalo_phone: roomForm.zalo_phone,
-        chinh_sach: roomForm.chinh_sach,
-      }
+    const pendingMedia = (
+      Array.isArray((roomForm as any).media)
+        ? (roomForm as any).media
+        : []
+    )
+      .filter((item: any) => item?.__pendingImage && item?.id && item?.url)
+      .map((item: any, index: number) => ({
+        id: String(item.id),
+        temp_image_url: String(item.url),
+        temp_r2_key: String(item.temp_r2_key || ""),
+        sort_order: index,
+      }))
 
-      const res = await fetch(`/api/admin/zalo-imports/${pendingId}/draft`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    const currentIds = pendingMedia.map((item: any) => item.id)
+    const removedImageIds =
+      initialPendingImageIdsRef.current.filter(
+        (id) => !currentIds.includes(id)
+      )
+
+    /*
+     * UX: đóng modal ngay, sau đó lưu ngầm.
+     * Danh sách card không bị refetch hoặc nháy.
+     */
+    setSaving(true)
+    setErrorMsg(null)
+    onClose()
+    onNotify?.('Đang lưu nháp import...')
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/zalo-imports/${pendingId}/draft`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            room_payload: roomPayload,
+            detail_payload: detailForm,
+            images: pendingMedia.map((item: any) => ({
+              id: item.id,
+              sort_order: item.sort_order,
+            })),
+            removed_image_ids: removedImageIds,
+          }),
+        })
+
+        const json = await res.json().catch(() => ({}))
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || 'Lưu nháp pending thất bại')
+        }
+
+        initialPendingImageIdsRef.current = currentIds
+
+        await onPendingSaved?.({
           room_payload: roomPayload,
           detail_payload: detailForm,
-        }),
-      })
+          images: pendingMedia,
+        })
 
-      const json = await res.json().catch(() => ({}))
-
-      if (!res.ok || !json?.ok) {
-        throw new Error(json?.error || 'Lưu nháp pending thất bại')
+        onNotify?.('Đã lưu nháp import.')
+      } catch (e: any) {
+        console.error('Lưu nháp pending thất bại:', e)
+        onNotify?.(
+          `Lưu nháp thất bại: ${e?.message ?? 'Không rõ lỗi'}`
+        )
+      } finally {
+        setSaving(false)
       }
+    })()
 
-      onNotify?.('Đã lưu nháp import.')
-      await onPendingSaved?.()
-      onClose()
-      return
-    } catch (e: any) {
-      setErrorMsg(e?.message ?? 'Lưu nháp pending thất bại')
-      return
-    } finally {
-      setSaving(false)
-    }
+    return
   }
 
   try {
@@ -1373,7 +1436,7 @@ const stopBackdropEvents = (e: any) => {
               onUploadFiles={
                 isPending
                   ? async () => {
-                      alert('Ảnh pending đang lấy từ Zalo Import. Chức năng thêm ảnh sẽ làm ở bước sau.')
+                      alert('Bạn có thể kéo-thả để đổi thứ tự hoặc bấm ✕ để loại ảnh. Thêm ảnh mới cho Import sẽ được bổ sung ở bước upload tiếp theo.')
                     }
                   : handleUploadFiles
               }

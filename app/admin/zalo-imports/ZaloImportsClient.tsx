@@ -38,10 +38,16 @@ export default function ZaloImportsClient() {
   const [status, setStatus] = useState("Chờ duyệt");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
+  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
   const [editingPending, setEditingPending] = useState<ImportRow | null>(null);
   const [openPendingModal, setOpenPendingModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
+
+  function showToast(message: string, tone: "success" | "error" = "success") {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(null), 3200);
+  }
 
   async function loadData(nextOffset = offset, nextStatus = status) {
     try {
@@ -237,33 +243,6 @@ export default function ZaloImportsClient() {
         </div>
       )}
 
-      {/*
-       * Chỉ hiện trạng thái tải toàn màn hình ở lần mở đầu tiên.
-       * Khi refresh nền, danh sách cũ vẫn được giữ nguyên.
-       */}
-      {loading && rows.length === 0 ? (
-        <div style={emptyBox}>Đang tải...</div>
-      ) : rows.length === 0 ? (
-        <div style={emptyBox}>
-          Chưa có import nào.
-        </div>
-      ) : (
-        <div style={list}>
-          {rows.map((row) => (
-            <ImportCard
-              key={row.id}
-              row={row}
-              onRemoved={removeRowFromList}
-              onEdit={(selectedRow) => {
-                setEditingPending(selectedRow);
-                setActiveTab("info");
-                setOpenPendingModal(true);
-              }}
-            />
-          ))}
-        </div>
-      )}
-
       <div style={pagination}>
         <button
           type="button"
@@ -306,6 +285,56 @@ export default function ZaloImportsClient() {
         </button>
       </div>
 
+      {/*
+       * Chỉ hiện trạng thái tải toàn màn hình ở lần mở đầu tiên.
+       * Khi refresh nền, danh sách cũ vẫn được giữ nguyên.
+       */}
+      {loading && rows.length === 0 ? (
+        <div style={emptyBox}>Đang tải...</div>
+      ) : rows.length === 0 ? (
+        <div style={emptyBox}>
+          Chưa có import nào.
+        </div>
+      ) : (
+        <div style={list}>
+          {rows.map((row) => (
+            <ImportCard
+              key={row.id}
+              row={row}
+              onRemoved={removeRowFromList}
+              onEdit={(selectedRow) => {
+                setEditingPending(selectedRow);
+                setActiveTab("info");
+                setOpenPendingModal(true);
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+
+      {toast && (
+        <div
+          style={{
+            ...toastBox,
+            background:
+              toast.tone === "success"
+                ? "#ecfdf5"
+                : "#fef2f2",
+            color:
+              toast.tone === "success"
+                ? "#047857"
+                : "#b91c1c",
+            borderColor:
+              toast.tone === "success"
+                ? "#a7f3d0"
+                : "#fecaca",
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
+
       {openPendingModal && editingPending && (
         <RoomModal
           mode="pending"
@@ -316,6 +345,7 @@ export default function ZaloImportsClient() {
           pendingDetailPayload={
             editingPending.detail_payload ?? {}
           }
+          pendingImages={editingPending.images ?? []}
           open={openPendingModal}
           onClose={() =>
             setOpenPendingModal(false)
@@ -324,14 +354,24 @@ export default function ZaloImportsClient() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           onNotify={(message) =>
-            alert(message)
+            showToast(message, "success")
           }
-          onPendingSaved={async () => {
-            /*
-             * Refresh nền: danh sách hiện tại không biến mất
-             * vì phần render chỉ hiện loading khi rows rỗng.
-             */
-            await loadData(offset, status);
+          onPendingSaved={async (updated) => {
+            setRows((currentRows) =>
+              currentRows.map((row) =>
+                row.id === editingPending.id
+                  ? {
+                      ...row,
+                      room_payload:
+                        updated?.room_payload ?? row.room_payload,
+                      detail_payload:
+                        updated?.detail_payload ?? row.detail_payload,
+                      images:
+                        updated?.images ?? row.images,
+                    }
+                  : row
+              )
+            );
           }}
           onSaved={async () => {}}
         />
@@ -523,13 +563,8 @@ function ImportCard({
        */
       onRemoved?.(row.id);
 
-      if (json.roomId) {
-        window.open(
-          `/rooms/${json.roomId}`,
-          "_blank",
-          "noopener,noreferrer"
-        );
-      }
+      // Duyệt thành công chỉ xóa card hiện tại.
+      // Không tự mở phòng vừa tạo để admin tiếp tục duyệt danh sách.
     } catch (error: any) {
       alert(
         error?.message || "Duyệt thất bại"
@@ -1087,6 +1122,9 @@ const panel: CSSProperties = {
   borderRadius: 12,
   padding: 12,
   minWidth: 0,
+  maxHeight: 560,
+  overflowY: "auto",
+  overscrollBehavior: "contain",
 };
 
 const panelTitle: CSSProperties = {
@@ -1103,6 +1141,8 @@ const rawText: CSSProperties = {
   fontSize: 14,
   color: "#111827",
   lineHeight: 1.5,
+  maxHeight: 500,
+  overflowY: "auto",
 };
 
 const fieldRow: CSSProperties = {
@@ -1262,4 +1302,17 @@ const bulkDeleteBtn: CSSProperties = {
   color: "#fff",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const toastBox: CSSProperties = {
+  position: "fixed",
+  right: 20,
+  bottom: 20,
+  zIndex: 10000,
+  maxWidth: 420,
+  border: "1px solid",
+  borderRadius: 12,
+  padding: "12px 16px",
+  boxShadow: "0 14px 40px rgba(15, 23, 42, 0.18)",
+  fontWeight: 600,
 };

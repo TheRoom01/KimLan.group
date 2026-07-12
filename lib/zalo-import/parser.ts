@@ -48,10 +48,20 @@ export function normalizeWard(input?: string | null) {
   const raw = String(input || "").trim();
   if (!raw) return "";
 
-  return raw
-    .replace(/\b(?:p\.?|phường|phuong)\s*/gi, "")
+  const cleaned = raw
+    .replace(
+      /\b(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*/gi,
+      ""
+    )
+    .replace(/[,:;|/]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  if (/^\d{1,2}$/.test(cleaned)) {
+    return String(Number(cleaned));
+  }
+
+  return cleaned;
 }
 
 export function normalizeRoomCode(input?: string | null) {
@@ -60,7 +70,7 @@ export function normalizeRoomCode(input?: string | null) {
 
   const withoutLabel = raw
     .replace(
-      /\b(?:mã\s*phòng|ma\s*phong|phòng|phong|room|mã|ma)\b/gi,
+      /\b(?:mã\s*phòng|ma\s*phong|phòng\s*mã|phong\s*ma|phòng|phong|room|mã|ma)\b/gi,
       " "
     )
     .replace(/^[\s:|/\-–—]+|[\s:|/\-–—]+$/g, "")
@@ -86,6 +96,18 @@ export function normalizeRoomCode(input?: string | null) {
     )
   ) {
     return "Lửng";
+  }
+
+  if (
+    /^(?:san thuong|tang thuong|rooftop)$/.test(
+      normalized
+    )
+  ) {
+    return "Sân thượng";
+  }
+
+  if (/^(?:penthouse|penhouse)$/.test(normalized)) {
+    return "Penthouse";
   }
 
   const floorMatch = normalized.match(
@@ -377,7 +399,7 @@ function normalizeRoomTypeFromText(
     return "Loft";
   }
 
-  if (/\bpenthouse\b/.test(normalized)) {
+  if (/\b(?:penthouse|penhouse)\b/.test(normalized)) {
     return "Penthouse";
   }
 
@@ -407,16 +429,26 @@ function extractRoomCodeFromMarker(
   if (!text) return "";
 
   const codeToken =
-    "(?:trệt|tret|lửng|lung|lầu\\s*\\d{1,2}|lau\\s*\\d{1,2}|tầng\\s*\\d{1,2}|tang\\s*\\d{1,2}|[A-Z]{1,3}\\.?\\d{1,4}[A-Z]?|\\d{2,4}[A-Z]?)";
+  "(?:" +
+  "trệt|tret|" +
+  "lửng|lung|" +
+  "sân\\s*thượng|san\\s*thuong|" +
+  "tầng\\s*thượng|tang\\s*thuong|" +
+  "penthouse|penhouse|" +
+  "lầu\\s*\\d{1,2}|lau\\s*\\d{1,2}|" +
+  "tầng\\s*\\d{1,2}|tang\\s*\\d{1,2}|" +
+  "[A-Z]{1,3}\\.?\\d{1,4}[A-Z]?|" +
+  "\\d{2,4}[A-Z]?" +
+  ")";
 
   const explicitPatterns = [
     new RegExp(
-      `\\b(?:mã\\s*phòng|ma\\s*phong|mã|ma|phòng|phong|room)\\s*[:\\-]?\\s*(${codeToken})\\b`,
+      `\\b(?:mã\\s*phòng|ma\\s*phong|phòng\\s*mã|phong\\s*ma|mã|ma|phòng|phong|room)\\s*[:\\-]?\\s*(${codeToken})\\b`,
       "i"
     ),
 
     new RegExp(
-      `\\b(?:trống|trong|còn\\s*trống|con\\s*trong)\\s*(?:mã|ma)?\\s*[:\\-]?\\s*(${codeToken})\\b`,
+      `\\b(?:trống|trong|còn\\s*trống|con\\s*trong)\\s*(?:(?:phòng|phong)\\s*)?(?:(?:mã|ma)\\s*)?[:\\-]?\\s*(${codeToken})\\b`,
       "i"
     ),
 
@@ -431,6 +463,42 @@ function extractRoomCodeFromMarker(
     if (match?.[1]) {
       return normalizeRoomCode(match[1]);
     }
+  }
+
+  return "";
+}
+
+function extractWardFromBuildingText(
+  input: string
+) {
+  const text = String(input || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+
+  if (!text) return "";
+
+  /*
+   * Phường số: P14, P.14, Phường 14.
+   * Chỉ nhận tối đa 2 chữ số để không nhầm P303/P202 là phường.
+   */
+  const numericMatch = text.match(
+    /(?:^|[\s,;|/()])(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(\d{1,2})(?!\d)(?=\s*(?:[,;|/)\n]|\s+-\s+|q\.?\s*\d{1,2}\b|quận\b|quan\b|$))/i
+  );
+
+  if (numericMatch?.[1]) {
+    return normalizeWard(numericMatch[1]);
+  }
+
+  /*
+   * Phường tên: P An Đông, Phường Chợ Lớn...
+   * Dừng trước quận hoặc dấu phân cách.
+   */
+  const namedMatch = text.match(
+    /(?:^|[\s,;|/()])(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*([A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4}?)(?=\s*(?:[,;|/)\n]|\s+-\s+|q\.?\s*\d{1,2}\b|quận\b|quan\b|$))/i
+  );
+
+  if (namedMatch?.[1]) {
+    return normalizeWard(namedMatch[1]);
   }
 
   return "";
@@ -461,14 +529,10 @@ function extractAddressParts(
       normalizeDistrict(districtMatch[1]);
   }
 
-  const wardMatch = rawText.match(
-    /(?:^|[\s,;|])(?:phường|phuong|p(?:\.|\b))\s*[:\-]?\s*([0-9]{1,3}|[A-Za-zÀ-ỹ][A-Za-zÀ-ỹ\s]{1,30}?)(?=\s*(?:[,;|/\n]|\s+-\s+|q\.?\s*\d|quận|quan|$))/i
-  );
-
-  if (wardMatch?.[1]) {
-    result.ward =
-      normalizeWard(wardMatch[1]);
-  }
+  result.ward =
+    extractWardFromBuildingText(
+      rawText
+    );
 
   const lines = rawText
     .split("\n")
@@ -546,20 +610,18 @@ function extractAddressParts(
   const streetSegment = segments[0] || "";
 
   if (!result.ward && segments.length > 1) {
-    const possibleWard = segments[1];
-    const possibleWardNormalized =
-      normalizeForCompare(possibleWard);
+    const possibleWard = segments[1].trim();
 
-    if (
-      possibleWardNormalized &&
-      !/^(?:q|quan)\s*\d/.test(
-        possibleWardNormalized
-      ) &&
-      !/^(?:dien|nuoc|gia|phong|ma|toa nha)/.test(
-        possibleWardNormalized
-      )
-    ) {
-      result.ward = normalizeWard(possibleWard);
+    const explicitWard = possibleWard.match(
+      /^(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(\d{1,2}|[A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4})$/i
+    );
+
+    if (explicitWard?.[1]) {
+      result.ward =
+        normalizeWard(explicitWard[1]);
+    } else if (/^\d{1,2}$/.test(possibleWard)) {
+      result.ward =
+        normalizeWard(possibleWard);
     }
   }
 
@@ -573,7 +635,7 @@ function extractAddressParts(
 
   const street = streetMatch[2]
     .replace(
-      /\b(?:p\.?|phường|phuong)\s*[:\-]?\s*(?:\d{1,3}|[A-Za-zÀ-ỹ][A-Za-zÀ-ỹ\s]{1,30})$/i,
+      /\b(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(?:\d{1,2}|[A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4})$/i,
       ""
     )
     .replace(
@@ -595,7 +657,7 @@ function extractAddressParts(
 function isRoomTypeOnlyText(
   normalized: string
 ) {
-  return /^(?:loai phong\s*[:\-]?\s*)?(?:studio|duplex|loft|penthouse|[1-9]\s*(?:pn|phong ngu|bedroom|br))$/.test(
+  return /^(?:loai phong\s*[:\-]?\s*)?(?:studio|duplex|loft|penthouse|penhouse|[1-9]\s*(?:pn|phong ngu|bedroom|br))$/.test(
     normalized
   );
 }
@@ -675,7 +737,7 @@ function looksLikeRoomMarkerText(
     );
 
   const hasRoomTypeSignal =
-    /\b(studio|duplex|loft|penthouse|[1-9]\s*(?:pn|phong ngu|bedroom|br))\b/.test(
+    /\b(studio|duplex|loft|penthouse|penhouse|[1-9]\s*(?:pn|phong ngu|bedroom|br))\b/.test(
       normalized
     );
 
@@ -688,7 +750,7 @@ function looksLikeRoomMarkerText(
    * Lầu 1 giá 8tr
    */
   const startsWithRoomCode =
-    /^(?:(?:trong|con trong)\s+)?(?:ma\s+)?(?:tret|lung|lau\s*\d{1,2}|tang\s*\d{1,2}|[a-z]{1,3}\.?\d{1,4}[a-z]?|\d{2,4}[a-z]?)\b/.test(
+    /^(?:(?:trong|con trong)\s+)?(?:ma\s+)?(?:tret|lung|san\s+thuong|tang\s+thuong|penthouse|penhouse|lau\s*\d{1,2}|tang\s*\d{1,2}|[a-z]{1,3}\.?\d{1,4}[a-z]?|\d{2,4}[a-z]?)\b/.test(
       normalized
     );
 
@@ -905,6 +967,52 @@ function extractFeeAmounts(
   return values;
 }
 
+function pickServiceFeeFromZaloText(
+  rawText: string
+): number | null {
+  const lines =
+    getCleanZaloLines(
+      rawText
+    );
+
+  const moneyToken =
+    "(?:" +
+    "\\d+\\s*(?:tr|trieu)\\d{1,3}(?:k)?\\b|" +
+    "\\d+(?:[.,]\\d+)?\\s*(?:tr|trieu|k|nghin|ngan)\\b|" +
+    "\\d{1,3}(?:[.,]\\d{3})+\\s*(?:d|dong)?\\b" +
+    ")";
+
+  const pattern = new RegExp(
+    `(?:^|[\\s,;|])(?:ph[ií]\\s*)?(?:dich\\s*vu|dv|quan\\s*ly|ql|service(?:\\s*fee)?)\\s*(?:/\\s*(?:phong|thang|nguoi))?\\s*[:\\-]?\\s*(${moneyToken})`,
+    "i"
+  );
+
+  for (const line of lines) {
+    const normalized =
+      removeVietnameseTone(line)
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const match = normalized.match(pattern);
+
+    if (!match?.[1]) {
+      continue;
+    }
+
+    const value =
+      parseFeeMoneyToken(
+        match[1]
+      );
+
+    if (value != null && value >= 0) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 type ParsedOtherFees = {
   totalValue: number | null;
   note: string;
@@ -960,7 +1068,7 @@ function pickOtherFeesFromZaloText(
      * Bảo vệ thêm, không lấy nhầm các field đã có riêng.
      */
     if (
-      /\b(phi\s*dich vu|dien|nuoc|giu xe|gui xe|parking)\b/.test(
+      /\b(phi\s*(?:dich vu|dv|quan ly|ql)|dich vu|dv|quan ly|ql|service|dien|nuoc|giu xe|gui xe|parking)\b/.test(
         normalized
       )
     ) {
@@ -1238,7 +1346,7 @@ function pickDescriptionFromRoomMarker(
          * mã P601, phòng G01, mã Trệt, mã Lầu 1...
          */
         .replace(
-          /\b(?:mã\s*phòng|ma\s*phong|mã|ma|phòng|phong|room)\s*[:\-]?\s*(?:trệt|tret|lửng|lung|lầu\s*\d{1,2}|lau\s*\d{1,2}|tầng\s*\d{1,2}|tang\s*\d{1,2}|[A-Z]{1,3}\.?\d{1,4}[A-Z]?|\d{2,4}[A-Z]?)\b/gi,
+          /\b(?:mã\s*phòng|ma\s*phong|phòng\s*mã|phong\s*ma|mã|ma|phòng|phong|room)\s*[:\-]?\s*(?:(?:trệt|tret|lửng|lung|sân\s*thượng|san\s*thuong|tầng\s*thượng|tang\s*thuong|penthouse|penhouse)\b|(?:lầu|lau|tầng|tang)\s*\d{1,2}\b|[A-Z]{1,3}\.?\d{1,4}[A-Z]?\b|\d{2,4}[A-Z]?\b)/gi,
           " "
         )
 
@@ -1247,9 +1355,9 @@ function pickDescriptionFromRoomMarker(
          * G01 giá 7tr, Lầu 1 giá 8tr, 202 giá 6tr...
          */
         .replace(
-          /^\s*(?:trệt|tret|lửng|lung|lầu\s*\d{1,2}|lau\s*\d{1,2}|tầng\s*\d{1,2}|tang\s*\d{1,2}|[A-Z]{1,3}\.?\d{1,4}[A-Z]?|\d{2,4}[A-Z]?)\s*(?=(?:[-–—:|]\s*)?(?:giá|gia|\d+(?:[.,]\d+)?\s*(?:tr|triệu|trieu|k)))/i,
-          " "
-        )
+            /^\s*(?:(?:trệt|tret|lửng|lung|sân\s*thượng|san\s*thuong|tầng\s*thượng|tang\s*thuong|penthouse|penhouse)\b|(?:lầu|lau|tầng|tang)\s*\d{1,2}\b|[A-Z]{1,3}\.?\d{1,4}[A-Z]?\b|\d{2,4}[A-Z]?\b)\s*(?=(?:[-–—:|]\s*)?(?:giá|gia|\d+(?:[.,]\d+)?\s*(?:tr|triệu|trieu|k)))/i,
+            " "
+          )
 
         /*
          * Bỏ giá có chữ "giá".
@@ -1274,7 +1382,7 @@ function pickDescriptionFromRoomMarker(
          * thì phần nội dung đó vẫn được giữ lại.
          */
         .replace(
-          /\b(?:studio|duplex|loft|penthouse|[1-9]\s*(?:pn|phòng\s*ngủ|phong\s*ngu|bedroom|br))\b/gi,
+          /\b(?:studio|duplex|loft|penthouse|penhouse|[1-9]\s*(?:pn|phòng\s*ngủ|phong\s*ngu|bedroom|br))\b/gi,
           " "
         )
 
@@ -1398,7 +1506,7 @@ function isNonPolicySectionStart(
     /^(dia chi|so nha|toa nha|quy mo|ket cau)/.test(
       cleaned
     ) ||
-    /^(dien|nuoc|dich vu|service)/.test(
+    /^(dien|nuoc|dich vu|dv|quan ly|ql|phi dich vu|phi dv|phi quan ly|phi ql|service)/.test(
       cleaned
     ) ||
     /^(xe|giu xe|gui xe|ham xe)/.test(
@@ -1714,7 +1822,7 @@ if (otherAmenities) {
  * nếu không regex sẽ chỉ lấy "3tr".
  */
 const explicitPriceMatch =
-  text.match(
+  markerText.match(
     /(?:giá|gia)\s*[:\-]?\s*((?:\d+\s*(?:tr|triệu|trieu)\d{1,3}(?:k)?\b)|(?:\d+(?:[.,]\d+)?\s*(?:tr|triệu|trieu|k|nghìn|ngan|ngàn)\b)|(?:\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:đ|d|đồng|dong)?))/i
   );
 
@@ -1829,10 +1937,17 @@ const explicitPriceMatch =
     sourceFieldMap.water_fee_value = "Tin Zalo";
   }
 
-  const serviceMatch = text.match(/(?:dịch vụ|dich vu|service)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|ngàn)?/i);
-  if (serviceMatch?.[0]) {
-    detailPayload.service_fee_value = normalizeMoneyToVnd(serviceMatch[0]);
-    sourceFieldMap.service_fee_value = "Tin Zalo";
+  const serviceFee =
+    pickServiceFeeFromZaloText(
+      houseInfoText
+    );
+
+  if (serviceFee != null) {
+    detailPayload.service_fee_value =
+      serviceFee;
+
+    sourceFieldMap.service_fee_value =
+      "Tin Zalo";
   }
 
   const parkingMatch = text.match(/(?:xe|giữ xe|giu xe|parking)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|ngàn)?/i);
@@ -2172,6 +2287,7 @@ if (petDenied) {
 
   detailPayload.electric_fee_value,
   detailPayload.water_fee_value,
+  detailPayload.service_fee_value,
 
   detailPayload.other_fee_value,
   detailPayload.other_fee_note,

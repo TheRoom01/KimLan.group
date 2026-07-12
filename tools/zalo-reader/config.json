@@ -1,38 +1,31 @@
 {
   "webBaseUrl": "https://canhodichvu.vercel.app",
   "internalSecret": "",
-  "scanIntervalMs": 900000,
-
- "networkDebug": false,
-"networkDebugOnly": false,
-
-"debugRetentionDays": 7,
-"debugMaxSessions": 10,
-
-"indexedDbDebug": true,
-"indexedDbDebugOnly": false,
-"indexedDbSampleLimit": 5,
-"indexedDbRecordMaxStringChars": 4000,
-
-"indexedDbGroupExport": true,
-"indexedDbGroupScanLimit": 30000,
-"indexedDbGroupMessageLimit": 2000,
-"indexedDbHistoryLookbackMs": 86400000,
-
-"indexedDbGroupContextBeforeMs": 86400000,
-"indexedDbGroupContextAfterMs": 3600000,
-
-"indexedDbRoomPreview": true,
-"indexedDbRoomPreviewMaxGapMs": 600000,
-
-"indexedDbImportEnabled": true,
-
-"indexedDbScrollStepRatio": 0.7,
-"indexedDbScrollWaitMs": 800,
-"indexedDbScrollSettleMs": 1200,
-"indexedDbScrollStepsPerBatch": 1,
-"indexedDbScrollMaxBatches": 20,
-"indexedDbStopOnKnownRoom": true,
+  "scanIntervalMs": 600000,
+  "networkDebug": false,
+  "networkDebugOnly": false,
+  "debugRetentionDays": 7,
+  "debugMaxSessions": 10,
+  "indexedDbDebug": false,
+  "indexedDbDebugOnly": false,
+  "indexedDbSampleLimit": 5,
+  "indexedDbRecordMaxStringChars": 4000,
+  "indexedDbGroupExport": true,
+  "indexedDbGroupScanLimit": 30000,
+  "indexedDbGroupMessageLimit": 5000,
+  "indexedDbHistoryLookbackMs": 86400000,
+  "indexedDbGroupContextBeforeMs": 86400000,
+  "indexedDbGroupContextAfterMs": 3600000,
+  "indexedDbRoomPreview": true,
+  "indexedDbRoomPreviewMaxGapMs": 600000,
+  "indexedDbImportEnabled": true,
+  "indexedDbImportLimit": 20,
+  "indexedDbScrollStepRatio": 0.7,
+  "indexedDbScrollWaitMs": 800,
+  "indexedDbScrollSettleMs": 1200,
+  "indexedDbScrollStepsPerBatch": 1,
+  "indexedDbScrollMaxBatches": 20,
+  "indexedDbStopOnKnownRoom": true,
   "networkCaptureKeywords": [
     "message",
     "messages",
@@ -51,18 +44,39 @@
     "messageid",
     "climsgid"
   ],
-
   "maxMessagesPerGroup": 5000,
   "maxImagesPerBatch": 100,
   "maxFollowingImageMessages": 30,
-
   "groups": [
     {
       "key": "Top-Du-An-Quan-5",
       "name": "Top Dự Án Quận 5"
+    },
+    {
+      "key": "Tay-Nam-Top-Du-An-Duoi-5tr",
+      "name": "TÂY NAM - TOP DỰ ÁN DƯỚI 5tr"
+    },
+    {
+      "key": "Top-Du-An-Quan-6-Tay-Cho-Lon",
+      "name": "TOP DỰ ÁN QUẬN 6 - TÂY CHỢ LỚN"
+    },
+    {
+      "key": "Tay-Nam-Top-Du-An-Tren-5tr",
+      "name": "TÂY NAM - TOP DỰ ÁN TRÊN 5tr"
+    },
+    {
+      "key": "Top-Du-An-Quan-1",
+      "name": "TOP DỰ ÁN QUẬN 1"
+    },
+    {
+      "key": "Top-Du-An-Quan-3",
+      "name": "TOP DỰ ÁN QUẬN 3"
+    },
+    {
+      "key": "Top-Du-An-Quan-10-Tren-6tr",
+      "name": "TOP DỰ ÁN QUẬN 10 TRÊN 6TR"
     }
   ],
-
   "roomTextKeywords": [
     "phòng",
     "phong",
@@ -75,7 +89,6 @@
     "quận",
     "quan"
   ],
-
   "selectors": {
     "searchBox": "#contact-search-input",
     "messageItems": "[role='row'], .chat-message, .msg-item, div[class*='message']",
