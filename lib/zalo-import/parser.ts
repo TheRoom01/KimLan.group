@@ -39,6 +39,9 @@ export function normalizeDistrict(input?: string | null) {
     "tan phu": "Tân Phú",
     "thu duc": "Thủ Đức",
     "binh tan": "Bình Tân",
+    "binh chanh": "Bình Chánh",
+    "huyen binh chanh": "Bình Chánh",
+    "quan binh chanh": "Bình Chánh",
   };
 
   return map[s] || raw;
@@ -64,23 +67,44 @@ export function normalizeWard(input?: string | null) {
   return cleaned;
 }
 
-export function normalizeRoomCode(input?: string | null) {
-  const raw = String(input || "").trim();
+export function normalizeRoomCode(
+  input?: string | null
+) {
+  const raw =
+    String(input || "").trim();
+
   if (!raw) return "";
 
   const withoutLabel = raw
+    /*
+     * "P." có dấu chấm thường là nhãn viết tắt của "Phòng":
+     * P. G01 → G01
+     * P. 301 → 301
+     *
+     * Không xóa P trong P1/P2/P301 vì đó có thể là mã thật.
+     */
+    .replace(
+      /^\s*p\s*\.\s*(?=[a-z0-9])/i,
+      ""
+    )
     .replace(
       /\b(?:mã\s*phòng|ma\s*phong|phòng\s*mã|phong\s*ma|phòng|phong|room|mã|ma)\b/gi,
       " "
     )
-    .replace(/^[\s:|/\-–—]+|[\s:|/\-–—]+$/g, "")
+    .replace(
+      /^[\s:|/\-–—]+|[\s:|/\-–—]+$/g,
+      ""
+    )
     .replace(/\s+/g, " ")
     .trim();
 
-  const normalized = normalizeForCompare(withoutLabel)
-    .replace(/[._/\-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const normalized =
+    normalizeForCompare(
+      withoutLabel
+    )
+      .replace(/[._/\-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
   if (
     /^(?:tret|tang tret|ground|ground floor)$/.test(
@@ -106,20 +130,32 @@ export function normalizeRoomCode(input?: string | null) {
     return "Sân thượng";
   }
 
-  if (/^(?:penthouse|penhouse)$/.test(normalized)) {
+  if (
+    /^(?:penthouse|penhouse)$/.test(
+      normalized
+    )
+  ) {
     return "Penthouse";
   }
 
-  const floorMatch = normalized.match(
-    /^(?:lau|tang|floor)\s*(\d{1,2})$/
-  );
+  const floorMatch =
+    normalized.match(
+      /^(?:lau|tang|floor)\s*(\d{1,2})$/
+    );
 
   if (floorMatch?.[1]) {
-    return `L${Number(floorMatch[1])}`;
+    return `L${Number(
+      floorMatch[1]
+    )}`;
   }
 
-  return removeVietnameseTone(withoutLabel)
-    .replace(/[\s:._/\-–—]+/g, "")
+  return removeVietnameseTone(
+    withoutLabel
+  )
+    .replace(
+      /[\s:._/\-–—]+/g,
+      ""
+    )
     .toUpperCase();
 }
 
@@ -362,15 +398,81 @@ export function normalizeMoneyToVnd(
   return Math.round(numeric);
 }
 
+function normalizeKnownStreetName(
+  input: string
+) {
+  const compact =
+    normalizeForCompare(
+      input
+    )
+      .replace(/[.\s_\-]+/g, "")
+      .trim();
+
+  /*
+   * Chuẩn hóa các cách viết tắt thường gặp của
+   * đường Cách Mạng Tháng 8.
+   *
+   * Hỗ trợ cả CMT8 và CHT8 vì dữ liệu Zalo
+   * có thể bị gõ sai hoặc viết tắt không đồng nhất.
+   */
+  const cachMangThang8Aliases =
+    new Set([
+      "cmt8",
+      "cmt08",
+      "cht8",
+      "cht08",
+      "cachmangt8",
+      "cachmangthang8",
+      "cachmangthangtam",
+    ]);
+
+  if (
+    cachMangThang8Aliases.has(
+      compact
+    )
+  ) {
+    return "Cách Mạng Tháng 8";
+  }
+
+  return "";
+}
+
 function titleCaseStreet(input: string) {
-  const keepUpper = new Set(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+  const knownStreetName =
+    normalizeKnownStreetName(
+      input
+    );
+
+  if (knownStreetName) {
+    return knownStreetName;
+  }
+
+  const keepUpper = new Set([
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+  ]);
+
   return String(input || "")
     .trim()
     .replace(/\s+/g, " ")
     .split(" ")
     .map((word) => {
-      if (keepUpper.has(word)) return word;
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      if (keepUpper.has(word)) {
+        return word;
+      }
+
+      return (
+        word.charAt(0).toUpperCase() +
+        word.slice(1).toLowerCase()
+      );
     })
     .join(" ");
 }
@@ -422,24 +524,48 @@ function normalizeRoomTypeFromText(
 function extractRoomCodeFromMarker(
   markerText: string
 ) {
-  const text = String(markerText || "")
-    .replace(/\r\n?/g, "\n")
-    .trim();
+  const text =
+    String(markerText || "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
 
   if (!text) return "";
 
+  const baseCode =
+    "(?:" +
+    "[A-Z]{1,3}\\s*\\.?\\s*\\d{1,4}[A-Z]?|" +
+    "\\d{2,4}[A-Z]?" +
+    ")";
+
   const codeToken =
-  "(?:" +
-  "trệt|tret|" +
-  "lửng|lung|" +
-  "sân\\s*thượng|san\\s*thuong|" +
-  "tầng\\s*thượng|tang\\s*thuong|" +
-  "penthouse|penhouse|" +
-  "lầu\\s*\\d{1,2}|lau\\s*\\d{1,2}|" +
-  "tầng\\s*\\d{1,2}|tang\\s*\\d{1,2}|" +
-  "[A-Z]{1,3}\\.?\\d{1,4}[A-Z]?|" +
-  "\\d{2,4}[A-Z]?" +
-  ")";
+    "(?:" +
+    "trệt|tret|" +
+    "lửng|lung|" +
+    "sân\\s*thượng|san\\s*thuong|" +
+    "tầng\\s*thượng|tang\\s*thuong|" +
+    "penthouse|penhouse|" +
+    "lầu\\s*\\d{1,2}|lau\\s*\\d{1,2}|" +
+    "tầng\\s*\\d{1,2}|tang\\s*\\d{1,2}|" +
+    "(?:P\\s*\\.\\s*)?" +
+    baseCode +
+    ")";
+
+  const priceToken =
+    "(?:" +
+    "giá|gia|" +
+    "\\d+(?:[.,]\\d+)?\\s*(?:tr|triệu|trieu|k)|" +
+    "\\d{1,3}(?:[.,]\\d{3})+" +
+    ")";
+
+  const floorToken =
+    "(?:" +
+    "trệt|tret|" +
+    "lửng|lung|" +
+    "sân\\s*thượng|san\\s*thuong|" +
+    "tầng\\s*thượng|tang\\s*thuong|" +
+    "lầu\\s*\\d{1,2}|lau\\s*\\d{1,2}|" +
+    "tầng\\s*\\d{1,2}|tang\\s*\\d{1,2}" +
+    ")";
 
   const explicitPatterns = [
     new RegExp(
@@ -447,25 +573,370 @@ function extractRoomCodeFromMarker(
       "i"
     ),
 
+    /*
+     * Trống sẵn 301 giá 3tr
+     * Còn trống P2 giá 5tr
+     */
     new RegExp(
-      `\\b(?:trống|trong|còn\\s*trống|con\\s*trong)\\s*(?:(?:phòng|phong)\\s*)?(?:(?:mã|ma)\\s*)?[:\\-]?\\s*(${codeToken})\\b`,
+      `\\b(?:trống|trong|còn\\s*trống|con\\s*trong)\\s*(?:sẵn|san)?\\s*(?:(?:phòng|phong)\\s*)?(?:(?:mã|ma)\\s*)?[:\\-]?\\s*(${codeToken})\\b`,
       "i"
     ),
 
+    /*
+     * Mã đứng đầu nhưng giữa mã và giá có mô tả:
+     * P. G01 (CS+Duplex+2 giường ngủ): 10.000.000đ
+     */
     new RegExp(
-      `^\\s*(${codeToken})\\s*(?=(?:[-–—:|]\\s*)?(?:giá|gia|\\d+(?:[.,]\\d+)?\\s*(?:tr|triệu|trieu|k)))`,
+      `^\\s*(${codeToken})(?!\\s*[/])(?=[\\s\\S]{0,140}${priceToken})`,
+      "i"
+    ),
+
+    /*
+     * Giá đứng trước mã tầng:
+     * Giá 13tr ... Tầng 3
+     */
+    new RegExp(
+      `${priceToken}[\\s\\S]{0,100}\\b(${floorToken})\\b`,
       "i"
     ),
   ];
 
   for (const pattern of explicitPatterns) {
-    const match = text.match(pattern);
+    const match =
+      text.match(pattern);
+
     if (match?.[1]) {
-      return normalizeRoomCode(match[1]);
+      return normalizeRoomCode(
+        match[1]
+      );
     }
   }
 
   return "";
+}
+
+
+const MIN_ROOM_PRICE_VND =
+  2_000_000;
+
+const MAX_ROOM_PRICE_VND =
+  50_000_000;
+
+/**
+ * Chỉ dùng giới hạn này cho GIÁ THUÊ PHÒNG.
+ *
+ * Không áp dụng cho:
+ * - điện;
+ * - nước;
+ * - dịch vụ;
+ * - giữ xe;
+ * - phí khác.
+ *
+ * Các khoản phí nhỏ như 200k vẫn được parser đọc
+ * vào field phí tương ứng, nhưng không thể trở thành
+ * room_payload.price.
+ */
+function isValidRoomPriceVnd(
+  value: number | null
+) {
+  return (
+    value != null &&
+    Number.isFinite(value) &&
+    value >=
+      MIN_ROOM_PRICE_VND &&
+    value <=
+      MAX_ROOM_PRICE_VND
+  );
+}
+
+const ROOM_PRICE_TOKEN_SOURCE =
+  "(?:" +
+  /*
+   * 6tr2, 6tr200, 6 triệu 2...
+   * Phải đứng trước dạng 6tr.
+   */
+  "\\d+\\s*(?:tr|triệu|trieu)\\d{1,3}(?:k)?\\b|" +
+
+  /*
+   * 6tr, 6,2tr, 6.2 triệu.
+   */
+  "\\d+(?:[.,]\\d+)?\\s*(?:tr|triệu|trieu)\\b|" +
+
+  /*
+   * 6200k.
+   * 200k cũng được nhận thành token nhưng sẽ bị
+   * loại bởi khoảng giá 2-50 triệu.
+   */
+  "\\d+(?:[.,]\\d+)?\\s*(?:k|nghìn|ngan|ngàn)\\b|" +
+
+  /*
+   * 6.200.000đ, 6,200,000.
+   */
+  "\\d{1,3}(?:[.,]\\d{3}){1,2}\\s*(?:đ|d|đồng|dong)?\\b|" +
+
+  /*
+   * 6200000đ.
+   */
+  "\\d{7,8}\\s*(?:đ|d|đồng|dong)\\b" +
+  ")";
+
+function getRoomPriceTokens(
+  input: string
+) {
+  const pattern =
+    new RegExp(
+      ROOM_PRICE_TOKEN_SOURCE,
+      "gi"
+    );
+
+  return Array.from(
+    String(input || "")
+      .matchAll(pattern)
+  )
+    .map((match) =>
+      String(
+        match[0] || ""
+      ).trim()
+    )
+    .filter(Boolean);
+}
+
+function parseValidRoomPriceToken(
+  token: string
+) {
+  const value =
+    normalizeMoneyToVnd(
+      token
+    );
+
+  return isValidRoomPriceVnd(
+    value
+  )
+    ? value
+    : null;
+}
+
+function isBlockedRoomPriceLine(
+  input: string
+) {
+  const normalized =
+    normalizeForCompare(
+      input
+    );
+
+  return /^(?:phi|phi dich vu|dich vu|dien|nuoc|xe|giu xe|gui xe|parking|coc|coc toi thieu|hoa hong|hh|commission|giam gia|khuyen mai|thuong nong)\b/.test(
+    normalized
+  );
+}
+
+function isLikelyRoomPriceLine(
+  input: string
+) {
+  const normalized =
+    normalizeForCompare(
+      input
+    );
+
+  if (
+    !normalized ||
+    isBlockedRoomPriceLine(
+      input
+    )
+  ) {
+    return false;
+  }
+
+  const hasVacancy =
+    /\b(?:trong|trong san|phong trong|con trong|dang trong|available)\b/.test(
+      normalized
+    );
+
+  const startsWithRoomCode =
+    /^(?:(?:trong|con trong|phong trong)\s+)?(?:phong\s+|ma\s+|ma phong\s+|room\s+)?(?:tret|lung|san\s+thuong|tang\s+thuong|penthouse|penhouse|lau\s*\d{1,2}|tang\s*\d{1,2}|[a-z]{1,3}\.?\d{1,4}[a-z]?|\d{2,4}[a-z]?)\b/.test(
+      normalized
+    );
+
+  const hasRoomLabel =
+    /\b(?:ma phong|phong|room)\b/.test(
+      normalized
+    );
+
+  return (
+    hasVacancy ||
+    startsWithRoomCode ||
+    hasRoomLabel
+  );
+}
+
+function pickValidRoomPriceFromLine(
+  line: string
+) {
+  if (
+    !line ||
+    isBlockedRoomPriceLine(
+      line
+    )
+  ) {
+    return null;
+  }
+
+  /*
+   * Ưu tiên token ngay sau nhãn "giá".
+   */
+  const explicitPattern =
+    new RegExp(
+      `(?:giá\\s*thuê|gia\\s*thue|giá\\s*phòng|gia\\s*phong|giá|gia)\\s*[:\\-]?\\s*(${ROOM_PRICE_TOKEN_SOURCE})`,
+      "i"
+    );
+
+  const explicitMatch =
+    line.match(
+      explicitPattern
+    );
+
+  if (
+    explicitMatch?.[1]
+  ) {
+    const explicitValue =
+      parseValidRoomPriceToken(
+        explicitMatch[1]
+      );
+
+    if (
+      explicitValue != null
+    ) {
+      return explicitValue;
+    }
+  }
+
+  /*
+   * Sau đó duyệt tất cả token trên chính dòng phòng.
+   *
+   * Ví dụ:
+   * 103: 6tr2 15/7 trống
+   *
+   * Chỉ "6tr2" là token tiền.
+   * "15/7" là ngày và không đi qua regex tiền.
+   */
+  for (
+    const token of
+    getRoomPriceTokens(line)
+  ) {
+    const value =
+      parseValidRoomPriceToken(
+        token
+      );
+
+    if (
+      value != null
+    ) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function extractRoomPriceFromMarker(
+  markerText: string
+) {
+  const lines =
+    getCleanZaloLines(
+      markerText
+    );
+
+  /*
+   * Vòng 1:
+   * Chỉ đọc những dòng có tín hiệu phòng/mã phòng/trống.
+   *
+   * Đây là vòng quan trọng nhất để không lấy:
+   * - Cọc 2tr;
+   * - Dịch vụ 200k/phòng;
+   * - Giảm giá 300k.
+   */
+  for (const line of lines) {
+    if (
+      !isLikelyRoomPriceLine(
+        line
+      )
+    ) {
+      continue;
+    }
+
+    const value =
+      pickValidRoomPriceFromLine(
+        line
+      );
+
+    if (
+      value != null
+    ) {
+      return value;
+    }
+  }
+
+  /*
+   * Vòng 2:
+   * Hỗ trợ marker được tách riêng:
+   *
+   * Giá: 6tr2
+   *
+   * nhưng vẫn bỏ các section phí/cọc/hoa hồng.
+   */
+  for (const line of lines) {
+    if (
+      isBlockedRoomPriceLine(
+        line
+      )
+    ) {
+      continue;
+    }
+
+    const normalized =
+      normalizeForCompare(
+        line
+      );
+
+    if (
+      !/^(?:gia|gia thue|gia phong)\b/.test(
+        normalized
+      )
+    ) {
+      continue;
+    }
+
+    const value =
+      pickValidRoomPriceFromLine(
+        line
+      );
+
+    if (
+      value != null
+    ) {
+      return value;
+    }
+  }
+
+  /*
+   * Vòng 3:
+   * Fallback cuối cho marker rất ngắn chỉ có token giá.
+   *
+   * Vẫn bắt buộc giá trong khoảng 2-50 triệu.
+   */
+  for (const line of lines) {
+    const value =
+      pickValidRoomPriceFromLine(
+        line
+      );
+
+    if (
+      value != null
+    ) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function extractWardFromBuildingText(
@@ -507,26 +978,50 @@ function extractWardFromBuildingText(
 function extractAddressParts(
   input: string
 ): ExtractedAddressParts {
-  const rawText = String(input || "")
-    .replace(/\r\n?/g, "\n")
-    .trim();
+  const rawText =
+    String(input || "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
 
-  const result: ExtractedAddressParts = {
-    houseNumber: "",
-    address: "",
-    ward: "",
-    district: "",
-  };
+  const result:
+    ExtractedAddressParts = {
+      houseNumber: "",
+      address: "",
+      ward: "",
+      district: "",
+    };
 
   if (!rawText) return result;
 
-  const districtMatch = rawText.match(
-    /\b(?:q\.?|quận|quan)\s*[:\-]?\s*(\d{1,2}|bình thạnh|binh thanh|gò vấp|go vap|phú nhuận|phu nhuan|tân bình|tan binh|tân phú|tan phu|thủ đức|thu duc|bình tân|binh tan)\b/i
-  );
+  const districtSource =
+    "(?:" +
+    "\\d{1,2}|" +
+    "bình thạnh|binh thanh|" +
+    "gò vấp|go vap|" +
+    "phú nhuận|phu nhuan|" +
+    "tân bình|tan binh|" +
+    "tân phú|tan phu|" +
+    "thủ đức|thu duc|" +
+    "bình chánh|binh chanh|" +
+    "bình tân|binh tan" +
+    ")";
+
+  const districtPattern =
+    new RegExp(
+      `\\b(?:q\\.?|quận|quan|huyện|huyen)\\s*[:\\-]?\\s*(${districtSource})\\b`,
+      "i"
+    );
+
+  const districtMatch =
+    rawText.match(
+      districtPattern
+    );
 
   if (districtMatch?.[1]) {
     result.district =
-      normalizeDistrict(districtMatch[1]);
+      normalizeDistrict(
+        districtMatch[1]
+      );
   }
 
   result.ward =
@@ -534,121 +1029,234 @@ function extractAddressParts(
       rawText
     );
 
-  const lines = rawText
-    .split("\n")
-    .map((line) => cleanListPrefix(line))
-    .filter(Boolean);
+  const lines =
+    rawText
+      .split("\n")
+      .map((line) =>
+        cleanListPrefix(line)
+      )
+      .filter(Boolean);
 
-  let addressCandidate = "";
+  function parseAddressCandidate(
+    inputCandidate: string
+  ) {
+    const cleaned =
+      String(
+        inputCandidate || ""
+      )
+        .replace(
+          districtPattern,
+          ""
+        )
+        .replace(
+          /\b(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(?:\d{1,2}|[A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4})\b.*$/i,
+          ""
+        )
+        .replace(
+          /\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|phòng|phong|room|giá|gia|trống|trong)\b.*$/i,
+          ""
+        )
+        .replace(
+          /[\s,:;|\-–—]+$/g,
+          ""
+        )
+        .replace(/\s+/g, " ")
+        .trim();
 
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index];
-    const normalized = normalizeForCompare(line);
+    const streetMatch =
+      cleaned.match(
+        /^(\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*)(?:\s+)([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ0-9.'\s-]{1,100})$/i
+      );
 
     if (
-      /^(?:dia chi(?: du an)?|vi tri|dc)\b/.test(
+      !streetMatch?.[1] ||
+      !streetMatch?.[2]
+    ) {
+      return false;
+    }
+
+    const street =
+      streetMatch[2].trim();
+
+    if (street.length < 2) {
+      return false;
+    }
+
+    result.houseNumber =
+      streetMatch[1].trim();
+
+    result.address =
+      titleCaseStreet(street);
+
+    return true;
+  }
+
+  /*
+   * Ưu tiên nhãn rõ ràng:
+   * Địa chỉ: 553 Lê Văn Thọ, P14, Q Gò Vấp
+   */
+  for (
+    let index = 0;
+    index < lines.length;
+    index++
+  ) {
+    const line = lines[index];
+
+    const normalized =
+      normalizeForCompare(line);
+
+    if (
+      !/^(?:dia chi(?: du an)?|vi tri|dc)\b/.test(
         normalized
       )
     ) {
-      const afterLabel = line
+      continue;
+    }
+
+    const afterLabel =
+      line
         .replace(
           /^(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]?\s*/i,
           ""
         )
         .trim();
 
+    if (
+      parseAddressCandidate(
+        afterLabel
+      )
+    ) {
+      return result;
+    }
+
+    for (
+      let nextIndex =
+        index + 1;
+      nextIndex <
+        Math.min(
+          lines.length,
+          index + 4
+        );
+      nextIndex++
+    ) {
       if (
-        /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*\s+\S+/.test(
-          afterLabel
+        parseAddressCandidate(
+          lines[nextIndex]
         )
       ) {
-        addressCandidate = afterLabel;
-        break;
+        return result;
       }
-
-      for (
-        let nextIndex = index + 1;
-        nextIndex < Math.min(lines.length, index + 4);
-        nextIndex++
-      ) {
-        if (
-          /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*\s+\S+/.test(
-            lines[nextIndex]
-          )
-        ) {
-          addressCandidate = lines[nextIndex];
-          break;
-        }
-      }
-
-      if (addressCandidate) break;
     }
   }
 
-  if (!addressCandidate) {
-    addressCandidate =
-      lines.find((line) =>
-        /^\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*\s+[A-Za-zÀ-ỹ]/.test(
-          line
-        )
-      ) || "";
-  }
-
-  if (!addressCandidate) {
-    return result;
-  }
-
-  const segments = addressCandidate
-    .replace(
-      /\b(?:q\.?|quận|quan)\s*[:\-]?\s*(?:\d{1,2}|bình thạnh|binh thanh|gò vấp|go vap|phú nhuận|phu nhuan|tân bình|tan binh|tân phú|tan phu|thủ đức|thu duc|bình tân|binh tan)\b.*$/i,
-      ""
-    )
-    .split(/\s*(?:,|;|\||\s+-\s+)\s*/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  const streetSegment = segments[0] || "";
-
-  if (!result.ward && segments.length > 1) {
-    const possibleWard = segments[1].trim();
-
-    const explicitWard = possibleWard.match(
-      /^(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(\d{1,2}|[A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4})$/i
-    );
-
-    if (explicitWard?.[1]) {
-      result.ward =
-        normalizeWard(explicitWard[1]);
-    } else if (/^\d{1,2}$/.test(possibleWard)) {
-      result.ward =
-        normalizeWard(possibleWard);
+  /*
+   * Dòng đầy đủ:
+   * 413/54 Lê Văn Sỹ, Phường Nhiêu Lộc - Hotline...
+   */
+  for (const line of lines) {
+    if (
+      /^\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*\s+[A-Za-zÀ-ỹ]/.test(
+        line
+      ) &&
+      parseAddressCandidate(line)
+    ) {
+      return result;
     }
   }
 
-  const streetMatch = streetSegment.match(
-    /^(\d+[A-Za-z]?(?:\/\d+[A-Za-z]?)*)(?:\s+)(.+)$/i
-  );
+  /*
+   * Fallback đọc ngược từ Q/Quận.
+   *
+   * Hỗ trợ:
+   * 553, Lê Văn Thọ, P14, Q Gò Vấp
+   * 553\nLê Văn Thọ\nP14\nQ Gò Vấp
+   * 27 Nguyễn Văn Mai, Quận 3
+   */
+  if (
+    districtMatch &&
+    typeof districtMatch.index ===
+      "number"
+  ) {
+    const textBeforeDistrict =
+      rawText.slice(
+        Math.max(
+          0,
+          districtMatch.index - 260
+        ),
+        districtMatch.index
+      );
 
-  if (!streetMatch?.[1] || !streetMatch?.[2]) {
-    return result;
-  }
+    const segments =
+      textBeforeDistrict
+        .split(
+          /\s*(?:,|;|\||\n|\s+-\s+)\s*/
+        )
+        .map((part) =>
+          cleanListPrefix(part)
+        )
+        .filter(Boolean);
 
-  const street = streetMatch[2]
-    .replace(
-      /\b(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(?:\d{1,2}|[A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4})$/i,
-      ""
-    )
-    .replace(
-      /\b(?:phòng|phong|room|giá|gia|trống|trong|còn|con)\b.*$/i,
-      ""
-    )
-    .replace(/[,:;|\-–—]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    /* Bỏ segment phường ngay trước quận. */
+    while (
+      segments.length > 0 &&
+      /^(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*/i.test(
+        segments[
+          segments.length - 1
+        ]
+      )
+    ) {
+      segments.pop();
+    }
 
-  if (street.length >= 2) {
-    result.houseNumber = streetMatch[1].trim();
-    result.address = titleCaseStreet(street);
+    for (
+      let index =
+        segments.length - 1;
+      index >= 0;
+      index--
+    ) {
+      if (
+        parseAddressCandidate(
+          segments[index]
+        )
+      ) {
+        return result;
+      }
+
+      if (
+        index > 0 &&
+        /^\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*$/.test(
+          segments[index - 1]
+        ) &&
+        /^[A-Za-zÀ-ỹ]/.test(
+          segments[index]
+        ) &&
+        parseAddressCandidate(
+          `${segments[index - 1]} ${segments[index]}`
+        )
+      ) {
+        return result;
+      }
+    }
+
+    const flattened =
+      textBeforeDistrict
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const addressBeforeDistrict =
+      flattened.match(
+        /(\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*)(?:\s+)([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ0-9.'\s-]{1,100}?)(?=\s*(?:,|;|\||-)?\s*(?:phường|phuong|p\.?\s*\d|q\.?|quận|quan)\b)/i
+      );
+
+    if (
+      addressBeforeDistrict?.[1] &&
+      addressBeforeDistrict?.[2] &&
+      parseAddressCandidate(
+        `${addressBeforeDistrict[1]} ${addressBeforeDistrict[2]}`
+      )
+    ) {
+      return result;
+    }
   }
 
   return result;
@@ -741,38 +1349,41 @@ function looksLikeRoomMarkerText(
       normalized
     );
 
-  /*
-   * Hỗ trợ marker không có chữ "phòng":
-   *
-   * 203 giá 8tr
-   * G001 giá 8tr
-   * Trệt giá 9tr
-   * Lầu 1 giá 8tr
-   */
+  const roomCodeToken =
+    "(?:" +
+    "tret|lung|" +
+    "san\\s+thuong|tang\\s+thuong|" +
+    "penthouse|penhouse|" +
+    "lau\\s*\\d{1,2}|tang\\s*\\d{1,2}|" +
+    "(?:p\\s*\\.\\s*)?[a-z]{0,3}\\s*\\.?\\s*\\d{1,4}[a-z]?|" +
+    "\\d{2,4}[a-z]?" +
+    ")";
+
   const startsWithRoomCode =
-    /^(?:(?:trong|con trong)\s+)?(?:ma\s+)?(?:tret|lung|san\s+thuong|tang\s+thuong|penthouse|penhouse|lau\s*\d{1,2}|tang\s*\d{1,2}|[a-z]{1,3}\.?\d{1,4}[a-z]?|\d{2,4}[a-z]?)\b/.test(
+    !/^\d+[a-z]?(?:\/\d+[a-z]?)+\b/.test(
+      normalized
+    ) &&
+    new RegExp(
+      `^(?:(?:trong|con\\s+trong)\\s+)?(?:ma\\s+)?${roomCodeToken}\\b`,
+      "i"
+    ).test(normalized);
+
+  const hasFloorCode =
+    /\b(?:tret|lung|san\s+thuong|tang\s+thuong|lau\s*\d{1,2}|tang\s*\d{1,2})\b/.test(
       normalized
     );
 
   const hasPrice =
-    /\b(?:gia|gia thue)\s*[:\-]?\s*\d/.test(
-      normalized
-    ) ||
-    /\b\d+\s*(?:tr|trieu)\d{0,3}\b/.test(
-      normalized
-    ) ||
-    /\b\d+(?:[.,]\d+)?\s*(?:k|nghin|ngan)\b/.test(
-      normalized
-    ) ||
-    /\b\d{1,3}(?:[.,]\d{3})+\s*(?:d|dong)?\b/.test(
-      normalized
-    );
+    extractRoomPriceFromMarker(
+      input
+    ) != null;
 
   return (
     (
       hasRoomSignal ||
       startsWithRoomCode ||
-      hasRoomTypeSignal
+      hasRoomTypeSignal ||
+      hasFloorCode
     ) &&
     hasPrice
   );
@@ -967,6 +1578,25 @@ function extractFeeAmounts(
   return values;
 }
 
+const MIN_SERVICE_FEE_VND =
+  100_000;
+
+const MAX_SERVICE_FEE_VND =
+  600_000;
+
+function isValidServiceFeeVnd(
+  value: number | null
+) {
+  return (
+    value != null &&
+    Number.isFinite(value) &&
+    value >=
+      MIN_SERVICE_FEE_VND &&
+    value <=
+      MAX_SERVICE_FEE_VND
+  );
+}
+
 function pickServiceFeeFromZaloText(
   rawText: string
 ): number | null {
@@ -979,11 +1609,43 @@ function pickServiceFeeFromZaloText(
     "(?:" +
     "\\d+\\s*(?:tr|trieu)\\d{1,3}(?:k)?\\b|" +
     "\\d+(?:[.,]\\d+)?\\s*(?:tr|trieu|k|nghin|ngan)\\b|" +
-    "\\d{1,3}(?:[.,]\\d{3})+\\s*(?:d|dong)?\\b" +
+    "\\d{1,3}(?:[.,]\\d{3})+\\s*(?:d|dong)?\\b|" +
+    "\\d{5,6}\\s*(?:d|dong)?\\b" +
     ")";
 
+  /*
+   * Nhận các nhãn thực tế thường xuất hiện trong tin Zalo:
+   *
+   * - Phí quản lý / Quản lý
+   * - Qly / QL
+   * - Phí dịch vụ / Dịch vụ
+   * - Phí DV / DV
+   * - Service fee
+   *
+   * Cho phép có thêm từ "chung", "tòa nhà" hoặc đơn vị
+   * trước số tiền, ví dụ: "QLy chung 200k/p".
+   */
+  const serviceLabel =
+    "(?:" +
+    "(?:phi\\s*)?" +
+    "(?:" +
+    "dich\\s*vu|" +
+    "dv|" +
+    "quan\\s*ly|" +
+    "qly|" +
+    "ql|" +
+    "service(?:\\s*fee)?" +
+    ")" +
+    ")";
+
+  const optionalQualifier =
+    "(?:\\s+(?:chung|toa\\s*nha|hang\\s*thang))?";
+
+  const optionalUnitBeforeAmount =
+    "(?:\\s*/\\s*(?:phong|p|thang|nguoi|ng))?";
+
   const pattern = new RegExp(
-    `(?:^|[\\s,;|])(?:ph[ií]\\s*)?(?:dich\\s*vu|dv|quan\\s*ly|ql|service(?:\\s*fee)?)\\s*(?:/\\s*(?:phong|thang|nguoi))?\\s*[:\\-]?\\s*(${moneyToken})`,
+    `(?:^|[\\s,;|])${serviceLabel}${optionalQualifier}${optionalUnitBeforeAmount}\\s*[:=\\-]?\\s*(${moneyToken})`,
     "i"
   );
 
@@ -994,7 +1656,10 @@ function pickServiceFeeFromZaloText(
         .replace(/\s+/g, " ")
         .trim();
 
-    const match = normalized.match(pattern);
+    const match =
+      normalized.match(
+        pattern
+      );
 
     if (!match?.[1]) {
       continue;
@@ -1005,7 +1670,21 @@ function pickServiceFeeFromZaloText(
         match[1]
       );
 
-    if (value != null && value >= 0) {
+    /*
+     * Phí dịch vụ hợp lệ chỉ nằm trong khoảng
+     * 100.000đ đến 600.000đ.
+     *
+     * Khoản ngoài khoảng này bị bỏ qua để tránh lấy nhầm:
+     * - giá phòng;
+     * - tiền cọc;
+     * - tiền điện, nước;
+     * - khoản tiền khác.
+     */
+    if (
+      isValidServiceFeeVnd(
+        value
+      )
+    ) {
       return value;
     }
   }
@@ -1821,58 +2500,20 @@ if (otherAmenities) {
  * Dạng 3tr500 phải đứng trước 3tr,
  * nếu không regex sẽ chỉ lấy "3tr".
  */
-const explicitPriceMatch =
-  markerText.match(
-    /(?:giá|gia)\s*[:\-]?\s*((?:\d+\s*(?:tr|triệu|trieu)\d{1,3}(?:k)?\b)|(?:\d+(?:[.,]\d+)?\s*(?:tr|triệu|trieu|k|nghìn|ngan|ngàn)\b)|(?:\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:đ|d|đồng|dong)?))/i
+const detectedRoomPrice =
+  extractRoomPriceFromMarker(
+    markerText
   );
 
-  /*
-  * Full text hiện có dạng:
-  *
-  * thông tin tòa nhà
-  * +
-  * marker phòng
-  *
-  * Marker phòng nằm sau cùng, vì vậy khi không có chữ "giá",
-  * lấy token tiền cuối cùng để tránh lấy nhầm tiền cọc ở form nhà.
-  */
-  const fallbackPriceMatches:
-    RegExpMatchArray[] =
-    Array.from(
-      markerText.matchAll(
-        /(?:\d+\s*(?:tr|triệu|trieu)\d{1,3}(?:k)?\b)|(?:\d+(?:[.,]\d+)?\s*(?:tr|triệu|trieu|k|nghìn|ngan|ngàn)\b)|(?:\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:đ|d|đồng|dong)?)/gi
-      )
-    );
+if (
+  detectedRoomPrice != null
+) {
+  roomPayload.price =
+    detectedRoomPrice;
 
-  const lastFallbackMatch:
-    RegExpMatchArray | undefined =
-    fallbackPriceMatches[
-      fallbackPriceMatches.length - 1
-    ];
-
-  const lastFallbackPrice =
-    lastFallbackMatch?.[0] ?? "";
-
-  const priceToken =
-    String(
-      explicitPriceMatch?.[1] ||
-        lastFallbackPrice ||
-        ""
-    ).trim();
-
-  if (priceToken) {
-    roomPayload.price =
-      normalizeMoneyToVnd(
-        priceToken
-      );
-
-    if (
-      roomPayload.price != null
-    ) {
-      sourceFieldMap.price =
-        "Tin Zalo";
-    }
-  }
+  sourceFieldMap.price =
+    "Tin Zalo";
+}
 
   /*
    * ============================
@@ -1937,9 +2578,17 @@ const explicitPriceMatch =
     sourceFieldMap.water_fee_value = "Tin Zalo";
   }
 
+  /*
+   * Phí dịch vụ có thể nằm trong:
+   * - phần thông tin tòa nhà; hoặc
+   * - phần mô tả riêng của phòng sau marker.
+   *
+   * Vì vậy phải quét toàn bộ nội dung gốc của record,
+   * không chỉ riêng houseInfoText.
+   */
   const serviceFee =
     pickServiceFeeFromZaloText(
-      houseInfoText
+      text
     );
 
   if (serviceFee != null) {
@@ -2277,29 +2926,90 @@ if (petDenied) {
     sourceFieldMap.chinh_sach = "Tin Zalo";
   }
 
-  const filledCount = [
-  roomPayload.room_code,
-  roomPayload.house_number,
-  roomPayload.address,
-  roomPayload.district,
-  roomPayload.price,
-  roomPayload.zalo_phone,
+  /*
+   * Điểm sơ bộ chỉ phản ánh dữ liệu text parser đọc được.
+   * Điểm chất lượng cuối cùng được tính ở API import sau khi:
+   * - resolve dữ liệu cùng nhà;
+   * - upload ảnh/video;
+   * - kiểm tra readerIssues;
+   * - kiểm tra phòng trùng.
+   */
+  let preliminaryScore = 0;
 
-  detailPayload.electric_fee_value,
-  detailPayload.water_fee_value,
-  detailPayload.service_fee_value,
+  if (roomPayload.room_code) {
+    preliminaryScore += 20;
+  }
 
-  detailPayload.other_fee_value,
-  detailPayload.other_fee_note,
-  detailPayload.other_amenities,
+  if (
+    roomPayload.house_number &&
+    roomPayload.address
+  ) {
+    preliminaryScore += 20;
+  } else if (
+    roomPayload.house_number ||
+    roomPayload.address
+  ) {
+    preliminaryScore += 8;
+  }
 
-  roomPayload.chinh_sach,
-].filter(Boolean).length;
+  if (roomPayload.district) {
+    preliminaryScore += 10;
+  }
+
+  if (
+    isValidRoomPriceVnd(
+      Number(roomPayload.price)
+    )
+  ) {
+    preliminaryScore += 20;
+  }
+
+  if (roomPayload.room_type) {
+    preliminaryScore += 10;
+  }
+
+  if (roomPayload.status) {
+    preliminaryScore += 5;
+  }
+
+  if (
+    roomPayload.zalo_phone ||
+    roomPayload.link_zalo
+  ) {
+    preliminaryScore += 5;
+  }
+
+  if (
+    detailPayload.electric_fee_value != null
+  ) {
+    preliminaryScore += 3;
+  }
+
+  if (
+    detailPayload.water_fee_value != null
+  ) {
+    preliminaryScore += 3;
+  }
+
+  if (
+    detailPayload.service_fee_value != null
+  ) {
+    preliminaryScore += 2;
+  }
+
+  if (
+    roomPayload.chinh_sach ||
+    detailPayload.other_amenities
+  ) {
+    preliminaryScore += 2;
+  }
 
   return {
     roomPayload,
     detailPayload,
-    confidenceScore: Math.min(0.9, 0.25 + filledCount * 0.08),
+    confidenceScore:
+      Math.min(100, preliminaryScore) /
+      100,
     sourceFieldMap,
   };
 }

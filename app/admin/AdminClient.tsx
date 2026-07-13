@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import RoomModal from "./RoomModal";
+import VipLinkManager from "./VipLinkManager";
 import type { Room, TabKey } from "@/app/types/room";
 import { supabase } from "@/lib/supabase";
 
@@ -508,16 +509,30 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
           </div>
         </div>
 
-        <button
-          style={addBtn}
-          onClick={() => {
-            setEditingRoom(null);
-            setActiveTab("info");
-            setOpenModal(true);
-          }}
-        >
-          + Thêm phòng
-        </button>
+        <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            {adminLevel === 1 && (
+              <VipLinkManager />
+            )}
+
+            <button
+              style={addBtn}
+              onClick={() => {
+                setEditingRoom(null);
+                setActiveTab("info");
+                setOpenModal(true);
+              }}
+            >
+              + Thêm phòng
+            </button>
+          </div>
       </div>
 
       {errorMsg && <div style={{ ...errorBox, marginTop: 10 }}>{errorMsg}</div>}

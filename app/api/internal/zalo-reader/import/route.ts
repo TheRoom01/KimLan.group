@@ -8,6 +8,11 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { parseZaloRoomText } from "@/lib/zalo-import/parser";
 import { resolveZaloImportRoom } from "@/lib/zalo-import/resolve";
+import {
+  evaluateZaloImportQuality,
+  readZaloAutoImportSettings,
+} from "@/lib/zalo-import/quality";
+import { publishPendingRoom } from "@/lib/zalo-import/publish-pending-room";
 
 import {
   makeZaloTempImageKey,
@@ -1006,7 +1011,7 @@ export async function POST(
             "Chờ duyệt",
 
           parser_version:
-            "simple-v1",
+            "quality-v1",
 
           parser_result: {
             room_payload:
@@ -1657,6 +1662,44 @@ export async function POST(
           importIssues,
       };
 
+    const autoImportSettings =
+      readZaloAutoImportSettings(
+        groupName
+      );
+
+    const importQuality =
+      evaluateZaloImportQuality({
+        roomPayload:
+          resolved.roomPayload,
+
+        detailPayload:
+          resolved.detailPayload,
+
+        sourceFieldMap:
+          parsed.sourceFieldMap,
+
+        inheritedFieldMap:
+          resolved.inheritedFieldMap,
+
+        matchedRoom:
+          resolved.matchedRoom,
+
+        importIssues,
+
+        expectedImageCount,
+        expectedVideoCount,
+
+        importedImageCount:
+          uploadedImages.length,
+
+        importedVideoCount:
+          uploadedVideos.length,
+
+        groupName,
+        settings:
+          autoImportSettings,
+      });
+
     const existingMedia =
       Array.isArray(
         (
@@ -1754,6 +1797,9 @@ export async function POST(
 
         import_diagnostics:
           importDiagnostics,
+
+        import_quality:
+          importQuality,
       };
 
     const batchParserResult =
@@ -1780,6 +1826,9 @@ export async function POST(
 
         import_diagnostics:
           importDiagnostics,
+
+        import_quality:
+          importQuality,
 
         imported_media: {
           image_count:
@@ -1874,7 +1923,7 @@ export async function POST(
               : "Chờ duyệt",
 
           confidence_score:
-            parsed.confidenceScore,
+            importQuality.score_fraction,
 
           room_payload:
             pendingRoomPayload,
@@ -1926,6 +1975,107 @@ export async function POST(
       throw pendingIns.error;
     }
 
+    const pendingVersionId =
+      String(
+        pendingIns.data.id
+      );
+
+    let autoPublished = false;
+    let autoPublishedRoomId:
+      string | null = null;
+    let autoPublishError:
+      string | null = null;
+
+    if (
+      importQuality.eligible &&
+      autoImportSettings.enabled &&
+      !autoImportSettings.dryRun
+    ) {
+      try {
+        const published =
+          await publishPendingRoom({
+            pendingId:
+              pendingVersionId,
+
+            actorUserId:
+              autoImportSettings.ownerId,
+
+            source: "auto",
+            supabase,
+          });
+
+        autoPublished = true;
+        autoPublishedRoomId =
+          published.roomId;
+
+        importQuality.auto_import.published =
+          true;
+
+        importQuality.auto_import.published_room_id =
+          published.roomId;
+      } catch (publishError) {
+        autoPublishError =
+          getErrorMessage(
+            publishError
+          );
+
+        importQuality.auto_import.publish_error =
+          autoPublishError;
+
+        const failedRoomPayload = {
+          ...pendingRoomPayload,
+          import_quality:
+            importQuality,
+        };
+
+        const failedParserResult = {
+          ...batchParserResult,
+          room_payload:
+            failedRoomPayload,
+          import_quality:
+            importQuality,
+        };
+
+        await Promise.allSettled([
+          supabase
+            .from(
+              "pending_room_versions"
+            )
+            .update({
+              room_payload:
+                failedRoomPayload,
+            })
+            .eq(
+              "id",
+              pendingVersionId
+            ),
+
+          supabase
+            .from(
+              "zalo_import_batches"
+            )
+            .update({
+              parser_result:
+                failedParserResult,
+            })
+            .eq(
+              "id",
+              batchId
+            ),
+        ]);
+
+        console.error(
+          "Auto publish Zalo import failed:",
+          {
+            pendingVersionId,
+            batchId,
+            error:
+              autoPublishError,
+          }
+        );
+      }
+    }
+
     stage = "response";
 
     return NextResponse.json({
@@ -1939,8 +2089,7 @@ export async function POST(
 
       batchId,
 
-      pendingVersionId:
-        pendingIns.data.id,
+      pendingVersionId,
 
       imageCount:
         uploadedImages.length,
@@ -1954,6 +2103,29 @@ export async function POST(
 
       issues:
         importIssues,
+
+      quality:
+        importQuality,
+
+      autoImport: {
+        eligible:
+          importQuality.eligible,
+
+        enabled:
+          autoImportSettings.enabled,
+
+        dryRun:
+          autoImportSettings.dryRun,
+
+        published:
+          autoPublished,
+
+        roomId:
+          autoPublishedRoomId,
+
+        error:
+          autoPublishError,
+      },
 
       videoUrls:
         uploadedVideos.map(

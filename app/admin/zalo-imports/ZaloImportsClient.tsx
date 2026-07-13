@@ -24,6 +24,8 @@ type ImportRow = {
     sent_at?: string;
   };
   images?: any[];
+  videos?: any[];
+  import_quality?: any;
 };
 
 type CardBusyAction = "approve" | "delete" | "reject" | null;
@@ -41,6 +43,7 @@ export default function ZaloImportsClient() {
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
   const [editingPending, setEditingPending] = useState<ImportRow | null>(null);
+  const [detailPending, setDetailPending] = useState<ImportRow | null>(null);
   const [openPendingModal, setOpenPendingModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
 
@@ -110,70 +113,128 @@ export default function ZaloImportsClient() {
       setEditingPending(null);
       setOpenPendingModal(false);
     }
+
+    setDetailPending((current) =>
+      current?.id === id
+        ? null
+        : current
+    );
   }
 
   async function deleteAllCurrentRows() {
-    if (rows.length === 0 || bulkDeleting) {
-      return;
-    }
+  if (rows.length === 0 || bulkDeleting) {
+    return;
+  }
 
-    const ids = rows.map((row) => row.id);
+  const ids = rows.map((row) => row.id);
 
-    const ok = window.confirm(
-      `Bạn có chắc muốn xoá tất cả ${ids.length} card đang hiển thị trên trang này? Ảnh tạm R2 cũng sẽ bị xoá.`
-    );
+  const ok = window.confirm(
+    `Bạn có chắc muốn xoá tất cả ${ids.length} card đang hiển thị trên trang này? Ảnh tạm R2 cũng sẽ bị xoá.`
+  );
 
-    if (!ok) {
-      return;
-    }
+  if (!ok) {
+    return;
+  }
 
-    setBulkDeleting(true);
+  setBulkDeleting(true);
 
-    try {
-      const res = await fetch("/api/admin/zalo-imports/bulk-remove", {
+  try {
+    const res = await fetch(
+      "/api/admin/zalo-imports/bulk-remove",
+      {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ ids }),
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok || !json?.ok) {
-        throw new Error(
-          json?.error || "Xoá tất cả thất bại"
-        );
       }
+    );
 
-      const deletedCount = Number(
-        json.deleted ?? ids.length
-      );
+    const json = await res
+      .json()
+      .catch(() => ({}));
 
-      /*
-       * Không tải lại toàn bộ list.
-       * Xóa ngay các card đã xử lý khỏi giao diện.
-       */
-      setRows((currentRows) =>
-        currentRows.filter(
-          (row) => !ids.includes(row.id)
-        )
+    if (!res.ok || !json?.ok) {
+      throw new Error(
+        json?.error ||
+          "Xoá tất cả thất bại"
       );
-
-      setTotal((currentTotal) =>
-        Math.max(0, currentTotal - deletedCount)
-      );
-
-      setEditingPending(null);
-      setOpenPendingModal(false);
-    } catch (error: any) {
-      alert(
-        error?.message || "Xoá tất cả thất bại"
-      );
-    } finally {
-      setBulkDeleting(false);
     }
+
+    const deletedCount = Number(
+      json.deleted ?? ids.length
+    );
+
+    /*
+     * Tính lại tổng số phòng còn lại.
+     */
+    const remainingTotal =
+      Math.max(
+        0,
+        total - deletedCount
+      );
+
+    /*
+     * Nếu đang ở trang cuối và sau khi xóa
+     * offset hiện tại không còn hợp lệ,
+     * tự lùi về trang cuối còn dữ liệu.
+     *
+     * Ví dụ:
+     * - Đang offset 40.
+     * - Sau khi xóa chỉ còn 35 phòng.
+     * - Tự chuyển về offset 20.
+     */
+    const lastValidOffset =
+      remainingTotal > 0
+        ? Math.floor(
+            (remainingTotal - 1) /
+              PAGE_SIZE
+          ) * PAGE_SIZE
+        : 0;
+
+    const nextOffset =
+      Math.min(
+        offset,
+        lastValidOffset
+      );
+
+    /*
+     * Đóng các modal đang mở.
+     */
+    setEditingPending(null);
+    setDetailPending(null);
+    setOpenPendingModal(false);
+
+    /*
+     * Cập nhật trang hiện tại và gọi API
+     * để tự tải 20 card tiếp theo.
+     *
+     * Nếu đang ở trang đầu:
+     * - Xóa 20 phòng đầu.
+     * - Load lại offset 0.
+     * - 20 phòng tiếp theo tự xuất hiện.
+     */
+    setOffset(nextOffset);
+
+    await loadData(
+      nextOffset,
+      status
+    );
+
+    showToast(
+      `Đã xoá ${deletedCount} phòng. Danh sách đã được tải lại.`,
+      "success"
+    );
+  } catch (error: any) {
+    showToast(
+      error?.message ||
+        "Xoá tất cả thất bại",
+      "error"
+    );
+  } finally {
+    setBulkDeleting(false);
   }
+}
 
   return (
     <main style={wrap}>
@@ -302,7 +363,11 @@ export default function ZaloImportsClient() {
               key={row.id}
               row={row}
               onRemoved={removeRowFromList}
+              onViewDetail={(selectedRow) =>
+                setDetailPending(selectedRow)
+              }
               onEdit={(selectedRow) => {
+                setDetailPending(null);
                 setEditingPending(selectedRow);
                 setActiveTab("info");
                 setOpenPendingModal(true);
@@ -312,6 +377,22 @@ export default function ZaloImportsClient() {
         </div>
       )}
 
+
+      {detailPending && (
+        <ImportDetailModal
+          row={detailPending}
+          onClose={() =>
+            setDetailPending(null)
+          }
+          onRemoved={removeRowFromList}
+          onEdit={(selectedRow) => {
+            setDetailPending(null);
+            setEditingPending(selectedRow);
+            setActiveTab("info");
+            setOpenPendingModal(true);
+          }}
+        />
+      )}
 
       {toast && (
         <div
@@ -353,10 +434,10 @@ export default function ZaloImportsClient() {
           editingRoom={null}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
-          onNotify={(message) =>
+          onNotify={(message: string) =>
             showToast(message, "success")
           }
-          onPendingSaved={async (updated) => {
+          onPendingSaved={async (updated: any) => {
             setRows((currentRows) =>
               currentRows.map((row) =>
                 row.id === editingPending.id
@@ -376,32 +457,108 @@ export default function ZaloImportsClient() {
           onSaved={async () => {}}
         />
       )}
+
+      <style>{`
+        .zalo-import-compact-main {
+          display: grid;
+          grid-template-columns: minmax(250px, 0.9fr) minmax(330px, 1.1fr);
+          gap: 16px;
+        }
+
+        .zalo-import-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .zalo-import-detail-grid {
+          display: grid;
+          grid-template-columns: 1.2fr 1fr 1fr;
+          gap: 12px;
+        }
+
+        .zalo-import-card-actions,
+        .zalo-import-modal-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          justify-content: flex-end;
+        }
+
+        .zalo-import-card-actions button,
+        .zalo-import-modal-actions button {
+          min-height: 42px;
+        }
+
+        .zalo-import-thumbnail-strip::-webkit-scrollbar {
+          height: 6px;
+        }
+
+        .zalo-import-thumbnail-strip::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.6);
+          border-radius: 999px;
+        }
+
+        @media (max-width: 980px) {
+          .zalo-import-detail-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .zalo-import-detail-panel {
+            max-height: none !important;
+          }
+        }
+
+        @media (max-width: 760px) {
+          .zalo-import-compact-main {
+            grid-template-columns: 1fr;
+          }
+
+          .zalo-import-summary-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .zalo-import-card-actions,
+          .zalo-import-modal-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            width: 100%;
+          }
+
+          .zalo-import-card-actions button,
+          .zalo-import-modal-actions button {
+            width: 100%;
+          }
+
+          .zalo-import-modal-shell {
+            width: calc(100vw - 16px) !important;
+            max-height: calc(100vh - 16px) !important;
+            border-radius: 14px !important;
+          }
+
+          .zalo-import-modal-header,
+          .zalo-import-modal-body,
+          .zalo-import-modal-footer {
+            padding-left: 14px !important;
+            padding-right: 14px !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }
 
-function ImportCard({
+function useImportActions({
   row,
   onRemoved,
-  onEdit,
+  onAfterRemoved,
 }: {
   row: ImportRow;
   onRemoved?: (id: string) => void;
-  onEdit?: (row: ImportRow) => void;
+  onAfterRemoved?: () => void;
 }) {
   const [busyAction, setBusyAction] =
     useState<CardBusyAction>(null);
-
-  const room = row.room_payload ?? {};
-  const detail = row.detail_payload ?? {};
-  const batch = row.batch ?? {};
-  const inherited =
-    row.inherited_field_map ?? {};
-  const source =
-    row.source_field_map ?? {};
-
-  const isDuplicate =
-    row.status === "Trùng phòng";
 
   const isLockedStatus =
     row.status === "Đã duyệt" ||
@@ -411,18 +568,19 @@ function ImportCard({
     busyAction !== null ||
     isLockedStatus;
 
+  function finishRemoved() {
+    onAfterRemoved?.();
+    onRemoved?.(row.id);
+  }
+
   async function rejectImport() {
-    if (busyAction) {
-      return;
-    }
+    if (busyAction) return;
 
     const ok = window.confirm(
       "Bạn có chắc muốn từ chối import này? Ảnh tạm trên R2 sẽ bị xoá."
     );
 
-    if (!ok) {
-      return;
-    }
+    if (!ok) return;
 
     const reason =
       window.prompt(
@@ -453,32 +611,23 @@ function ImportCard({
         );
       }
 
-      /*
-       * Không reload toàn bộ list.
-       * Chỉ xóa card vừa từ chối khỏi giao diện.
-       */
-      onRemoved?.(row.id);
+      finishRemoved();
     } catch (error: any) {
       alert(
         error?.message || "Từ chối thất bại"
       );
-
       setBusyAction(null);
     }
   }
 
   async function deleteImport() {
-    if (busyAction) {
-      return;
-    }
+    if (busyAction) return;
 
     const ok = window.confirm(
       "Bạn có chắc muốn xoá hẳn import này? Dữ liệu pending và ảnh tạm R2 sẽ bị xoá."
     );
 
-    if (!ok) {
-      return;
-    }
+    if (!ok) return;
 
     setBusyAction("delete");
 
@@ -500,16 +649,11 @@ function ImportCard({
         );
       }
 
-      /*
-       * Không gọi loadData().
-       * Card biến mất ngay sau khi API thành công.
-       */
-      onRemoved?.(row.id);
+      finishRemoved();
     } catch (error: any) {
       alert(
         error?.message || "Xoá thất bại"
       );
-
       setBusyAction(null);
     }
   }
@@ -517,9 +661,7 @@ function ImportCard({
   async function approveImport(
     mode: "create_room" | "update_status"
   ) {
-    if (busyAction) {
-      return;
-    }
+    if (busyAction) return;
 
     const confirmText =
       mode === "update_status"
@@ -529,9 +671,7 @@ function ImportCard({
     const ok =
       window.confirm(confirmText);
 
-    if (!ok) {
-      return;
-    }
+    if (!ok) return;
 
     setBusyAction("approve");
 
@@ -557,194 +697,781 @@ function ImportCard({
         );
       }
 
-      /*
-       * Không reload toàn bộ list.
-       * Card biến mất và card phía dưới tự dồn lên.
-       */
-      onRemoved?.(row.id);
-
-      // Duyệt thành công chỉ xóa card hiện tại.
-      // Không tự mở phòng vừa tạo để admin tiếp tục duyệt danh sách.
+      finishRemoved();
     } catch (error: any) {
       alert(
         error?.message || "Duyệt thất bại"
       );
-
       setBusyAction(null);
     }
+  }
+
+  return {
+    busyAction,
+    actionDisabled,
+    approveImport,
+    rejectImport,
+    deleteImport,
+  };
+}
+
+function getImportImageUrl(
+  image: any
+) {
+  return String(
+    image?.temp_image_url ||
+      image?.image_url ||
+      image?.url ||
+      image?.src ||
+      ""
+  ).trim();
+}
+
+function getImportImages(
+  row: ImportRow
+) {
+  if (!Array.isArray(row.images)) {
+    return [];
+  }
+
+  return row.images
+    .map((image, index) => ({
+      id:
+        String(image?.id || "").trim() ||
+        `image-${index}`,
+      url: getImportImageUrl(image),
+    }))
+    .filter((image) => Boolean(image.url));
+}
+
+function getImportVideos(
+  row: ImportRow
+) {
+  if (!Array.isArray(row.videos)) {
+    return [];
+  }
+
+  return row.videos
+    .map((video, index) => ({
+      id:
+        String(video?.id || "").trim() ||
+        `video-${index}`,
+
+      url: String(
+        video?.temp_video_url ||
+          video?.video_url ||
+          video?.url ||
+          ""
+      ).trim(),
+
+      thumb: String(
+        video?.temp_thumb_url ||
+          video?.thumb_url ||
+          video?.thumbnail_url ||
+          ""
+      ).trim(),
+    }))
+    .filter((video) => Boolean(video.url));
+}
+
+function getImportQuality(
+  row: ImportRow
+) {
+  const direct =
+    row.import_quality;
+
+  const roomQuality =
+    row.room_payload?.import_quality;
+
+  const batchQuality =
+    row.batch &&
+    (row.batch as any)
+      ?.parser_result
+      ?.import_quality;
+
+  const quality =
+    direct ||
+    roomQuality ||
+    batchQuality ||
+    null;
+
+  return quality &&
+    typeof quality === "object"
+      ? quality
+      : null;
+}
+
+function getQualityScore(
+  row: ImportRow
+) {
+  const quality =
+    getImportQuality(row);
+
+  const qualityScore = Number(
+    quality?.score
+  );
+
+  if (
+    Number.isFinite(
+      qualityScore
+    )
+  ) {
+    return Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(
+          qualityScore
+        )
+      )
+    );
+  }
+
+  const oldScore = Number(
+    row.confidence_score
+  );
+
+  if (
+    Number.isFinite(oldScore)
+  ) {
+    return Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(
+          oldScore * 100
+        )
+      )
+    );
+  }
+
+  return null;
+}
+
+function getQualityBreakdownItems(
+  row: ImportRow
+) {
+  const breakdown =
+    getImportQuality(row)
+      ?.breakdown;
+
+  if (
+    !breakdown ||
+    typeof breakdown !== "object"
+  ) {
+    return [];
+  }
+
+  return Object.entries(
+    breakdown
+  )
+    .map(
+      ([key, rawItem]) => {
+        const item =
+          rawItem as any;
+
+        const score = Number(
+          item?.score
+        );
+
+        const max = Number(
+          item?.max
+        );
+
+        return {
+          key,
+          label: String(
+            item?.label || key
+          ),
+          score:
+            Number.isFinite(score)
+              ? score
+              : 0,
+          max:
+            Number.isFinite(max)
+              ? max
+              : 0,
+          reason: String(
+            item?.reason || ""
+          ),
+        };
+      }
+    )
+    .filter(
+      (item) =>
+        item.max > 0
+    );
+}
+
+function formatCompactWard(
+  input: any
+) {
+  const value =
+    String(input || "").trim();
+
+  if (!value) return "";
+
+  if (/^\d{1,2}$/.test(value)) {
+    return `P${Number(value)}`;
+  }
+
+  if (/^(?:p\.?|phường)\s*/i.test(value)) {
+    return value;
+  }
+
+  return value;
+}
+
+function getCompactLocation(
+  room: any
+) {
+  const street = [
+    room?.house_number,
+    room?.address,
+  ]
+    .map((value) =>
+      String(value || "").trim()
+    )
+    .filter(Boolean)
+    .join(" ");
+
+  return [
+    street,
+    formatCompactWard(room?.ward),
+    String(room?.district || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(", ") || "Chưa có địa chỉ";
+}
+
+function getCompactArea(
+  room: any,
+  detail: any
+) {
+  const candidates = [
+    room?.area_m2,
+    room?.area,
+    room?.dien_tich,
+    room?.size_m2,
+    detail?.area_m2,
+    detail?.area,
+    detail?.dien_tich,
+  ];
+
+  const found = candidates.find(
+    (value) =>
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== ""
+  );
+
+  if (
+    found === null ||
+    found === undefined ||
+    String(found).trim() === ""
+  ) {
+    return "-";
+  }
+
+  const text = String(found).trim();
+
+  if (/m(?:2|²)/i.test(text)) {
+    return text;
+  }
+
+  return `${text}m²`;
+}
+
+function buildParserWarnings(
+  row: ImportRow
+) {
+  const room =
+    row.room_payload ?? {};
+
+  const quality =
+    getImportQuality(row);
+
+  const warningTexts: string[] = [];
+
+  if (quality) {
+    const blockers =
+      Array.isArray(
+        quality.blockers
+      )
+        ? quality.blockers
+        : [];
+
+    const qualityWarnings =
+      Array.isArray(
+        quality.warnings
+      )
+        ? quality.warnings
+        : [];
+
+    for (const blocker of blockers) {
+      const message =
+        typeof blocker === "string"
+          ? blocker
+          : String(
+              blocker?.message ||
+                blocker?.code ||
+                ""
+            ).trim();
+
+      if (message) {
+        warningTexts.push(message);
+      }
+    }
+
+    for (const warning of qualityWarnings) {
+      const message =
+        typeof warning === "string"
+          ? warning
+          : String(
+              warning?.message ||
+                warning?.code ||
+                ""
+            ).trim();
+
+      if (message) {
+        warningTexts.push(message);
+      }
+    }
+  } else {
+    if (!String(room.room_code || "").trim()) {
+      warningTexts.push("Thiếu mã phòng");
+    }
+
+    if (
+      !String(room.house_number || "").trim() &&
+      !String(room.address || "").trim()
+    ) {
+      warningTexts.push("Thiếu địa chỉ");
+    } else if (
+      !String(room.address || "").trim()
+    ) {
+      warningTexts.push("Thiếu tên đường");
+    }
+
+    const price = Number(room.price);
+
+    if (
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      warningTexts.push("Thiếu giá phòng");
+    }
+
+    if (
+      getImportImages(row).length === 0 &&
+      getImportVideos(row).length === 0
+    ) {
+      warningTexts.push("Không có ảnh/video");
+    }
+  }
+
+  const rawRow = row as any;
+
+  const externalWarnings = [
+    rawRow.parser_warnings,
+    rawRow.reader_issues,
+    rawRow.import_errors,
+    rawRow.issues,
+  ];
+
+  for (const group of externalWarnings) {
+    if (!Array.isArray(group)) continue;
+
+    for (const item of group) {
+      const message =
+        typeof item === "string"
+          ? item
+          : String(
+              item?.message ||
+                item?.error ||
+                item?.reason ||
+                ""
+            ).trim();
+
+      if (message) {
+        warningTexts.push(message);
+      }
+    }
+  }
+
+  return Array.from(
+    new Set(
+      warningTexts
+        .map((warning) => warning.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function ImportCard({
+  row,
+  onRemoved,
+  onEdit,
+  onViewDetail,
+}: {
+  row: ImportRow;
+  onRemoved?: (id: string) => void;
+  onEdit?: (row: ImportRow) => void;
+  onViewDetail?: (row: ImportRow) => void;
+}) {
+  const [activeImageIndex, setActiveImageIndex] =
+    useState(0);
+
+  const room = row.room_payload ?? {};
+  const detail = row.detail_payload ?? {};
+  const batch = row.batch ?? {};
+  const images = getImportImages(row);
+  const videos = getImportVideos(row);
+  const warnings = buildParserWarnings(row);
+  const quality = getImportQuality(row);
+  const qualityScore = getQualityScore(row);
+
+  const {
+    busyAction,
+    actionDisabled,
+    approveImport,
+    rejectImport,
+    deleteImport,
+  } = useImportActions({
+    row,
+    onRemoved,
+  });
+
+  const isDuplicate =
+    row.status === "Trùng phòng";
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [row.id, images.length]);
+
+  const safeImageIndex =
+    images.length > 0
+      ? Math.min(
+          activeImageIndex,
+          images.length - 1
+        )
+      : 0;
+
+  const activeImage =
+    images[safeImageIndex] || null;
+
+  function moveImage(direction: -1 | 1) {
+    if (images.length <= 1) return;
+
+    setActiveImageIndex((current) => {
+      const next =
+        current + direction;
+
+      if (next < 0) {
+        return images.length - 1;
+      }
+
+      if (next >= images.length) {
+        return 0;
+      }
+
+      return next;
+    });
   }
 
   return (
     <section
       style={{
         ...card,
+        ...compactCard,
         opacity: busyAction ? 0.72 : 1,
-        transition: "opacity 160ms ease",
+        transition:
+          "opacity 160ms ease, transform 160ms ease",
       }}
     >
-      <div style={cardHeader}>
-        <div>
-          <div style={statusLine}>
-            <span
-              style={
-                isDuplicate
-                  ? badgeOrange
-                  : badgeBlue
-              }
-            >
-              {row.status}
-            </span>
+      <div className="zalo-import-compact-main">
+        <div style={compactMediaColumn}>
+          <div style={compactImageFrame}>
+            {activeImage ? (
+              <img
+                src={activeImage.url}
+                alt={`Ảnh phòng ${room.room_code || ""}`}
+                style={compactMainImage}
+              />
+            ) : (
+              <div style={compactImageEmpty}>
+                Chưa có ảnh
+              </div>
+            )}
 
-            {row.confidence_score != null && (
-              <span style={confidence}>
-                Confidence:{" "}
-                {Math.round(
-                  Number(
-                    row.confidence_score
-                  ) * 100
+            <div style={compactImageGroupBadge}>
+              📷 Zalo: {batch.group_name || "-"}
+            </div>
+
+            {images.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Ảnh trước"
+                  onClick={() => moveImage(-1)}
+                  style={{
+                    ...compactImageArrow,
+                    left: 10,
+                  }}
+                >
+                  ‹
+                </button>
+
+                <button
+                  type="button"
+                  aria-label="Ảnh sau"
+                  onClick={() => moveImage(1)}
+                  style={{
+                    ...compactImageArrow,
+                    right: 10,
+                  }}
+                >
+                  ›
+                </button>
+              </>
+            )}
+
+            <div style={compactImageCaption}>
+              <div>
+                Tin gửi: {formatDateTime(
+                  batch.sent_at
                 )}
-                %
+              </div>
+            </div>
+          </div>
+
+          {images.length > 0 && (
+            <div
+              className="zalo-import-thumbnail-strip"
+              style={compactThumbnailStrip}
+            >
+              {images.map((image, index) => (
+                <button
+                  key={image.id}
+                  type="button"
+                  onClick={() =>
+                    setActiveImageIndex(index)
+                  }
+                  style={{
+                    ...compactThumbnailButton,
+                    borderColor:
+                      index === safeImageIndex
+                        ? "#38bdf8"
+                        : "rgba(255,255,255,0.24)",
+                    boxShadow:
+                      index === safeImageIndex
+                        ? "0 0 0 2px rgba(56,189,248,0.24)"
+                        : "none",
+                  }}
+                >
+                  <img
+                    src={image.url}
+                    alt=""
+                    style={compactThumbnailImage}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={compactSummaryColumn}>
+          <div style={compactSummaryTopLine}>
+            <div style={statusLine}>
+              <span
+                style={
+                  isDuplicate
+                    ? badgeOrange
+                    : compactStatusBadge
+                }
+              >
+                {row.status}
+              </span>
+
+              {qualityScore != null && (
+                <span style={compactConfidence}>
+                  {quality
+                    ? `Điểm chất lượng: ${qualityScore}/100`
+                    : `${qualityScore}% confidence`}
+                </span>
+              )}
+
+              {quality && (
+                <span
+                  style={
+                    quality.eligible
+                      ? compactAutoEligibleBadge
+                      : compactAutoBlockedBadge
+                  }
+                >
+                  {quality.auto_import?.published
+                    ? "Đã tự đăng"
+                    : quality.eligible
+                      ? "Đủ điều kiện tự đăng"
+                      : "Chưa đủ điều kiện tự đăng"}
+                </span>
+              )}
+            </div>
+
+            {isDuplicate &&
+              row.matched_room_id && (
+                <a
+                  href={`/rooms/${row.matched_room_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={compactViewRoomBtn}
+                >
+                  Xem phòng
+                </a>
+              )}
+          </div>
+
+          <div style={compactInfoBlock}>
+            <div style={compactInfoLabel}>
+              Vị trí
+            </div>
+            <div style={compactLocationValue}>
+              {getCompactLocation(room)}
+            </div>
+          </div>
+
+          <div className="zalo-import-summary-grid">
+            <CompactInfo
+              label="Mã phòng"
+              value={room.room_code || "-"}
+              accent
+            />
+            <CompactInfo
+              label="Giá"
+              value={formatPrice(room.price)}
+            />
+            <CompactInfo
+              label="Loại phòng"
+              value={room.room_type || "-"}
+            />
+            <CompactInfo
+              label="Diện tích"
+              value={getCompactArea(
+                room,
+                detail
+              )}
+            />
+          </div>
+
+          {isDuplicate && (
+            <div style={compactDuplicateBox}>
+              <b>Phòng đã tồn tại</b>
+              <div>
+                {row.matched_reason || "-"}
+              </div>
+              <div>
+                {row.old_status || "-"} → {row.new_status || "-"}
+              </div>
+            </div>
+          )}
+
+          <div style={compactWarningBlock}>
+            <div style={compactInfoLabel}>
+              Cảnh báo
+            </div>
+
+            {warnings.length > 0 ? (
+              <div style={compactWarningList}>
+                {warnings
+                  .slice(0, 4)
+                  .map((warning) => (
+                    <span
+                      key={warning}
+                      style={compactWarningBadge}
+                    >
+                      {warning}
+                    </span>
+                  ))}
+              </div>
+            ) : (
+              <span style={compactSuccessBadge}>
+                Không có cảnh báo
               </span>
             )}
           </div>
 
-          <div style={meta}>
-            Nhóm:{" "}
-            <b>{batch.group_name || "-"}</b>{" "}
-            · Người gửi:{" "}
-            <b>{batch.sender_name || "-"}</b>
+          <div style={compactMetaLine}>
+            <span>
+              Người gửi: <b>{batch.sender_name || "-"}</b>
+            </span>
+            
+            <span>
+              Media: <b>{images.length} ảnh · {videos.length} video</b>
+            </span>
+
+            <span>
+              Đã import: <b>{formatDateTime(row.created_at)}</b>
+            </span>
           </div>
-
-          <div style={meta}>
-            Thời gian:{" "}
-            {formatDateTime(
-              batch.sent_at ||
-                row.created_at
-            )}
-          </div>
-        </div>
-
-        {isDuplicate &&
-          row.matched_room_id && (
-            <a
-              href={`/rooms/${row.matched_room_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={viewRoomBtn}
-            >
-              Xem phòng
-            </a>
-          )}
-      </div>
-
-      {isDuplicate && (
-        <div style={duplicateBox}>
-          <b>Phòng đã tồn tại</b>
-
-          <div>
-            Lý do:{" "}
-            {row.matched_reason || "-"}
-          </div>
-
-          <div>
-            Trạng thái cũ:{" "}
-            <b>{row.old_status || "-"}</b>{" "}
-            → Trạng thái mới:{" "}
-            <b>{row.new_status || "-"}</b>
-          </div>
-        </div>
-      )}
-
-      <div style={grid}>
-        <div style={panel}>
-          <div style={panelTitle}>
-            Tin gốc Zalo
-          </div>
-
-          <pre style={rawText}>
-            {batch.raw_text || "-"}
-          </pre>
-        </div>
-
-        <div style={panel}>
-          <div style={panelTitle}>
-            Dữ liệu phòng
-          </div>
-
-          <Field label="Mã phòng" value={room.room_code} field="room_code" source={source} inherited={inherited} />
-          <Field label="Loại phòng" value={room.room_type} field="room_type" source={source} inherited={inherited} />
-          <Field label="Số nhà" value={room.house_number} field="house_number" source={source} inherited={inherited} />
-          <Field label="Đường" value={room.address} field="address" source={source} inherited={inherited} />
-          <Field label="Phường" value={room.ward} field="ward" source={source} inherited={inherited} />
-          <Field label="Quận" value={room.district} field="district" source={source} inherited={inherited} />
-          <Field label="Giá" value={formatPrice(room.price)} field="price" source={source} inherited={inherited} />
-          <Field label="Trạng thái" value={room.status} field="status" source={source} inherited={inherited} />
-          <Field label="Zalo/Phone" value={room.zalo_phone || room.link_zalo} field="zalo_phone" source={source} inherited={inherited} />
-          <Field label="Mô tả" value={room.description} field="description" source={source} inherited={inherited} />
-          <Field label="Chính sách" value={room.chinh_sach} field="chinh_sach" source={source} inherited={inherited} />
-        </div>
-
-        <div style={panel}>
-          <div style={panelTitle}>
-            Chi phí / tiện ích
-          </div>
-
-          <Field label="Điện" value={formatFee(detail.electric_fee_value, detail.electric_fee_unit)} field="electric_fee_value" source={source} inherited={inherited} />
-          <Field label="Nước" value={formatFee(detail.water_fee_value, detail.water_fee_unit)} field="water_fee_value" source={source} inherited={inherited} />
-          <Field label="Dịch vụ" value={formatFee(detail.service_fee_value, detail.service_fee_unit)} field="service_fee_value" source={source} inherited={inherited} />
-          <Field label="Giữ xe" value={formatFee(detail.parking_fee_value, detail.parking_fee_unit)} field="parking_fee_value" source={source} inherited={inherited} />
-          <Field label="Các phí khác" value={formatOtherFee(detail.other_fee_value, detail.other_fee_note)} field={["other_fee_value", "other_fee_note"]} source={source} inherited={inherited} />
-          <Field label="Các tiện ích khác" value={String(detail.other_amenities || "").trim()} field="other_amenities" source={source} inherited={inherited} />
-          <Field label="Thang máy" value={detail.has_elevator ? "Có" : "Không"} field="has_elevator" source={source} inherited={inherited} />
-          <Field label="Thang bộ" value={detail.has_stairs ? "Có" : "Không"} field="has_stairs" source={source} inherited={inherited} />
-          <Field label="Khóa vân tay" value={detail.fingerprint_lock ? "Có" : "Không"} field="fingerprint_lock" source={source} inherited={inherited} />
-
-          <Field label="Cho mèo" value={detail.allow_cat ? "Có" : "Không"} field="allow_cat" source={source} inherited={inherited} />
-          <Field label="Cho chó" value={detail.allow_dog ? "Có" : "Không"} field="allow_dog" source={source} inherited={inherited} />
-          <Field label="Không pet" value={detail.no_pet ? "Có" : "Không"} field="no_pet" source={source} inherited={inherited} />
-
-          <Field label="Gửi xe" value={detail.has_parking ? "Có" : "Không"} field="has_parking" source={source} inherited={inherited} />
-          <Field label="Hầm xe" value={detail.has_basement ? "Có" : "Không"} field="has_basement" source={source} inherited={inherited} />
-
-          <Field label="Máy giặt riêng" value={detail.private_washer ? "Có" : "Không"} field="private_washer" source={source} inherited={inherited} />
-          <Field label="Máy giặt chung" value={detail.shared_washer ? "Có" : "Không"} field="shared_washer" source={source} inherited={inherited} />
-          <Field label="Máy sấy riêng" value={detail.private_dryer ? "Có" : "Không"} field="private_dryer" source={source} inherited={inherited} />
-          <Field label="Máy sấy chung" value={detail.shared_dryer ? "Có" : "Không"} field="shared_dryer" source={source} inherited={inherited} />
-
-          <Field label="Ngắn hạn" value={detail.short_term ? "Có" : "Không"} field="short_term" source={source} inherited={inherited} />
-          <Field label="Dài hạn" value={detail.long_term ? "Có" : "Không"} field="long_term" source={source} inherited={inherited} />
         </div>
       </div>
 
-      {Array.isArray(row.images) &&
-        row.images.length > 0 && (
-          <div style={imagesWrap}>
-            <div style={panelTitle}>
-              Ảnh tạm
-            </div>
+      <div
+        className="zalo-import-card-actions"
+        style={compactActionsBar}
+      >
+        <button
+          style={compactDeleteBtn}
+          type="button"
+          onClick={() =>
+            void deleteImport()
+          }
+          disabled={busyAction !== null}
+        >
+          {busyAction === "delete"
+            ? "Đang xóa..."
+            : "Xóa"}
+        </button>
 
-            <div style={imagesGrid}>
-              {row.images.map(
-                (image: any) => (
-                  <img
-                    key={image.id}
-                    src={
-                      image.temp_image_url
-                    }
-                    alt=""
-                    style={thumb}
-                  />
-                )
-              )}
-            </div>
-          </div>
-        )}
+        <button
+          style={compactDetailBtn}
+          type="button"
+          onClick={() =>
+            onViewDetail?.(row)
+          }
+          disabled={busyAction !== null}
+        >
+          Mở rộng chi tiết
+        </button>
 
-      <div style={actions}>
+        <button
+          style={compactRejectBtn}
+          type="button"
+          onClick={() =>
+            void rejectImport()
+          }
+          disabled={actionDisabled}
+        >
+          {busyAction === "reject"
+            ? "Đang từ chối..."
+            : "Từ chối"}
+        </button>
+
+        <button
+          style={compactEditBtn}
+          type="button"
+          onClick={() =>
+            onEdit?.(row)
+          }
+          disabled={actionDisabled}
+        >
+          Chỉnh sửa
+        </button>
+
         {isDuplicate ? (
           <>
             <button
-              style={primaryBtn}
+              style={compactPrimaryBtn}
               type="button"
               onClick={() =>
                 void approveImport(
@@ -759,7 +1486,7 @@ function ImportCard({
             </button>
 
             <button
-              style={ghostBtn}
+              style={compactCreateBtn}
               type="button"
               onClick={() =>
                 void approveImport(
@@ -768,14 +1495,12 @@ function ImportCard({
               }
               disabled={actionDisabled}
             >
-              {busyAction === "approve"
-                ? "Đang duyệt..."
-                : "Tạo phòng mới"}
+              Tạo phòng mới
             </button>
           </>
         ) : (
           <button
-            style={primaryBtn}
+            style={compactPrimaryBtn}
             type="button"
             onClick={() =>
               void approveImport(
@@ -789,43 +1514,571 @@ function ImportCard({
               : "Duyệt đăng"}
           </button>
         )}
+      </div>
+    </section>
+  );
+}
 
-        <button
-          style={ghostBtn}
-          type="button"
-          onClick={() =>
-            onEdit?.(row)
-          }
-          disabled={actionDisabled}
-        >
-          Chỉnh sửa
-        </button>
+function CompactInfo({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: any;
+  accent?: boolean;
+}) {
+  return (
+    <div style={compactInfoBlock}>
+      <div style={compactInfoLabel}>
+        {label}
+      </div>
+      <div
+        style={
+          accent
+            ? compactAccentValue
+            : compactInfoValue
+        }
+      >
+        {value ?? "-"}
+      </div>
+    </div>
+  );
+}
 
-        <button
-          style={dangerBtn}
-          type="button"
-          onClick={() =>
-            void rejectImport()
-          }
-          disabled={actionDisabled}
-        >
-          {busyAction === "reject"
-            ? "Đang từ chối..."
-            : "Từ chối"}
-        </button>
+function ImportDetailModal({
+  row,
+  onClose,
+  onRemoved,
+  onEdit,
+}: {
+  row: ImportRow;
+  onClose: () => void;
+  onRemoved?: (id: string) => void;
+  onEdit?: (row: ImportRow) => void;
+}) {
+  const room = row.room_payload ?? {};
+  const detail = row.detail_payload ?? {};
+  const batch = row.batch ?? {};
+  const inherited =
+    row.inherited_field_map ?? {};
+  const source =
+    row.source_field_map ?? {};
+  const images = getImportImages(row);
+  const videos = getImportVideos(row);
+  const warnings = buildParserWarnings(row);
+  const quality = getImportQuality(row);
+  const qualityScore = getQualityScore(row);
 
-        <button
-          style={deleteBtn}
-          type="button"
-          onClick={() =>
-            void deleteImport()
-          }
-          disabled={busyAction !== null}
+  const isDuplicate =
+    row.status === "Trùng phòng";
+
+  const {
+    busyAction,
+    actionDisabled,
+    approveImport,
+    rejectImport,
+    deleteImport,
+  } = useImportActions({
+    row,
+    onRemoved,
+    onAfterRemoved: onClose,
+  });
+
+  useEffect(() => {
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow =
+      "hidden";
+
+    function handleKeyDown(
+      event: KeyboardEvent
+    ) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      style={detailModalOverlay}
+      onMouseDown={(event) => {
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        className="zalo-import-modal-shell"
+        style={{
+          ...detailModalShell,
+          opacity: busyAction ? 0.82 : 1,
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Chi tiết Zalo Import"
+      >
+        <header
+          className="zalo-import-modal-header"
+          style={detailModalHeader}
         >
-          {busyAction === "delete"
-            ? "Đang xóa..."
-            : "Xóa"}
-        </button>
+          <div style={{ minWidth: 0 }}>
+            <div style={statusLine}>
+              <span
+                style={
+                  isDuplicate
+                    ? badgeOrange
+                    : badgeBlue
+                }
+              >
+                {row.status}
+              </span>
+
+              {qualityScore != null && (
+                <span style={confidence}>
+                  {quality
+                    ? `Điểm chất lượng: ${qualityScore}/100`
+                    : `Confidence: ${qualityScore}%`}
+                </span>
+              )}
+
+              {quality && (
+                <span
+                  style={
+                    quality.eligible
+                      ? compactAutoEligibleBadge
+                      : compactAutoBlockedBadge
+                  }
+                >
+                  {quality.auto_import?.published
+                    ? "Đã tự đăng"
+                    : quality.eligible
+                      ? "Đủ điều kiện tự đăng"
+                      : "Chưa đủ điều kiện tự đăng"}
+                </span>
+              )}
+            </div>
+
+            <div style={meta}>
+              Nhóm: <b>{batch.group_name || "-"}</b>
+              {" · "}
+              Người gửi: <b>{batch.sender_name || "-"}</b>
+            </div>
+
+            <div style={meta}>
+              Tin gửi trong nhóm: {formatDateTime(
+                batch.sent_at
+              )}
+            </div>
+
+            <div style={meta}>
+              Đã import lên Pending: {formatDateTime(
+                row.created_at
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={detailModalCloseBtn}
+            aria-label="Đóng"
+          >
+            ×
+          </button>
+        </header>
+
+        <div
+          className="zalo-import-modal-body"
+          style={detailModalBody}
+        >
+          {isDuplicate && (
+            <div style={duplicateBox}>
+              <b>Phòng đã tồn tại</b>
+              <div>
+                Lý do: {row.matched_reason || "-"}
+              </div>
+              <div>
+                Trạng thái cũ: <b>{row.old_status || "-"}</b>
+                {" → "}
+                Trạng thái mới: <b>{row.new_status || "-"}</b>
+              </div>
+            </div>
+          )}
+
+          {warnings.length > 0 && (
+            <div style={detailWarningsBox}>
+              <b>Cảnh báo:</b>
+              <div style={detailWarningsList}>
+                {warnings.map((warning) => (
+                  <span
+                    key={warning}
+                    style={detailWarningBadge}
+                  >
+                    {warning}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {quality && (
+            <QualitySummary
+              row={row}
+            />
+          )}
+
+          <div className="zalo-import-detail-grid">
+            <div
+              className="zalo-import-detail-panel"
+              style={panel}
+            >
+              <div style={panelTitle}>
+                Tin gốc Zalo
+              </div>
+
+              <pre style={rawText}>
+                {batch.raw_text || "-"}
+              </pre>
+            </div>
+
+            <div
+              className="zalo-import-detail-panel"
+              style={panel}
+            >
+              <div style={panelTitle}>
+                Dữ liệu phòng
+              </div>
+
+              <Field label="Mã phòng" value={room.room_code} field="room_code" source={source} inherited={inherited} />
+              <Field label="Loại phòng" value={room.room_type} field="room_type" source={source} inherited={inherited} />
+              <Field label="Số nhà" value={room.house_number} field="house_number" source={source} inherited={inherited} />
+              <Field label="Đường" value={room.address} field="address" source={source} inherited={inherited} />
+              <Field label="Phường" value={room.ward} field="ward" source={source} inherited={inherited} />
+              <Field label="Quận" value={room.district} field="district" source={source} inherited={inherited} />
+              <Field label="Giá" value={formatPrice(room.price)} field="price" source={source} inherited={inherited} />
+              <Field label="Trạng thái" value={room.status} field="status" source={source} inherited={inherited} />
+              <Field label="Zalo/Phone" value={room.zalo_phone || room.link_zalo} field="zalo_phone" source={source} inherited={inherited} />
+              <Field label="Mô tả" value={room.description} field="description" source={source} inherited={inherited} />
+              <Field label="Chính sách" value={room.chinh_sach} field="chinh_sach" source={source} inherited={inherited} />
+            </div>
+
+            <div
+              className="zalo-import-detail-panel"
+              style={panel}
+            >
+              <div style={panelTitle}>
+                Chi phí / tiện ích
+              </div>
+
+              <Field label="Điện" value={formatFee(detail.electric_fee_value, detail.electric_fee_unit)} field="electric_fee_value" source={source} inherited={inherited} />
+              <Field label="Nước" value={formatFee(detail.water_fee_value, detail.water_fee_unit)} field="water_fee_value" source={source} inherited={inherited} />
+              <Field label="Dịch vụ" value={formatFee(detail.service_fee_value, detail.service_fee_unit)} field="service_fee_value" source={source} inherited={inherited} />
+              <Field label="Giữ xe" value={formatFee(detail.parking_fee_value, detail.parking_fee_unit)} field="parking_fee_value" source={source} inherited={inherited} />
+              <Field label="Các phí khác" value={formatOtherFee(detail.other_fee_value, detail.other_fee_note)} field={["other_fee_value", "other_fee_note"]} source={source} inherited={inherited} />
+              <Field label="Các tiện ích khác" value={String(detail.other_amenities || "").trim()} field="other_amenities" source={source} inherited={inherited} />
+              <Field label="Thang máy" value={detail.has_elevator ? "Có" : "Không"} field="has_elevator" source={source} inherited={inherited} />
+              <Field label="Thang bộ" value={detail.has_stairs ? "Có" : "Không"} field="has_stairs" source={source} inherited={inherited} />
+              <Field label="Khóa vân tay" value={detail.fingerprint_lock ? "Có" : "Không"} field="fingerprint_lock" source={source} inherited={inherited} />
+              <Field label="Cho mèo" value={detail.allow_cat ? "Có" : "Không"} field="allow_cat" source={source} inherited={inherited} />
+              <Field label="Cho chó" value={detail.allow_dog ? "Có" : "Không"} field="allow_dog" source={source} inherited={inherited} />
+              <Field label="Không pet" value={detail.no_pet ? "Có" : "Không"} field="no_pet" source={source} inherited={inherited} />
+              <Field label="Gửi xe" value={detail.has_parking ? "Có" : "Không"} field="has_parking" source={source} inherited={inherited} />
+              <Field label="Hầm xe" value={detail.has_basement ? "Có" : "Không"} field="has_basement" source={source} inherited={inherited} />
+              <Field label="Máy giặt riêng" value={detail.private_washer ? "Có" : "Không"} field="private_washer" source={source} inherited={inherited} />
+              <Field label="Máy giặt chung" value={detail.shared_washer ? "Có" : "Không"} field="shared_washer" source={source} inherited={inherited} />
+              <Field label="Máy sấy riêng" value={detail.private_dryer ? "Có" : "Không"} field="private_dryer" source={source} inherited={inherited} />
+              <Field label="Máy sấy chung" value={detail.shared_dryer ? "Có" : "Không"} field="shared_dryer" source={source} inherited={inherited} />
+              <Field label="Ngắn hạn" value={detail.short_term ? "Có" : "Không"} field="short_term" source={source} inherited={inherited} />
+              <Field label="Dài hạn" value={detail.long_term ? "Có" : "Không"} field="long_term" source={source} inherited={inherited} />
+            </div>
+          </div>
+
+          {images.length > 0 && (
+            <div style={imagesWrap}>
+              <div style={panelTitle}>
+                Ảnh tạm ({images.length})
+              </div>
+
+              <div style={imagesGrid}>
+                {images.map((image) => (
+                  <img
+                    key={image.id}
+                    src={image.url}
+                    alt=""
+                    style={thumb}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {videos.length > 0 && (
+            <div style={imagesWrap}>
+              <div style={panelTitle}>
+                Video tạm ({videos.length})
+              </div>
+
+              <div style={videosGrid}>
+                {videos.map((video) => (
+                  <video
+                    key={video.id}
+                    src={video.url}
+                    poster={video.thumb || undefined}
+                    controls
+                    preload="metadata"
+                    style={videoPreview}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <footer
+          className="zalo-import-modal-footer"
+          style={detailModalFooter}
+        >
+          <div
+            className="zalo-import-modal-actions"
+          >
+            <button
+              style={deleteBtn}
+              type="button"
+              onClick={() =>
+                void deleteImport()
+              }
+              disabled={busyAction !== null}
+            >
+              {busyAction === "delete"
+                ? "Đang xóa..."
+                : "Xóa"}
+            </button>
+
+            <button
+              style={dangerBtn}
+              type="button"
+              onClick={() =>
+                void rejectImport()
+              }
+              disabled={actionDisabled}
+            >
+              {busyAction === "reject"
+                ? "Đang từ chối..."
+                : "Từ chối"}
+            </button>
+
+            <button
+              style={ghostBtn}
+              type="button"
+              onClick={() =>
+                onEdit?.(row)
+              }
+              disabled={actionDisabled}
+            >
+              Chỉnh sửa
+            </button>
+
+            {isDuplicate ? (
+              <>
+                <button
+                  style={primaryBtn}
+                  type="button"
+                  onClick={() =>
+                    void approveImport(
+                      "update_status"
+                    )
+                  }
+                  disabled={actionDisabled}
+                >
+                  {busyAction === "approve"
+                    ? "Đang duyệt..."
+                    : "Duyệt cập nhật"}
+                </button>
+
+                <button
+                  style={ghostBtn}
+                  type="button"
+                  onClick={() =>
+                    void approveImport(
+                      "create_room"
+                    )
+                  }
+                  disabled={actionDisabled}
+                >
+                  Tạo phòng mới
+                </button>
+              </>
+            ) : (
+              <button
+                style={primaryBtn}
+                type="button"
+                onClick={() =>
+                  void approveImport(
+                    "create_room"
+                  )
+                }
+                disabled={actionDisabled}
+              >
+                {busyAction === "approve"
+                  ? "Đang duyệt..."
+                  : "Duyệt đăng"}
+              </button>
+            )}
+          </div>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function QualitySummary({
+  row,
+}: {
+  row: ImportRow;
+}) {
+  const quality =
+    getImportQuality(row);
+
+  if (!quality) {
+    return null;
+  }
+
+  const score =
+    getQualityScore(row) ?? 0;
+
+  const items =
+    getQualityBreakdownItems(row);
+
+  const blockers =
+    Array.isArray(quality.blockers)
+      ? quality.blockers
+      : [];
+
+  const warnings =
+    Array.isArray(quality.warnings)
+      ? quality.warnings
+      : [];
+
+  return (
+    <section style={qualityPanel}>
+      <div style={qualityHeader}>
+        <div>
+          <div style={qualityTitle}>
+            Điểm chất lượng: {score}/100
+          </div>
+          <div style={qualitySubtitle}>
+            Ngưỡng tự đăng: {quality.auto_import?.min_score ?? "-"}/100
+          </div>
+        </div>
+
+        <span
+          style={
+            quality.eligible
+              ? compactAutoEligibleBadge
+              : compactAutoBlockedBadge
+          }
+        >
+          {quality.auto_import?.published
+            ? "Đã tự đăng"
+            : quality.eligible
+              ? "Đủ điều kiện tự đăng"
+              : "Chưa đủ điều kiện tự đăng"}
+        </span>
+      </div>
+
+      <div style={qualityGrid}>
+        {items.map((item) => (
+          <div
+            key={item.key}
+            style={qualityItem}
+            title={item.reason}
+          >
+            <div style={qualityItemTop}>
+              <span>{item.label}</span>
+              <b>{item.score}/{item.max}</b>
+            </div>
+
+            <div style={qualityBarTrack}>
+              <div
+                style={{
+                  ...qualityBarFill,
+                  width: `${Math.max(
+                    0,
+                    Math.min(
+                      100,
+                      item.max > 0
+                        ? (item.score / item.max) * 100
+                        : 0
+                    )
+                  )}%`,
+                }}
+              />
+            </div>
+
+            <div style={qualityReason}>
+              {item.reason || "-"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {blockers.length > 0 && (
+        <div style={qualityBlockersBox}>
+          <b>Lý do chặn tự đăng:</b>
+          <ul style={qualityList}>
+            {blockers.map((blocker: any, index: number) => (
+              <li key={`${blocker?.code || "blocker"}-${index}`}>
+                {typeof blocker === "string"
+                  ? blocker
+                  : blocker?.message || blocker?.code || "Lỗi không xác định"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div style={qualityWarningsBox}>
+          <b>Cảnh báo:</b>
+          <ul style={qualityList}>
+            {warnings.map((warning: any, index: number) => (
+              <li key={`warning-${index}`}>
+                {typeof warning === "string"
+                  ? warning
+                  : warning?.message || warning?.code || "Cảnh báo không xác định"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div style={qualityConfigLine}>
+        Auto import: <b>{quality.auto_import?.enabled ? "Bật" : "Tắt"}</b>
+        {" · "}
+        Dry-run: <b>{quality.auto_import?.dry_run ? "Có" : "Không"}</b>
+        {" · "}
+        Nhóm được phép: <b>{quality.auto_import?.allowed_group ? "Có" : "Không"}</b>
       </div>
     </section>
   );
@@ -1057,6 +2310,7 @@ const statusLine: CSSProperties = {
   display: "flex",
   gap: 8,
   alignItems: "center",
+  flexWrap: "wrap",
   marginBottom: 6,
 };
 
@@ -1254,6 +2508,552 @@ const deleteBtn: CSSProperties = {
   padding: "10px 14px",
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const compactCard: CSSProperties = {
+  padding: 14,
+  overflow: "hidden",
+  background:
+    "linear-gradient(145deg, rgba(255,255,255,0.90) 0%, rgba(241,245,249,0.78) 100%)",
+  border: "1px solid rgba(148,163,184,0.28)",
+  boxShadow:
+    "0 14px 34px rgba(15, 23, 42, 0.10)",
+  color: "#0f172a",
+  backdropFilter: "blur(18px)",
+  WebkitBackdropFilter: "blur(18px)",
+};
+
+const compactMediaColumn: CSSProperties = {
+  minWidth: 0,
+};
+
+const compactImageFrame: CSSProperties = {
+  position: "relative",
+  minHeight: 270,
+  aspectRatio: "16 / 10",
+  overflow: "hidden",
+  borderRadius: 14,
+  background: "#0f172a",
+  border: "1px solid rgba(255,255,255,0.16)",
+};
+
+const compactMainImage: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block",
+};
+
+const compactImageEmpty: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  minHeight: 270,
+  display: "grid",
+  placeItems: "center",
+  color: "#94a3b8",
+  fontWeight: 700,
+  background:
+    "radial-gradient(circle at center, #263746 0%, #111827 72%)",
+};
+
+const compactImageGroupBadge: CSSProperties = {
+  position: "absolute",
+  top: 10,
+  left: 10,
+  maxWidth: "calc(100% - 20px)",
+  borderRadius: 8,
+  padding: "5px 8px",
+  background: "rgba(15,23,42,0.82)",
+  color: "#e2e8f0",
+  fontSize: 12,
+  fontWeight: 700,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  backdropFilter: "blur(8px)",
+};
+
+const compactImageArrow: CSSProperties = {
+  position: "absolute",
+  top: "50%",
+  transform: "translateY(-50%)",
+  width: 38,
+  height: 38,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.24)",
+  background: "rgba(15,23,42,0.62)",
+  color: "#fff",
+  fontSize: 28,
+  lineHeight: 1,
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
+  backdropFilter: "blur(8px)",
+};
+
+const compactImageCaption: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  padding: "28px 12px 10px",
+  color: "#fff",
+  fontSize: 12,
+  lineHeight: 1.4,
+  background:
+    "linear-gradient(transparent, rgba(2,6,23,0.9))",
+};
+
+const compactThumbnailStrip: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  marginTop: 10,
+  overflowX: "auto",
+  paddingBottom: 5,
+};
+
+const compactThumbnailButton: CSSProperties = {
+  flex: "0 0 58px",
+  width: 58,
+  height: 48,
+  padding: 0,
+  overflow: "hidden",
+  borderRadius: 9,
+  border: "2px solid",
+  background: "#0f172a",
+  cursor: "pointer",
+};
+
+const compactThumbnailImage: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block",
+};
+
+const compactSummaryColumn: CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+};
+
+const compactSummaryTopLine: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 10,
+};
+
+const compactStatusBadge: CSSProperties = {
+  background: "rgba(219,234,254,0.72)",
+  color: "#1d4ed8",
+  border: "1px solid rgba(96,165,250,0.42)",
+  borderRadius: 999,
+  padding: "4px 10px",
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const compactConfidence: CSSProperties = {
+  color: "#64748b",
+  fontSize: 12,
+};
+
+const compactViewRoomBtn: CSSProperties = {
+  color: "#0369a1",
+  textDecoration: "none",
+  border: "1px solid rgba(14,165,233,0.32)",
+  background: "rgba(224,242,254,0.58)",
+  padding: "6px 9px",
+  borderRadius: 8,
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const compactInfoBlock: CSSProperties = {
+  minWidth: 0,
+};
+
+const compactInfoLabel: CSSProperties = {
+  marginBottom: 4,
+  color: "#475569",
+  fontSize: 13,
+  fontWeight: 800,
+};
+
+const compactLocationValue: CSSProperties = {
+  color: "#0f172a",
+  fontSize: 16,
+  lineHeight: 1.45,
+  fontWeight: 700,
+  overflowWrap: "anywhere",
+};
+
+const compactInfoValue: CSSProperties = {
+  color: "#1e293b",
+  fontSize: 15,
+  fontWeight: 700,
+  overflowWrap: "anywhere",
+};
+
+const compactAccentValue: CSSProperties = {
+  color: "#075985",
+  fontSize: 15,
+  fontWeight: 800,
+  padding: "6px 9px",
+  borderRadius: 8,
+  border: "1px solid rgba(14,165,233,0.48)",
+  background: "rgba(224,242,254,0.72)",
+  boxShadow: "0 0 0 2px rgba(14,165,233,0.06)",
+};
+
+const compactWarningBlock: CSSProperties = {
+  paddingTop: 2,
+};
+
+const compactWarningList: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 7,
+};
+
+const compactWarningBadge: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 28,
+  padding: "4px 9px",
+  borderRadius: 999,
+  border: "1px solid rgba(248,113,113,0.34)",
+  background: "rgba(254,226,226,0.72)",
+  color: "#b91c1c",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const compactSuccessBadge: CSSProperties = {
+  display: "inline-flex",
+  padding: "4px 9px",
+  borderRadius: 999,
+  border: "1px solid rgba(52,211,153,0.30)",
+  background: "rgba(209,250,229,0.72)",
+  color: "#047857",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const compactMetaLine: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "6px 16px",
+  marginTop: "auto",
+  color: "#64748b",
+  fontSize: 12,
+};
+
+const compactDuplicateBox: CSSProperties = {
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid rgba(251,146,60,0.34)",
+  background: "rgba(255,237,213,0.72)",
+  color: "#9a3412",
+  fontSize: 12,
+  lineHeight: 1.5,
+};
+
+const compactActionsBar: CSSProperties = {
+  marginTop: 14,
+  paddingTop: 12,
+  borderTop: "1px solid rgba(148,163,184,0.22)",
+};
+
+const compactButtonBase: CSSProperties = {
+  minHeight: 42,
+  borderRadius: 9,
+  padding: "9px 13px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const compactDeleteBtn: CSSProperties = {
+  ...compactButtonBase,
+  marginRight: "auto",
+  border: "1px solid rgba(248,113,113,0.34)",
+  background: "rgba(254,226,226,0.68)",
+  color: "#b91c1c",
+};
+
+const compactDetailBtn: CSSProperties = {
+  ...compactButtonBase,
+  border: "1px solid rgba(14,165,233,0.34)",
+  background: "rgba(224,242,254,0.72)",
+  color: "#0369a1",
+};
+
+const compactRejectBtn: CSSProperties = {
+  ...compactButtonBase,
+  border: "1px solid rgba(248,113,113,0.34)",
+  background: "rgba(254,242,242,0.58)",
+  color: "#b91c1c",
+};
+
+const compactEditBtn: CSSProperties = {
+  ...compactButtonBase,
+  border: "1px solid rgba(148,163,184,0.30)",
+  background: "rgba(255,255,255,0.64)",
+  color: "#334155",
+};
+
+const compactPrimaryBtn: CSSProperties = {
+  ...compactButtonBase,
+  border: "1px solid #38bdf8",
+  background: "#0ea5e9",
+  color: "#fff",
+  boxShadow: "0 8px 18px rgba(14,165,233,0.20)",
+};
+
+const compactCreateBtn: CSSProperties = {
+  ...compactButtonBase,
+  border: "1px solid rgba(129,140,248,0.34)",
+  background: "rgba(238,242,255,0.72)",
+  color: "#4338ca",
+};
+
+const compactAutoEligibleBadge: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 26,
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid rgba(52,211,153,0.34)",
+  background: "rgba(209,250,229,0.72)",
+  color: "#047857",
+  fontSize: 11,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const compactAutoBlockedBadge: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 26,
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid rgba(248,113,113,0.34)",
+  background: "rgba(254,226,226,0.72)",
+  color: "#b91c1c",
+  fontSize: 11,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const qualityPanel: CSSProperties = {
+  marginBottom: 14,
+  padding: 14,
+  borderRadius: 14,
+  border: "1px solid #cbd5e1",
+  background: "#f8fafc",
+};
+
+const qualityHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 12,
+  marginBottom: 12,
+};
+
+const qualityTitle: CSSProperties = {
+  color: "#0f172a",
+  fontSize: 17,
+  fontWeight: 800,
+};
+
+const qualitySubtitle: CSSProperties = {
+  marginTop: 3,
+  color: "#64748b",
+  fontSize: 12,
+};
+
+const qualityGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: 10,
+};
+
+const qualityItem: CSSProperties = {
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#fff",
+};
+
+const qualityItemTop: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  color: "#334155",
+  fontSize: 13,
+};
+
+const qualityBarTrack: CSSProperties = {
+  height: 7,
+  marginTop: 7,
+  overflow: "hidden",
+  borderRadius: 999,
+  background: "#e2e8f0",
+};
+
+const qualityBarFill: CSSProperties = {
+  height: "100%",
+  borderRadius: 999,
+  background: "#0ea5e9",
+};
+
+const qualityReason: CSSProperties = {
+  marginTop: 6,
+  color: "#64748b",
+  fontSize: 11,
+  lineHeight: 1.4,
+};
+
+const qualityBlockersBox: CSSProperties = {
+  marginTop: 12,
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#991b1b",
+  fontSize: 13,
+};
+
+const qualityWarningsBox: CSSProperties = {
+  marginTop: 10,
+  padding: 10,
+  borderRadius: 10,
+  border: "1px solid #fde68a",
+  background: "#fffbeb",
+  color: "#92400e",
+  fontSize: 13,
+};
+
+const qualityList: CSSProperties = {
+  margin: "6px 0 0",
+  paddingLeft: 20,
+  lineHeight: 1.55,
+};
+
+const qualityConfigLine: CSSProperties = {
+  marginTop: 10,
+  color: "#475569",
+  fontSize: 12,
+};
+
+const videosGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 10,
+};
+
+const videoPreview: CSSProperties = {
+  width: "100%",
+  maxHeight: 320,
+  borderRadius: 10,
+  background: "#0f172a",
+};
+
+const detailModalOverlay: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 9998,
+  display: "grid",
+  placeItems: "center",
+  padding: 18,
+  background: "rgba(15,23,42,0.62)",
+  backdropFilter: "blur(7px)",
+};
+
+const detailModalShell: CSSProperties = {
+  width: "min(1460px, calc(100vw - 36px))",
+  maxHeight: "calc(100vh - 36px)",
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+  borderRadius: 20,
+  border: "1px solid #dbe3ee",
+  background: "#fff",
+  boxShadow: "0 28px 90px rgba(15,23,42,0.34)",
+  transition: "opacity 160ms ease",
+};
+
+const detailModalHeader: CSSProperties = {
+  position: "sticky",
+  top: 0,
+  zIndex: 2,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 14,
+  padding: "18px 20px",
+  borderBottom: "1px solid #e5e7eb",
+  background: "rgba(255,255,255,0.97)",
+  backdropFilter: "blur(12px)",
+};
+
+const detailModalCloseBtn: CSSProperties = {
+  flex: "0 0 auto",
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111827",
+  fontSize: 25,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const detailModalBody: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: "auto",
+  padding: 16,
+  overscrollBehavior: "contain",
+};
+
+const detailWarningsBox: CSSProperties = {
+  marginBottom: 12,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid #fecaca",
+  background: "#fff7f7",
+  color: "#991b1b",
+};
+
+const detailWarningsList: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 7,
+  marginTop: 8,
+};
+
+const detailWarningBadge: CSSProperties = {
+  padding: "4px 8px",
+  borderRadius: 999,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const detailModalFooter: CSSProperties = {
+  position: "sticky",
+  bottom: 0,
+  zIndex: 2,
+  padding: "14px 18px",
+  borderTop: "1px solid #e5e7eb",
+  background: "rgba(255,255,255,0.98)",
+  backdropFilter: "blur(12px)",
 };
 
 const errorBox: CSSProperties = {

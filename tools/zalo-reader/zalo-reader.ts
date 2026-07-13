@@ -1535,18 +1535,246 @@ function buildRoomUnitsFromMessages(groupName: string, messages: Msg[]): RoomUni
 }
 
 
-async function openGroup(page: Page, groupName: string, config: Config) {
-  const search = page.locator(config.selectors.searchBox).first();
-  await search.click({ timeout: 10000 });
-  await search.fill(groupName);
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(2500);
+async function openGroup(
+  page: Page,
+  groupName: string,
+  config: Config
+) {
+  const search =
+    page
+      .locator(
+        config.selectors.searchBox
+      )
+      .first();
 
-  const exact = page.getByText(groupName, { exact: false }).first();
-  if (await exact.count().catch(() => 0)) {
-    await exact.click().catch(() => {});
-    await page.waitForTimeout(2500);
+  await search.click({
+    timeout: 10_000,
+  });
+
+  /*
+   * Xóa từ khóa cũ trước khi tìm nhóm mới.
+   */
+  await search.fill("");
+  await page.waitForTimeout(250);
+
+  await search.fill(
+    groupName
+  );
+
+  /*
+   * Không nhấn Enter.
+   *
+   * Zalo thường tự chọn kết quả đầu tiên khi Enter,
+   * nên các tên gần giống nhau như:
+   *
+   * TOP DỰ ÁN QUẬN 1
+   * TOP DỰ ÁN QUẬN 10 TRÊN 6TR
+   *
+   * có thể bị mở nhầm.
+   */
+  await page.waitForTimeout(
+    1_800
+  );
+
+  const searchBox =
+    await search
+      .boundingBox()
+      .catch(() => null);
+
+  /*
+   * Kết quả tìm kiếm nằm ở panel trái.
+   * Dùng cạnh phải của ô tìm kiếm để phân biệt:
+   * - kết quả tìm kiếm bên trái;
+   * - tiêu đề nhóm đang mở bên phải.
+   */
+  const searchPanelRight =
+    searchBox
+      ? searchBox.x +
+        searchBox.width +
+        110
+      : 360;
+
+  /*
+   * Chỉ lấy node có text khớp chính xác toàn bộ tên nhóm.
+   * Tuyệt đối không dùng exact: false.
+   */
+  const exactMatches =
+    page.getByText(
+      groupName,
+      {
+        exact: true,
+      }
+    );
+
+  const exactCount =
+    await exactMatches
+      .count()
+      .catch(() => 0);
+
+  let selectedIndex = -1;
+  let selectedX =
+    Number.POSITIVE_INFINITY;
+
+  for (
+    let index = 0;
+    index < exactCount;
+    index++
+  ) {
+    const candidate =
+      exactMatches.nth(
+        index
+      );
+
+    const visible =
+      await candidate
+        .isVisible()
+        .catch(() => false);
+
+    if (!visible) {
+      continue;
+    }
+
+    const box =
+      await candidate
+        .boundingBox()
+        .catch(() => null);
+
+    if (!box) {
+      continue;
+    }
+
+    /*
+     * Chỉ click kết quả nằm trong panel tìm kiếm bên trái.
+     * Nếu có nhiều node trùng tên, chọn node nằm trái nhất.
+     */
+    if (
+      box.x <
+        searchPanelRight &&
+      box.x <
+        selectedX
+    ) {
+      selectedIndex =
+        index;
+
+      selectedX =
+        box.x;
+    }
   }
+
+  if (
+    selectedIndex < 0
+  ) {
+    throw new Error(
+      [
+        "Không tìm thấy nhóm khớp chính xác.",
+        `Tên cần mở: "${groupName}".`,
+        "Reader sẽ bỏ qua để tránh quét nhầm nhóm có tên gần giống.",
+      ].join(" ")
+    );
+  }
+
+  const selectedGroup =
+    exactMatches.nth(
+      selectedIndex
+    );
+
+  await selectedGroup
+    .scrollIntoViewIfNeeded()
+    .catch(() => {});
+
+  await selectedGroup.click({
+    timeout: 10_000,
+  });
+
+  await page.waitForTimeout(
+    2_500
+  );
+
+  /*
+   * Xác minh lại tiêu đề nhóm đang mở ở phần hội thoại bên phải.
+   *
+   * Nếu không có tiêu đề chính xác:
+   * - dừng ngay;
+   * - không cuộn;
+   * - không đọc IndexedDB;
+   * - không import.
+   */
+  const activeMatches =
+    page.getByText(
+      groupName,
+      {
+        exact: true,
+      }
+    );
+
+  const activeCount =
+    await activeMatches
+      .count()
+      .catch(() => 0);
+
+  let verifiedActiveGroup =
+    false;
+
+  for (
+    let index = 0;
+    index < activeCount;
+    index++
+  ) {
+    const candidate =
+      activeMatches.nth(
+        index
+      );
+
+    const visible =
+      await candidate
+        .isVisible()
+        .catch(() => false);
+
+    if (!visible) {
+      continue;
+    }
+
+    const box =
+      await candidate
+        .boundingBox()
+        .catch(() => null);
+
+    if (!box) {
+      continue;
+    }
+
+    /*
+     * Header nhóm thường nằm:
+     * - bên phải panel tìm kiếm;
+     * - gần phía trên cửa sổ.
+     */
+    if (
+      box.x >=
+        searchPanelRight - 20 &&
+      box.y <= 180
+    ) {
+      verifiedActiveGroup =
+        true;
+
+      break;
+    }
+  }
+
+  if (
+    !verifiedActiveGroup
+  ) {
+    throw new Error(
+      [
+        "Đã click kết quả nhưng không xác minh được nhóm đang mở.",
+        `Nhóm yêu cầu: "${groupName}".`,
+        "Reader đã dừng để tránh import nhầm dữ liệu.",
+      ].join(" ")
+    );
+  }
+
+  console.log(
+    `Đã mở đúng nhóm: ${groupName}`
+  );
 }
 
 async function scrollChatAndCollect(
@@ -4804,7 +5032,7 @@ function isIndexedDbHouseInfoText(
    * - cuối hoặc gần cuối có Q/Quận.
    */
   const looksLikeAddressLine =
-    /^\d+[a-z]?(?:\/\d+[a-z]?)*\s+[a-z].*\b(?:q\.?\s*\d{1,2}|quan\s*\d{1,2})\b/.test(
+    /^\d+[a-z]?(?:(?:\/|-)\d+[a-z]?)*\s+[a-z].*\b(?:q\.?\s*\d{1,2}|quan\s*\d{1,2})\b/.test(
       normalized
     );
 
@@ -4891,9 +5119,12 @@ function isStrongIndexedDbRoomMarkerLine(
 
   /*
    * Loại các section chắc chắn không phải phòng.
+   *
+   * Lưu ý: "diện tích" sau khi bỏ dấu là "dien tich",
+   * không được hiểu nhầm thành dòng phí điện.
    */
   const blockedSection =
-    /^(?:[-+•*]\s*)?(?:thong bao du an|du an moi|cap nhat du an|du an duy tri|dia chi|quy mo|tong so|so luong|dien|nuoc|xe|giu xe|gui xe|phi|phi dich vu|dich vu|giat|may giat|coc|coc toi thieu|hoa hong|hh|huy coc|hop dong|hd|thu cung|khach nuoc ngoai|so luong nguoi|lien he)\b/.test(
+    /^(?:[-+•*]\s*)?(?:thong bao du an|du an moi|cap nhat du an|du an duy tri|dia chi|quy mo|tong so|so luong|dien(?!\s*tich)|nuoc|xe|giu xe|gui xe|phi|phi dich vu|dich vu|giat|may giat|coc|coc toi thieu|hoa hong|hh|huy coc|hop dong|hd|thu cung|khach nuoc ngoai|so luong nguoi|lien he)\b/.test(
       normalized
     );
 
@@ -4901,15 +5132,8 @@ function isStrongIndexedDbRoomMarkerLine(
     return false;
   }
 
-  /*
-   * Chặn những câu phí có chữ "phòng":
-   *
-   * - phí rác 80k/phòng
-   * - dịch vụ 200k/phòng
-   * - giặt 150k/người
-   */
   const looksLikeFeeLine =
-    /\b(?:phi|dich vu|dien|nuoc|giat|xe|giu xe|gui xe|coc|hoa hong|hh)\b/.test(
+    /\b(?:phi|dich vu|dien(?!\s*tich)|nuoc|giat|xe|giu xe|gui xe|coc|hoa hong|hh)\b/.test(
       normalized
     );
 
@@ -4917,9 +5141,6 @@ function isStrongIndexedDbRoomMarkerLine(
     return false;
   }
 
-  /*
-   * Giá phòng hợp lệ.
-   */
   const hasPrice =
     /\b(?:gia|gia thue)\s*[:\-]?\s*\d/.test(
       normalized
@@ -4938,69 +5159,65 @@ function isStrongIndexedDbRoomMarkerLine(
     return false;
   }
 
-  /*
-   * Trạng thái phòng rõ ràng.
-   */
   const hasVacancySignal =
     /\b(?:trong|trong san|phong trong|con trong|dang trong|available)\b/.test(
       normalized
     );
 
   /*
-   * Mã phòng hỗ trợ:
-   *
-   * 202
-   * 303
-   * P601
-   * P001
-   * G01
-   * L1
-   * L2
-   * Trệt
-   * Lầu 1
-   * Tầng 2
+   * Hỗ trợ:
+   * 301, P301, P.301, G01, P.G01, P. G01,
+   * L1, L2, Trệt, Lửng, Lầu 1, Tầng 3.
    */
   const roomCodeToken =
-    "(?:tret|lung|lau\\s*\\d{1,2}|tang\\s*\\d{1,2}|[a-z]{1,3}\\.?\\d{1,4}[a-z]?|\\d{2,4}[a-z]?)";
+    "(?:" +
+    "tret|lung|" +
+    "san\\s*thuong|tang\\s*thuong|" +
+    "lau\\s*\\d{1,2}|tang\\s*\\d{1,2}|" +
+    "(?:p\\s*\\.\\s*)?[a-z]{0,3}\\s*\\.?\\s*\\d{1,4}[a-z]?|" +
+    "\\d{2,4}[a-z]?" +
+    ")";
 
-  /*
-   * Ví dụ:
-   *
-   * Trống L1 giá 4tr
-   * Trống mã 202 giá 6tr
-   * Còn trống P601 giá 7tr
-   */
   const vacancyWithRoomCode =
     new RegExp(
-      `\\b(?:trong|trong san|phong trong|con trong|dang trong)\\s*(?:phong|ma|ma phong)?\\s*[:\\-]?\\s*${roomCodeToken}\\b`,
+      [
+        "\\b(?:trong|trong\\s+san|phong\\s+trong|con\\s+trong|dang\\s+trong)",
+        "\\s*(?:san\\s*)?",
+        "(?:phong|ma|ma\\s+phong)?",
+        "\\s*[:\\-]?\\s*",
+        roomCodeToken,
+        "\\b",
+      ].join(""),
       "i"
     ).test(normalized);
 
   /*
-   * Ví dụ:
-   *
-   * L1 giá 4tr
-   * P601: 7tr
-   * 202: 8.500.000 phòng trống
-   * Trệt giá 9tr
+   * Không cho địa chỉ dạng 413/54... bị nhận thành mã 413.
+   * Sau mã có thể có mô tả trước khi tới giá:
+   * P. G01 (CS+Duplex+2 giường ngủ): 10.000.000đ
    */
   const startsWithRoomCode =
+    !/^\d+[a-z]?(?:\/\d+[a-z]?)+\b/.test(
+      normalized
+    ) &&
     new RegExp(
-      `^\\s*(?:phong\\s+|ma\\s+|ma phong\\s+)?${roomCodeToken}\\s*(?=[:\\-]?\\s*(?:gia\\b|\\d))`,
+      `^\\s*(?:phong\\s+|ma\\s+|ma\\s+phong\\s+)?${roomCodeToken}\\b`,
       "i"
     ).test(normalized);
 
   /*
-   * Có chữ "phòng trống" và giá nhưng không viết mã rõ ràng.
-   *
-   * Ví dụ:
-   * Phòng trống giá 6tr
+   * Marker có mã tầng đặt sau giá:
+   * Diện tích 60m2 ... Giá 13tr ... Tầng 3
    */
-  const explicitVacantRoom =
-    /\bphong trong\b/.test(
+  const containsFloorCode =
+    /\b(?:tret|lung|san\s*thuong|tang\s*thuong|lau\s*\d{1,2}|tang\s*\d{1,2})\b/.test(
       normalized
-    ) &&
-    hasPrice;
+    );
+
+  const explicitVacantRoom =
+    /\bphong\s+trong\b/.test(
+      normalized
+    ) && hasPrice;
 
   return (
     hasPrice &&
@@ -5008,6 +5225,7 @@ function isStrongIndexedDbRoomMarkerLine(
       vacancyWithRoomCode ||
       startsWithRoomCode ||
       explicitVacantRoom ||
+      containsFloorCode ||
       (
         hasVacancySignal &&
         /\b(?:ma|ma phong|phong)\b/.test(
@@ -5401,6 +5619,1093 @@ function getIndexedDbVideoPayload(
   };
 }
 
+type IndexedDbSoftHouseContext = {
+  key: string;
+  texts: string[];
+  lastTimestamp: number;
+};
+
+type IndexedDbSoftRoomDraft = {
+  house:
+    | IndexedDbSoftHouseContext
+    | null;
+
+  markerTexts: string[];
+  markerMessageIds: string[];
+
+  markerTimestamp: number;
+  lastMarkerTimestamp: number;
+
+  descriptionTexts: string[];
+  mediaMessages: IndexedDbGroupMessage[];
+
+  warnings: Set<string>;
+};
+
+function getIndexedDbSoftUniqueTextKey(
+  input: string
+) {
+  return makeStableText(input)
+    .replace(
+      /[.,:;|()[\]{}+\-–—]+/g,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pushIndexedDbSoftUniqueText(
+  values: string[],
+  input: string
+) {
+  const text =
+    cleanIndexedDbRoomText(input);
+
+  const key =
+    getIndexedDbSoftUniqueTextKey(
+      text
+    );
+
+  if (
+    !text ||
+    !key ||
+    values.some(
+      (value) =>
+        getIndexedDbSoftUniqueTextKey(
+          value
+        ) === key
+    )
+  ) {
+    return;
+  }
+
+  values.push(text);
+}
+
+function extractIndexedDbSoftHouseIdentity(
+  input: string
+) {
+  const text =
+    cleanIndexedDbRoomText(input);
+
+  const normalized =
+    makeStableText(text);
+
+  const districtMatch =
+    normalized.match(
+      /\b(?:q\.?|quan)\s*[:\-]?\s*(\d{1,2}|binh thanh|go vap|phu nhuan|tan binh|tan phu|thu duc|binh tan)\b/
+    );
+
+  const district =
+    districtMatch?.[1] || "";
+
+  const addressMatches =
+    Array.from(
+      normalized.matchAll(
+        /(?:^|[\n,;|])\s*(\d+[a-z]?(?:(?:\/|-)\d+[a-z]?)*)(?:\s+|\s*,\s*)([a-z][a-z0-9.' -]{1,80}?)(?=\s*(?:,|;|\||\n|-)?\s*(?:(?:phuong|p\.?\s*)[^,;|\n-]{1,40}\s*(?:,|;|\||\n|-)?\s*)?(?:q\.?|quan)\b)/g
+      )
+    );
+
+  const addressMatch =
+    addressMatches[
+      addressMatches.length - 1
+    ];
+
+  if (
+    addressMatch?.[1] &&
+    addressMatch?.[2]
+  ) {
+    const street =
+      addressMatch[2]
+        .replace(
+          /\b(?:phuong|p\.?\s*)\b.*$/,
+          ""
+        )
+        .trim();
+
+    return {
+      key: [
+        addressMatch[1],
+        street,
+        district,
+      ].join("|"),
+
+      houseNumber:
+        addressMatch[1],
+
+      street,
+      district,
+    };
+  }
+
+  const simpleMatch =
+    normalized.match(
+      /(?:^|\n)\s*(\d+[a-z]?(?:(?:\/|-)\d+[a-z]?)*)(?:\s+)([a-z][a-z0-9.' -]{1,80}?)\s*(?:,|-)?\s*(?:q\.?|quan)\s*[:\-]?\s*(\d{1,2}|binh thanh|go vap|phu nhuan|tan binh|tan phu|thu duc|binh tan)\b/
+    );
+
+  if (
+    simpleMatch?.[1] &&
+    simpleMatch?.[2]
+  ) {
+    const street =
+      simpleMatch[2].trim();
+
+    return {
+      key: [
+        simpleMatch[1],
+        street,
+        simpleMatch[3] || "",
+      ].join("|"),
+
+      houseNumber:
+        simpleMatch[1],
+
+      street,
+
+      district:
+        simpleMatch[3] || "",
+    };
+  }
+
+  return {
+    key: "",
+    houseNumber: "",
+    street: "",
+    district,
+  };
+}
+
+function extractIndexedDbSoftRoomCode(
+  input: string
+) {
+  const normalized =
+    makeStableText(input);
+
+  const floorMatch =
+    normalized.match(
+      /\b(?:lau|tang)\s*(\d{1,2})\b/
+    );
+
+  if (floorMatch?.[1]) {
+    return `L${Number(
+      floorMatch[1]
+    )}`;
+  }
+
+  if (/\btret\b/.test(normalized)) {
+    return "TRỆT";
+  }
+
+  if (/\blung\b/.test(normalized)) {
+    return "LỬNG";
+  }
+
+  const codePatterns = [
+    /\b(?:trong|trong san|con trong|phong trong)\s*(?:san\s*)?(?:phong|ma|ma phong)?\s*[:\-]?\s*((?:p\s*\.\s*)?[a-z]{0,3}\s*\.?\s*\d{1,4}[a-z]?|\d{2,4}[a-z]?)\b/,
+
+    /^\s*(?:phong\s+|ma\s+|ma phong\s+)?((?:p\s*\.\s*)?[a-z]{0,3}\s*\.?\s*\d{1,4}[a-z]?|\d{2,4}[a-z]?)\b/,
+  ];
+
+  for (const pattern of codePatterns) {
+    const match =
+      normalized.match(pattern);
+
+    if (!match?.[1]) {
+      continue;
+    }
+
+    const code =
+      match[1]
+        .replace(
+          /^p\s*\.\s*/,
+          ""
+        )
+        .replace(/[\s.]/g, "")
+        .toUpperCase();
+
+    if (code) {
+      return code;
+    }
+  }
+
+  return "";
+}
+
+function splitIndexedDbSoftTextMessage(
+  input: string
+) {
+  const text =
+    cleanIndexedDbRoomText(input);
+
+  const lines =
+    text
+      .split("\n")
+      .map((line) =>
+        line.trim()
+      )
+      .filter(Boolean);
+
+  const markerIndexes:
+    number[] = [];
+
+  for (
+    let index = 0;
+    index < lines.length;
+    index++
+  ) {
+    if (
+      isStrongIndexedDbRoomMarkerLine(
+        lines[index]
+      )
+    ) {
+      markerIndexes.push(index);
+    }
+  }
+
+  /*
+   * Marker nhiều dòng như:
+   * Diện tích 60m2
+   * Giá 13tr
+   * Tầng 3
+   */
+  if (
+    markerIndexes.length === 0 &&
+    isStrongIndexedDbRoomMarkerLine(
+      text
+    )
+  ) {
+    return {
+      houseText: "",
+
+      markers: [
+        {
+          text,
+          descriptionTexts: [],
+          summary: false,
+        },
+      ],
+    };
+  }
+
+  if (markerIndexes.length === 0) {
+    return {
+      houseText:
+        isIndexedDbHouseInfoText(
+          text
+        )
+          ? text
+          : "",
+
+      markers: [] as Array<{
+        text: string;
+        descriptionTexts: string[];
+        summary: boolean;
+      }>,
+    };
+  }
+
+  const firstMarkerIndex =
+    markerIndexes[0];
+
+  const prefixText =
+    lines
+      .slice(0, firstMarkerIndex)
+      .join("\n")
+      .trim();
+
+  const houseText =
+    prefixText &&
+    (
+      isIndexedDbHouseInfoText(
+        prefixText
+      ) ||
+      Boolean(
+        extractIndexedDbSoftHouseIdentity(
+          prefixText
+        ).key
+      )
+    )
+      ? prefixText
+      : "";
+
+  const markers =
+    markerIndexes.map(
+      (
+        markerIndex,
+        markerPosition
+      ) => {
+        const nextMarkerIndex =
+          markerIndexes[
+            markerPosition + 1
+          ] ?? lines.length;
+
+        const descriptionTexts =
+          lines
+            .slice(
+              markerIndex + 1,
+              nextMarkerIndex
+            )
+            .filter(
+              (line) =>
+                !isIndexedDbNoiseText(
+                  line
+                ) &&
+                !isIndexedDbHouseInfoText(
+                  line
+                ) &&
+                !isStrongIndexedDbRoomMarkerLine(
+                  line
+                )
+            );
+
+        return {
+          text:
+            lines[markerIndex],
+
+          descriptionTexts,
+
+          summary:
+            markerIndexes.length > 1,
+        };
+      }
+    );
+
+  return {
+    houseText,
+    markers,
+  };
+}
+
+function buildRoomsFromIndexedDbSoftTimeline(
+  params: {
+    groupName: string;
+    groupId: string;
+    messages: IndexedDbGroupMessage[];
+    maxGapMs: number;
+  }
+) {
+  const rooms:
+    IndexedDbRoomPreview[] = [];
+
+  const messagesBySender =
+    new Map<
+      string,
+      IndexedDbGroupMessage[]
+    >();
+
+  for (const message of params.messages) {
+    const senderUid =
+      String(
+        message.fromUid || ""
+      ).trim();
+
+    const senderKey =
+      senderUid ||
+      "__UNKNOWN_SENDER__";
+
+    const currentMessages =
+      messagesBySender.get(
+        senderKey
+      ) || [];
+
+    currentMessages.push(message);
+
+    messagesBySender.set(
+      senderKey,
+      currentMessages
+    );
+  }
+
+  for (
+    const [
+      senderKey,
+      senderMessagesRaw,
+    ] of messagesBySender
+  ) {
+    const senderMessages = [
+      ...senderMessagesRaw,
+    ].sort((a, b) => {
+      const timeDifference =
+        getIndexedDbMessageTimestamp(
+          a
+        ) -
+        getIndexedDbMessageTimestamp(
+          b
+        );
+
+      if (timeDifference !== 0) {
+        return timeDifference;
+      }
+
+      return String(
+        a.msgId || ""
+      ).localeCompare(
+        String(
+          b.msgId || ""
+        )
+      );
+    });
+
+    let currentHouse:
+      | IndexedDbSoftHouseContext
+      | null = null;
+
+    let currentRoom:
+      | IndexedDbSoftRoomDraft
+      | null = null;
+
+    let orphanMedia:
+      IndexedDbGroupMessage[] = [];
+
+    const drafts:
+      IndexedDbSoftRoomDraft[] = [];
+
+    const recentRoomByKey =
+      new Map<
+        string,
+        IndexedDbSoftRoomDraft
+      >();
+
+    function createMediaOnlyDraft() {
+      if (orphanMedia.length === 0) {
+        return;
+      }
+
+      const firstMedia =
+        orphanMedia[0];
+
+      const timestamp =
+        getIndexedDbMessageTimestamp(
+          firstMedia
+        );
+
+      drafts.push({
+        house: currentHouse,
+
+        markerTexts: [
+          "Phòng chỉ có media, chưa tìm thấy marker phòng.",
+        ],
+
+        markerMessageIds: [
+          firstMedia.msgId,
+        ].filter(Boolean),
+
+        markerTimestamp:
+          timestamp,
+
+        lastMarkerTimestamp:
+          timestamp,
+
+        descriptionTexts: [],
+
+        mediaMessages: [
+          ...orphanMedia,
+        ],
+
+        warnings: new Set([
+          "SOFT_TIMELINE_FALLBACK",
+          "MEDIA_ONLY",
+          "ROOM_CODE_MISSING",
+        ]),
+      });
+
+      orphanMedia = [];
+    }
+
+    function applyHouseText(
+      input: string,
+      timestamp: number
+    ) {
+      const text =
+        cleanIndexedDbRoomText(
+          input
+        );
+
+      if (!text) {
+        return;
+      }
+
+      const identity =
+        extractIndexedDbSoftHouseIdentity(
+          text
+        );
+
+      const currentKeyIsUnknown =
+        Boolean(
+          currentHouse?.key.startsWith(
+            "__UNKNOWN_HOUSE__"
+          )
+        );
+
+      if (
+        identity.key &&
+        currentHouse?.key &&
+        !currentKeyIsUnknown &&
+        identity.key !==
+          currentHouse.key
+      ) {
+        currentRoom = null;
+        createMediaOnlyDraft();
+
+        currentHouse = {
+          key: identity.key,
+          texts: [text],
+          lastTimestamp:
+            timestamp,
+        };
+
+        return;
+      }
+
+      if (!currentHouse) {
+        currentHouse = {
+          key:
+            identity.key ||
+            [
+              "__UNKNOWN_HOUSE__",
+              senderKey,
+              timestamp,
+            ].join(":"),
+
+          texts: [text],
+
+          lastTimestamp:
+            timestamp,
+        };
+
+        return;
+      }
+
+      if (
+        identity.key &&
+        currentKeyIsUnknown
+      ) {
+        currentHouse.key =
+          identity.key;
+      }
+
+      pushIndexedDbSoftUniqueText(
+        currentHouse.texts,
+        text
+      );
+
+      currentHouse.lastTimestamp =
+        timestamp;
+    }
+
+    for (
+      const message of
+      senderMessages
+    ) {
+      const timestamp =
+        getIndexedDbMessageTimestamp(
+          message
+        );
+
+      if (message.kind === "text") {
+        const parts =
+          splitIndexedDbSoftTextMessage(
+            message.text
+          );
+
+        if (parts.houseText) {
+          applyHouseText(
+            parts.houseText,
+            timestamp
+          );
+        }
+
+        if (parts.markers.length > 0) {
+          for (
+            const marker of
+            parts.markers
+          ) {
+            currentRoom = null;
+
+            const roomCode =
+              extractIndexedDbSoftRoomCode(
+                marker.text
+              );
+
+            const activeHouse =
+              currentHouse as
+                | IndexedDbSoftHouseContext
+                | null;
+
+            const roomKey =
+              roomCode
+                ? [
+                    activeHouse?.key ||
+                      "__NO_HOUSE__",
+                    roomCode,
+                  ].join("|")
+                : "";
+
+            const existingRoom =
+              roomKey
+                ? recentRoomByKey.get(
+                    roomKey
+                  )
+                : undefined;
+
+            if (
+              existingRoom &&
+              existingRoom
+                .mediaMessages
+                .length === 0 &&
+              (
+                timestamp <= 0 ||
+                existingRoom
+                  .lastMarkerTimestamp <= 0 ||
+                timestamp -
+                  existingRoom
+                    .lastMarkerTimestamp <=
+                  params.maxGapMs * 3
+              )
+            ) {
+              currentRoom =
+                existingRoom;
+            } else {
+              currentRoom = {
+                house: currentHouse,
+
+                markerTexts: [],
+                markerMessageIds: [],
+
+                markerTimestamp:
+                  timestamp,
+
+                lastMarkerTimestamp:
+                  timestamp,
+
+                descriptionTexts: [],
+                mediaMessages: [],
+
+                warnings:
+                  new Set([
+                    "SOFT_TIMELINE_FALLBACK",
+                  ]),
+              };
+
+              drafts.push(
+                currentRoom
+              );
+
+              if (roomKey) {
+                recentRoomByKey.set(
+                  roomKey,
+                  currentRoom
+                );
+              }
+            }
+
+            pushIndexedDbSoftUniqueText(
+              currentRoom.markerTexts,
+              marker.text
+            );
+
+            if (
+              message.msgId &&
+              !currentRoom
+                .markerMessageIds
+                .includes(
+                  message.msgId
+                )
+            ) {
+              currentRoom
+                .markerMessageIds
+                .push(
+                  message.msgId
+                );
+            }
+
+            currentRoom.markerTimestamp =
+              Math.max(
+                currentRoom
+                  .markerTimestamp,
+                timestamp
+              );
+
+            currentRoom.lastMarkerTimestamp =
+              timestamp;
+
+            for (
+              const descriptionText of
+              marker.descriptionTexts
+            ) {
+              pushIndexedDbSoftUniqueText(
+                currentRoom
+                  .descriptionTexts,
+                descriptionText
+              );
+            }
+
+            if (marker.summary) {
+              currentRoom.warnings.add(
+                "SUMMARY_MARKER"
+              );
+            }
+
+            if (orphanMedia.length > 0) {
+              const lastOrphan =
+                orphanMedia[
+                  orphanMedia.length - 1
+                ];
+
+              const orphanTimestamp =
+                getIndexedDbMessageTimestamp(
+                  lastOrphan
+                );
+
+              if (
+                timestamp <= 0 ||
+                orphanTimestamp <= 0 ||
+                timestamp -
+                  orphanTimestamp <=
+                  params.maxGapMs
+              ) {
+                currentRoom
+                  .mediaMessages
+                  .push(
+                    ...orphanMedia
+                  );
+
+                currentRoom.warnings.add(
+                  "ORPHAN_MEDIA_ATTACHED_TO_NEXT_MARKER"
+                );
+
+                orphanMedia = [];
+              }
+            }
+          }
+
+          continue;
+        }
+
+        if (
+          !parts.houseText &&
+          !isIndexedDbNoiseText(
+            message.text
+          ) &&
+          currentRoom
+        ) {
+          pushIndexedDbSoftUniqueText(
+            currentRoom
+              .descriptionTexts,
+            message.text
+          );
+        }
+
+        continue;
+      }
+
+      if (
+        message.kind === "image" ||
+        isIndexedDbVideoMessage(
+          message
+        )
+      ) {
+        const belongsToCurrentRoom =
+          Boolean(
+            currentRoom &&
+            (
+              currentRoom
+                .lastMarkerTimestamp <= 0 ||
+              timestamp <= 0 ||
+              timestamp -
+                currentRoom
+                  .lastMarkerTimestamp <=
+                params.maxGapMs
+            )
+          );
+
+        if (
+          belongsToCurrentRoom &&
+          currentRoom
+        ) {
+          currentRoom
+            .mediaMessages
+            .push(message);
+        } else {
+          orphanMedia.push(message);
+        }
+      }
+    }
+
+    createMediaOnlyDraft();
+
+    for (const draft of drafts) {
+      const imageMessages =
+        draft.mediaMessages.filter(
+          (message) =>
+            message.kind ===
+            "image"
+        );
+
+      const videoMessages =
+        draft.mediaMessages.filter(
+          isIndexedDbVideoMessage
+        );
+
+      const albums =
+        buildIndexedDbAlbums(
+          imageMessages
+        );
+
+      const imageUrls =
+        Array.from(
+          new Set(
+            albums.flatMap(
+              (album) =>
+                album.imageUrls
+            )
+          )
+        );
+
+      const imageMessageIds =
+        Array.from(
+          new Set(
+            albums.flatMap(
+              (album) =>
+                album.imageMessageIds
+            )
+          )
+        );
+
+      const videoMessageIds =
+        Array.from(
+          new Set(
+            videoMessages
+              .map(
+                (message) =>
+                  message.msgId
+              )
+              .filter(Boolean)
+          )
+        );
+
+      const videoUrls =
+        Array.from(
+          new Set(
+            videoMessages.flatMap(
+              (message) =>
+                Array.isArray(
+                  message.videoUrls
+                )
+                  ? message.videoUrls
+                  : []
+            )
+          )
+        )
+          .map((url) =>
+            String(
+              url || ""
+            ).trim()
+          )
+          .filter(Boolean);
+
+      const videoThumbUrls =
+        Array.from(
+          new Set(
+            videoMessages.flatMap(
+              (message) =>
+                Array.isArray(
+                  message.videoThumbUrls
+                )
+                  ? message.videoThumbUrls
+                  : []
+            )
+          )
+        )
+          .map((url) =>
+            String(
+              url || ""
+            ).trim()
+          )
+          .filter(Boolean);
+
+      const videoPayloadMap =
+        new Map<
+          string,
+          IndexedDbVideoPayload
+        >();
+
+      for (
+        const videoMessage of
+        videoMessages
+      ) {
+        const payload =
+          getIndexedDbVideoPayload(
+            videoMessage
+          );
+
+        if (
+          payload &&
+          !videoPayloadMap.has(
+            payload.sourceUrl
+          )
+        ) {
+          videoPayloadMap.set(
+            payload.sourceUrl,
+            payload
+          );
+        }
+      }
+
+      const warnings =
+        new Set(
+          draft.warnings
+        );
+
+      if (!draft.house) {
+        warnings.add(
+          "NO_HOUSE_INFO_IN_SOFT_TIMELINE"
+        );
+      }
+
+      if (imageUrls.length === 0) {
+        warnings.add(
+          "NO_IMAGES"
+        );
+      }
+
+      if (
+        imageUrls.length === 0 &&
+        videoMessages.length === 0
+      ) {
+        warnings.add(
+          "NO_MEDIA"
+        );
+      }
+
+      if (
+        warnings.has(
+          "SUMMARY_MARKER"
+        ) &&
+        imageUrls.length === 0 &&
+        videoMessages.length === 0
+      ) {
+        warnings.add(
+          "SUMMARY_MARKER_NO_MEDIA"
+        );
+      }
+
+      for (const album of albums) {
+        if (!album.complete) {
+          warnings.add(
+            [
+              "INCOMPLETE_ALBUM",
+              album.albumKey,
+              `${album.actualImageCount}/${album.expectedImageCount}`,
+            ].join(":")
+          );
+        }
+      }
+
+      if (
+        videoMessages.length > 0 &&
+        videoPayloadMap.size === 0
+      ) {
+        warnings.add(
+          [
+            "VIDEO_SOURCE_URL_MISSING",
+            String(
+              videoMessages.length
+            ),
+          ].join(":")
+        );
+      }
+
+      const markerMessageId =
+        draft.markerMessageIds[
+          draft.markerMessageIds
+            .length - 1
+        ] ||
+        draft.mediaMessages[0]
+          ?.msgId ||
+        "";
+
+      const sourceHash =
+        hash(
+          [
+            "indexeddb-soft-room",
+            params.groupName,
+            params.groupId,
+            ...draft.markerMessageIds,
+            ...imageMessageIds,
+            ...videoMessageIds,
+          ].join("|")
+        );
+
+      const room:
+        IndexedDbRoomPreview = {
+          sourceHash,
+
+          groupId:
+            params.groupId,
+
+          senderUid:
+            senderKey ===
+            "__UNKNOWN_SENDER__"
+              ? ""
+              : senderKey,
+
+          houseInfoText:
+            draft.house
+              ?.texts
+              .join("\n\n")
+              .trim() || "",
+
+          markerText:
+            draft.markerTexts
+              .join("\n")
+              .trim(),
+
+          descriptionTexts:
+            draft.descriptionTexts,
+
+          fullText: "",
+
+          markerMessageId,
+
+          markerTimestamp:
+            draft.markerTimestamp,
+
+          albums,
+          imageUrls,
+          imageMessageIds,
+
+          hasVideo:
+            videoMessages.length > 0,
+
+          videoMessageIds,
+          videoUrls,
+          videoThumbUrls,
+
+          videos:
+            Array.from(
+              videoPayloadMap.values()
+            ),
+
+          warnings:
+            Array.from(warnings),
+        };
+
+      refreshIndexedDbRoomFullText(
+        room
+      );
+
+      rooms.push(room);
+    }
+  }
+
+  return rooms.sort(
+    (a, b) =>
+      b.markerTimestamp -
+      a.markerTimestamp
+  );
+}
+
 /**
  * Chỉ tạo block nằm giữa hai dấu phân cách.
  *
@@ -5435,7 +6740,7 @@ function splitIndexedDbClosedBlocks(
           )
         : "";
 
-   const isSeparator = 
+   const isSeparator =
       Boolean(messageText) &&
       isIndexedDbSeparatorText(
         messageText
@@ -5520,6 +6825,44 @@ function buildRoomsFromIndexedDbMessages(
       )
     );
   });
+
+  const hasSeparator =
+    messages.some((message) => {
+      if (message.kind !== "text") {
+        return false;
+      }
+
+      const text =
+        cleanIndexedDbRoomText(
+          message.text
+        );
+
+      return (
+        Boolean(text) &&
+        isIndexedDbSeparatorText(
+          text
+        )
+      );
+    });
+
+  /*
+   * Nhóm không dùng separator:
+   * tòa nhà → marker → media → marker tiếp theo / tòa tiếp theo.
+   *
+   * Khi có ít nhất một separator, giữ nguyên parser block chính.
+   */
+  if (!hasSeparator) {
+    console.log(
+      "Không tìm thấy separator tòa nhà; Reader chuyển sang soft timeline fallback."
+    );
+
+    return buildRoomsFromIndexedDbSoftTimeline({
+      groupName,
+      groupId,
+      messages,
+      maxGapMs,
+    });
+  }
 
   /*
    * Mỗi phần tử là một block hoàn chỉnh
@@ -8016,7 +9359,7 @@ if (preferredGroupId) {
           ),
         };
       }
-    
+
       /**
  * Lấy các chuỗi có dạng group ID của Zalo.
  *
@@ -9039,9 +10382,25 @@ const activeGroupHintMap =
         | "saved_group_ref"
         | "active_group_ui"
         | "active_group"
-        | "visible_text";
+        | "visible_text"
+        | "dom_message_id";
 
       matchedTimestamps: number[];
+
+      /**
+       * Bằng chứng trực tiếp:
+       * ID bubble đang nhìn thấy trên DOM
+       * trùng với msgId/cliMsgId trong zdb.
+       */
+      domIdMatchCount: number;
+      matchedDomIds: string[];
+
+      /**
+       * Bằng chứng dự phòng:
+       * text đang hiển thị trùng với text trong sidx.
+       */
+      visibleMatchCount: number;
+      longestVisibleMatchLength: number;
     };
 
       const candidateMap =
@@ -9055,28 +10414,78 @@ const activeGroupHintMap =
        * Dùng Group ID đã lưu hoặc Group ID chắc chắn từ UI,
        * rồi truy vấn trực tiếp index theo toUid.
        */
-      const strongestUiHintForRead =
-        uiActiveGroupHints.find(
-          (item) =>
-            Number(
-              item.confidence
-            ) >= 95
-        ) || null;
+      /**
+       * ID message đang hiện trong đúng khung chat.
+       *
+       * Đây là bằng chứng mạnh nhất để biết Group ID nào
+       * thật sự thuộc nhóm đang mở, vì msgId/cliMsgId phải
+       * tồn tại trong timeline của đúng Group ID đó.
+       */
+      const domMessageIdSet =
+        new Set<string>(
+          (
+            Array.isArray(
+              domMessageSnapshot
+            )
+              ? domMessageSnapshot
+              : []
+          )
+            .flatMap(
+              (item: any) =>
+                Array.isArray(
+                  item?.idCandidates
+                )
+                  ? item.idCandidates
+                  : []
+            )
+            .map((value: any) =>
+              String(value || "")
+                .trim()
+            )
+            .filter((value: string) =>
+              /^\d{10,20}$/.test(
+                value
+              )
+            )
+        );
 
-      const resolvedGroupIdForRead =
-        /^g\d{6,}$/.test(
-          normalizedPreferredGroupId
-        )
-          ? normalizedPreferredGroupId
-          : String(
-              strongestUiHintForRead
-                ?.groupId || ""
-            ).trim();
+      /**
+       * Không chỉ đọc candidate đầu tiên.
+       *
+       * Khi Zalo trả về nhiều Group ID từ DOM,
+       * Reader phải kiểm tra từng mã bằng msgId/cliMsgId
+       * của các bubble đang thật sự hiển thị.
+       */
+      const groupIdsForDirectRead =
+        Array.from(
+          new Set(
+            [
+              normalizedPreferredGroupId,
 
-      if (
-        /^g\d{6,}$/.test(
-          resolvedGroupIdForRead
-        )
+              ...uiActiveGroupHints
+                .filter(
+                  (item) =>
+                    Number(
+                      item.confidence
+                    ) >= 95
+                )
+                .map((item) =>
+                  String(
+                    item.groupId || ""
+                  ).trim()
+                ),
+            ].filter(
+              (groupId) =>
+                /^g\d{6,}$/.test(
+                  groupId
+                )
+            )
+          )
+        );
+
+      for (
+        const groupIdForRead of
+        groupIdsForDirectRead
       ) {
         for (
           const databaseName of
@@ -9123,28 +10532,46 @@ const activeGroupHintMap =
                 "userId_sendDttm_msgId"
               );
 
-            /**
-             * Prefix range theo Group ID. Dùng [] làm upper bound
-             * để hỗ trợ sendDttm đang lưu dạng number hoặc string.
-             */
             const groupRange =
               IDBKeyRange.bound(
-                [resolvedGroupIdForRead],
+                [groupIdForRead],
                 [
-                  resolvedGroupIdForRead,
+                  groupIdForRead,
                   [],
                 ]
               );
 
-            const latestMessage =
-              await new Promise<
-                any | null
-              >(
+            const directRead =
+              await new Promise<{
+                latestMessage:
+                  any | null;
+                domIdMatchCount:
+                  number;
+                matchedDomIds:
+                  string[];
+              }>(
                 (resolve, reject) => {
                   const cursorRequest =
                     messageIndex.openCursor(
                       groupRange,
                       "prev"
+                    );
+
+                  const matchedDomIds =
+                    new Set<string>();
+
+                  let latestMessage:
+                    any | null = null;
+
+                  let scanned = 0;
+
+                  const maxVerifyScan =
+                    Math.min(
+                      3_000,
+                      Math.max(
+                        200,
+                        messageLimit
+                      )
                     );
 
                   cursorRequest.onerror =
@@ -9161,60 +10588,190 @@ const activeGroupHintMap =
                       const cursor =
                         cursorRequest.result;
 
-                      resolve(
-                        cursor
-                          ? cursor.value
-                          : null
-                      );
+                      if (
+                        !cursor ||
+                        scanned >=
+                          maxVerifyScan
+                      ) {
+                        resolve({
+                          latestMessage,
+
+                          domIdMatchCount:
+                            matchedDomIds.size,
+
+                          matchedDomIds:
+                            Array.from(
+                              matchedDomIds
+                            ).slice(0, 20),
+                        });
+
+                        return;
+                      }
+
+                      scanned += 1;
+
+                      const value =
+                        cursor.value || {};
+
+                      if (!latestMessage) {
+                        latestMessage =
+                          value;
+                      }
+
+                      const recordIds = [
+                        value.msgId,
+                        value.cliMsgId,
+                        value.id,
+                        value.messageId,
+                        value.msg_id,
+                        value.cli_msg_id,
+                        cursor.primaryKey,
+                        cursor.key,
+                      ]
+                        .map((item) =>
+                          String(
+                            item || ""
+                          ).trim()
+                        )
+                        .filter(Boolean);
+
+                      for (
+                        const recordId of
+                        recordIds
+                      ) {
+                        if (
+                          domMessageIdSet.has(
+                            recordId
+                          )
+                        ) {
+                          matchedDomIds.add(
+                            recordId
+                          );
+                        }
+                      }
+
+                      /**
+                       * Ba ID trực tiếp đã đủ chắc chắn.
+                       * Vẫn yêu cầu đã quét tối thiểu 30 record
+                       * để tránh dừng quá sớm ở dữ liệu bất thường.
+                       */
+                      if (
+                        matchedDomIds.size >=
+                          3 &&
+                        scanned >= 30
+                      ) {
+                        resolve({
+                          latestMessage,
+
+                          domIdMatchCount:
+                            matchedDomIds.size,
+
+                          matchedDomIds:
+                            Array.from(
+                              matchedDomIds
+                            ).slice(0, 20),
+                        });
+
+                        return;
+                      }
+
+                      cursor.continue();
                     };
                 }
               );
 
-            if (!latestMessage) {
+            if (
+              !directRead.latestMessage
+            ) {
               continue;
             }
 
             const latestTimestamp =
               Number(
-                latestMessage.sendDttm ||
-                  latestMessage.serverTime ||
-                  latestMessage.cliMsgId ||
+                directRead
+                  .latestMessage
+                  .sendDttm ||
+                  directRead
+                    .latestMessage
+                    .serverTime ||
+                  directRead
+                    .latestMessage
+                    .cliMsgId ||
                   0
               );
 
             const directCandidate:
               Candidate = {
                 databaseName,
+
                 messageStoreName:
                   "message",
+
                 groupId:
-                  resolvedGroupIdForRead,
-                score: 3_000_000,
+                  groupIdForRead,
+
+                score:
+                  3_000_000 +
+                  directRead
+                    .domIdMatchCount *
+                    10_000_000,
+
                 matches: [
                   `Đọc trực tiếp ${databaseName}/message`,
+
+                  ...directRead
+                    .matchedDomIds
+                    .map(
+                      (id) =>
+                        `DOM message ID: ${id}`
+                    ),
                 ],
+
                 latestTimestamp:
                   Number.isFinite(
                     latestTimestamp
                   )
                     ? latestTimestamp
                     : 0,
+
                 matchedTimestamps:
                   Number.isFinite(
                     latestTimestamp
                   ) &&
                   latestTimestamp > 0
-                    ? [latestTimestamp]
+                    ? [
+                        latestTimestamp,
+                      ]
                     : [],
+
+                domIdMatchCount:
+                  directRead
+                    .domIdMatchCount,
+
+                matchedDomIds:
+                  directRead
+                    .matchedDomIds,
+
+                visibleMatchCount: 0,
+
+                longestVisibleMatchLength:
+                  0,
+
                 source:
-                  normalizedPreferredGroupId ===
-                  resolvedGroupIdForRead
-                    ? "saved_group_ref"
-                    : "active_group_ui",
+                  directRead
+                    .domIdMatchCount >
+                  0
+                    ? "dom_message_id"
+                    : (
+                        normalizedPreferredGroupId ===
+                        groupIdForRead
+                          ? "saved_group_ref"
+                          : "active_group_ui"
+                      ),
               };
 
             candidateMap.set(
-              `${databaseName}__${resolvedGroupIdForRead}`,
+              `${databaseName}__${groupIdForRead}`,
               directCandidate
             );
 
@@ -9331,6 +10888,10 @@ if (activeGroupHint) {
       matches: [],
       latestTimestamp: 0,
       matchedTimestamps: [],
+      domIdMatchCount: 0,
+      matchedDomIds: [],
+      visibleMatchCount: 0,
+      longestVisibleMatchLength: 0,
       source:
         "active_group",
     };
@@ -9449,6 +11010,12 @@ if (activeGroupHint) {
                   latestTimestamp: 0,
                   matchedTimestamps:
                     [] as number[],
+                  domIdMatchCount: 0,
+                  matchedDomIds:
+                    [] as string[],
+                  visibleMatchCount: 0,
+                  longestVisibleMatchLength:
+                    0,
                   source:
                     "visible_text",
                 };
@@ -9492,7 +11059,17 @@ if (activeGroupHint) {
                       current.matches.push(
                         matchedText
                       );
+
+                      current.visibleMatchCount +=
+                        1;
                     }
+
+                    current.longestVisibleMatchLength =
+                      Math.max(
+                        current
+                          .longestVisibleMatchLength,
+                        matchedText.length
+                      );
                   }
 
                   candidateMap.set(
@@ -9513,6 +11090,42 @@ if (activeGroupHint) {
       const candidates = Array.from(
         candidateMap.values()
       ).sort((a, b) => {
+        /**
+         * Ưu tiên bằng chứng trực tiếp từ msgId/cliMsgId DOM.
+         */
+        if (
+          b.domIdMatchCount !==
+          a.domIdMatchCount
+        ) {
+          return (
+            b.domIdMatchCount -
+            a.domIdMatchCount
+          );
+        }
+
+        /**
+         * Sau đó mới ưu tiên số text thật sự khớp.
+         */
+        if (
+          b.visibleMatchCount !==
+          a.visibleMatchCount
+        ) {
+          return (
+            b.visibleMatchCount -
+            a.visibleMatchCount
+          );
+        }
+
+        if (
+          b.longestVisibleMatchLength !==
+          a.longestVisibleMatchLength
+        ) {
+          return (
+            b.longestVisibleMatchLength -
+            a.longestVisibleMatchLength
+          );
+        }
+
         if (b.score !== a.score) {
           return b.score - a.score;
         }
@@ -9523,8 +11136,273 @@ if (activeGroupHint) {
         );
       });
 
-            const bestCandidate =
+      /**
+       * ==================================
+       * XÁC MINH GROUP ID
+       * ==================================
+       *
+       * Mức 1:
+       * - msgId/cliMsgId của bubble DOM trùng zdb.
+       *
+       * Mức 2:
+       * - text dài đang hiển thị trùng sidx.
+       *
+       * Nếu nhiều Group ID có bằng chứng ngang nhau,
+       * không tự chọn để tránh nhập nhầm nhóm.
+       */
+      const directEvidenceByGroup =
+        new Map<
+          string,
+          Candidate
+        >();
+
+      for (
+        const candidate of
+        candidates
+      ) {
+        if (
+          candidate.domIdMatchCount <=
+          0
+        ) {
+          continue;
+        }
+
+        const current =
+          directEvidenceByGroup.get(
+            candidate.groupId
+          );
+
+        if (
+          !current ||
+          candidate.domIdMatchCount >
+            current.domIdMatchCount
+        ) {
+          directEvidenceByGroup.set(
+            candidate.groupId,
+            candidate
+          );
+        }
+      }
+
+      const directEvidence =
+        Array.from(
+          directEvidenceByGroup.values()
+        ).sort(
+          (a, b) =>
+            b.domIdMatchCount -
+              a.domIdMatchCount ||
+            b.latestTimestamp -
+              a.latestTimestamp
+        );
+
+      const bestDirectEvidence =
+        directEvidence[0] || null;
+
+      const secondDirectEvidence =
+        directEvidence.find(
+          (candidate) =>
+            candidate.groupId !==
+            bestDirectEvidence
+              ?.groupId
+        ) || null;
+
+      const directWinnerIsUnique =
+        Boolean(
+          bestDirectEvidence &&
+          (
+            !secondDirectEvidence ||
+            bestDirectEvidence
+              .domIdMatchCount >
+              secondDirectEvidence
+                .domIdMatchCount
+          )
+        );
+
+      const textEvidenceByGroup =
+        new Map<
+          string,
+          Candidate
+        >();
+
+      for (
+        const candidate of
+        candidates
+      ) {
+        if (
+          candidate.visibleMatchCount <=
+            0 ||
+          candidate
+            .longestVisibleMatchLength <
+            40
+        ) {
+          continue;
+        }
+
+        const current =
+          textEvidenceByGroup.get(
+            candidate.groupId
+          );
+
+        if (
+          !current ||
+          candidate.visibleMatchCount >
+            current.visibleMatchCount ||
+          (
+            candidate.visibleMatchCount ===
+              current.visibleMatchCount &&
+            candidate
+              .longestVisibleMatchLength >
+              current
+                .longestVisibleMatchLength
+          )
+        ) {
+          textEvidenceByGroup.set(
+            candidate.groupId,
+            candidate
+          );
+        }
+      }
+
+      const textEvidence =
+        Array.from(
+          textEvidenceByGroup.values()
+        ).sort(
+          (a, b) =>
+            b.visibleMatchCount -
+              a.visibleMatchCount ||
+            b.longestVisibleMatchLength -
+              a.longestVisibleMatchLength ||
+            b.latestTimestamp -
+              a.latestTimestamp
+        );
+
+      const bestTextEvidence =
+        textEvidence[0] || null;
+
+      const secondTextEvidence =
+        textEvidence.find(
+          (candidate) =>
+            candidate.groupId !==
+            bestTextEvidence
+              ?.groupId
+        ) || null;
+
+      const textWinnerIsUnique =
+        Boolean(
+          bestTextEvidence &&
+          (
+            !secondTextEvidence ||
+            bestTextEvidence
+              .visibleMatchCount >
+              secondTextEvidence
+                .visibleMatchCount ||
+            (
+              bestTextEvidence
+                .visibleMatchCount ===
+                secondTextEvidence
+                  .visibleMatchCount &&
+              bestTextEvidence
+                .longestVisibleMatchLength >=
+                secondTextEvidence
+                  .longestVisibleMatchLength +
+                  80
+            )
+          )
+        );
+
+      const verifiedEvidence =
+        directWinnerIsUnique
+          ? bestDirectEvidence
+          : (
+              textWinnerIsUnique
+                ? bestTextEvidence
+                : null
+            );
+
+      const verifiedGroupId =
+        String(
+          verifiedEvidence
+            ?.groupId || ""
+        ).trim();
+
+      const groupIdVerificationSource =
+        directWinnerIsUnique
+          ? "dom_message_id"
+          : (
+              textWinnerIsUnique
+                ? "visible_text"
+                : null
+            );
+
+      let bestCandidate:
+        Candidate | null =
         candidates[0] || null;
+
+      /**
+       * Sau khi xác minh Group ID bằng sidx,
+       * vẫn ưu tiên đọc timeline đầy đủ từ zdb/message.
+       */
+      if (
+        /^g\d{6,}$/.test(
+          verifiedGroupId
+        )
+      ) {
+        const directCandidateForVerifiedGroup =
+          candidates.find(
+            (candidate) =>
+              candidate.groupId ===
+                verifiedGroupId &&
+              candidate.messageStoreName ===
+                "message"
+          ) || null;
+
+        bestCandidate =
+          directCandidateForVerifiedGroup ||
+          verifiedEvidence;
+
+        if (
+          bestCandidate &&
+          verifiedEvidence
+        ) {
+          bestCandidate.matchedTimestamps =
+            Array.from(
+              new Set([
+                ...bestCandidate
+                  .matchedTimestamps,
+                ...verifiedEvidence
+                  .matchedTimestamps,
+              ])
+            );
+
+          bestCandidate.domIdMatchCount =
+            Math.max(
+              bestCandidate
+                .domIdMatchCount,
+              verifiedEvidence
+                .domIdMatchCount
+            );
+
+          bestCandidate.visibleMatchCount =
+            Math.max(
+              bestCandidate
+                .visibleMatchCount,
+              verifiedEvidence
+                .visibleMatchCount
+            );
+
+          bestCandidate.longestVisibleMatchLength =
+            Math.max(
+              bestCandidate
+                .longestVisibleMatchLength,
+              verifiedEvidence
+                .longestVisibleMatchLength
+            );
+
+          bestCandidate.source =
+            groupIdVerificationSource ||
+            bestCandidate.source;
+        }
+      }
 
       if (!bestCandidate) {
       const strongestUiHint =
@@ -9596,6 +11474,17 @@ if (activeGroupHint) {
           resolvedGroupId,
 
         groupIdSource,
+
+        groupIdVerified:
+          Boolean(
+            verifiedGroupId
+          ),
+
+        verifiedGroupId:
+          verifiedGroupId ||
+          null,
+
+        groupIdVerificationSource,
 
         matchedTimeStart: null,
         matchedTimeEnd: null,
@@ -11407,6 +13296,17 @@ if (activeGroupHint) {
                   "visible_text"
                 ),
 
+          groupIdVerified:
+            Boolean(
+              verifiedGroupId
+            ),
+
+          verifiedGroupId:
+            verifiedGroupId ||
+            null,
+
+          groupIdVerificationSource,
+
           visibleTexts,
 
           uiActiveGroupHints,
@@ -11502,39 +13402,89 @@ if (activeGroupHint) {
     groupRefs[groupKey] ||
     null;
 
+  const verifiedResultGroupId =
+    String(
+      (result as any)
+        .verifiedGroupId || ""
+    ).trim();
+
+  const hasVerifiedResultGroupId =
+    Boolean(
+      (result as any)
+        .groupIdVerified
+    ) &&
+    /^g\d{6,}$/.test(
+      verifiedResultGroupId
+    );
+
+  const uniqueUiGroupId =
+    strongUiGroupHints.length ===
+    1
+      ? String(
+          strongUiGroupHints[0]
+            ?.groupId || ""
+        ).trim()
+      : "";
+
   /**
-   * Nếu đã có Group ID lưu và giao diện
-   * đang cho ra một mã khác:
+   * Thứ tự tin cậy:
    *
-   * - Không tự ghi đè.
-   * - Không tiếp tục import.
+   * 1. msgId/cliMsgId DOM khớp zdb.
+   * 2. Text DOM khớp sidx.
+   * 3. Chỉ có đúng một Group ID mạnh từ UI.
    */
-  if (
-    currentSavedRef &&
-    strongUiGroupHints.length > 0
-  ) {
-    const differentHint =
-      strongUiGroupHints.find(
-        (item: any) =>
-          String(
-            item.groupId || ""
-          ).trim() !==
-          currentSavedRef.groupId
-      );
+  const detectedGroupId =
+    hasVerifiedResultGroupId
+      ? verifiedResultGroupId
+      : (
+          /^g\d{6,}$/.test(
+            uniqueUiGroupId
+          )
+            ? uniqueUiGroupId
+            : ""
+        );
 
-    if (differentHint) {
-      const detectedGroupId =
-        String(
-          differentHint.groupId ||
-          ""
-        ).trim();
+  const detectedSource =
+    hasVerifiedResultGroupId
+      ? String(
+          (result as any)
+            .groupIdVerificationSource ||
+            "verified"
+        )
+      : (
+          detectedGroupId
+            ? "active_group_ui_unique"
+            : ""
+        );
 
+  /**
+   * Chỉ báo này được vòng lặp chính dùng để quyết định:
+   *
+   * - true  -> được phép import IndexedDB;
+   * - false -> chuyển sang đọc DOM của đúng nhóm đang mở.
+   */
+  (result as any)
+    .groupIdTrusted = false;
+
+  if (currentSavedRef) {
+    /**
+     * Không còn coi "có một hint khác" là xung đột.
+     *
+     * Zalo có thể để nhiều ID rác trong DOM.
+     * Chỉ xung đột khi Reader đã xác minh trực tiếp
+     * một Group ID khác bằng message ID hoặc text.
+     */
+    if (
+      hasVerifiedResultGroupId &&
+      verifiedResultGroupId !==
+        currentSavedRef.groupId
+    ) {
       console.error(
         [
-          "CẢNH BÁO GROUP ID KHÔNG KHỚP.",
+          "CẢNH BÁO GROUP ID ĐÃ XÁC MINH KHÔNG KHỚP.",
           `Đã lưu: ${currentSavedRef.groupId}.`,
-          `Đang nhìn thấy: ${detectedGroupId}.`,
-          "Reader sẽ không tự ghi đè và không import dữ liệu của lượt này.",
+          `Xác minh hiện tại: ${verifiedResultGroupId}.`,
+          "Reader không import IndexedDB của lượt này.",
         ].join(" ")
       );
 
@@ -11543,9 +13493,9 @@ if (activeGroupHint) {
 
       (result as any).error =
         [
-          "Group ID đang mở khác Group ID đã lưu.",
+          "Group ID đã xác minh khác Group ID đã lưu.",
           `Đã lưu: ${currentSavedRef.groupId}.`,
-          `Phát hiện: ${detectedGroupId}.`,
+          `Xác minh: ${verifiedResultGroupId}.`,
         ].join(" ");
 
       (result as any)
@@ -11554,29 +13504,36 @@ if (activeGroupHint) {
             currentSavedRef
               .groupId,
 
-          detectedGroupId,
+          detectedGroupId:
+            verifiedResultGroupId,
+
+          source:
+            detectedSource,
         };
 
       (result as any).messages =
         [];
+    } else {
+      (result as any).groupId =
+        currentSavedRef.groupId;
+
+      (result as any)
+        .groupIdSource =
+          hasVerifiedResultGroupId
+            ? detectedSource
+            : "saved_group_ref";
+
+      (result as any)
+        .groupIdTrusted = true;
+
+      console.log(
+        [
+          "Đang dùng Group ID đã lưu:",
+          `${groupKey} → ${currentSavedRef.groupId}`,
+        ].join(" ")
+      );
     }
-  }
-
-  /**
-   * Chưa có Group ID:
-   * chỉ tự lưu khi tìm được đúng một mã
-   * có độ tin cậy từ 95 trở lên.
-   */
-  if (
-    !currentSavedRef &&
-    strongUiGroupHints.length === 1
-  ) {
-    const detectedGroupId =
-      String(
-        strongUiGroupHints[0]
-          .groupId || ""
-      ).trim();
-
+  } else if (detectedGroupId) {
     groupRefs[groupKey] = {
       groupId:
         detectedGroupId,
@@ -11601,73 +13558,81 @@ if (activeGroupHint) {
 
     (result as any)
       .groupIdSource =
-        "active_group_ui";
+        detectedSource;
+
+    (result as any)
+      .groupIdTrusted = true;
 
     console.log(
       [
-        "Đã lưu Group ID:",
+        "Đã xác minh và lưu Group ID:",
         `${groupKey} → ${detectedGroupId}`,
-        `(${groupName})`,
+        `(${detectedSource})`,
       ].join(" ")
     );
-  }
-
-  /**
-   * Nếu giao diện trả về nhiều mã mạnh,
-   * không tự lưu để tránh lấy nhầm.
-   */
-  if (
-    !currentSavedRef &&
-    strongUiGroupHints.length > 1
-  ) {
+  } else {
+    /**
+     * Nhiều ID nhưng chưa có bằng chứng trực tiếp:
+     * không dùng candidate có score cao nhất.
+     *
+     * Vòng lặp chính sẽ đọc trực tiếp DOM,
+     * nên nhóm vẫn được xử lý trong chính lượt này.
+     */
     console.warn(
       [
-        "Tìm thấy nhiều Group ID có độ tin cậy cao.",
-        "Reader chưa tự lưu để tránh lấy nhầm:",
-        strongUiGroupHints
-          .map(
-            (item: any) =>
-              String(
-                item.groupId || ""
+        "Chưa xác minh được Group ID duy nhất.",
+        "Không import bằng IndexedDB.",
+        "Reader sẽ chuyển sang DOM fallback.",
+        strongUiGroupHints.length >
+        0
+          ? `Các ID đang thấy: ${strongUiGroupHints
+              .map(
+                (item: any) =>
+                  String(
+                    item.groupId || ""
+                  )
               )
-          )
-          .join(", "),
-      ].join(" ")
+              .join(", ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
     );
-  }
 
-  /**
-   * Đã có Group ID lưu:
-   * dùng mã đó cho kết quả hiện tại,
-   * kể cả khi idx_queue chưa có message.
-   */
-  const finalSavedRef =
-    groupRefs[groupKey] ||
-    currentSavedRef;
+    (result as any).ok =
+      false;
 
-  if (
-    finalSavedRef &&
-    !(result as any)
-      .groupIdConflict
-  ) {
-    (result as any).groupId =
-      finalSavedRef.groupId;
+    (result as any).error =
+      "Group ID chưa được xác minh; chuyển sang DOM fallback.";
 
-    if (
-      !(result as any)
-        .groupIdSource
-    ) {
-      (result as any)
-        .groupIdSource =
-          "saved_group_ref";
-    }
+    (result as any)
+      .groupIdUnverified = {
+        strongUiGroupHints:
+          strongUiGroupHints.map(
+            (item: any) => ({
+              groupId:
+                String(
+                  item.groupId || ""
+                ),
 
-    console.log(
-      [
-        "Đang dùng Group ID đã lưu:",
-        `${groupKey} → ${finalSavedRef.groupId}`,
-      ].join(" ")
-    );
+              confidence:
+                Number(
+                  item.confidence ||
+                    0
+                ),
+
+              sources:
+                Array.isArray(
+                  item.sources
+                )
+                  ? item.sources
+                  : [],
+            })
+          ),
+      };
+
+    (result as any).messages =
+      [];
   }
 
     fs.mkdirSync(NETWORK_LOG_DIR, {
@@ -13293,51 +15258,100 @@ async function main() {
           }
 
           let indexedDbExport:
-  | Awaited<
-      ReturnType<
-        typeof dumpActiveGroupMessages
-      >
-    >
-  | null = null;
+            | Awaited<
+                ReturnType<
+                  typeof dumpActiveGroupMessages
+                >
+              >
+            | null = null;
 
-    if (
-      config.indexedDbGroupExport
-    ) {
-      indexedDbExport =
-        await dumpActiveGroupMessages(
-          page,
-          groupName,
-          groupKey,
-          config,
-          groupRefs
-        );
-    }
+          if (
+            config.indexedDbGroupExport
+          ) {
+            indexedDbExport =
+              await dumpActiveGroupMessages(
+                page,
+                groupName,
+                groupKey,
+                config,
+                groupRefs
+              );
+          }
 
-    if (
-      config.indexedDbImportEnabled &&
-      indexedDbExport?.result?.ok
-    ) {
-      await importIndexedDbRoomPreviews({
-        page,
-        config,
-        groupName,
+          const indexedDbResult =
+            indexedDbExport
+              ?.result as
+              | Record<
+                  string,
+                  any
+                >
+              | undefined;
 
-        rooms:
-          indexedDbExport.previewRooms,
+          const indexedDbTrusted =
+            Boolean(
+              indexedDbResult?.ok &&
+              indexedDbResult
+                ?.groupIdTrusted
+            );
 
-        state,
-      });
-    }
+          if (
+            config.indexedDbImportEnabled &&
+            indexedDbTrusted
+          ) {
+            await importIndexedDbRoomPreviews({
+              page,
+              config,
+              groupName,
+
+              rooms:
+                indexedDbExport
+                  ?.previewRooms ||
+                [],
+
+              state,
+            });
+          }
+
+          const shouldFallbackToDom =
+            Boolean(
+              config.indexedDbImportEnabled &&
+              !indexedDbTrusted
+            );
 
           console.log(
-            `Đã hoàn tất quét/import IndexedDB nhóm ${groupName}`
+            indexedDbTrusted
+              ? `Đã hoàn tất quét/import IndexedDB nhóm ${groupName}`
+              : `IndexedDB chưa được xác minh cho nhóm ${groupName}`
           );
 
-          /*
-           * Pipeline IndexedDB của nhóm đã hoàn tất.
-           * Không chạy tiếp luồng DOM cũ cho cùng nhóm.
+          /**
+           * Chế độ debug chỉ tạo file kiểm tra,
+           * không chạy import DOM.
            */
-          continue;
+          if (
+            config.networkDebugOnly ||
+            config.indexedDbDebugOnly
+          ) {
+            continue;
+          }
+
+          /**
+           * IndexedDB đã an toàn hoặc hiện không bật import:
+           * không chạy thêm luồng DOM để tránh trùng dữ liệu.
+           */
+          if (
+            !shouldFallbackToDom
+          ) {
+            continue;
+          }
+
+          console.warn(
+            [
+              "Chuyển sang DOM fallback.",
+              `Reader vẫn đọc trực tiếp nhóm đang mở: ${groupName}.`,
+              "Không sử dụng timeline IndexedDB chưa xác minh.",
+            ].join(" ")
+          );
         }
 
         const messages =
