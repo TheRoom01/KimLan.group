@@ -26,10 +26,20 @@ export function normalizeDistrict(input?: string | null) {
   const raw = String(input || "").trim();
   if (!raw) return "";
 
-  const s = normalizeForCompare(raw);
+  const s = normalizeForCompare(raw)
+    .replace(
+      /^(?:q(?:uan)?|quan|huyen|tp|thanh pho)\s*[:.\-]?\s*/,
+      ""
+    )
+    .trim();
 
-  const qNum = s.match(/\b(?:q|quan)?\s*(\d{1,2})\b/);
-  if (qNum?.[1]) return `Quận ${Number(qNum[1])}`;
+  const qNum = s.match(
+    /^(?:q|quan)?\s*(\d{1,2})$/
+  );
+
+  if (qNum?.[1]) {
+    return `Quận ${Number(qNum[1])}`;
+  }
 
   const map: Record<string, string> = {
     "binh thanh": "Bình Thạnh",
@@ -40,8 +50,10 @@ export function normalizeDistrict(input?: string | null) {
     "thu duc": "Thủ Đức",
     "binh tan": "Bình Tân",
     "binh chanh": "Bình Chánh",
-    "huyen binh chanh": "Bình Chánh",
-    "quan binh chanh": "Bình Chánh",
+    "nha be": "Nhà Bè",
+    "hoc mon": "Hóc Môn",
+    "cu chi": "Củ Chi",
+    "can gio": "Cần Giờ",
   };
 
   return map[s] || raw;
@@ -53,7 +65,7 @@ export function normalizeWard(input?: string | null) {
 
   const cleaned = raw
     .replace(
-      /\b(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*/gi,
+      /\b(?:phường|phuong|p(?:\.|(?=\s|\d))|xã|xa|x(?:\.|(?=\s))|thị\s*trấn|thi\s*tran|tt\.?)\s*[:\-]?\s*/gi,
       ""
     )
     .replace(/[,:;|/]+$/g, "")
@@ -447,26 +459,55 @@ function titleCaseStreet(input: string) {
     return knownStreetName;
   }
 
-  const keepUpper = new Set([
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    "10",
-  ]);
+  const keepUpper =
+    new Map<string, string>([
+      ["kdc", "KDC"],
+      ["kdt", "KĐT"],
+      ["ql", "QL"],
+      ["dt", "ĐT"],
+      ["tl", "TL"],
+      ["kp", "KP"],
+      ["tp", "TP"],
+    ]);
 
   return String(input || "")
     .trim()
     .replace(/\s+/g, " ")
     .split(" ")
     .map((word) => {
-      if (keepUpper.has(word)) {
-        return word;
+      const knownToken =
+        normalizeKnownStreetName(
+          word
+        );
+
+      if (knownToken) {
+        return knownToken;
+      }
+
+      const normalizedWord =
+        normalizeForCompare(
+          word
+        )
+          .replace(
+            /[^a-z0-9]/g,
+            ""
+          );
+
+      const upperToken =
+        keepUpper.get(
+          normalizedWord
+        );
+
+      if (upperToken) {
+        return upperToken;
+      }
+
+      /*
+       * Giữ nguyên/viết hoa các token có số:
+       * 3/2, 5A, 12B...
+       */
+      if (/\d/.test(word)) {
+        return word.toUpperCase();
       }
 
       return (
@@ -948,28 +989,48 @@ function extractWardFromBuildingText(
 
   if (!text) return "";
 
+  const wardLabel =
+    "(?:" +
+    "phường|phuong|" +
+    "p(?:\\.|(?=\\s|\\d))|" +
+    "xã|xa|" +
+    "x(?:\\.|(?=\\s))|" +
+    "thị\\s*trấn|thi\\s*tran|" +
+    "tt\\.?" +
+    ")";
+
   /*
-   * Phường số: P14, P.14, Phường 14.
-   * Chỉ nhận tối đa 2 chữ số để không nhầm P303/P202 là phường.
+   * Phường/xã số: P14, P.14, Phường 14.
+   * Chỉ nhận tối đa 2 chữ số để không nhầm P303/P202 là mã phòng.
    */
   const numericMatch = text.match(
-    /(?:^|[\s,;|/()])(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(\d{1,2})(?!\d)(?=\s*(?:[,;|/)\n]|\s+-\s+|q\.?\s*\d{1,2}\b|quận\b|quan\b|$))/i
+    new RegExp(
+      `(?:^|[\\s,;|/()])${wardLabel}\\s*[:\\-]?\\s*(\\d{1,2})(?!\\d)(?=\\s*(?:[,;|/()\\n]|\\s*[-–—]\\s*|q\\.?\\s*\\d{1,2}\\b|quận\\b|quan\\b|huyện\\b|huyen\\b|$))`,
+      "i"
+    )
   );
 
   if (numericMatch?.[1]) {
-    return normalizeWard(numericMatch[1]);
+    return normalizeWard(
+      numericMatch[1]
+    );
   }
 
   /*
-   * Phường tên: P An Đông, Phường Chợ Lớn...
-   * Dừng trước quận hoặc dấu phân cách.
+   * Phường/xã tên:
+   * P An Đông, Phường Chợ Lớn, Xã Bình Hưng...
    */
   const namedMatch = text.match(
-    /(?:^|[\s,;|/()])(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*([A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4}?)(?=\s*(?:[,;|/)\n]|\s+-\s+|q\.?\s*\d{1,2}\b|quận\b|quan\b|$))/i
+    new RegExp(
+      `(?:^|[\\s,;|/()])${wardLabel}\\s*[:\\-]?\\s*([A-Za-zÀ-ỹ]+(?:\\s+[A-Za-zÀ-ỹ]+){0,4}?)(?=\\s*(?:[,;|/()\\n]|\\s*[-–—]\\s*|q\\.?\\s*\\d{1,2}\\b|quận\\b|quan\\b|huyện\\b|huyen\\b|$))`,
+      "i"
+    )
   );
 
   if (namedMatch?.[1]) {
-    return normalizeWard(namedMatch[1]);
+    return normalizeWard(
+      namedMatch[1]
+    );
   }
 
   return "";
@@ -991,42 +1052,77 @@ function extractAddressParts(
       district: "",
     };
 
-  if (!rawText) return result;
+  if (!rawText) {
+    return result;
+  }
+
+  /*
+   * Quận/huyện có tên tại TP.HCM.
+   * Quận số chỉ được nhận khi có nhãn Q/Quận để tránh
+   * hiểu nhầm số đường, số phòng hoặc ngày tháng.
+   */
+  const namedDistrictSource =
+    "(?:" +
+    "bình\\s*thạnh|binh\\s*thanh|" +
+    "gò\\s*vấp|go\\s*vap|" +
+    "phú\\s*nhuận|phu\\s*nhuan|" +
+    "tân\\s*bình|tan\\s*binh|" +
+    "tân\\s*phú|tan\\s*phu|" +
+    "thủ\\s*đức|thu\\s*duc|" +
+    "bình\\s*tân|binh\\s*tan|" +
+    "bình\\s*chánh|binh\\s*chanh|" +
+    "nhà\\s*bè|nha\\s*be|" +
+    "hóc\\s*môn|hoc\\s*mon|" +
+    "củ\\s*chi|cu\\s*chi|" +
+    "cần\\s*giờ|can\\s*gio" +
+    ")";
 
   const districtSource =
-    "(?:" +
-    "\\d{1,2}|" +
-    "bình thạnh|binh thanh|" +
-    "gò vấp|go vap|" +
-    "phú nhuận|phu nhuan|" +
-    "tân bình|tan binh|" +
-    "tân phú|tan phu|" +
-    "thủ đức|thu duc|" +
-    "bình chánh|binh chanh|" +
-    "bình tân|binh tan" +
-    ")";
+    `(?:\\d{1,2}|${namedDistrictSource})`;
 
   const districtPattern =
     new RegExp(
-      `\\b(?:q\\.?|quận|quan|huyện|huyen)\\s*[:\\-]?\\s*(${districtSource})\\b`,
+      `\\b(?:q\\.?|quận|quan|huyện|huyen|tp\\.?|thành\\s*phố|thanh\\s*pho)\\s*[:\\-]?\\s*(${districtSource})\\b`,
       "i"
     );
 
-  const districtMatch =
-    rawText.match(
-      districtPattern
+  /*
+   * Fallback chỉ nhận quận/huyện không nhãn khi nó nằm
+   * ở cuối một đoạn địa chỉ và thuộc whitelist rõ ràng.
+   *
+   * Ví dụ:
+   * Bình Hưng - Bình Chánh
+   */
+  const unlabeledDistrictSuffixPattern =
+    new RegExp(
+      `(?:^|[,;|]|\\s[-–—]\\s)\\s*(${namedDistrictSource})\\s*$`,
+      "i"
     );
 
-  if (districtMatch?.[1]) {
-    result.district =
-      normalizeDistrict(
-        districtMatch[1]
-      );
-  }
+  const wardLabelSource =
+    "(?:" +
+    "phường|phuong|" +
+    "p(?:\\.|(?=\\s|\\d))|" +
+    "xã|xa|" +
+    "x(?:\\.|(?=\\s))|" +
+    "thị\\s*trấn|thi\\s*tran|" +
+    "tt\\.?" +
+    ")";
 
-  result.ward =
-    extractWardFromBuildingText(
-      rawText
+  const wardPattern =
+    new RegExp(
+      `(?:^|[\\s,;|/()])${wardLabelSource}\\s*[:\\-]?\\s*(\\d{1,2}|[A-Za-zÀ-ỹ]+(?:\\s+[A-Za-zÀ-ỹ]+){0,4}?)(?=\\s*(?:[,;|/()\\n]|\\s*[-–—]\\s*|q\\.?\\s*\\d{1,2}\\b|quận\\b|quan\\b|huyện\\b|huyen\\b|tp\\.?\\b|$))`,
+      "i"
+    );
+
+  const houseNumberSource =
+    "\\d+[A-Za-z]{0,4}" +
+    "(?:(?:\\/|-)\\d+[A-Za-z]{0,4})*";
+
+  const houseAndStreetPattern =
+    new RegExp(
+      `^(${houseNumberSource})\\s+([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ0-9.'’/\\s-]{1,140})$`,
+      "i"
     );
 
   const lines =
@@ -1037,23 +1133,237 @@ function extractAddressParts(
       )
       .filter(Boolean);
 
-  function parseAddressCandidate(
-    inputCandidate: string
+  function isPlausibleWardCandidate(
+    value: string
   ) {
     const cleaned =
+      normalizeWard(value);
+
+    if (
+      !cleaned ||
+      cleaned.length < 2 ||
+      cleaned.length > 45 ||
+      /\d/.test(cleaned) ||
+      !/^[A-Za-zÀ-ỹ'’\s-]+$/.test(
+        cleaned
+      )
+    ) {
+      return false;
+    }
+
+    const normalized =
+      normalizeForCompare(
+        cleaned
+      );
+
+    if (
+      /^(?:duong|hem|ngo|kdc|khu dan cu|kdt|khu do thi|quoc lo|tinh lo|xa lo|cao toc|kp|khu pho|ap|thon)\b/.test(
+        normalized
+      )
+    ) {
+      return false;
+    }
+
+    const wordCount =
+      cleaned
+        .split(/\s+/)
+        .filter(Boolean)
+        .length;
+
+    return (
+      wordCount >= 1 &&
+      wordCount <= 5
+    );
+  }
+
+  function analyzeLocationTail(
+    inputCandidate: string
+  ) {
+    let working =
       String(
         inputCandidate || ""
       )
+        .replace(/\r\n?/g, "\n")
+        .replace(
+          /\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|zalo|phòng|phong|room|giá|gia|trống|trong)\b.*$/i,
+          ""
+        )
+        .replace(/\s+/g, " ")
+        .replace(
+          /[\s,;|\-–—]+$/g,
+          ""
+        )
+        .trim();
+
+    let district = "";
+    let ward = "";
+
+    let districtStart = -1;
+
+    const explicitDistrict =
+      working.match(
+        districtPattern
+      );
+
+    if (
+      explicitDistrict?.[1] &&
+      typeof explicitDistrict.index ===
+        "number"
+    ) {
+      district =
+        normalizeDistrict(
+          explicitDistrict[1]
+        );
+
+      districtStart =
+        explicitDistrict.index;
+    } else {
+      const unlabeledDistrict =
+        working.match(
+          unlabeledDistrictSuffixPattern
+        );
+
+      if (
+        unlabeledDistrict?.[1] &&
+        typeof unlabeledDistrict.index ===
+          "number"
+      ) {
+        district =
+          normalizeDistrict(
+            unlabeledDistrict[1]
+          );
+
+        districtStart =
+          unlabeledDistrict.index;
+      }
+    }
+
+    const beforeDistrict =
+      districtStart >= 0
+        ? working
+            .slice(
+              0,
+              districtStart
+            )
+            .replace(
+              /[\s,;|\-–—]+$/g,
+              ""
+            )
+            .trim()
+        : working;
+
+    const explicitWard =
+      beforeDistrict.match(
+        wardPattern
+      );
+
+    let wardStart = -1;
+
+    if (
+      explicitWard?.[1] &&
+      typeof explicitWard.index ===
+        "number"
+    ) {
+      ward =
+        normalizeWard(
+          explicitWard[1]
+        );
+
+      wardStart =
+        explicitWard.index;
+    } else if (district) {
+      const beforeParts =
+        beforeDistrict
+          .split(
+            /\s*(?:,|;|\||\s[-–—]\s)\s*/
+          )
+          .map((part) =>
+            cleanListPrefix(part)
+          )
+          .filter(Boolean);
+
+      const possibleWard =
+        beforeParts[
+          beforeParts.length - 1
+        ] || "";
+
+      const hasSeparateWardPart =
+        beforeParts.length >= 2;
+
+      const isLocationOnlyLine =
+        beforeParts.length === 1 &&
+        /(?:,|;|\||\s[-–—]\s)/.test(
+          working
+        ) &&
+        !/\d/.test(
+          beforeParts[0] || ""
+        );
+
+      if (
+        (
+          hasSeparateWardPart ||
+          isLocationOnlyLine
+        ) &&
+        isPlausibleWardCandidate(
+          possibleWard
+        )
+      ) {
+        ward =
+          normalizeWard(
+            possibleWard
+          );
+
+        wardStart =
+          beforeDistrict
+            .lastIndexOf(
+              possibleWard
+            );
+      }
+    }
+
+    if (districtStart >= 0) {
+      working =
+        working
+          .slice(
+            0,
+            districtStart
+          )
+          .trim();
+    }
+
+    if (wardStart >= 0) {
+      working =
+        working
+          .slice(
+            0,
+            wardStart
+          )
+          .trim();
+    } else if (ward) {
+      const escapedWard =
+        ward.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+
+      working =
+        working.replace(
+          new RegExp(
+            `(?:[,;|]|\\s[-–—]\\s)\\s*${escapedWard}\\s*$`,
+            "i"
+          ),
+          ""
+        );
+    }
+
+    working =
+      working
         .replace(
           districtPattern,
           ""
         )
         .replace(
-          /\b(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*[:\-]?\s*(?:\d{1,2}|[A-Za-zÀ-ỹ]+(?:\s+[A-Za-zÀ-ỹ]+){0,4})\b.*$/i,
-          ""
-        )
-        .replace(
-          /\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|phòng|phong|room|giá|gia|trống|trong)\b.*$/i,
+          wardPattern,
           ""
         )
         .replace(
@@ -1063,9 +1373,114 @@ function extractAddressParts(
         .replace(/\s+/g, " ")
         .trim();
 
+    return {
+      cleanedAddress:
+        working,
+
+      ward,
+      district,
+    };
+  }
+
+  /*
+   * Lấy quận/phường toàn cục trước.
+   * Ưu tiên nhãn rõ ràng, sau đó mới dùng location tail.
+   */
+  const explicitDistrictInText =
+    rawText.match(
+      districtPattern
+    );
+
+  if (
+    explicitDistrictInText?.[1]
+  ) {
+    result.district =
+      normalizeDistrict(
+        explicitDistrictInText[1]
+      );
+  }
+
+  result.ward =
+    extractWardFromBuildingText(
+      rawText
+    );
+
+  if (
+    !result.district ||
+    !result.ward
+  ) {
+    for (const line of lines) {
+      const location =
+        analyzeLocationTail(
+          line
+        );
+
+      if (
+        !result.district &&
+        location.district
+      ) {
+        result.district =
+          location.district;
+      }
+
+      if (
+        !result.ward &&
+        location.ward
+      ) {
+        result.ward =
+          location.ward;
+      }
+
+      if (
+        result.district &&
+        result.ward
+      ) {
+        break;
+      }
+    }
+  }
+
+  function parseAddressCandidate(
+    inputCandidate: string
+  ) {
+    let candidate =
+      String(
+        inputCandidate || ""
+      )
+        .replace(
+          /^(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]?\s*/i,
+          ""
+        )
+        .trim();
+
+    const location =
+      analyzeLocationTail(
+        candidate
+      );
+
+    candidate =
+      location.cleanedAddress
+        /*
+         * 553, Lê Văn Thọ
+         * → 553 Lê Văn Thọ
+         */
+        .replace(
+          new RegExp(
+            `^(${houseNumberSource})\\s*[,;]\\s*(?=[A-Za-zÀ-ỹ])`,
+            "i"
+          ),
+          "$1 "
+        )
+        .replace(
+          /[\s,:;|\-–—]+$/g,
+          ""
+        )
+        .replace(/\s+/g, " ")
+        .trim();
+
     const streetMatch =
-      cleaned.match(
-        /^(\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*)(?:\s+)([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ0-9.'\s-]{1,100})$/i
+      candidate.match(
+        houseAndStreetPattern
       );
 
     if (
@@ -1078,7 +1493,17 @@ function extractAddressParts(
     const street =
       streetMatch[2].trim();
 
-    if (street.length < 2) {
+    const normalizedStreet =
+      normalizeForCompare(
+        street
+      );
+
+    if (
+      street.length < 2 ||
+      /^(?:gia|dien|nuoc|dich vu|phi|coc|hoa hong|phong|room|trong)\b/.test(
+        normalizedStreet
+      )
+    ) {
       return false;
     }
 
@@ -1086,13 +1511,25 @@ function extractAddressParts(
       streetMatch[1].trim();
 
     result.address =
-      titleCaseStreet(street);
+      titleCaseStreet(
+        street
+      );
+
+    if (location.ward) {
+      result.ward =
+        location.ward;
+    }
+
+    if (location.district) {
+      result.district =
+        location.district;
+    }
 
     return true;
   }
 
   /*
-   * Ưu tiên nhãn rõ ràng:
+   * 1. Ưu tiên dòng có nhãn rõ ràng:
    * Địa chỉ: 553 Lê Văn Thọ, P14, Q Gò Vấp
    */
   for (
@@ -1100,10 +1537,13 @@ function extractAddressParts(
     index < lines.length;
     index++
   ) {
-    const line = lines[index];
+    const line =
+      lines[index];
 
     const normalized =
-      normalizeForCompare(line);
+      normalizeForCompare(
+        line
+      );
 
     if (
       !/^(?:dia chi(?: du an)?|vi tri|dc)\b/.test(
@@ -1113,22 +1553,19 @@ function extractAddressParts(
       continue;
     }
 
-    const afterLabel =
-      line
-        .replace(
-          /^(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]?\s*/i,
-          ""
-        )
-        .trim();
-
     if (
       parseAddressCandidate(
-        afterLabel
+        line
       )
     ) {
       return result;
     }
 
+    /*
+     * Hỗ trợ:
+     * Địa chỉ:
+     * 151 Đường Số 5...
+     */
     for (
       let nextIndex =
         index + 1;
@@ -1150,56 +1587,69 @@ function extractAddressParts(
   }
 
   /*
-   * Dòng đầy đủ:
-   * 413/54 Lê Văn Sỹ, Phường Nhiêu Lộc - Hotline...
+   * 2. Dòng đầy đủ bắt đầu bằng số nhà:
+   * 151 Đường Số 5 KDC Trung Sơn,
+   * Bình Hưng - Bình Chánh
    */
   for (const line of lines) {
     if (
-      /^\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*\s+[A-Za-zÀ-ỹ]/.test(
+      new RegExp(
+        `^${houseNumberSource}(?:\\s|[,;])+[A-Za-zÀ-ỹ]`,
+        "i"
+      ).test(line) &&
+      parseAddressCandidate(
         line
-      ) &&
-      parseAddressCandidate(line)
+      )
     ) {
       return result;
     }
   }
 
   /*
-   * Fallback đọc ngược từ Q/Quận.
+   * 3. Fallback cho địa chỉ bị tách bằng dấu phẩy hoặc xuống dòng:
    *
-   * Hỗ trợ:
    * 553, Lê Văn Thọ, P14, Q Gò Vấp
-   * 553\nLê Văn Thọ\nP14\nQ Gò Vấp
-   * 27 Nguyễn Văn Mai, Quận 3
+   * 553
+   * Lê Văn Thọ
+   * P14
+   * Q Gò Vấp
    */
+  const explicitDistrictMatch =
+    rawText.match(
+      districtPattern
+    );
+
   if (
-    districtMatch &&
-    typeof districtMatch.index ===
+    explicitDistrictMatch &&
+    typeof explicitDistrictMatch.index ===
       "number"
   ) {
     const textBeforeDistrict =
       rawText.slice(
         Math.max(
           0,
-          districtMatch.index - 260
+          explicitDistrictMatch.index -
+            300
         ),
-        districtMatch.index
+        explicitDistrictMatch.index
       );
 
     const segments =
       textBeforeDistrict
         .split(
-          /\s*(?:,|;|\||\n|\s+-\s+)\s*/
+          /\s*(?:,|;|\||\n|\s[-–—]\s)\s*/
         )
         .map((part) =>
           cleanListPrefix(part)
         )
         .filter(Boolean);
 
-    /* Bỏ segment phường ngay trước quận. */
     while (
       segments.length > 0 &&
-      /^(?:phường|phuong|p(?:\.|(?=\s|\d)))\s*/i.test(
+      new RegExp(
+        `^${wardLabelSource}\\s*`,
+        "i"
+      ).test(
         segments[
           segments.length - 1
         ]
@@ -1224,7 +1674,10 @@ function extractAddressParts(
 
       if (
         index > 0 &&
-        /^\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*$/.test(
+        new RegExp(
+          `^${houseNumberSource}$`,
+          "i"
+        ).test(
           segments[index - 1]
         ) &&
         /^[A-Za-zÀ-ỹ]/.test(
@@ -1237,29 +1690,225 @@ function extractAddressParts(
         return result;
       }
     }
-
-    const flattened =
-      textBeforeDistrict
-        .replace(/\s+/g, " ")
-        .trim();
-
-    const addressBeforeDistrict =
-      flattened.match(
-        /(\d+[A-Za-z]?(?:(?:\/|-)\d+[A-Za-z]?)*)(?:\s+)([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ0-9.'\s-]{1,100}?)(?=\s*(?:,|;|\||-)?\s*(?:phường|phuong|p\.?\s*\d|q\.?|quận|quan)\b)/i
-      );
-
-    if (
-      addressBeforeDistrict?.[1] &&
-      addressBeforeDistrict?.[2] &&
-      parseAddressCandidate(
-        `${addressBeforeDistrict[1]} ${addressBeforeDistrict[2]}`
-      )
-    ) {
-      return result;
-    }
   }
 
   return result;
+}
+
+
+export type ZaloBuildingCandidate = {
+  houseNumber: string;
+  address: string;
+  ward: string;
+  district: string;
+  label: string;
+};
+
+/**
+ * Tìm các địa chỉ tòa nhà khác nhau xuất hiện trong một đoạn tin.
+ *
+ * Mục đích chính:
+ * - chặn thao tác "phân tích lại" khi Admin vẫn dán lẫn
+ *   thông tin của nhiều tòa nhà;
+ * - không để parser tự chọn địa chỉ đầu tiên rồi ghép với
+ *   marker/ảnh của một phòng khác.
+ *
+ * Các địa chỉ lặp lại của cùng một tòa nhà chỉ được tính một lần.
+ */
+export function detectZaloBuildingCandidates(
+  input: string
+): ZaloBuildingCandidate[] {
+  const rawText = String(input || "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+
+  if (!rawText) {
+    return [];
+  }
+
+  const lines = rawText
+    .split("\n")
+    .map((line) =>
+      String(line || "")
+        .replace(
+          /^[^0-9A-Za-zÀ-ỹĐđ]+/,
+          ""
+        )
+        .trim()
+    )
+    .filter(Boolean);
+
+  const candidateTexts: string[] = [];
+
+  const addressLabelPattern =
+    /(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]/i;
+
+  const houseNumberAtStartPattern =
+    /^\d+[A-Za-z]{0,4}(?:(?:\/|-)\d+[A-Za-z]{0,4})*\s+[A-Za-zÀ-ỹĐđ]/i;
+
+  for (
+    let index = 0;
+    index < lines.length;
+    index++
+  ) {
+    const line = lines[index];
+
+    if (
+      addressLabelPattern.test(line) ||
+      houseNumberAtStartPattern.test(line)
+    ) {
+      candidateTexts.push(line);
+    }
+
+    /*
+     * Hỗ trợ dạng:
+     *
+     * Địa chỉ:
+     * 151 Đường Số 5...
+     */
+    if (
+      addressLabelPattern.test(line)
+    ) {
+      candidateTexts.push(
+        lines
+          .slice(
+            index,
+            Math.min(
+              lines.length,
+              index + 3
+            )
+          )
+          .join("\n")
+      );
+    }
+  }
+
+  /*
+   * Một số tin để địa chỉ trong một paragraph dài.
+   * Duyệt thêm paragraph để không bỏ sót.
+   */
+  for (
+    const paragraph of rawText
+      .split(/\n{2,}/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+  ) {
+    if (
+      addressLabelPattern.test(
+        paragraph
+      )
+    ) {
+      candidateTexts.push(
+        paragraph
+      );
+    }
+  }
+
+  const unique =
+    new Map<
+      string,
+      ZaloBuildingCandidate
+    >();
+
+  for (const candidateText of candidateTexts) {
+    const parsed =
+      extractAddressParts(
+        candidateText
+      );
+
+    if (
+      !parsed.houseNumber ||
+      !parsed.address
+    ) {
+      continue;
+    }
+
+    /*
+     * Dedupe theo số nhà + tên đường.
+     * Quận/phường có thể thiếu ở một lần nhắc lại,
+     * nhưng vẫn là cùng một tòa nhà.
+     */
+    const key =
+      normalizeForCompare(
+        [
+          parsed.houseNumber,
+          parsed.address,
+        ].join(" ")
+      );
+
+    if (!key) {
+      continue;
+    }
+
+    const candidate:
+      ZaloBuildingCandidate = {
+      houseNumber:
+        parsed.houseNumber,
+      address:
+        parsed.address,
+      ward:
+        parsed.ward,
+      district:
+        parsed.district,
+      label: [
+        parsed.houseNumber,
+        parsed.address,
+        parsed.ward
+          ? `P.${parsed.ward}`
+          : "",
+        parsed.district,
+      ]
+        .filter(Boolean)
+        .join(", "),
+    };
+
+    const existing =
+      unique.get(key);
+
+    if (!existing) {
+      unique.set(
+        key,
+        candidate
+      );
+      continue;
+    }
+
+    /*
+     * Nếu lần nhắc sau có đủ phường/quận hơn,
+     * bổ sung vào candidate đã có.
+     */
+    unique.set(
+      key,
+      {
+        ...existing,
+        ward:
+          existing.ward ||
+          candidate.ward,
+        district:
+          existing.district ||
+          candidate.district,
+        label: [
+          existing.houseNumber,
+          existing.address,
+          existing.ward ||
+          candidate.ward
+            ? `P.${
+                existing.ward ||
+                candidate.ward
+              }`
+            : "",
+          existing.district ||
+          candidate.district,
+        ]
+          .filter(Boolean)
+          .join(", "),
+      }
+    );
+  }
+
+  return Array.from(
+    unique.values()
+  );
 }
 
 function isRoomTypeOnlyText(

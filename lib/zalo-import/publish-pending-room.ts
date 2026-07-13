@@ -13,7 +13,8 @@ type AnySupabase = SupabaseClient<any, any, any>;
 
 type PublishSource =
   | "manual"
-  | "auto";
+  | "auto"
+  | "draft_auto";
 
 export type PublishPendingRoomResult = {
   roomId: string;
@@ -123,6 +124,20 @@ function toBoolean(
   }
 
   return fallback;
+}
+
+function getErrorMessage(
+  error: unknown
+) {
+  if (
+    error instanceof Error
+  ) {
+    return error.message;
+  }
+
+  return String(
+    error || "Unknown error"
+  );
 }
 
 function buildRoomInsertPayload(params: {
@@ -372,12 +387,96 @@ export async function publishPendingRoom(params: {
   }
 
   if (
-    params.source === "auto" &&
+    params.source !== "manual" &&
     (pending as any).matched_room_id
   ) {
     throw new Error(
-      "Pending này đang khớp với phòng đã tồn tại; auto-import không được tạo phòng mới."
+      "Pending này đang khớp với phòng đã tồn tại; tự động duyệt không được tạo phòng mới."
     );
+  }
+
+  /*
+   * draft_auto chỉ được gọi bởi cron sau khi:
+   * - admin đã lưu một thay đổi thật;
+   * - đủ 3 phút;
+   * - cron đã claim bản ghi bằng processing_at.
+   *
+   * Nguồn "auto" cũ của Zalo Reader vẫn giữ nguyên,
+   * không bị buộc phải có lịch 3 phút.
+   */
+  if (
+    params.source ===
+    "draft_auto"
+  ) {
+    const scheduledAt =
+      new Date(
+        String(
+          (pending as any)
+            .auto_approve_at ||
+            ""
+        )
+      ).getTime();
+
+    const scheduledActor =
+      String(
+        (pending as any)
+          .auto_approve_actor_id ||
+          ""
+      ).trim();
+
+    const processingAt =
+      String(
+        (pending as any)
+          .auto_approve_processing_at ||
+          ""
+      ).trim();
+
+    if (
+      String(
+        (pending as any)
+          .status || ""
+      ) !== "Chờ duyệt"
+    ) {
+      throw new Error(
+        "Pending không còn ở trạng thái Chờ duyệt."
+      );
+    }
+
+    if (
+      !(pending as any)
+        .auto_approve_enabled
+    ) {
+      throw new Error(
+        "Lịch tự duyệt đã bị hủy."
+      );
+    }
+
+    if (
+      scheduledActor !==
+      actorUserId
+    ) {
+      throw new Error(
+        "Admin tự duyệt không khớp với người đã lưu bản nháp."
+      );
+    }
+
+    if (!processingAt) {
+      throw new Error(
+        "Pending chưa được cron claim để tự duyệt."
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        scheduledAt
+      ) ||
+      scheduledAt >
+        Date.now()
+    ) {
+      throw new Error(
+        "Pending chưa đến thời điểm tự duyệt."
+      );
+    }
   }
 
   const batch =
@@ -681,6 +780,11 @@ export async function publishPendingRoom(params: {
         approved_room_id: roomId,
         approved_at: now,
         approved_by: actorUserId,
+        auto_approve_enabled: false,
+        auto_approve_at: null,
+        auto_approve_actor_id: null,
+        auto_approve_processing_at: null,
+        auto_approve_last_error: null,
       })
       .eq("id", pendingId);
 
@@ -720,6 +824,11 @@ export async function publishPendingRoom(params: {
       videoCount: videoMediaCount,
     };
   } catch (error) {
+    const errorMessage =
+      getErrorMessage(
+        error
+      );
+
     if (roomCreated) {
       await bestEffortRollback({
         supabase,
@@ -727,6 +836,23 @@ export async function publishPendingRoom(params: {
         finalKeys,
       });
     }
+
+    const autoFailurePatch =
+      params.source ===
+      "draft_auto"
+        ? {
+            auto_approve_enabled:
+              false,
+            auto_approve_at:
+              null,
+            auto_approve_actor_id:
+              null,
+            auto_approve_processing_at:
+              null,
+            auto_approve_last_error:
+              errorMessage,
+          }
+        : {};
 
     await Promise.allSettled([
       supabase
@@ -739,6 +865,7 @@ export async function publishPendingRoom(params: {
           approved_room_id: null,
           approved_at: null,
           approved_by: null,
+          ...autoFailurePatch,
         })
         .eq("id", pendingId),
 

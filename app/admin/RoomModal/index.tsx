@@ -185,6 +185,7 @@ const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   // ✅ NEW (Patch 2): nhớ cover ban đầu để biết khi nào cần regenerate thumb.webp
   const initialCoverUrlRef = useRef<string>("");
   const initialPendingImageIdsRef = useRef<string[]>([]);
+  const pendingEditActivityRef = useRef<string>("");
 
   function genDraftId(): string {
     try {
@@ -981,6 +982,75 @@ const detailSample =
   })()
 }, [editingRoom, isPending, pendingRoomPayload, pendingDetailPayload, pendingImages])
 
+/*
+ * Khi admin mở modal Pending:
+ * - hủy lịch tự duyệt hiện tại;
+ * - ghi nhận hoạt động chỉnh sửa;
+ * - chỉ khi Lưu nháp có thay đổi thật thì server mới hẹn lại 3 phút.
+ */
+useEffect(() => {
+  if (!open) {
+    pendingEditActivityRef.current = ""
+    return
+  }
+
+  if (!isPending || !pendingId) return
+
+  const normalizedPendingId = String(pendingId).trim()
+  if (!normalizedPendingId) return
+
+  /*
+   * Chặn gọi lặp trong React Strict Mode.
+   */
+  if (pendingEditActivityRef.current === normalizedPendingId) {
+    return
+  }
+
+  pendingEditActivityRef.current = normalizedPendingId
+  let cancelled = false
+
+  void (async () => {
+    try {
+      const response = await fetch(
+        `/api/admin/zalo-imports/${normalizedPendingId}/edit-activity`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      const json = await response
+        .json()
+        .catch(() => ({}))
+
+      if (!response.ok || !json?.ok) {
+        throw new Error(
+          json?.error ||
+            'Không hủy được lịch tự duyệt.'
+        )
+      }
+    } catch (error: any) {
+      if (cancelled) return
+
+      console.error(
+        'pending edit activity failed:',
+        error
+      )
+
+      setErrorMsg(
+        error?.message ||
+          'Không hủy được lịch tự duyệt. Vui lòng tải lại trang.'
+      )
+    }
+  })()
+
+  return () => {
+    cancelled = true
+  }
+}, [open, isPending, pendingId])
+
 const closeNow = () => {
   setShowCloseConfirm(false)
   onClose()
@@ -1180,15 +1250,47 @@ const cancelCloseConfirm = () => {
           throw new Error(json?.error || 'Lưu nháp pending thất bại')
         }
 
-        initialPendingImageIdsRef.current = currentIds
+        const savedImages = Array.isArray(json?.images)
+          ? json.images
+          : pendingMedia
+
+        initialPendingImageIdsRef.current =
+          savedImages
+            .map((image: any) =>
+              String(image?.id || "").trim()
+            )
+            .filter(Boolean)
 
         await onPendingSaved?.({
-          room_payload: roomPayload,
-          detail_payload: detailForm,
-          images: pendingMedia,
+          room_payload:
+            json?.room_payload ?? roomPayload,
+          detail_payload:
+            json?.detail_payload ?? detailForm,
+          images: savedImages,
         })
 
-        onNotify?.('Đã lưu nháp import.')
+        if (
+          json?.changed &&
+          json?.auto_approve_enabled &&
+          json?.auto_approve_at
+        ) {
+          onNotify?.(
+            'Đã lưu nháp. Phòng sẽ tự duyệt sau 3 phút nếu bạn không mở chỉnh sửa lại.'
+          )
+        } else if (json?.changed) {
+          const reason = String(
+            json?.auto_approve_reason ||
+              'Phòng chưa đủ điều kiện tự duyệt.'
+          ).trim()
+
+          onNotify?.(
+            `Đã lưu nháp nhưng chưa lên lịch tự duyệt: ${reason}`
+          )
+        } else {
+          onNotify?.(
+            'Không có thay đổi mới. Phòng chưa được lên lịch tự duyệt.'
+          )
+        }
       } catch (e: any) {
         console.error('Lưu nháp pending thất bại:', e)
         onNotify?.(

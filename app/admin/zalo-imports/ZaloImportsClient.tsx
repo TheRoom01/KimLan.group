@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import RoomModal from "@/app/admin/RoomModal";
 import type { TabKey } from "@/app/types/room";
 
@@ -31,6 +32,54 @@ type ImportRow = {
 type CardBusyAction = "approve" | "delete" | "reject" | null;
 
 const PAGE_SIZE = 20;
+
+let bodyScrollLockCount = 0;
+let bodyScrollPreviousOverflow = "";
+
+function acquireBodyScrollLock() {
+  if (typeof document === "undefined") {
+    return () => {};
+  }
+
+  if (bodyScrollLockCount === 0) {
+    bodyScrollPreviousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow =
+      "hidden";
+  }
+
+  bodyScrollLockCount += 1;
+
+  let released = false;
+
+  return () => {
+    if (released) return;
+
+    released = true;
+    bodyScrollLockCount = Math.max(
+      0,
+      bodyScrollLockCount - 1
+    );
+
+    if (bodyScrollLockCount === 0) {
+      document.body.style.overflow =
+        bodyScrollPreviousOverflow;
+
+      bodyScrollPreviousOverflow = "";
+    }
+  };
+}
+
+function useBodyScrollLock(
+  active = true
+) {
+  useEffect(() => {
+    if (!active) return;
+
+    return acquireBodyScrollLock();
+  }, [active]);
+}
 
 export default function ZaloImportsClient() {
   const [rows, setRows] = useState<ImportRow[]>([]);
@@ -385,6 +434,17 @@ export default function ZaloImportsClient() {
             setDetailPending(null)
           }
           onRemoved={removeRowFromList}
+          onUpdated={(updatedRow) => {
+            setRows((currentRows) =>
+              currentRows.map((item) =>
+                item.id === updatedRow.id
+                  ? updatedRow
+                  : item
+              )
+            );
+
+            setDetailPending(updatedRow);
+          }}
           onEdit={(selectedRow) => {
             setDetailPending(null);
             setEditingPending(selectedRow);
@@ -531,8 +591,8 @@ export default function ZaloImportsClient() {
           }
 
           .zalo-import-modal-shell {
-            width: calc(100vw - 16px) !important;
-            max-height: calc(100vh - 16px) !important;
+            width: calc(100vw - 12px) !important;
+            max-height: calc(100dvh - 12px) !important;
             border-radius: 14px !important;
           }
 
@@ -541,6 +601,43 @@ export default function ZaloImportsClient() {
           .zalo-import-modal-footer {
             padding-left: 14px !important;
             padding-right: 14px !important;
+          }
+
+          .zalo-import-notice-badge {
+            max-width: 100%;
+            min-width: 0;
+          }
+
+          .zalo-import-notice-modal-shell {
+            width: calc(100vw - 12px) !important;
+            max-height: calc(100dvh - 12px) !important;
+            border-radius: 14px !important;
+          }
+
+          .zalo-import-notice-modal-header {
+            padding: 13px 14px !important;
+          }
+
+          .zalo-import-notice-modal-body {
+            padding: 10px !important;
+          }
+
+          .zalo-import-detail-panel {
+            overscroll-behavior-y: auto !important;
+          }
+
+          .zalo-import-reparse-actions {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+          }
+
+          .zalo-import-reparse-actions button {
+            width: 100% !important;
+          }
+
+          .zalo-import-reparse-textarea {
+            min-height: 320px !important;
+            font-size: 16px !important;
           }
         }
       `}</style>
@@ -1108,6 +1205,100 @@ function buildParserWarnings(
   );
 }
 
+
+function getNoticeMessage(
+  item: any
+) {
+  if (typeof item === "string") {
+    return item.trim();
+  }
+
+  return String(
+    item?.message ||
+      item?.error ||
+      item?.reason ||
+      item?.code ||
+      ""
+  ).trim();
+}
+
+
+function getEditableReparseText(
+  row: ImportRow
+) {
+  return String(
+    row.room_payload
+      ?._manual_reparse
+      ?.source_text ||
+      row.batch?.raw_text ||
+      ""
+  );
+}
+
+function ImportNoticeBadge({
+  row,
+  onClick,
+}: {
+  row: ImportRow;
+  onClick: () => void;
+}) {
+  const quality =
+    getImportQuality(row);
+
+  const score =
+    getQualityScore(row);
+
+  const warnings =
+    buildParserWarnings(row);
+
+  const hasIssues =
+    warnings.length > 0 ||
+    Boolean(
+      quality &&
+      !quality.eligible
+    );
+
+  const scoreText =
+    score != null
+      ? quality
+        ? `${score}/100`
+        : `${score}%`
+      : "";
+
+  const label =
+    hasIssues
+      ? [
+          `⚠ ${Math.max(
+            1,
+            warnings.length
+          )} thông báo`,
+          scoreText,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : scoreText
+        ? `✓ Điểm ${scoreText}`
+        : "✓ Không có cảnh báo";
+
+  return (
+    <button
+      type="button"
+      className="zalo-import-notice-badge"
+      onClick={onClick}
+      style={{
+        ...compactNoticeBadgeButton,
+        ...(hasIssues
+          ? compactNoticeBadgeWarning
+          : compactNoticeBadgeSuccess),
+      }}
+      title="Bấm để xem cảnh báo và điểm chất lượng"
+      aria-label="Xem cảnh báo và điểm chất lượng"
+    >
+      {label}
+    </button>
+  );
+}
+
 function ImportCard({
   row,
   onRemoved,
@@ -1122,14 +1313,16 @@ function ImportCard({
   const [activeImageIndex, setActiveImageIndex] =
     useState(0);
 
+  const [
+    openNoticeModal,
+    setOpenNoticeModal,
+  ] = useState(false);
+
   const room = row.room_payload ?? {};
   const detail = row.detail_payload ?? {};
   const batch = row.batch ?? {};
   const images = getImportImages(row);
   const videos = getImportVideos(row);
-  const warnings = buildParserWarnings(row);
-  const quality = getImportQuality(row);
-  const qualityScore = getQualityScore(row);
 
   const {
     busyAction,
@@ -1293,29 +1486,12 @@ function ImportCard({
                 {row.status}
               </span>
 
-              {qualityScore != null && (
-                <span style={compactConfidence}>
-                  {quality
-                    ? `Điểm chất lượng: ${qualityScore}/100`
-                    : `${qualityScore}% confidence`}
-                </span>
-              )}
-
-              {quality && (
-                <span
-                  style={
-                    quality.eligible
-                      ? compactAutoEligibleBadge
-                      : compactAutoBlockedBadge
-                  }
-                >
-                  {quality.auto_import?.published
-                    ? "Đã tự đăng"
-                    : quality.eligible
-                      ? "Đủ điều kiện tự đăng"
-                      : "Chưa đủ điều kiện tự đăng"}
-                </span>
-              )}
+              <ImportNoticeBadge
+                row={row}
+                onClick={() =>
+                  setOpenNoticeModal(true)
+                }
+              />
             </div>
 
             {isDuplicate &&
@@ -1374,31 +1550,6 @@ function ImportCard({
               </div>
             </div>
           )}
-
-          <div style={compactWarningBlock}>
-            <div style={compactInfoLabel}>
-              Cảnh báo
-            </div>
-
-            {warnings.length > 0 ? (
-              <div style={compactWarningList}>
-                {warnings
-                  .slice(0, 4)
-                  .map((warning) => (
-                    <span
-                      key={warning}
-                      style={compactWarningBadge}
-                    >
-                      {warning}
-                    </span>
-                  ))}
-              </div>
-            ) : (
-              <span style={compactSuccessBadge}>
-                Không có cảnh báo
-              </span>
-            )}
-          </div>
 
           <div style={compactMetaLine}>
             <span>
@@ -1515,6 +1666,15 @@ function ImportCard({
           </button>
         )}
       </div>
+
+      {openNoticeModal && (
+        <ImportNoticeModal
+          row={row}
+          onClose={() =>
+            setOpenNoticeModal(false)
+          }
+        />
+      )}
     </section>
   );
 }
@@ -1550,28 +1710,71 @@ function ImportDetailModal({
   row,
   onClose,
   onRemoved,
+  onUpdated,
   onEdit,
 }: {
   row: ImportRow;
   onClose: () => void;
   onRemoved?: (id: string) => void;
+  onUpdated?: (row: ImportRow) => void;
   onEdit?: (row: ImportRow) => void;
 }) {
-  const room = row.room_payload ?? {};
-  const detail = row.detail_payload ?? {};
-  const batch = row.batch ?? {};
+  const [
+    currentRow,
+    setCurrentRow,
+  ] = useState<ImportRow>(row);
+
+  const [
+    editableSourceText,
+    setEditableSourceText,
+  ] = useState(
+    getEditableReparseText(row)
+  );
+
+  const [
+    reparsing,
+    setReparsing,
+  ] = useState(false);
+
+  const [
+    reparseError,
+    setReparseError,
+  ] = useState("");
+
+  const [
+    reparseSuccess,
+    setReparseSuccess,
+  ] = useState("");
+
+  const room =
+    currentRow.room_payload ?? {};
+
+  const detail =
+    currentRow.detail_payload ?? {};
+
+  const batch =
+    currentRow.batch ?? {};
+
   const inherited =
-    row.inherited_field_map ?? {};
+    currentRow.inherited_field_map ?? {};
+
   const source =
-    row.source_field_map ?? {};
-  const images = getImportImages(row);
-  const videos = getImportVideos(row);
-  const warnings = buildParserWarnings(row);
-  const quality = getImportQuality(row);
-  const qualityScore = getQualityScore(row);
+    currentRow.source_field_map ?? {};
+
+  const images =
+    getImportImages(currentRow);
+
+  const videos =
+    getImportVideos(currentRow);
+
+  const [
+    openNoticeModal,
+    setOpenNoticeModal,
+  ] = useState(false);
 
   const isDuplicate =
-    row.status === "Trùng phòng";
+    currentRow.status ===
+    "Trùng phòng";
 
   const {
     busyAction,
@@ -1580,22 +1783,152 @@ function ImportDetailModal({
     rejectImport,
     deleteImport,
   } = useImportActions({
-    row,
+    row: currentRow,
     onRemoved,
     onAfterRemoved: onClose,
   });
 
   useEffect(() => {
-    const previousOverflow =
-      document.body.style.overflow;
+    setCurrentRow(row);
+    setEditableSourceText(
+      getEditableReparseText(row)
+    );
+    setReparseError("");
+    setReparseSuccess("");
+  }, [row.id]);
 
-    document.body.style.overflow =
-      "hidden";
+  async function reparsePending() {
+    if (
+      reparsing ||
+      busyAction
+    ) {
+      return;
+    }
 
+    const sourceText =
+      editableSourceText.trim();
+
+    if (!sourceText) {
+      setReparseSuccess("");
+      setReparseError(
+        "Hãy dán thông tin của đúng một tòa nhà và một phòng."
+      );
+      return;
+    }
+
+    setReparsing(true);
+    setReparseError("");
+    setReparseSuccess("");
+
+    try {
+      const response =
+        await fetch(
+          `/api/admin/zalo-imports/${currentRow.id}/reparse`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              sourceText,
+            }),
+          }
+        );
+
+      const json =
+        await response
+          .json()
+          .catch(() => ({}));
+
+      if (
+        !response.ok ||
+        !json?.ok ||
+        !json?.data
+      ) {
+        const candidateText =
+          Array.isArray(
+            json?.candidates
+          ) &&
+          json.candidates.length > 0
+            ? ` Các địa chỉ phát hiện: ${json.candidates
+                .map(
+                  (item: any) =>
+                    item?.label ||
+                    [
+                      item?.houseNumber,
+                      item?.address,
+                      item?.district,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")
+                )
+                .filter(Boolean)
+                .join(" | ")}`
+            : "";
+
+        throw new Error(
+          `${
+            json?.error ||
+            "Phân tích lại thất bại."
+          }${candidateText}`
+        );
+      }
+
+      const updatedRow =
+        json.data as ImportRow;
+
+      setCurrentRow(
+        updatedRow
+      );
+
+      setEditableSourceText(
+        getEditableReparseText(
+          updatedRow
+        )
+      );
+
+      setReparseSuccess(
+        json?.message ||
+        "Đã phân tích lại dữ liệu và giữ nguyên media."
+      );
+
+      onUpdated?.(
+        updatedRow
+      );
+    } catch (error: any) {
+      setReparseError(
+        error?.message ||
+        "Phân tích lại dữ liệu thất bại."
+      );
+    } finally {
+      setReparsing(false);
+    }
+  }
+
+  function restoreOriginalText() {
+    setEditableSourceText(
+      String(
+        batch.raw_text || ""
+      )
+    );
+
+    setReparseError("");
+    setReparseSuccess(
+      "Đã đưa nội dung tin Zalo gốc trở lại vùng nhập. Bấm Phân tích lại để áp dụng."
+    );
+  }
+
+  useBodyScrollLock(true);
+
+  useEffect(() => {
     function handleKeyDown(
       event: KeyboardEvent
     ) {
-      if (event.key === "Escape") {
+      if (
+        event.key === "Escape" &&
+        !openNoticeModal
+      ) {
         onClose();
       }
     }
@@ -1606,15 +1939,15 @@ function ImportDetailModal({
     );
 
     return () => {
-      document.body.style.overflow =
-        previousOverflow;
-
       window.removeEventListener(
         "keydown",
         handleKeyDown
       );
     };
-  }, [onClose]);
+  }, [
+    onClose,
+    openNoticeModal,
+  ]);
 
   return (
     <div
@@ -1632,7 +1965,7 @@ function ImportDetailModal({
         className="zalo-import-modal-shell"
         style={{
           ...detailModalShell,
-          opacity: busyAction ? 0.82 : 1,
+          opacity: busyAction || reparsing ? 0.82 : 1,
         }}
         role="dialog"
         aria-modal="true"
@@ -1651,32 +1984,15 @@ function ImportDetailModal({
                     : badgeBlue
                 }
               >
-                {row.status}
+                {currentRow.status}
               </span>
 
-              {qualityScore != null && (
-                <span style={confidence}>
-                  {quality
-                    ? `Điểm chất lượng: ${qualityScore}/100`
-                    : `Confidence: ${qualityScore}%`}
-                </span>
-              )}
-
-              {quality && (
-                <span
-                  style={
-                    quality.eligible
-                      ? compactAutoEligibleBadge
-                      : compactAutoBlockedBadge
-                  }
-                >
-                  {quality.auto_import?.published
-                    ? "Đã tự đăng"
-                    : quality.eligible
-                      ? "Đủ điều kiện tự đăng"
-                      : "Chưa đủ điều kiện tự đăng"}
-                </span>
-              )}
+              <ImportNoticeBadge
+                row={currentRow}
+                onClick={() =>
+                  setOpenNoticeModal(true)
+                }
+              />
             </div>
 
             <div style={meta}>
@@ -1726,40 +2042,106 @@ function ImportDetailModal({
             </div>
           )}
 
-          {warnings.length > 0 && (
-            <div style={detailWarningsBox}>
-              <b>Cảnh báo:</b>
-              <div style={detailWarningsList}>
-                {warnings.map((warning) => (
-                  <span
-                    key={warning}
-                    style={detailWarningBadge}
-                  >
-                    {warning}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {quality && (
-            <QualitySummary
-              row={row}
-            />
-          )}
-
           <div className="zalo-import-detail-grid">
             <div
               className="zalo-import-detail-panel"
               style={panel}
             >
-              <div style={panelTitle}>
-                Tin gốc Zalo
+              <div style={reparsePanelHeader}>
+                <div>
+                  <div style={panelTitle}>
+                    Thông tin đúng để parser đọc lại
+                  </div>
+
+                  <div style={reparseHelpText}>
+                    Chỉ giữ thông tin của đúng một tòa nhà và một phòng phù hợp với ảnh bên dưới.
+                  </div>
+                </div>
+
+                {room?._manual_reparse
+                  ?.reparsed_at && (
+                  <span style={manualReparseBadge}>
+                    Đã sửa thủ công
+                  </span>
+                )}
               </div>
 
-              <pre style={rawText}>
-                {batch.raw_text || "-"}
-              </pre>
+              <textarea
+                value={editableSourceText}
+                onChange={(event) => {
+                  setEditableSourceText(
+                    event.target.value
+                  );
+                  setReparseError("");
+                  setReparseSuccess("");
+                }}
+                className="zalo-import-reparse-textarea"
+                style={reparseTextarea}
+                placeholder={[
+                  "Ví dụ:",
+                  "Địa chỉ: 202/6/15 Lý Thường Kiệt P14 Q10",
+                  "Điện 4k, nước 100k/người, dịch vụ 150k/phòng",
+                  "",
+                  "Phòng 302",
+                  "Giá 7tr",
+                  "Loại phòng Duplex",
+                ].join("\\n")}
+                disabled={
+                  reparsing ||
+                  busyAction !== null
+                }
+              />
+
+              <div
+                className="zalo-import-reparse-actions"
+                style={reparseActions}
+              >
+                <button
+                  type="button"
+                  style={reparseRestoreBtn}
+                  onClick={restoreOriginalText}
+                  disabled={
+                    reparsing ||
+                    busyAction !== null ||
+                    !batch.raw_text
+                  }
+                >
+                  Khôi phục tin gốc
+                </button>
+
+                <button
+                  type="button"
+                  style={reparsePrimaryBtn}
+                  onClick={() =>
+                    void reparsePending()
+                  }
+                  disabled={
+                    reparsing ||
+                    busyAction !== null ||
+                    !editableSourceText.trim()
+                  }
+                >
+                  {reparsing
+                    ? "Đang phân tích..."
+                    : "Phân tích lại dữ liệu"}
+                </button>
+              </div>
+
+              {reparseError && (
+                <div style={reparseErrorBox}>
+                  {reparseError}
+                </div>
+              )}
+
+              {reparseSuccess && (
+                <div style={reparseSuccessBox}>
+                  {reparseSuccess}
+                </div>
+              )}
+
+              <div style={reparseFootnote}>
+                Tin Zalo gốc vẫn được giữ trong batch để đối chiếu. Thao tác này không xóa hoặc thay đổi ảnh/video.
+              </div>
             </div>
 
             <div
@@ -1868,7 +2250,7 @@ function ImportDetailModal({
               onClick={() =>
                 void deleteImport()
               }
-              disabled={busyAction !== null}
+              disabled={busyAction !== null || reparsing}
             >
               {busyAction === "delete"
                 ? "Đang xóa..."
@@ -1881,7 +2263,7 @@ function ImportDetailModal({
               onClick={() =>
                 void rejectImport()
               }
-              disabled={actionDisabled}
+              disabled={actionDisabled || reparsing}
             >
               {busyAction === "reject"
                 ? "Đang từ chối..."
@@ -1892,9 +2274,9 @@ function ImportDetailModal({
               style={ghostBtn}
               type="button"
               onClick={() =>
-                onEdit?.(row)
+                onEdit?.(currentRow)
               }
-              disabled={actionDisabled}
+              disabled={actionDisabled || reparsing}
             >
               Chỉnh sửa
             </button>
@@ -1909,7 +2291,7 @@ function ImportDetailModal({
                       "update_status"
                     )
                   }
-                  disabled={actionDisabled}
+                  disabled={actionDisabled || reparsing}
                 >
                   {busyAction === "approve"
                     ? "Đang duyệt..."
@@ -1924,7 +2306,7 @@ function ImportDetailModal({
                       "create_room"
                     )
                   }
-                  disabled={actionDisabled}
+                  disabled={actionDisabled || reparsing}
                 >
                   Tạo phòng mới
                 </button>
@@ -1938,7 +2320,7 @@ function ImportDetailModal({
                     "create_room"
                   )
                 }
-                disabled={actionDisabled}
+                disabled={actionDisabled || reparsing}
               >
                 {busyAction === "approve"
                   ? "Đang duyệt..."
@@ -1948,7 +2330,219 @@ function ImportDetailModal({
           </div>
         </footer>
       </section>
+
+      {openNoticeModal && (
+        <ImportNoticeModal
+          row={currentRow}
+          onClose={() =>
+            setOpenNoticeModal(false)
+          }
+        />
+      )}
     </div>
+  );
+}
+
+function ImportNoticeModal({
+  row,
+  onClose,
+}: {
+  row: ImportRow;
+  onClose: () => void;
+}) {
+  const quality =
+    getImportQuality(row);
+
+  const score =
+    getQualityScore(row);
+
+  const warnings =
+    buildParserWarnings(row);
+
+  const room =
+    row.room_payload ?? {};
+
+  const qualityMessages =
+    new Set<string>();
+
+  if (quality) {
+    const groups = [
+      Array.isArray(quality.blockers)
+        ? quality.blockers
+        : [],
+      Array.isArray(quality.warnings)
+        ? quality.warnings
+        : [],
+    ];
+
+    for (const group of groups) {
+      for (const item of group) {
+        const message =
+          getNoticeMessage(item);
+
+        if (message) {
+          qualityMessages.add(message);
+        }
+      }
+    }
+  }
+
+  const extraWarnings =
+    warnings.filter(
+      (warning) =>
+        !qualityMessages.has(warning)
+    );
+
+  useBodyScrollLock(true);
+
+  useEffect(() => {
+    function handleKeyDown(
+      event: KeyboardEvent
+    ) {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      style={noticeModalOverlay}
+      onMouseDown={(event) => {
+        event.stopPropagation();
+
+        if (
+          event.target ===
+          event.currentTarget
+        ) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        className="zalo-import-notice-modal-shell"
+        style={noticeModalShell}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Thông báo và điểm chất lượng"
+        onMouseDown={(event) =>
+          event.stopPropagation()
+        }
+      >
+        <header
+          className="zalo-import-notice-modal-header"
+          style={noticeModalHeader}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={noticeModalTitle}>
+              Thông báo và điểm chất lượng
+            </div>
+
+            <div style={noticeModalSubtitle}>
+              Phòng{" "}
+              <b>
+                {room.room_code || "-"}
+              </b>
+
+              {score != null && (
+                <>
+                  {" · "}
+                  Điểm{" "}
+                  <b>
+                    {quality
+                      ? `${score}/100`
+                      : `${score}%`}
+                  </b>
+                </>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={noticeModalCloseButton}
+            aria-label="Đóng"
+          >
+            ×
+          </button>
+        </header>
+
+        <div
+          className="zalo-import-notice-modal-body"
+          style={noticeModalBody}
+        >
+          {quality ? (
+            <QualitySummary
+              row={row}
+            />
+          ) : warnings.length > 0 ? (
+            <div style={noticeFallbackWarningBox}>
+              <div style={noticeFallbackTitle}>
+                Cảnh báo ({warnings.length})
+              </div>
+
+              <ul style={qualityList}>
+                {warnings.map(
+                  (
+                    warning,
+                    index
+                  ) => (
+                    <li
+                      key={`${warning}-${index}`}
+                    >
+                      {warning}
+                    </li>
+                  )
+                )}
+              </ul>
+            </div>
+          ) : (
+            <div style={noticeSuccessBox}>
+              Không có cảnh báo.
+            </div>
+          )}
+
+          {quality &&
+            extraWarnings.length > 0 && (
+              <div style={noticeFallbackWarningBox}>
+                <div style={noticeFallbackTitle}>
+                  Thông báo bổ sung
+                </div>
+
+                <ul style={qualityList}>
+                  {extraWarnings.map(
+                    (
+                      warning,
+                      index
+                    ) => (
+                      <li
+                        key={`${warning}-${index}`}
+                      >
+                        {warning}
+                      </li>
+                    )
+                  )}
+                </ul>
+              </div>
+            )}
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 
@@ -2299,13 +2893,6 @@ const card: CSSProperties = {
   boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
 };
 
-const cardHeader: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  marginBottom: 12,
-};
-
 const statusLine: CSSProperties = {
   display: "flex",
   gap: 8,
@@ -2334,25 +2921,10 @@ const badgeOrange: CSSProperties = {
   fontWeight: 700,
 };
 
-const confidence: CSSProperties = {
-  color: "#6b7280",
-  fontSize: 13,
-};
-
 const meta: CSSProperties = {
   color: "#374151",
   fontSize: 14,
   marginTop: 2,
-};
-
-const viewRoomBtn: CSSProperties = {
-  background: "#2563eb",
-  color: "#fff",
-  textDecoration: "none",
-  padding: "9px 12px",
-  borderRadius: 10,
-  height: 38,
-  fontWeight: 600,
 };
 
 const duplicateBox: CSSProperties = {
@@ -2365,12 +2937,6 @@ const duplicateBox: CSSProperties = {
   lineHeight: 1.5,
 };
 
-const grid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1.2fr 1fr 1fr",
-  gap: 12,
-};
-
 const panel: CSSProperties = {
   border: "1px solid #e5e7eb",
   borderRadius: 12,
@@ -2378,7 +2944,8 @@ const panel: CSSProperties = {
   minWidth: 0,
   maxHeight: 560,
   overflowY: "auto",
-  overscrollBehavior: "contain",
+  overscrollBehaviorY: "auto",
+  WebkitOverflowScrolling: "touch",
 };
 
 const panelTitle: CSSProperties = {
@@ -2395,8 +2962,117 @@ const rawText: CSSProperties = {
   fontSize: 14,
   color: "#111827",
   lineHeight: 1.5,
-  maxHeight: 500,
-  overflowY: "auto",
+  maxHeight: "none",
+  overflowY: "visible",
+};
+
+
+const reparsePanelHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 10,
+  marginBottom: 10,
+};
+
+const reparseHelpText: CSSProperties = {
+  marginTop: -4,
+  color: "#64748b",
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
+const manualReparseBadge: CSSProperties = {
+  flex: "0 0 auto",
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 25,
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid #a7f3d0",
+  background: "#ecfdf5",
+  color: "#047857",
+  fontSize: 11,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const reparseTextarea: CSSProperties = {
+  width: "100%",
+  minHeight: 390,
+  resize: "vertical",
+  border: "1px solid #cbd5e1",
+  borderRadius: 10,
+  padding: 11,
+  background: "#fff",
+  color: "#0f172a",
+  fontFamily: "inherit",
+  fontSize: 14,
+  lineHeight: 1.5,
+  outline: "none",
+  boxSizing: "border-box",
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
+};
+
+const reparseActions: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+  gap: 8,
+  marginTop: 10,
+};
+
+const reparseRestoreBtn: CSSProperties = {
+  minHeight: 38,
+  padding: "8px 11px",
+  borderRadius: 9,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#334155",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const reparsePrimaryBtn: CSSProperties = {
+  minHeight: 38,
+  padding: "8px 12px",
+  borderRadius: 9,
+  border: "1px solid #0284c7",
+  background: "#0ea5e9",
+  color: "#fff",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const reparseErrorBox: CSSProperties = {
+  marginTop: 10,
+  padding: 10,
+  borderRadius: 9,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#b91c1c",
+  fontSize: 12,
+  lineHeight: 1.5,
+  overflowWrap: "anywhere",
+};
+
+const reparseSuccessBox: CSSProperties = {
+  marginTop: 10,
+  padding: 10,
+  borderRadius: 9,
+  border: "1px solid #a7f3d0",
+  background: "#ecfdf5",
+  color: "#047857",
+  fontSize: 12,
+  lineHeight: 1.5,
+};
+
+const reparseFootnote: CSSProperties = {
+  marginTop: 9,
+  color: "#64748b",
+  fontSize: 11,
+  lineHeight: 1.45,
 };
 
 const fieldRow: CSSProperties = {
@@ -2459,15 +3135,6 @@ const thumb: CSSProperties = {
   objectFit: "cover",
   borderRadius: 10,
   border: "1px solid #e5e7eb",
-};
-
-const actions: CSSProperties = {
-  display: "flex",
-  gap: 10,
-  justifyContent: "flex-end",
-  marginTop: 14,
-  borderTop: "1px solid #e5e7eb",
-  paddingTop: 14,
 };
 
 const primaryBtn: CSSProperties = {
@@ -2655,11 +3322,6 @@ const compactStatusBadge: CSSProperties = {
   fontWeight: 800,
 };
 
-const compactConfidence: CSSProperties = {
-  color: "#64748b",
-  fontSize: 12,
-};
-
 const compactViewRoomBtn: CSSProperties = {
   color: "#0369a1",
   textDecoration: "none",
@@ -2706,40 +3368,6 @@ const compactAccentValue: CSSProperties = {
   border: "1px solid rgba(14,165,233,0.48)",
   background: "rgba(224,242,254,0.72)",
   boxShadow: "0 0 0 2px rgba(14,165,233,0.06)",
-};
-
-const compactWarningBlock: CSSProperties = {
-  paddingTop: 2,
-};
-
-const compactWarningList: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 7,
-};
-
-const compactWarningBadge: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  minHeight: 28,
-  padding: "4px 9px",
-  borderRadius: 999,
-  border: "1px solid rgba(248,113,113,0.34)",
-  background: "rgba(254,226,226,0.72)",
-  color: "#b91c1c",
-  fontSize: 12,
-  fontWeight: 700,
-};
-
-const compactSuccessBadge: CSSProperties = {
-  display: "inline-flex",
-  padding: "4px 9px",
-  borderRadius: 999,
-  border: "1px solid rgba(52,211,153,0.30)",
-  background: "rgba(209,250,229,0.72)",
-  color: "#047857",
-  fontSize: 12,
-  fontWeight: 700,
 };
 
 const compactMetaLine: CSSProperties = {
@@ -2847,6 +3475,128 @@ const compactAutoBlockedBadge: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const compactNoticeBadgeButton: CSSProperties = {
+  appearance: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 26,
+  maxWidth: "100%",
+  padding: "3px 9px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 800,
+  lineHeight: 1.25,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  cursor: "pointer",
+};
+
+const compactNoticeBadgeWarning: CSSProperties = {
+  border: "1px solid rgba(248,113,113,0.42)",
+  background: "rgba(254,226,226,0.78)",
+  color: "#b91c1c",
+};
+
+const compactNoticeBadgeSuccess: CSSProperties = {
+  border: "1px solid rgba(52,211,153,0.34)",
+  background: "rgba(209,250,229,0.72)",
+  color: "#047857",
+};
+
+const noticeModalOverlay: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 10020,
+  display: "grid",
+  placeItems: "center",
+  padding: 12,
+  background: "rgba(15,23,42,0.68)",
+  backdropFilter: "blur(7px)",
+};
+
+const noticeModalShell: CSSProperties = {
+  width: "min(860px, calc(100vw - 24px))",
+  maxHeight: "calc(100dvh - 24px)",
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+  borderRadius: 18,
+  border: "1px solid #dbe3ee",
+  background: "#fff",
+  boxShadow: "0 28px 90px rgba(15,23,42,0.38)",
+};
+
+const noticeModalHeader: CSSProperties = {
+  flex: "0 0 auto",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "16px 18px",
+  borderBottom: "1px solid #e5e7eb",
+  background: "rgba(255,255,255,0.98)",
+};
+
+const noticeModalTitle: CSSProperties = {
+  color: "#0f172a",
+  fontSize: 18,
+  fontWeight: 900,
+};
+
+const noticeModalSubtitle: CSSProperties = {
+  marginTop: 4,
+  color: "#64748b",
+  fontSize: 13,
+  overflowWrap: "anywhere",
+};
+
+const noticeModalCloseButton: CSSProperties = {
+  flex: "0 0 auto",
+  width: 38,
+  height: 38,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 999,
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111827",
+  fontSize: 24,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const noticeModalBody: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: "auto",
+  padding: 14,
+  WebkitOverflowScrolling: "touch",
+};
+
+const noticeFallbackWarningBox: CSSProperties = {
+  marginTop: 10,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#991b1b",
+};
+
+const noticeFallbackTitle: CSSProperties = {
+  fontWeight: 900,
+};
+
+const noticeSuccessBox: CSSProperties = {
+  padding: 14,
+  borderRadius: 12,
+  border: "1px solid #a7f3d0",
+  background: "#ecfdf5",
+  color: "#047857",
+  fontWeight: 800,
+};
+
 const qualityPanel: CSSProperties = {
   marginBottom: 14,
   padding: 14,
@@ -2859,6 +3609,7 @@ const qualityHeader: CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
+  flexWrap: "wrap",
   gap: 12,
   marginBottom: 12,
 };
@@ -2975,7 +3726,7 @@ const detailModalOverlay: CSSProperties = {
 
 const detailModalShell: CSSProperties = {
   width: "min(1460px, calc(100vw - 36px))",
-  maxHeight: "calc(100vh - 36px)",
+  maxHeight: "calc(100dvh - 36px)",
   display: "flex",
   flexDirection: "column",
   overflow: "hidden",
@@ -3017,33 +3768,8 @@ const detailModalBody: CSSProperties = {
   minHeight: 0,
   overflowY: "auto",
   padding: 16,
-  overscrollBehavior: "contain",
-};
-
-const detailWarningsBox: CSSProperties = {
-  marginBottom: 12,
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #fecaca",
-  background: "#fff7f7",
-  color: "#991b1b",
-};
-
-const detailWarningsList: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 7,
-  marginTop: 8,
-};
-
-const detailWarningBadge: CSSProperties = {
-  padding: "4px 8px",
-  borderRadius: 999,
-  border: "1px solid #fecaca",
-  background: "#fef2f2",
-  color: "#b91c1c",
-  fontSize: 12,
-  fontWeight: 700,
+  overscrollBehaviorY: "auto",
+  WebkitOverflowScrolling: "touch",
 };
 
 const detailModalFooter: CSSProperties = {
