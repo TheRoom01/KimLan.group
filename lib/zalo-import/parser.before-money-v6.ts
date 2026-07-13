@@ -280,56 +280,6 @@ export function normalizeMoneyToVnd(
    *
    * Phải kiểm tra trước các dạng khác.
    */
-
-  /*
-   * MONEY_PARSER_V6_1_COMPACT_THOUSAND
-   *
-   * Dạng nghìn viết liền:
-   *
-   * 3k8   -> 3.800
-   * 3k80  -> 3.800
-   * 3k800 -> 3.800
-   * 3k05  -> 3.050
-   *
-   * Chỉ nhận phần sau chữ k khi viết liền.
-   */
-  const compactThousandMatch =
-    normalized.match(
-      /\b(\d+)\s*k(\d{1,3})\b/i
-    );
-
-  if (
-    compactThousandMatch?.[1] &&
-    compactThousandMatch?.[2]
-  ) {
-    const wholeThousands =
-      Number(
-        compactThousandMatch[1]
-      );
-
-    const fractionThousands =
-      Number(
-        `0.${compactThousandMatch[2]}`
-      );
-
-    if (
-      Number.isFinite(
-        wholeThousands
-      ) &&
-      Number.isFinite(
-        fractionThousands
-      )
-    ) {
-      return Math.round(
-        (
-          wholeThousands +
-          fractionThousands
-        ) *
-          1_000
-      );
-    }
-  }
-
   const compactMillion =
     parseCompactMillionToVnd(
       normalized
@@ -2314,7 +2264,7 @@ function extractFeeAmounts(
    */
   const matches =
     normalized.match(
-      /(?:\d+\s*(?:tr|trieu)\d{1,3}(?:k)?\b)|(?:\d+\s*k\d{1,3}\b)|(?:\d+(?:[.,]\d+)?\s*(?:tr|trieu)\b)|(?:\d+(?:[.,]\d+)?\s*(?:k|nghin|ngan)\b)|(?:\d{1,3}(?:[.,]\d{3})+\s*(?:d|dong)?\b)/gi
+      /(?:\d+\s*(?:tr|trieu)\d{1,3}(?:k)?\b)|(?:\d+(?:[.,]\d+)?\s*(?:tr|trieu)\b)|(?:\d+(?:[.,]\d+)?\s*(?:k|nghin|ngan)\b)|(?:\d{1,3}(?:[.,]\d{3})+\s*(?:d|dong)?\b)/gi
     ) || [];
 
   const values:
@@ -2367,7 +2317,6 @@ function pickServiceFeeFromZaloText(
   const moneyToken =
     "(?:" +
     "\\d+\\s*(?:tr|trieu)\\d{1,3}(?:k)?\\b|" +
-    "\\d+\\s*k\\d{1,3}\\b|" +
     "\\d+(?:[.,]\\d+)?\\s*(?:tr|trieu|k|nghin|ngan)\\b|" +
     "\\d{1,3}(?:[.,]\\d{3})+\\s*(?:d|dong)?\\b|" +
     "\\d{5,6}\\s*(?:d|dong)?\\b" +
@@ -3132,37 +3081,6 @@ function defaultDetailPayload(): Record<string, any> {
   };
 }
 
-
-/*
- * MONEY_PARSER_V6_1_COMPACT_THOUSAND
- *
- * Đọc số tiền tiện ích, ưu tiên dạng compact nghìn:
- * 3k8, 3k80, 3k800.
- */
-function extractUtilityFeeValue(
-  text: string,
-  labelPattern: string
-): number | null {
-  const pattern =
-    new RegExp(
-      `(?:${labelPattern})\\s*[:\\-]?\\s*((?:\\d+\\s*k\\d{1,3}\\b)|(?:\\d+(?:[.,]\\d+)?\\s*(?:k|nghìn|ngan|ngàn)?\\b))`,
-      "i"
-    );
-
-  const match =
-    String(text || "").match(
-      pattern
-    );
-
-  if (!match?.[1]) {
-    return null;
-  }
-
-  return normalizeMoneyToVnd(
-    match[1]
-  );
-}
-
 export function parseZaloRoomText(
   rawText: string
 ): ParsedZaloRoom {
@@ -3357,32 +3275,16 @@ if (
     sourceFieldMap.zalo_phone = "Tin Zalo";
   }
 
-  const electricFeeValue =
-    extractUtilityFeeValue(
-      text,
-      "điện|dien"
-    );
-
-  if (electricFeeValue != null) {
-    detailPayload.electric_fee_value =
-      electricFeeValue;
-
-    sourceFieldMap.electric_fee_value =
-      "Tin Zalo";
+  const electricMatch = text.match(/(?:điện|dien)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|ngàn)?/i);
+  if (electricMatch?.[0]) {
+    detailPayload.electric_fee_value = normalizeMoneyToVnd(electricMatch[0]);
+    sourceFieldMap.electric_fee_value = "Tin Zalo";
   }
 
-  const waterFeeValue =
-    extractUtilityFeeValue(
-      text,
-      "nước|nuoc"
-    );
-
-  if (waterFeeValue != null) {
-    detailPayload.water_fee_value =
-      waterFeeValue;
-
-    sourceFieldMap.water_fee_value =
-      "Tin Zalo";
+  const waterMatch = text.match(/(?:nước|nuoc)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|ngàn)?/i);
+  if (waterMatch?.[0]) {
+    detailPayload.water_fee_value = normalizeMoneyToVnd(waterMatch[0]);
+    sourceFieldMap.water_fee_value = "Tin Zalo";
   }
 
   /*
@@ -3406,18 +3308,10 @@ if (
       "Tin Zalo";
   }
 
-  const parkingFeeValue =
-    extractUtilityFeeValue(
-      text,
-      "xe|giữ xe|giu xe|parking"
-    );
-
-  if (parkingFeeValue != null) {
-    detailPayload.parking_fee_value =
-      parkingFeeValue;
-
-    sourceFieldMap.parking_fee_value =
-      "Tin Zalo";
+  const parkingMatch = text.match(/(?:xe|giữ xe|giu xe|parking)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)\s*(k|nghìn|ngan|ngàn)?/i);
+  if (parkingMatch?.[0]) {
+    detailPayload.parking_fee_value = normalizeMoneyToVnd(parkingMatch[0]);
+    sourceFieldMap.parking_fee_value = "Tin Zalo";
   }
 
   if (/đã\s*thuê|da\s*thue|hết\s*phòng|het\s*phong/i.test(text)) {
