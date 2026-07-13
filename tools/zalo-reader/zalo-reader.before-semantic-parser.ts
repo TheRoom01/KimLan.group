@@ -6,7 +6,6 @@ import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
-import { buildSemanticTimelineRooms } from "./parsers/semantic-timeline";
 
 const execFileAsync =
   promisify(execFile);
@@ -7908,51 +7907,13 @@ function writeIndexedDbRoomPreview(
     )
   );
 
-  const rawGroupEntry =
-    params.config.groups.find((entry) => {
-      if (typeof entry === "string") {
-        return entry.trim() === params.groupName;
-      }
-
-      return (
-        String((entry as any)?.name || "").trim() ===
-        params.groupName
-      );
+  const builtRooms =
+    buildRoomsFromIndexedDbMessages({
+      groupName: params.groupName,
+      groupId: params.groupId,
+      messages: params.messages,
+      maxGapMs,
     });
-
-  const parserName =
-    rawGroupEntry && typeof rawGroupEntry === "object"
-      ? String((rawGroupEntry as any).parser || "semantic-timeline")
-      : "semantic-timeline";
-
-  const parserOptions =
-    rawGroupEntry && typeof rawGroupEntry === "object"
-      ? (rawGroupEntry as any).parserOptions
-      : undefined;
-
-  console.log(
-    [
-      "Parser phòng:",
-      parserName,
-      `(${params.groupName})`,
-    ].join(" ")
-  );
-
-  const builtRooms: IndexedDbRoomPreview[] =
-    parserName === "legacy"
-      ? buildRoomsFromIndexedDbMessages({
-          groupName: params.groupName,
-          groupId: params.groupId,
-          messages: params.messages,
-          maxGapMs,
-        })
-      : (buildSemanticTimelineRooms({
-          groupName: params.groupName,
-          groupId: params.groupId,
-          messages: params.messages as any,
-          maxGapMs,
-          parserOptions,
-        }) as IndexedDbRoomPreview[]);
 
   const newestRoomVersions =
     keepNewestIndexedDbRoomVersions(

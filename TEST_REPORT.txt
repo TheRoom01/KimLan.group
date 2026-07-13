@@ -1,0 +1,18 @@
+KIMLAN SEMANTIC PARSER - TEST REPORT
+====================================
+
+TypeScript strict compile: PASS
+Target compatibility: ES2017 + moduleResolution=bundler
+Smoke test: PASS
+
+Các tình huống đã test:
+1. Marker phòng trước, album ảnh sau.
+2. Album ảnh trước, marker phòng sau.
+3. Dữ liệu tòa nhà và marker phòng nằm chung message.
+4. Hai tòa nhà liên tiếp, ảnh không vượt ranh giới tòa nhà.
+5. Block chỉ có media, không có marker vẫn tạo record.
+6. Block chỉ có text, không có marker/media vẫn tạo record.
+7. Một album chỉ được gắn cho một phòng.
+
+Lưu ý:
+Cần kiểm tra thêm bằng JSON IndexedDB thực tế sau lần chạy đầu để tinh chỉnh các trường hợp format riêng của từng nhóm.

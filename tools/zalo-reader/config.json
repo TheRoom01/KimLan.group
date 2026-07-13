@@ -50,31 +50,108 @@
   "groups": [
     {
       "key": "Top-Du-An-Quan-5",
-      "name": "Top Dự Án Quận 5"
+      "name": "Top Dự Án Quận 5",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
     },
     {
       "key": "Tay-Nam-Top-Du-An-Duoi-5tr",
-      "name": "TÂY NAM - TOP DỰ ÁN DƯỚI 5tr"
+      "name": "TÂY NAM - TOP DỰ ÁN DƯỚI 5tr",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
     },
     {
       "key": "Top-Du-An-Quan-6-Tay-Cho-Lon",
-      "name": "TOP DỰ ÁN QUẬN 6 - TÂY CHỢ LỚN"
+      "name": "TOP DỰ ÁN QUẬN 6 - TÂY CHỢ LỚN",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
     },
     {
       "key": "Tay-Nam-Top-Du-An-Tren-5tr",
-      "name": "TÂY NAM - TOP DỰ ÁN TRÊN 5tr"
+      "name": "TÂY NAM - TOP DỰ ÁN TRÊN 5tr",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
     },
     {
       "key": "Top-Du-An-Quan-1",
-      "name": "TOP DỰ ÁN QUẬN 1"
+      "name": "TOP DỰ ÁN QUẬN 1",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
     },
     {
       "key": "Top-Du-An-Quan-3",
-      "name": "TOP DỰ ÁN QUẬN 3"
+      "name": "TOP DỰ ÁN QUẬN 3",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
     },
     {
       "key": "Top-Du-An-Quan-10-Tren-6tr",
-      "name": "TOP DỰ ÁN QUẬN 10 TRÊN 6TR"
+      "name": "TOP DỰ ÁN QUẬN 10 TRÊN 6TR",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
     }
   ],
   "roomTextKeywords": [

@@ -1115,29 +1115,6 @@ function extractAddressParts(
       "i"
     );
 
-
-  /*
-
-   * ADDRESS_PARSER_V5_1_INLINE_BUILDING_HEADER
-
-   *
-
-   * Hỗ trợ:
-
-   * DỰ ÁN DUY TRÌ: 517/18 Nguyễn Trãi, P An Đông Q5
-
-   * CẬP NHẬT DỰ ÁN DUY TRÌ: địa chỉ 1186 Võ Văn Kiệt
-
-   * HIFRIENDZ THÔNG BÁO DỰ ÁN DUY TRÌ QUẬN 3: 413/8 Lê Văn Sỹ
-
-   */
-
-  const buildingAnnouncementPrefixPattern =
-
-    /^(?:(?:hifriendz\s*)?(?:(?:thông\s*báo|thong\s*bao|cập\s*nhật|cap\s*nhat|khai\s*trương|khai\s*truong|mở\s*bán|mo\s*ban)\s+)?(?:dự\s*án|du\s*an|chdv|căn\s*hộ\s*dịch\s*vụ|can\s*ho\s*dich\s*vu|tòa\s*nhà|toa\s*nha)(?:\s+(?:mới|moi|duy\s*trì|duy\s*tri|cao\s*cấp|cao\s*cap))*(?:\s+(?:q(?:uận)?|quan)\.?\s*\d{1,2})?\s*[:\-–—]\s*)/i;
-
-
-
   const houseNumberSource =
     "\\d+[A-Za-z]{0,4}" +
     "(?:(?:\\/|-)\\d+[A-Za-z]{0,4})*";
@@ -1474,14 +1451,6 @@ function extractAddressParts(
           /^(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]?\s*/i,
           ""
         )
-        .replace(
-          buildingAnnouncementPrefixPattern,
-          ""
-        )
-        .replace(
-          /^(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]?\s*/i,
-          ""
-        )
         .trim();
 
     const location =
@@ -1616,26 +1585,6 @@ function extractAddressParts(
       }
     }
   }
-
-  /*
-   * ADDRESS_PARSER_V5_1_INLINE_BUILDING_HEADER
-   *
-   * Địa chỉ có thể nằm ngay sau tiêu đề dự án.
-   * parseAddressCandidate() sẽ tự bỏ prefix trước khi bóc số nhà.
-   */
-  for (const line of lines) {
-    if (
-      buildingAnnouncementPrefixPattern.test(
-        line
-      ) &&
-      parseAddressCandidate(
-        line
-      )
-    ) {
-      return result;
-    }
-  }
-
 
   /*
    * 2. Dòng đầy đủ bắt đầu bằng số nhà:
@@ -1797,14 +1746,6 @@ export function detectZaloBuildingCandidates(
   const houseNumberAtStartPattern =
     /^\d+[A-Za-z]{0,4}(?:(?:\/|-)\d+[A-Za-z]{0,4})*\s+[A-Za-zÀ-ỹĐđ]/i;
 
-  /*
-   * ADDRESS_PARSER_V5_1_INLINE_BUILDING_HEADER
-   * Nhận địa chỉ đặt ngay sau tiêu đề dự án/tòa nhà.
-   */
-  const inlineProjectAddressPattern =
-    /^(?:(?:hifriendz\s*)?(?:(?:thông\s*báo|thong\s*bao|cập\s*nhật|cap\s*nhat|khai\s*trương|khai\s*truong|mở\s*bán|mo\s*ban)\s+)?(?:dự\s*án|du\s*an|chdv|căn\s*hộ\s*dịch\s*vụ|can\s*ho\s*dich\s*vu|tòa\s*nhà|toa\s*nha)(?:\s+(?:mới|moi|duy\s*trì|duy\s*tri|cao\s*cấp|cao\s*cap))*(?:\s+(?:q(?:uận)?|quan)\.?\s*\d{1,2})?\s*[:\-–—]\s*(?:(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?)\s*[:\-]?\s*)?\d+[A-Za-z]{0,4}(?:(?:\/|-)\d+[A-Za-z]{0,4})*\s+[A-Za-zÀ-ỹĐđ])/i;
-
-
   for (
     let index = 0;
     index < lines.length;
@@ -1814,8 +1755,7 @@ export function detectZaloBuildingCandidates(
 
     if (
       addressLabelPattern.test(line) ||
-      houseNumberAtStartPattern.test(line) ||
-      inlineProjectAddressPattern.test(line)
+      houseNumberAtStartPattern.test(line)
     ) {
       candidateTexts.push(line);
     }

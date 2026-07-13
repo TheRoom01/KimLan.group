@@ -1,0 +1,15 @@
+Semantic Parser Fix V4 — kiểm tra hoàn tất
+
+PASS: Marker trước ảnh
+PASS: Ảnh trước marker
+PASS: Tòa nhà + marker trong cùng message
+PASS: Emoji address / Khai Trương CHDV boundary
+PASS: HIFRIENDZ + underscore address boundary
+PASS: Nhiều marker "Trống mã" trong cùng tòa nhà
+PASS: Album 902 chỉ gắn room 902
+PASS: Album 503/803 chỉ gắn room 503 + 803
+PASS: TypeScript strict noEmit
+
+Lệnh đã chạy:
+- npx tsx tools/zalo-reader/parsers/semantic-parser-smoke-test.ts
+- npx tsc --noEmit --target ES2020 --module ESNext --moduleResolution Bundler --strict --skipLibCheck tools/zalo-reader/parsers/*.ts

@@ -1,0 +1,10 @@
+Semantic Parser Fix V3
+
+PASS: marker before images
+PASS: images before marker
+PASS: building and room in one message
+PASS: emoji address 90/88F Nguyễn Đình Chiểu
+PASS: HIFRIENDZ project header without hyphen
+PASS: underscore/F12 address 413/8 Lê Văn Sỹ_F12_ Quận 3
+PASS: `1/8 trống` is not treated as a building address
+PASS: strict TypeScript check for parser files
