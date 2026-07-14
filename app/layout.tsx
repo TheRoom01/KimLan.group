@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 
 import "./globals.css";
+import "./room-share-visual-sync.css";
 import AuthControls from "@/components/AuthControls";
 import ClientErrorOverlay from './_debug/ClientErrorOverlay';
 
