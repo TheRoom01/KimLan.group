@@ -1147,7 +1147,7 @@ return (
         fixed inset-0 z-[99999]
         flex items-end justify-center
         bg-black/55
-        px-0 pb-0 pt-[52px]
+        px-0 pb-0 pt-[20px]
         text-[#F4E7D6]
       "
       onClick={handleCloseModal}
@@ -1157,7 +1157,7 @@ return (
     relative flex flex-col overflow-hidden
     w-screen max-w-none
     md:w-[720px] md:max-w-[calc(100vw-48px)]
-    h-[calc(100dvh-52px)]
+    h-[calc(100dvh-20px)]
     rounded-t-[28px]
     border-x border-t border-b-0
     shadow-[0_-24px_80px_rgba(0,0,0,0.55)]
