@@ -83,6 +83,37 @@ input[type="radio"] {
     max-height: 100vh;
     border-radius: 0;
   }
+
+  /* Admin room list: keep search visible and stack actions vertically. */
+  main > div:has(input[placeholder^="Tìm theo số nhà"]) {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  main > div:has(input[placeholder^="Tìm theo số nhà"]) > div:first-child {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+
+  main > div:has(input[placeholder^="Tìm theo số nhà"]) > div:first-child > div {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  main > div:has(input[placeholder^="Tìm theo số nhà"]) > div:last-child {
+    width: 100% !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+  }
+
+  main > div:has(input[placeholder^="Tìm theo số nhà"]) > div:last-child > button {
+    width: 100% !important;
+  }
 }
 
   .admin-table-header {
