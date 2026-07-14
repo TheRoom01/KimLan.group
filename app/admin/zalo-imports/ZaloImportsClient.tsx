@@ -487,6 +487,7 @@ export default function ZaloImportsClient() {
             editingPending.detail_payload ?? {}
           }
           pendingImages={editingPending.images ?? []}
+          pendingVideos={editingPending.videos ?? []}
           open={openPendingModal}
           onClose={() =>
             setOpenPendingModal(false)
@@ -509,6 +510,8 @@ export default function ZaloImportsClient() {
                         updated?.detail_payload ?? row.detail_payload,
                       images:
                         updated?.images ?? row.images,
+                      videos:
+                        updated?.videos ?? row.videos,
                     }
                   : row
               )

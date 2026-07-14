@@ -3,8 +3,11 @@ import RoomCard from "@/components/RoomCard";
 import RoomCardSkeleton from "@/components/RoomCardSkeleton";
 
 const ROOM_GRID_STYLE: React.CSSProperties = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
-  gap: "clamp(10px, 0.85vw, 16px)",
+  gridTemplateColumns:
+    "repeat(auto-fill, minmax(min(100%, 360px), 440px))",
+  justifyContent: "center",
+  alignItems: "start",
+  gap: "clamp(14px, 1.2vw, 22px)",
 };
 
 type RoomListProps = {

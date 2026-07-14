@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -27,11 +28,26 @@ type PendingDraftRow = {
 type PendingImageRow = {
   id: string;
   temp_r2_key?: string | null;
+  temp_image_url?: string | null;
   sort_order?: number | null;
 };
 
-type IncomingImageOrder = {
+type PendingVideoRow = {
+  id: string;
+  temp_r2_key?: string | null;
+  temp_video_url?: string | null;
+  sort_order?: number | null;
+};
+
+type IncomingMediaOrder = {
   id?: unknown;
+  sort_order?: unknown;
+};
+
+type IncomingNewMedia = {
+  type?: unknown;
+  url?: unknown;
+  temp_r2_key?: unknown;
   sort_order?: unknown;
 };
 
@@ -189,6 +205,27 @@ function hasObjectChanged(
   );
 }
 
+function inferR2KeyFromPublicUrl(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    return decodeURIComponent(
+      parsed.pathname.replace(/^\/+/, "")
+    );
+  } catch {
+    return raw.replace(/^\/+/, "");
+  }
+}
+
+function normalizeSortOrder(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? Math.max(0, Math.floor(parsed))
+    : fallback;
+}
+
 function isProcessingActive(
   value: unknown
 ) {
@@ -266,10 +303,21 @@ export async function PATCH(
       );
 
     const imageOrder:
-      IncomingImageOrder[] =
+      IncomingMediaOrder[] =
       hasImageOrder
-        ? (body.images as IncomingImageOrder[])
+        ? (body.images as IncomingMediaOrder[])
         : [];
+
+    const hasVideoOrder = Array.isArray(body?.videos);
+    const videoOrder: IncomingMediaOrder[] = hasVideoOrder
+      ? (body.videos as IncomingMediaOrder[])
+      : [];
+
+    const newMedia: IncomingNewMedia[] = Array.isArray(body?.new_media)
+      ? (body.new_media as IncomingNewMedia[])
+          .filter((item) => item && typeof item === "object")
+          .slice(0, 100)
+      : [];
 
     const removedImageIds:
       string[] =
@@ -285,6 +333,12 @@ export async function PATCH(
             )
             .filter(Boolean)
         : [];
+
+    const removedVideoIds: string[] = Array.isArray(body?.removed_video_ids)
+      ? body.removed_video_ids
+          .map((value: any) => String(value || "").trim())
+          .filter(Boolean)
+      : [];
 
     if (
       !roomPayload ||
@@ -432,6 +486,23 @@ export async function PATCH(
         ? (currentImages as unknown as PendingImageRow[])
         : [];
 
+    const {
+      data: currentVideos,
+      error: currentVideosErr,
+    } = await supabase
+      .from("zalo_import_videos")
+      .select("id,temp_r2_key,temp_video_url,sort_order")
+      .eq("batch_id", pendingRow.batch_id)
+      .order("sort_order", { ascending: true });
+
+    if (currentVideosErr) {
+      throw currentVideosErr;
+    }
+
+    const currentVideoRows: PendingVideoRow[] = Array.isArray(currentVideos)
+      ? (currentVideos as unknown as PendingVideoRow[])
+      : [];
+
     const currentImageIds:
       string[] =
       currentImageRows
@@ -448,6 +519,12 @@ export async function PATCH(
         currentImageIds
       );
 
+    const currentVideoIds = currentVideoRows
+      .map((video: any) => String(video?.id || "").trim())
+      .filter(Boolean);
+
+    const currentVideoIdSet = new Set(currentVideoIds);
+
     const requestedImageIds:
       string[] =
       hasImageOrder
@@ -462,6 +539,12 @@ export async function PATCH(
         : [
             ...currentImageIds,
           ];
+
+    const requestedVideoIds: string[] = hasVideoOrder
+      ? videoOrder
+          .map((video: any) => String(video?.id || "").trim())
+          .filter(Boolean)
+      : [...currentVideoIds];
 
     if (
       new Set(
@@ -478,6 +561,13 @@ export async function PATCH(
         {
           status: 400,
         }
+      );
+    }
+
+    if (new Set(requestedVideoIds).size !== requestedVideoIds.length) {
+      return NextResponse.json(
+        { ok: false, error: "Danh sách video có ID bị trùng." },
+        { status: 400 }
       );
     }
 
@@ -505,6 +595,17 @@ export async function PATCH(
       );
     }
 
+    const unknownVideoIds = requestedVideoIds.filter(
+      (videoId) => !currentVideoIdSet.has(videoId)
+    );
+
+    if (unknownVideoIds.length > 0) {
+      return NextResponse.json(
+        { ok: false, error: "Có video không thuộc pending import này." },
+        { status: 400 }
+      );
+    }
+
     const effectiveRemovedIds:
       string[] =
       Array.from(
@@ -527,6 +628,36 @@ export async function PATCH(
         ])
       );
 
+    const effectiveRemovedVideoIds = Array.from(
+      new Set<string>([
+        ...removedVideoIds.filter((videoId) => currentVideoIdSet.has(videoId)),
+        ...(hasVideoOrder
+          ? currentVideoIds.filter((videoId) => !requestedVideoIds.includes(videoId))
+          : []),
+      ])
+    );
+
+    const normalizedNewMedia = newMedia
+      .map((item, index) => {
+        const type = String(item?.type || "").trim().toLowerCase();
+        const url = String(item?.url || "").trim();
+        const tempR2Key =
+          String(item?.temp_r2_key || "").trim() || inferR2KeyFromPublicUrl(url);
+
+        return {
+          type,
+          url,
+          temp_r2_key: tempR2Key,
+          sort_order: normalizeSortOrder(item?.sort_order, index),
+        };
+      })
+      .filter(
+        (item) =>
+          (item.type === "image" || item.type === "video") &&
+          Boolean(item.url) &&
+          Boolean(item.temp_r2_key)
+      );
+
     const roomChanged =
       hasObjectChanged(
         pendingRow
@@ -542,19 +673,20 @@ export async function PATCH(
       );
 
     const imagesChanged =
-      JSON.stringify(
-        currentImageIds
-      ) !==
-        JSON.stringify(
-          requestedImageIds
-        ) ||
-      effectiveRemovedIds
-        .length > 0;
+      JSON.stringify(currentImageIds) !== JSON.stringify(requestedImageIds) ||
+      effectiveRemovedIds.length > 0 ||
+      normalizedNewMedia.some((item) => item.type === "image");
+
+    const videosChanged =
+      JSON.stringify(currentVideoIds) !== JSON.stringify(requestedVideoIds) ||
+      effectiveRemovedVideoIds.length > 0 ||
+      normalizedNewMedia.some((item) => item.type === "video");
 
     const changed =
       roomChanged ||
       detailChanged ||
-      imagesChanged;
+      imagesChanged ||
+      videosChanged;
 
     const now =
       new Date();
@@ -613,6 +745,8 @@ export async function PATCH(
           {},
         images:
           currentImageRows,
+        videos:
+          currentVideoRows,
       });
     }
 
@@ -680,6 +814,64 @@ export async function PATCH(
       }
     }
 
+    if (effectiveRemovedVideoIds.length > 0) {
+      const removableVideoRows = currentVideoRows.filter((video) =>
+        effectiveRemovedVideoIds.includes(String(video?.id || ""))
+      );
+
+      const removableVideoKeys = removableVideoRows
+        .map((video) => String(video?.temp_r2_key || "").trim())
+        .filter(Boolean);
+
+      if (removableVideoKeys.length > 0) {
+        await deleteR2Keys(removableVideoKeys);
+      }
+
+      const { error: deleteVideosErr } = await supabase
+        .from("zalo_import_videos")
+        .delete()
+        .eq("batch_id", pendingRow.batch_id)
+        .in("id", effectiveRemovedVideoIds);
+
+      if (deleteVideosErr) {
+        throw deleteVideosErr;
+      }
+    }
+
+    const newImageRows = normalizedNewMedia
+      .filter((item) => item.type === "image")
+      .map((item, index) => ({
+        id: randomUUID(),
+        batch_id: pendingRow.batch_id,
+        temp_r2_key: item.temp_r2_key,
+        temp_image_url: item.url,
+        sort_order: requestedImageIds.length + index,
+      }));
+
+    const newVideoRows = normalizedNewMedia
+      .filter((item) => item.type === "video")
+      .map((item, index) => ({
+        id: randomUUID(),
+        batch_id: pendingRow.batch_id,
+        temp_r2_key: item.temp_r2_key,
+        temp_video_url: item.url,
+        sort_order: requestedVideoIds.length + index,
+      }));
+
+    if (newImageRows.length > 0) {
+      const { error: insertImagesErr } = await supabase
+        .from("zalo_import_images")
+        .insert(newImageRows);
+      if (insertImagesErr) throw insertImagesErr;
+    }
+
+    if (newVideoRows.length > 0) {
+      const { error: insertVideosErr } = await supabase
+        .from("zalo_import_videos")
+        .insert(newVideoRows);
+      if (insertVideosErr) throw insertVideosErr;
+    }
+
     for (
       let index = 0;
       index <
@@ -734,6 +926,21 @@ export async function PATCH(
         imageUpdateErr
       ) {
         throw imageUpdateErr;
+      }
+    }
+
+    for (let index = 0; index < requestedVideoIds.length; index++) {
+      const videoId = requestedVideoIds[index];
+      const sortOrder = normalizeSortOrder(videoOrder[index]?.sort_order, index);
+
+      const { error: videoUpdateErr } = await supabase
+        .from("zalo_import_videos")
+        .update({ sort_order: sortOrder })
+        .eq("batch_id", pendingRow.batch_id)
+        .eq("id", videoId);
+
+      if (videoUpdateErr) {
+        throw videoUpdateErr;
       }
     }
 
@@ -962,6 +1169,16 @@ export async function PATCH(
       throw savedImagesErr;
     }
 
+    const { data: savedVideos, error: savedVideosErr } = await supabase
+      .from("zalo_import_videos")
+      .select("*")
+      .eq("batch_id", pendingRow.batch_id)
+      .order("sort_order", { ascending: true });
+
+    if (savedVideosErr) {
+      throw savedVideosErr;
+    }
+
     return NextResponse.json({
       ok: true,
       pendingId,
@@ -980,6 +1197,8 @@ export async function PATCH(
         nextDetailPayload,
       images:
         savedImages ?? [],
+      videos:
+        savedVideos ?? [],
     });
   } catch (e: any) {
     console.error(

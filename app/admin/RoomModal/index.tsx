@@ -79,10 +79,12 @@ type Props = {
   pendingRoomPayload?: Record<string, any> | null
   pendingDetailPayload?: Record<string, any> | null
   pendingImages?: any[] | null
+  pendingVideos?: any[] | null
   onPendingSaved?: (updated?: {
     room_payload?: Record<string, any>
     detail_payload?: Record<string, any>
     images?: any[]
+    videos?: any[]
   }) => void | Promise<void>
 
   // ✅ onSaved nhận room mới để trang admin cập nhật ngay
@@ -104,6 +106,7 @@ export default function RoomModal({
   pendingRoomPayload = null,
   pendingDetailPayload = null,
   pendingImages = null,
+  pendingVideos = null,
   onPendingSaved,
   open,
   onClose,
@@ -185,6 +188,7 @@ const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   // ✅ NEW (Patch 2): nhớ cover ban đầu để biết khi nào cần regenerate thumb.webp
   const initialCoverUrlRef = useRef<string>("");
   const initialPendingImageIdsRef = useRef<string[]>([]);
+  const initialPendingVideoIdsRef = useRef<string[]>([]);
   const pendingEditActivityRef = useRef<string>("");
 
   function genDraftId(): string {
@@ -348,6 +352,18 @@ async function makeThumbWebp(
   return out!
 }
 
+  function inferR2KeyFromPublicUrl(value: string): string {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+
+    try {
+      const parsed = new URL(raw)
+      return decodeURIComponent(parsed.pathname.replace(/^\/+/, ''))
+    } catch {
+      return raw.replace(/^\/+/, '')
+    }
+  }
+
   // ================== UPLOAD FILES ==================
 const handleUploadFiles = async (files: File[]) => {
   if (!files?.length) return
@@ -435,7 +451,11 @@ for (const f of okFiles) {
   // =======================
 // ✅ NEW: cho phép thêm mới + upload ngay (dùng draft id)
 // =======================
-const roomUuid = String(editingRoom?.id || draftRoomIdRef.current || '').trim()
+const roomUuid = String(
+  isPending
+    ? `zalo-pending-${String(pendingId || '').trim()}`
+    : editingRoom?.id || draftRoomIdRef.current || ''
+).trim()
 
 if (!roomUuid) {
   alert('Không tạo được ID phòng tạm. Vui lòng thử lại hoặc bấm Lưu phòng trước.')
@@ -623,6 +643,8 @@ for (const file of okFiles) {
     type: isVideo ? 'video' : 'image',
     url: publicUrl,
     path: publicUrl,
+    temp_r2_key: inferR2KeyFromPublicUrl(publicUrl),
+    ...(isPending ? { __pendingNew: true } : {}),
   } as const
 
   // ✅ upload tuần tự => append đúng thứ tự user chọn
@@ -810,8 +832,33 @@ const detailSample =
   setShowCloseConfirm(false)
 
     if (isPending) {
-    draftRoomIdRef.current = ''
+    draftRoomIdRef.current = `zalo-pending-${String(pendingId || '').trim()}`
     initialCoverUrlRef.current = ''
+
+    const pendingImageMedia = (Array.isArray(pendingImages) ? pendingImages : [])
+      .map((image: any) => ({
+        id: String(image?.id || ""),
+        type: "image" as const,
+        url: String(image?.temp_image_url || image?.url || ""),
+        path: String(image?.temp_image_url || image?.url || ""),
+        temp_r2_key: String(image?.temp_r2_key || ""),
+        sort_order: Number(image?.sort_order ?? 0),
+        __pendingImage: true,
+      }))
+      .filter((media: any) => media.url)
+
+    const pendingVideoMedia = (Array.isArray(pendingVideos) ? pendingVideos : [])
+      .map((video: any) => ({
+        id: String(video?.id || ""),
+        type: "video" as const,
+        url: String(video?.temp_video_url || video?.video_url || video?.url || ""),
+        path: String(video?.temp_video_url || video?.video_url || video?.url || ""),
+        thumb: String(video?.temp_thumb_url || video?.thumb_url || video?.thumbnail_url || ""),
+        temp_r2_key: String(video?.temp_r2_key || ""),
+        sort_order: Number(video?.sort_order ?? 0),
+        __pendingVideo: true,
+      }))
+      .filter((media: any) => media.url)
 
     setRoomForm({
       room_code: pendingRoomPayload?.room_code ?? '',
@@ -825,24 +872,17 @@ const detailSample =
       description: pendingRoomPayload?.description ?? '',
       link_zalo: pendingRoomPayload?.link_zalo ?? '',
       zalo_phone: pendingRoomPayload?.zalo_phone ?? '',
-      media: (Array.isArray(pendingImages) ? pendingImages : [])
-        .map((image: any) => ({
-          id: String(image?.id || ""),
-          type: "image" as const,
-          url: String(image?.temp_image_url || image?.url || ""),
-          path: String(image?.temp_image_url || image?.url || ""),
-          temp_r2_key: String(image?.temp_r2_key || ""),
-          sort_order: Number(image?.sort_order ?? 0),
-          __pendingImage: true,
-        }))
-        .filter((media: any) => media.url),
+      media: [...pendingImageMedia, ...pendingVideoMedia],
       chinh_sach: pendingRoomPayload?.chinh_sach ?? '',
     })
 
-    initialPendingImageIdsRef.current =
-      (Array.isArray(pendingImages) ? pendingImages : [])
-        .map((image: any) => String(image?.id || "").trim())
-        .filter(Boolean)
+    initialPendingImageIdsRef.current = pendingImageMedia
+      .map((image: any) => String(image?.id || "").trim())
+      .filter(Boolean)
+
+    initialPendingVideoIdsRef.current = pendingVideoMedia
+      .map((video: any) => String(video?.id || "").trim())
+      .filter(Boolean)
 
     setDetailForm(
       pendingDetailPayload
@@ -980,7 +1020,7 @@ const detailSample =
       setErrorMsg(e?.message ?? "Load phòng thất bại")
     }
   })()
-}, [editingRoom, isPending, pendingRoomPayload, pendingDetailPayload, pendingImages])
+}, [editingRoom, isPending, pendingId, pendingRoomPayload, pendingDetailPayload, pendingImages, pendingVideos])
 
 /*
  * Khi admin mở modal Pending:
@@ -1200,12 +1240,12 @@ const cancelCloseConfirm = () => {
       chinh_sach: roomForm.chinh_sach,
     }
 
-    const pendingMedia = (
-      Array.isArray((roomForm as any).media)
-        ? (roomForm as any).media
-        : []
-    )
-      .filter((item: any) => item?.__pendingImage && item?.id && item?.url)
+    const allPendingMedia = Array.isArray((roomForm as any).media)
+      ? (roomForm as any).media
+      : []
+
+    const pendingImagesToKeep = allPendingMedia
+      .filter((item: any) => item?.type === 'image' && item?.__pendingImage && item?.id && item?.url)
       .map((item: any, index: number) => ({
         id: String(item.id),
         temp_image_url: String(item.url),
@@ -1213,11 +1253,34 @@ const cancelCloseConfirm = () => {
         sort_order: index,
       }))
 
-    const currentIds = pendingMedia.map((item: any) => item.id)
-    const removedImageIds =
-      initialPendingImageIdsRef.current.filter(
-        (id) => !currentIds.includes(id)
-      )
+    const pendingVideosToKeep = allPendingMedia
+      .filter((item: any) => item?.type === 'video' && item?.__pendingVideo && item?.id && item?.url)
+      .map((item: any, index: number) => ({
+        id: String(item.id),
+        temp_video_url: String(item.url),
+        temp_r2_key: String(item.temp_r2_key || ""),
+        sort_order: index,
+      }))
+
+    const newMedia = allPendingMedia
+      .filter((item: any) => item?.__pendingNew && item?.url && (item?.type === 'image' || item?.type === 'video'))
+      .map((item: any, index: number) => ({
+        type: item.type,
+        url: String(item.url),
+        temp_r2_key: String(item.temp_r2_key || inferR2KeyFromPublicUrl(String(item.url))),
+        sort_order: index,
+      }))
+
+    const currentImageIds = pendingImagesToKeep.map((item: any) => item.id)
+    const currentVideoIds = pendingVideosToKeep.map((item: any) => item.id)
+
+    const removedImageIds = initialPendingImageIdsRef.current.filter(
+      (id) => !currentImageIds.includes(id)
+    )
+
+    const removedVideoIds = initialPendingVideoIdsRef.current.filter(
+      (id) => !currentVideoIds.includes(id)
+    )
 
     /*
      * UX: đóng modal ngay, sau đó lưu ngầm.
@@ -1236,11 +1299,17 @@ const cancelCloseConfirm = () => {
           body: JSON.stringify({
             room_payload: roomPayload,
             detail_payload: detailForm,
-            images: pendingMedia.map((item: any) => ({
+            images: pendingImagesToKeep.map((item: any) => ({
               id: item.id,
               sort_order: item.sort_order,
             })),
+            videos: pendingVideosToKeep.map((item: any) => ({
+              id: item.id,
+              sort_order: item.sort_order,
+            })),
+            new_media: newMedia,
             removed_image_ids: removedImageIds,
+            removed_video_ids: removedVideoIds,
           }),
         })
 
@@ -1252,14 +1321,19 @@ const cancelCloseConfirm = () => {
 
         const savedImages = Array.isArray(json?.images)
           ? json.images
-          : pendingMedia
+          : pendingImagesToKeep
 
-        initialPendingImageIdsRef.current =
-          savedImages
-            .map((image: any) =>
-              String(image?.id || "").trim()
-            )
-            .filter(Boolean)
+        const savedVideos = Array.isArray(json?.videos)
+          ? json.videos
+          : pendingVideosToKeep
+
+        initialPendingImageIdsRef.current = savedImages
+          .map((image: any) => String(image?.id || "").trim())
+          .filter(Boolean)
+
+        initialPendingVideoIdsRef.current = savedVideos
+          .map((video: any) => String(video?.id || "").trim())
+          .filter(Boolean)
 
         await onPendingSaved?.({
           room_payload:
@@ -1267,6 +1341,7 @@ const cancelCloseConfirm = () => {
           detail_payload:
             json?.detail_payload ?? detailForm,
           images: savedImages,
+          videos: savedVideos,
         })
 
         if (
@@ -1535,13 +1610,7 @@ const stopBackdropEvents = (e: any) => {
               onChange={setRoomForm}
               updatedAt={editingRoom?.updated_at ?? null}
               uploading={uploading}
-              onUploadFiles={
-                isPending
-                  ? async () => {
-                      alert('Bạn có thể kéo-thả để đổi thứ tự hoặc bấm ✕ để loại ảnh. Thêm ảnh mới cho Import sẽ được bổ sung ở bước upload tiếp theo.')
-                    }
-                  : handleUploadFiles
-              }
+              onUploadFiles={handleUploadFiles}
               chinh_sach={roomForm.chinh_sach}
              onChangeChinhSach={(v: string) => setRoomForm(prev => ({ ...prev, chinh_sach: v }))}
              onAutofillByAddress={tryAutofillByAddress}
