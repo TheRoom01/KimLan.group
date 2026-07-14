@@ -384,3 +384,19 @@ input[type="radio"] {
     opacity: 1;
   }
 }
+
+/* ===== HOME ROOM STATUS BADGES ===== */
+/* Make the status visually distinct from the brown room-card background. */
+[class~="bg-[#22c55e]/35"] {
+  background-color: rgba(134, 239, 172, 0.94) !important;
+  color: #14532d !important;
+  border-color: rgba(34, 197, 94, 0.9) !important;
+  box-shadow: 0 5px 16px rgba(34, 197, 94, 0.22) !important;
+}
+
+[class~="bg-red-500/30"] {
+  background-color: rgba(254, 202, 202, 0.94) !important;
+  color: #7f1d1d !important;
+  border-color: rgba(248, 113, 113, 0.9) !important;
+  box-shadow: 0 5px 16px rgba(239, 68, 68, 0.18) !important;
+}
