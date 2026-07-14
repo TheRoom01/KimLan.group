@@ -1,0 +1,61 @@
+name: One-time fix Zalo address parser
+
+on:
+  push:
+    paths:
+      - ".github/workflows/one-time-fix-zalo-address.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-parser:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Patch address parser
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("lib/zalo-import/parser.ts")
+          text = path.read_text(encoding="utf-8")
+          original = text
+
+          # F12 / F.12 is used by some Zalo posts as an alias for Phường 12.
+          old = '"p(?:\\.|(?=\\s|\\d))|" +\n    "xã|xa|" +'
+          new = '"p(?:\\.|(?=\\s|\\d))|" +\n    "f(?:\\.|(?=\\s|\\d))|" +\n    "xã|xa|" +'
+          if old not in text:
+              raise SystemExit("wardLabelSource anchor not found")
+          text = text.replace(old, new, 1)
+
+          # Treat underscores in compact building headers as address separators:
+          # 413/8 Lê Văn Sỹ_F12_ Quận 3
+          old = '.replace(/\\r\\n?/g, "\\n")\n        .replace(\n          /\\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|zalo|phòng|phong|room|giá|gia|trống|trong)\\b.*$/i,'
+          new = '.replace(/\\r\\n?/g, "\\n")\n        .replace(/_+/g, ", ")\n        .replace(\n          /\\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|zalo|phòng|phong|room|giá|gia|trống|trong)\\b.*$/i,'
+          if old not in text:
+              raise SystemExit("analyzeLocationTail anchor not found")
+          text = text.replace(old, new, 1)
+
+          if text == original:
+              raise SystemExit("No parser changes applied")
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Remove one-time workflow
+        run: rm -f .github/workflows/one-time-fix-zalo-address.yml
+
+      - name: Commit parser fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/zalo-import/parser.ts .github/workflows/one-time-fix-zalo-address.yml
+          git commit -m "fix: parse underscored Zalo addresses and F ward aliases"
+          git push origin HEAD:main
