@@ -450,8 +450,8 @@ const statusBadgeAdminClass =
   "!h-[30px] !min-h-0 !min-w-[92px] !px-1.5 !py-0 !text-[15px]";
 
 const statusBadgeColorClass = isRoomAvailable
-  ? "bg-[#22c55e]/35 text-[#bbf7d0] border-[#22c55e]/60 shadow-[0_0_12px_rgba(34,197,94,0.16)]"
-  : "bg-red-500/30 text-red-100 border-red-400/50 shadow-[0_0_12px_rgba(239,68,68,0.14)]";
+  ? "!bg-[#86efac] !text-[#14532d] !border-[#22c55e] shadow-[0_5px_16px_rgba(34,197,94,0.28)]"
+  : "!bg-[#fecaca] !text-[#7f1d1d] !border-[#f87171] shadow-[0_5px_16px_rgba(239,68,68,0.24)]";
 
 function handleToggleStatus(
   e: React.MouseEvent<HTMLButtonElement>
