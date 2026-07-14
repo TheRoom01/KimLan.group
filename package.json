@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "next dev --webpack",
-  "build": "next build",
-  "start": "next start",
-  "lint": "next lint",
-  "zalo-reader": "tsx tools/zalo-reader/zalo-reader.ts"
-},
+    "predev": "node scripts/patch-zalo-address-parser.cjs",
+    "dev": "next dev --webpack",
+    "prebuild": "node scripts/patch-zalo-address-parser.cjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "zalo-reader": "tsx tools/zalo-reader/zalo-reader.ts"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.978.0",
@@ -34,7 +36,4 @@
     "tsx": "^4.23.0",
     "typescript": "^5"
   }
-
 }
-
-
