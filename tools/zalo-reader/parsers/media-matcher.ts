@@ -21,6 +21,69 @@ export type MediaAssignmentResult = {
   unassignedBundles: MediaBundle[];
 };
 
+/*
+ * Một số phiên bản Zalo vẫn có URL ảnh nhưng không gắn kind = "image",
+ * hoặc URL nằm ở field dự phòng/DOM hydration. Chuẩn hóa cục bộ tại tầng
+ * media để không thay đổi logic ghép album và phòng hiện có.
+ */
+function getFallbackImageUrls(message: SemanticIndexedDbMessage) {
+  const raw = message as any;
+
+  const candidates = [
+    ...(Array.isArray(raw.imageUrls) ? raw.imageUrls : []),
+    raw.hdUrl,
+    raw.originalUrl,
+    raw.originUrl,
+    raw.normalUrl,
+    raw.imageUrl,
+    raw.photoUrl,
+    raw.thumbUrl,
+    raw.thumbnailUrl,
+    raw.content?.hdUrl,
+    raw.content?.originalUrl,
+    raw.content?.originUrl,
+    raw.content?.url,
+    raw.content?.href,
+    raw.params?.hdUrl,
+    raw.params?.url,
+    ...(Array.isArray(raw.domHydration?.imageUrls)
+      ? raw.domHydration.imageUrls
+      : []),
+  ];
+
+  return Array.from(
+    new Set(
+      candidates
+        .map((value) => String(value || "").trim())
+        .filter((url) => {
+          if (!url) return false;
+          if (!/^(?:https?:|blob:|file:)/i.test(url)) return false;
+
+          const lower = url.toLowerCase();
+          return !(
+            lower.includes("avatar") ||
+            lower.includes("sticker") ||
+            lower.includes("emoji") ||
+            lower.includes("reaction") ||
+            lower.includes("icon") ||
+            lower.includes("logo")
+          );
+        })
+    )
+  );
+}
+
+function normalizeImageMessage(message: SemanticIndexedDbMessage) {
+  const imageUrls = getFallbackImageUrls(message);
+  if (imageUrls.length === 0) return message;
+
+  return {
+    ...message,
+    kind: "image" as const,
+    imageUrls,
+  };
+}
+
 function dominantSender(
   messages: SemanticIndexedDbMessage[]
 ) {
@@ -54,10 +117,9 @@ export function buildMediaBundles(
     }
   });
 
-  const imageMessages = messages.filter(
-    (message) =>
-      message.kind === "image" && Boolean(pickImageUrl(message))
-  );
+  const imageMessages = messages
+    .map(normalizeImageMessage)
+    .filter((message) => Boolean(pickImageUrl(message)));
 
   const albums = buildAlbums(imageMessages);
   const bundles: MediaBundle[] = [];
