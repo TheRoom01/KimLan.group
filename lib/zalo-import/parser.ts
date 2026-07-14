@@ -1043,6 +1043,7 @@ function extractWardFromBuildingText(
     "(?:" +
     "phường|phuong|" +
     "p(?:\\.|(?=\\s|\\d))|" +
+    "f(?:\\.|(?=\\s|\\d))|" +
     "xã|xa|" +
     "x(?:\\.|(?=\\s))|" +
     "thị\\s*trấn|thi\\s*tran|" +
@@ -1153,6 +1154,7 @@ function extractAddressParts(
     "(?:" +
     "phường|phuong|" +
     "p(?:\\.|(?=\\s|\\d))|" +
+    "f(?:\\.|(?=\\s|\\d))|" +
     "xã|xa|" +
     "x(?:\\.|(?=\\s))|" +
     "thị\\s*trấn|thi\\s*tran|" +
@@ -1258,6 +1260,7 @@ function extractAddressParts(
         inputCandidate || ""
       )
         .replace(/\r\n?/g, "\n")
+        .replace(/_+/g, ", ")
         .replace(
           /\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|zalo|phòng|phong|room|giá|gia|trống|trong)\b.*$/i,
           ""
