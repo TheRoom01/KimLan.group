@@ -1,0 +1,34 @@
+name: One-time Zalo image fallback patch
+
+on:
+  push:
+    paths:
+      - ".github/workflows/one-time-zalo-image-fallback.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/patch-zalo-image-fallback.cjs
+      - name: Commit parser patch
+        run: |
+          if git diff --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/zalo-reader/parsers/media-matcher.ts
+          git commit -m "fix: add safe fallback for Zalo image messages"
+          git push origin main
