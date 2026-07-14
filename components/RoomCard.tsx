@@ -863,7 +863,7 @@ return (
 
             }}
             className="
-              shrink-0 inline-flex h-8 w-8 items-center justify-center
+              shrink-0 inline-flex h-10 w-10 items-center justify-center
               rounded-full border border-white/20
               bg-black/35 backdrop-blur-[10px]
               shadow-[0_8px_24px_rgba(0,0,0,0.35)]
@@ -874,7 +874,7 @@ return (
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-4 w-4 text-white"
+              className="h-6 w-6 text-white"
               fill="none"
               stroke="currentColor"
               strokeWidth="2.2"
