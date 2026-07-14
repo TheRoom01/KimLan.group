@@ -28,20 +28,31 @@ jobs:
           text = path.read_text(encoding="utf-8")
           original = text
 
-          # F12 / F.12 is used by some Zalo posts as an alias for Phường 12.
-          old = '"p(?:\\.|(?=\\s|\\d))|" +\n    "xã|xa|" +'
-          new = '"p(?:\\.|(?=\\s|\\d))|" +\n    "f(?:\\.|(?=\\s|\\d))|" +\n    "xã|xa|" +'
-          if old not in text:
-              raise SystemExit("wardLabelSource anchor not found")
-          text = text.replace(old, new, 1)
+          # Support F12 / F.12 as aliases of Phường 12 everywhere ward labels are parsed.
+          ward_anchor = '    "p(?:\\\\.|(?=\\\\s|\\\\d))|" +\n'
+          ward_replacement = (
+              ward_anchor
+              + '    "f(?:\\\\.|(?=\\\\s|\\\\d))|" +\n'
+          )
+          if ward_anchor not in text:
+              raise SystemExit("ward label anchor not found")
+          text = text.replace(ward_anchor, ward_replacement)
 
-          # Treat underscores in compact building headers as address separators:
-          # 413/8 Lê Văn Sỹ_F12_ Quận 3
-          old = '.replace(/\\r\\n?/g, "\\n")\n        .replace(\n          /\\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|zalo|phòng|phong|room|giá|gia|trống|trong)\\b.*$/i,'
-          new = '.replace(/\\r\\n?/g, "\\n")\n        .replace(/_+/g, ", ")\n        .replace(\n          /\\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|zalo|phòng|phong|room|giá|gia|trống|trong)\\b.*$/i,'
-          if old not in text:
-              raise SystemExit("analyzeLocationTail anchor not found")
-          text = text.replace(old, new, 1)
+          # In compact project headers, underscores are separators rather than part of a street name.
+          function_anchor = "  function analyzeLocationTail("
+          function_pos = text.find(function_anchor)
+          if function_pos < 0:
+              raise SystemExit("analyzeLocationTail not found")
+
+          newline_anchor = '        .replace(/\\r\\n?/g, "\\n")\n'
+          newline_pos = text.find(newline_anchor, function_pos)
+          if newline_pos < 0:
+              raise SystemExit("newline normalization anchor not found")
+
+          insert_pos = newline_pos + len(newline_anchor)
+          underscore_line = '        .replace(/_+/g, ", ")\n'
+          if underscore_line not in text[function_pos:insert_pos + 200]:
+              text = text[:insert_pos] + underscore_line + text[insert_pos:]
 
           if text == original:
               raise SystemExit("No parser changes applied")
