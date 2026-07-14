@@ -378,25 +378,39 @@ const toggleRoomStatus = useCallback(
   [notify, openConfirm]
 );
 
-const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | null) => {
-  if (typeof window === "undefined") return;
+const openZaloUX = useCallback(
+  (rawLink?: string | null) => {
+    if (typeof window === "undefined") return;
 
-  const links = extractHttpLinks(rawLink, rawPhone);
+    const linkValue = String(rawLink ?? "").trim();
 
-  if (links.length === 0) {
-    notify("Không có link hợp lệ để mở");
-    return;
-  }
+    if (!linkValue) {
+      notify("Phòng này chưa có Link Zalo");
+      return;
+    }
 
-  if (links.length === 1) {
-    window.open(links[0], "_blank", "noopener,noreferrer");
-    return;
-  }
+    const links = extractHttpLinks(linkValue);
 
-  setLinkPickerTitle("Chọn link để mở:");
-  setLinkPickerLinks(links);
-  setLinkPickerOpen(true);
-}, [notify]);
+    if (links.length === 0) {
+      notify("Link Zalo không hợp lệ");
+      return;
+    }
+
+    if (links.length === 1) {
+      window.open(
+        links[0],
+        "_blank",
+        "noopener,noreferrer"
+      );
+      return;
+    }
+
+    setLinkPickerTitle("Chọn link để mở:");
+    setLinkPickerLinks(links);
+    setLinkPickerOpen(true);
+  },
+  [notify]
+);
 
  return (
   <main>
@@ -608,8 +622,9 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
             normalizeStatus((r as any).status) === "đã thuê";
           const isHidden = Boolean((r as any).is_hidden);
 
-          const zaloLink = ((r as any).link_zalo ||
-            (r as any).zalo_phone) as string | undefined;
+          const zaloLink = String(
+            (r as any).link_zalo ?? ""
+          ).trim();
 
           const addressText =
             [
@@ -655,10 +670,7 @@ const openZaloUX = useCallback((rawLink?: string | null, rawPhone?: string | nul
                     type="button"
                     style={linkBtn}
                     onClick={() =>
-                      openZaloUX(
-                        (r as any).link_zalo,
-                        (r as any).zalo_phone
-                      )
+                      openZaloUX(zaloLink)
                     }
                   >
                     Mở Zalo

@@ -526,9 +526,9 @@ return (
       className="
         group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
-        bg-[rgba(129,77,43,0.45)]
+        bg-[rgba(214,165,108,0.5)]
         backdrop-blur-[34px]
-        backdrop-saturate-[225%]
+        backdrop-saturate-[185%]
         border border-[#D2B48C]/30
 
         shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]
