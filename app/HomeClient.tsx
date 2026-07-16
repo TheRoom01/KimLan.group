@@ -251,6 +251,9 @@ const [hasVipAccess, setHasVipAccess] = useState(false);
 
 const lockTimerRef = useRef<number | null>(null);
 const vipTimerRef = useRef<number | null>(null);
+
+const [vipAdminPhone, setVipAdminPhone] = useState<string | null>(null);
+const [vipAdminName, setVipAdminName] = useState<string | null>(null);
  
   // ================== FILTER ==================
   
@@ -340,6 +343,8 @@ const filterSig = useMemo(() => {
 useEffect(() => {
   if (typeof window === "undefined") return;
 
+  let cancelled = false;
+
   const clearVipTimer = () => {
     if (vipTimerRef.current) {
       window.clearTimeout(vipTimerRef.current);
@@ -347,42 +352,67 @@ useEffect(() => {
     }
   };
 
+  const clearVipAccess = () => {
+    if (cancelled) return;
+
+    setHasVipAccess(false);
+    setVipAdminPhone(null);
+    setVipAdminName(null);
+  };
+
   const applyStoredVip = () => {
     try {
       const raw = localStorage.getItem(VIP_ACCESS_KEY);
+
       if (!raw) {
-        setHasVipAccess(false);
+        clearVipAccess();
         return;
       }
 
-      const parsed = JSON.parse(raw);
-      const expiresAt = Number(parsed?.expiresAt ?? 0);
+      const parsed = JSON.parse(raw) as {
+        expiresAt?: number;
+        creatorAdminPhone?: string | null;
+        creatorAdminName?: string | null;
+      };
+
+      const expiresAt = Number(parsed.expiresAt ?? 0);
 
       if (!expiresAt || Date.now() >= expiresAt) {
         localStorage.removeItem(VIP_ACCESS_KEY);
-        setHasVipAccess(false);
+        clearVipAccess();
         return;
       }
 
+      const vipPhone =
+        String(parsed.creatorAdminPhone ?? "").trim() || null;
+
+      const vipName =
+        String(parsed.creatorAdminName ?? "").trim() || null;
+
+      if (cancelled) return;
+
       setHasVipAccess(true);
+      setVipAdminPhone(vipPhone);
+      setVipAdminName(vipName);
 
       const msLeft = expiresAt - Date.now();
       clearVipTimer();
 
       vipTimerRef.current = window.setTimeout(() => {
         localStorage.removeItem(VIP_ACCESS_KEY);
-        setHasVipAccess(false);
+        clearVipAccess();
       }, Math.min(msLeft, 2_147_000_000));
     } catch {
       localStorage.removeItem(VIP_ACCESS_KEY);
-      setHasVipAccess(false);
+      clearVipAccess();
     }
   };
 
-  async function validateVipFromUrl() {
+  const validateVipFromUrl = async () => {
     const sp = new URLSearchParams(window.location.search);
     const token = sp.get(VIP_PARAM_KEY)?.trim();
 
+    // Khôi phục VIP còn hạn khi reload hoặc quay lại trang.
     applyStoredVip();
 
     if (!token) return;
@@ -398,21 +428,54 @@ useEffect(() => {
 
       const json = await res.json().catch(() => null);
 
-      if (res.ok && json?.valid && json?.expiresAt) {
-        const expiresAtMs = new Date(json.expiresAt).getTime();
-
-        if (Number.isFinite(expiresAtMs) && expiresAtMs > Date.now()) {
-          localStorage.setItem(
-            VIP_ACCESS_KEY,
-            JSON.stringify({
-              expiresAt: expiresAtMs,
-              savedAt: Date.now(),
-            })
-          );
-
-          setHasVipAccess(true);
-        }
+      if (!res.ok || !json?.valid || !json?.expiresAt) {
+        localStorage.removeItem(VIP_ACCESS_KEY);
+        clearVipAccess();
+        return;
       }
+
+      const expiresAtMs = new Date(json.expiresAt).getTime();
+
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+        localStorage.removeItem(VIP_ACCESS_KEY);
+        clearVipAccess();
+        return;
+      }
+
+      const vipPhone =
+        String(json.creatorAdminPhone ?? "").trim() || null;
+
+      const vipName =
+        String(json.creatorAdminName ?? "").trim() || null;
+
+      localStorage.setItem(
+        VIP_ACCESS_KEY,
+        JSON.stringify({
+          expiresAt: expiresAtMs,
+          savedAt: Date.now(),
+          creatorAdminPhone: vipPhone,
+          creatorAdminName: vipName,
+        })
+      );
+
+      if (cancelled) return;
+
+      setHasVipAccess(true);
+      setVipAdminPhone(vipPhone);
+      setVipAdminName(vipName);
+
+      const msLeft = expiresAtMs - Date.now();
+      clearVipTimer();
+
+      vipTimerRef.current = window.setTimeout(() => {
+        localStorage.removeItem(VIP_ACCESS_KEY);
+        clearVipAccess();
+      }, Math.min(msLeft, 2_147_000_000));
+    } catch (error) {
+      console.error("[VIP VALIDATE]", error);
+
+      // Nếu request tạm lỗi, giữ quyền VIP cũ nếu nó vẫn còn hạn.
+      applyStoredVip();
     } finally {
       const next = new URLSearchParams(window.location.search);
       next.delete(VIP_PARAM_KEY);
@@ -421,19 +484,18 @@ useEffect(() => {
       const nextUrl = nextQs ? `${pathname}?${nextQs}` : pathname;
 
       window.history.replaceState(window.history.state, "", nextUrl);
-
-      applyStoredVip();
     }
-  }
+  };
 
-  validateVipFromUrl();
+  void validateVipFromUrl();
 
   return () => {
+    cancelled = true;
     clearVipTimer();
   };
 }, [pathname]);
 
-
+// Admin đăng nhập vẫn dùng thông tin tài khoản hiện tại như logic cũ.
 useEffect(() => {
   let cancelled = false;
 
@@ -459,10 +521,16 @@ useEffect(() => {
         return;
       }
 
-      setCurrentAdminPhone(String(data.phone ?? "").trim() || null);
-      setCurrentAdminName(String(data.full_name ?? "").trim() || null);
+      setCurrentAdminPhone(
+        String(data.phone ?? "").trim() || null
+      );
+
+      setCurrentAdminName(
+        String(data.full_name ?? "").trim() || null
+      );
     } catch {
       if (cancelled) return;
+
       setCurrentAdminPhone(null);
       setCurrentAdminName(null);
     }
@@ -3009,6 +3077,22 @@ const handleNavigateToRoom = useCallback((href: string) => {
   displayPageIndex,
 ]);
 
+// Contact truyền xuống RoomCard:
+// - Admin đăng nhập: giữ nguyên thông tin admin hiện tại.
+// - Anon VIP: dùng thông tin admin đã tạo link VIP.
+// - Anon thường: null nên RoomCard không hiển thị nút Admin.
+const roomContactPhone = currentUserId
+  ? currentAdminPhone
+  : hasVipAccess
+    ? vipAdminPhone
+    : null;
+
+const roomContactName = currentUserId
+  ? currentAdminName
+  : hasVipAccess
+    ? vipAdminName
+    : null;
+
 // ================== RENDER ==================
 return (
   <div className="relative flex h-screen flex-col overflow-hidden bg-[#FFF8DC] text-[#3f2f24]">
@@ -3291,8 +3375,8 @@ return (
           roomsToRender={roomsToRender}
           adminLevel={adminLevel}
           currentUserId={currentUserId}
-          currentAdminPhone={currentAdminPhone}
-          currentAdminName={currentAdminName}
+          currentAdminPhone={roomContactPhone}
+          currentAdminName={roomContactName}
           pageIndex={pageIndex}
           loading={loading}
           hasNext={hasNext}

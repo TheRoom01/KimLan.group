@@ -3,7 +3,10 @@ import crypto from "crypto";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function sha256(value: string) {
-  return crypto.createHash("sha256").update(value).digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(value)
+    .digest("hex");
 }
 
 export async function POST(req: Request) {
@@ -32,6 +35,8 @@ export async function POST(req: Request) {
     );
 
     if (error) {
+      console.error("[VIP VALIDATE RPC]", error);
+
       return NextResponse.json(
         {
           valid: false,
@@ -41,23 +46,54 @@ export async function POST(req: Request) {
       );
     }
 
-    const row = data?.[0];
+    const row = Array.isArray(data) ? data[0] : data;
 
     if (!row?.valid || !row?.expires_at) {
-      return NextResponse.json({
-        valid: false,
-      });
+      return NextResponse.json(
+        {
+          valid: false,
+          error: "Link VIP không hợp lệ, đã hết hạn hoặc đã bị thu hồi",
+        },
+        { status: 200 }
+      );
     }
 
-    return NextResponse.json({
-      valid: true,
-      expiresAt: row.expires_at,
-    });
-  } catch (err: any) {
+    const expiresAtMs = new Date(row.expires_at).getTime();
+
+    if (
+      !Number.isFinite(expiresAtMs) ||
+      expiresAtMs <= Date.now()
+    ) {
+      return NextResponse.json(
+        {
+          valid: false,
+          error: "Link VIP đã hết hạn",
+        },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        valid: true,
+        expiresAt: row.expires_at,
+        creatorAdminPhone:
+          String(row.creator_admin_phone ?? "").trim() || null,
+        creatorAdminName:
+          String(row.creator_admin_name ?? "").trim() || null,
+      },
+      { status: 200 }
+    );
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : String(err);
+
+    console.error("[VIP VALIDATE ERROR]", err);
+
     return NextResponse.json(
       {
         valid: false,
-        error: err?.message ?? String(err),
+        error: message,
       },
       { status: 500 }
     );

@@ -235,15 +235,45 @@ const [confirmStatus, setConfirmStatus] = useState<{
     setShareRoomData(safeRoomForPrivateFields);
   }, [safeRoomForPrivateFields]);
 
-  const contactPhone =
-  String(currentAdminPhone ?? "").trim() ||
-  String((room as any).creator_admin_phone ?? "").trim() ||
-  null;
+const isLoggedAdmin =
+  Boolean(currentUserId) &&
+  (safeAdminLevel === 1 || safeAdminLevel === 2);
 
-const contactName =
-  String(currentAdminName ?? "").trim() ||
-  String((room as any).creator_admin_name ?? "").trim() ||
-  "Liên hệ";
+// Admin đăng nhập: giữ nguyên fallback cũ.
+// Anon VIP: chỉ nhận contact đã được HomeClient truyền từ link VIP.
+// Anon thường: currentAdminPhone = null nên không hiện nút Admin.
+const contactPhone = isLoggedAdmin
+  ? String(
+      currentAdminPhone ||
+      room.creator_admin_phone ||
+      room.zalo_phone ||
+      ""
+    ).trim() || null
+  : String(currentAdminPhone ?? "").trim() || null;
+
+const contactName = isLoggedAdmin
+  ? String(
+      currentAdminName ||
+      room.creator_admin_name ||
+      ""
+    ).trim() || "Liên hệ"
+  : String(currentAdminName ?? "").trim() || "Liên hệ";
+
+  useEffect(() => {
+  console.log("[ROOM ADMIN CONTACT]", {
+    roomId: room.id,
+    currentAdminPhone,
+    creatorAdminPhone: room.creator_admin_phone,
+    creatorAdminName: room.creator_admin_name,
+    zaloPhone: room.zalo_phone,
+  });
+}, [
+  room.id,
+  currentAdminPhone,
+  room.creator_admin_phone,
+  room.creator_admin_name,
+  room.zalo_phone,
+]);
 
   // ✅ build thumb.webp theo UUID (room.id) để tránh trùng room_code
   // rooms/{uuid}/images/thumb.webp
@@ -654,7 +684,7 @@ return (
       
 
     {/* ADMIN BUTTON */}
-    {(safeAdminLevel === 1 || safeAdminLevel === 2) && contactPhone && (
+    {contactPhone && (
       <button
         type="button"
         onClick={(e) => {
