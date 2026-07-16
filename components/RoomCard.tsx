@@ -236,12 +236,14 @@ const [confirmStatus, setConfirmStatus] = useState<{
   }, [safeRoomForPrivateFields]);
 
   const contactPhone =
-    String(currentAdminPhone ?? "").trim() || null;
+  String(currentAdminPhone ?? "").trim() ||
+  String((room as any).creator_admin_phone ?? "").trim() ||
+  null;
 
-  const contactName =
-    String(currentAdminName ?? "").trim() ||
-    String((room as any).creator_admin_name ?? "").trim() ||
-    "Liên hệ";
+const contactName =
+  String(currentAdminName ?? "").trim() ||
+  String((room as any).creator_admin_name ?? "").trim() ||
+  "Liên hệ";
 
   // ✅ build thumb.webp theo UUID (room.id) để tránh trùng room_code
   // rooms/{uuid}/images/thumb.webp

@@ -279,6 +279,11 @@ export default function RoomDetailPage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [adminLevel, setAdminLevel] = useState(0);
+
+const currentUserIdValue = String(user?.id ?? "").trim();
+const roomOwnerId = String(room?.owner_id ?? "").trim();
+const canSeePrivateFields =
+  Boolean(currentUserIdValue) && roomOwnerId === currentUserIdValue;
   
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -696,11 +701,7 @@ useEffect(() => {
 
 // ✅ Patch 4: nếu RPC không trả link_zalo / zalo_phone cho admin => fallback đọc thẳng từ rooms
 useEffect(() => {
-  const level = Number(adminLevel) || 0;
-
-  // Chỉ L1 mới được fallback lấy link/sđt từ bảng gốc
-  if (level !== 1) return;
-
+  if (!canSeePrivateFields) return;
   if (!room?.id) return;
 
   const hasAny =
@@ -721,8 +722,8 @@ useEffect(() => {
       if (error) return;
       if ((data as any)?.is_hidden) return;
 
-      const link_zalo = (data as any)?.link_zalo ?? null;
-      const zalo_phone = (data as any)?.zalo_phone ?? null;
+      const link_zalo = String((data as any)?.link_zalo ?? "").trim() || null;
+      const zalo_phone = String((data as any)?.zalo_phone ?? "").trim() || null;
 
       if (link_zalo || zalo_phone) {
         setRoom((prev: any) =>
@@ -743,7 +744,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [adminLevel, room?.id, room?.link_zalo, room?.zalo_phone]);
+}, [canSeePrivateFields, room?.id, room?.link_zalo, room?.zalo_phone]);
 
  const imageUrls = useMemo<string[]>(() => {
   // ✅ Ưu tiên room.media từ view room_media_agg
@@ -1026,29 +1027,13 @@ if (
 
   const isAdmin = adminLevel === 1 || adminLevel === 2;
 
-  // ✅ Hợp nhất dữ liệu từ link_zalo + zalo_phone
-const linkRaw = String(room?.link_zalo ?? "");
-const phoneRaw = String(room?.zalo_phone ?? "");
+  const visibleLinkZalo = canSeePrivateFields
+    ? String(room?.link_zalo ?? "").trim() || null
+    : null;
 
-// ✅ giữ nguyên toàn bộ nội dung admin nhập
-const zaloLinkRaw = linkRaw.trim();
-
-  // 2) Phones: gom tất cả text từ cả 2 field, loại dòng link, chỉ giữ digits theo từng dòng
-  const collectPhones = (raw: string) =>
-    raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => !/^https?:\/\//i.test(line)) // ✅ bỏ dòng link
-      .map((line) => line.replace(/\D/g, ""))        // ✅ chỉ giữ số
-      .filter(Boolean);
-
-  const zaloPhones = Array.from(
-    new Set([...collectPhones(linkRaw), ...collectPhones(phoneRaw)])
-  );
-
-  // (tuỳ chọn) lấy số đầu tiên nếu bạn vẫn cần 1 biến zaloPhone
-  const zaloPhone = zaloPhones[0] ?? "";
+  const visibleZaloPhone = canSeePrivateFields
+    ? String(room?.zalo_phone ?? "").trim() || null
+    : null;
 
   function renderCopyIcon(text: string, successMessage: string) {
   const value = String(text ?? "").trim();
@@ -1789,11 +1774,11 @@ return (
             </div>
           </div>
 
-          {isAdmin && (
+          {canSeePrivateFields && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[#F4E7D6]">
               <div className="min-w-0">
-                {zaloLinkRaw ? (
-                  renderSmartLinks(zaloLinkRaw)
+                {visibleLinkZalo ? (
+                  renderSmartLinks(visibleLinkZalo)
                 ) : (
                   <div className="text-gray-500">-</div>
                 )}
@@ -1801,23 +1786,18 @@ return (
 
               <div>
                 <div className="font-medium mb-1"> SĐT chủ nhà </div>
-                {zaloPhones.length > 0 ? (
-                  <div className="space-y-1">
-                    {zaloPhones.map((p, i) => (
-                      <button
-                        key={`${p}-${i}`}
-                        onClick={() => setPhoneModal(p)}
-                        className="
-                          text-left w-full break-all
-                          text-red-400 font-semibold
-                          hover:text-red-300 hover:underline
-                          transition-colors
-                        "
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
+                {visibleZaloPhone ? (
+                  <button
+                    onClick={() => setPhoneModal(visibleZaloPhone)}
+                    className="
+                      text-left w-full break-all
+                      text-red-400 font-semibold
+                      hover:text-red-300 hover:underline
+                      transition-colors
+                    "
+                  >
+                    {visibleZaloPhone}
+                  </button>
                 ) : (
                   <div className="text-gray-500">-</div>
                 )}

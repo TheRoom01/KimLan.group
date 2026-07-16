@@ -438,15 +438,14 @@ useEffect(() => {
   let cancelled = false;
 
   const loadCurrentAdminProfile = async () => {
-    setCurrentAdminPhone(null);
-    setCurrentAdminName(null);
-
     if (!currentUserId) {
+      setCurrentAdminPhone(null);
+      setCurrentAdminName(null);
       return;
     }
 
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("admin_users")
         .select("phone, full_name")
         .eq("user_id", currentUserId)
@@ -454,12 +453,14 @@ useEffect(() => {
 
       if (cancelled) return;
 
-      setCurrentAdminPhone(
-        String((data as any)?.phone ?? "").trim() || null
-      );
-      setCurrentAdminName(
-        String((data as any)?.full_name ?? "").trim() || null
-      );
+      if (error || !data) {
+        setCurrentAdminPhone(null);
+        setCurrentAdminName(null);
+        return;
+      }
+
+      setCurrentAdminPhone(String(data.phone ?? "").trim() || null);
+      setCurrentAdminName(String(data.full_name ?? "").trim() || null);
     } catch {
       if (cancelled) return;
       setCurrentAdminPhone(null);
@@ -2868,6 +2869,14 @@ useEffect(() => {
     if (!mounted) return;
 
     const uid = data.session?.user?.id ?? null;
+
+    console.log("[AUTH]", { uid: uid });
+    console.log("[ADMIN_PROFILE]", {
+  currentUserId,
+  currentAdminPhone,
+  currentAdminName,
+});
+
     lastSessionUserIdRef.current = uid;
     setCurrentUserId(uid);
     setIsLoggedIn(!!uid);
