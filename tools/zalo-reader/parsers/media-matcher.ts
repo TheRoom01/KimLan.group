@@ -11,7 +11,6 @@ import {
   getVideoPayload,
   isVideoMessage,
   messageTimestamp,
-  pickImageUrl,
 } from "./utils";
 
 export type MediaAssignmentResult = {
@@ -84,9 +83,7 @@ function normalizeImageMessage(message: SemanticIndexedDbMessage) {
   };
 }
 
-function dominantSender(
-  messages: SemanticIndexedDbMessage[]
-) {
+function dominantSender(messages: SemanticIndexedDbMessage[]) {
   const counts = new Map<string, number>();
 
   for (const message of messages) {
@@ -95,16 +92,38 @@ function dominantSender(
     counts.set(sender, (counts.get(sender) || 0) + 1);
   }
 
-  return (
-    Array.from(counts.entries()).sort(
-      (a, b) => b[1] - a[1]
-    )[0]?.[0] || ""
-  );
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 }
 
-export function buildMediaBundles(
-  messages: SemanticIndexedDbMessage[]
-) {
+function sortRooms(rooms: RoomAnchor[]) {
+  return [...rooms].sort((a, b) => {
+    if (a.messageIndex !== b.messageIndex) {
+      return a.messageIndex - b.messageIndex;
+    }
+
+    if (a.timestamp !== b.timestamp) {
+      return a.timestamp - b.timestamp;
+    }
+
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function sortBundles(bundles: MediaBundle[]) {
+  return [...bundles].sort((a, b) => {
+    if (a.firstMessageIndex !== b.firstMessageIndex) {
+      return a.firstMessageIndex - b.firstMessageIndex;
+    }
+
+    if (a.firstTimestamp !== b.firstTimestamp) {
+      return a.firstTimestamp - b.firstTimestamp;
+    }
+
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function buildMediaBundles(messages: SemanticIndexedDbMessage[]) {
   const indexesByMessageId = new Map<string, number>();
 
   messages.forEach((message, index) => {
@@ -119,7 +138,7 @@ export function buildMediaBundles(
 
   const imageMessages = messages
     .map(normalizeImageMessage)
-    .filter((message) => Boolean(pickImageUrl(message)));
+    .filter((message) => Boolean(Array.isArray(message.imageUrls) && message.imageUrls.length > 0));
 
   const albums = buildAlbums(imageMessages);
   const bundles: MediaBundle[] = [];
@@ -136,9 +155,7 @@ export function buildMediaBundles(
 
     const messageIndexes = albumMessages
       .map((message) =>
-        indexesByMessageId.get(
-          String(message.msgId || message.cliMsgId || "")
-        )
+        indexesByMessageId.get(String(message.msgId || message.cliMsgId || ""))
       )
       .filter((value): value is number => Number.isFinite(value));
 
@@ -155,10 +172,8 @@ export function buildMediaBundles(
       messageIndexes,
       firstMessageIndex: Math.min(...messageIndexes),
       lastMessageIndex: Math.max(...messageIndexes),
-      firstTimestamp:
-        timestamps.length > 0 ? Math.min(...timestamps) : 0,
-      lastTimestamp:
-        timestamps.length > 0 ? Math.max(...timestamps) : 0,
+      firstTimestamp: timestamps.length > 0 ? Math.min(...timestamps) : 0,
+      lastTimestamp: timestamps.length > 0 ? Math.max(...timestamps) : 0,
       senderUid: dominantSender(albumMessages),
       album,
     });
@@ -221,8 +236,11 @@ function inferBias(params: {
     return params.configuredBias;
   }
 
-  const firstRoom = params.rooms[0];
-  const firstBundle = params.bundles[0];
+  const rooms = sortRooms(params.rooms);
+  const bundles = sortBundles(params.bundles);
+
+  const firstRoom = rooms[0];
+  const firstBundle = bundles[0];
 
   if (!firstRoom || !firstBundle) return "after";
 
@@ -233,98 +251,78 @@ function inferBias(params: {
 
 function countRoomAnchorsBetween(params: {
   rooms: RoomAnchor[];
-  room: RoomAnchor;
   bundle: MediaBundle;
 }) {
   const low = Math.min(
-    params.room.messageIndex,
-    params.bundle.firstMessageIndex
+    params.bundle.firstMessageIndex,
+    params.bundle.lastMessageIndex
   );
   const high = Math.max(
-    params.room.messageIndex,
-    params.bundle.firstMessageIndex
+    params.bundle.firstMessageIndex,
+    params.bundle.lastMessageIndex
   );
 
   return params.rooms.filter(
     (candidate) =>
-      candidate.id !== params.room.id &&
       candidate.messageIndex > low &&
       candidate.messageIndex < high
   ).length;
 }
 
-function scoreBundleForRoom(params: {
-  room: RoomAnchor;
-  bundle: MediaBundle;
+function chooseTargetRoom(params: {
   rooms: RoomAnchor[];
+  bundle: MediaBundle;
   bias: "before" | "after";
-  maxMediaGapMs: number;
 }) {
-  const { room, bundle, rooms, bias, maxMediaGapMs } = params;
-  const bundleIndex =
-    bias === "after"
-      ? bundle.firstMessageIndex
-      : bundle.lastMessageIndex;
+  const rooms = sortRooms(params.rooms);
+  const { bundle, bias } = params;
 
-  const indexDistance = Math.abs(bundleIndex - room.messageIndex);
-  const directionMatches =
-    bias === "after"
-      ? bundle.firstMessageIndex >= room.messageIndex
-      : bundle.lastMessageIndex <= room.messageIndex;
+  if (rooms.length === 0) return null;
 
-  let score = directionMatches ? 100 : 20;
-  score -= Math.min(70, indexDistance * 7);
-
-  const crossedRooms = countRoomAnchorsBetween({
-    rooms,
-    room,
-    bundle,
-  });
-
-  score -= crossedRooms * 90;
-
-  if (
-    room.senderUid &&
-    bundle.senderUid &&
-    room.senderUid === bundle.senderUid
-  ) {
-    score += 12;
+  /*
+   * Pattern "media trước marker":
+   * gán media cho marker kế tiếp.
+   */
+  if (bias === "before") {
+    return (
+      rooms.find((room) => room.messageIndex >= bundle.firstMessageIndex) ||
+      rooms[rooms.length - 1] ||
+      null
+    );
   }
 
-  const roomTime = room.timestamp;
-  const mediaTime =
-    bias === "after" ? bundle.firstTimestamp : bundle.lastTimestamp;
-
-  if (roomTime > 0 && mediaTime > 0) {
-    const timeDistance = Math.abs(mediaTime - roomTime);
-    score -= Math.min(35, timeDistance / 60_000);
-
-    if (timeDistance > maxMediaGapMs) {
-      score -= 80;
-    }
-  }
-
-  return score;
+  /*
+   * Pattern "media sau marker":
+   * gán media cho marker hiện tại.
+   */
+  return (
+    [...rooms].reverse().find((room) => room.messageIndex <= bundle.lastMessageIndex) ||
+    rooms[0] ||
+    null
+  );
 }
 
+/*
+ * Không dùng global nearest-room scoring nữa.
+ * Luồng mới:
+ * - rooms được giữ theo thứ tự timeline
+ * - media trước marker → gán cho marker kế tiếp
+ * - media sau marker → gán cho marker hiện tại
+ * - nếu media cắt qua nhiều marker thì vẫn gán theo slot tuyến tính,
+ *   chỉ thêm warning để debug.
+ */
 export function assignMediaToRooms(params: {
   rooms: RoomAnchor[];
   bundles: MediaBundle[];
   options?: SemanticParserOptions;
 }): MediaAssignmentResult {
   const options = params.options || {};
-  const maxMediaGapMs = Math.max(
-    60_000,
-    Number(options.maxMediaGapMs || 30 * 60 * 1000)
-  );
-  const uncertainScoreDelta = Math.max(
-    0,
-    Number(options.uncertainScoreDelta ?? 18)
-  );
+  const rooms = sortRooms(params.rooms || []);
+  const bundles = sortBundles(params.bundles || []);
 
   const inferredBias = inferBias({
-    rooms: params.rooms,
-    bundles: params.bundles,
+    rooms,
+    bundles,
     configuredBias: options.mediaBias || "auto",
   });
 
@@ -332,52 +330,69 @@ export function assignMediaToRooms(params: {
   const warningsByRoomId = new Map<string, Set<string>>();
   const unassignedBundles: MediaBundle[] = [];
 
-  for (const room of params.rooms) {
+  const maxMediaGapMs = Math.max(
+    60_000,
+    Number(options.maxMediaGapMs || 30 * 60 * 1000)
+  );
+
+  for (const room of rooms) {
     assignedByRoomId.set(room.id, []);
     warningsByRoomId.set(room.id, new Set<string>());
   }
 
-  for (const bundle of params.bundles) {
-    const ranked = params.rooms
-      .map((room) => ({
-        room,
-        score: scoreBundleForRoom({
-          room,
-          bundle,
-          rooms: params.rooms,
-          bias: inferredBias,
-          maxMediaGapMs,
-        }),
-      }))
-      .sort((a, b) => b.score - a.score);
+  if (rooms.length === 0) {
+    unassignedBundles.push(...bundles);
+    return {
+      inferredBias,
+      assignedByRoomId,
+      warningsByRoomId,
+      unassignedBundles,
+    };
+  }
 
-    const best = ranked[0];
-    const second = ranked[1];
+  for (const bundle of bundles) {
+    const targetRoom = chooseTargetRoom({
+      rooms,
+      bundle,
+      bias: inferredBias,
+    });
 
-    if (!best) {
+    if (!targetRoom) {
       unassignedBundles.push(bundle);
       continue;
     }
 
-    assignedByRoomId.get(best.room.id)?.push(bundle);
+    assignedByRoomId.get(targetRoom.id)?.push(bundle);
 
-    if (
-      second &&
-      best.score - second.score <= uncertainScoreDelta
-    ) {
-      warningsByRoomId
-        .get(best.room.id)
-        ?.add(
-          `MEDIA_ASSIGNMENT_UNCERTAIN:${bundle.id}:${best.score.toFixed(
-            1
-          )}/${second.score.toFixed(1)}`
-        );
+    const crossedRooms = countRoomAnchorsBetween({
+      rooms,
+      bundle,
+    });
+
+    if (crossedRooms > 0) {
+      warningsByRoomId.get(targetRoom.id)?.add(
+        `MEDIA_CROSSES_ROOM_BOUNDARY:${bundle.id}:${crossedRooms}`
+      );
     }
 
-    if (best.score < 25) {
-      warningsByRoomId
-        .get(best.room.id)
-        ?.add(`MEDIA_ASSIGNMENT_LOW_CONFIDENCE:${bundle.id}`);
+    const roomTime = targetRoom.timestamp;
+    const mediaTime =
+      inferredBias === "before" ? bundle.firstTimestamp : bundle.lastTimestamp;
+
+    if (roomTime > 0 && mediaTime > 0) {
+      const timeDistance = Math.abs(mediaTime - roomTime);
+
+      if (timeDistance > maxMediaGapMs) {
+        warningsByRoomId.get(targetRoom.id)?.add(
+          `MEDIA_ASSIGNMENT_LOW_CONFIDENCE:${bundle.id}:${Math.round(
+            timeDistance / 60_000
+          )}m`
+        );
+      } else if (timeDistance > 10 * 60_000) {
+        warningsByRoomId.get(targetRoom.id)?.add(
+          `MEDIA_ASSIGNMENT_NEAR_BOUNDARY:${bundle.id}`
+        );
+      }
     }
   }
 

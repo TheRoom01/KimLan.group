@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
 import { createPortal } from "react-dom";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
@@ -26,9 +26,13 @@ type Room = {
   image_count?: number | null;
 
   has_video?: boolean;
-video_url?: string | null;
-video_urls?: string[] | null;
-thumb_url?: string | null;
+  video_url?: string | null;
+  video_urls?: string[] | null;
+  thumb_url?: string | null;
+
+  owner_id?: string | null;
+  link_zalo?: string | null;
+  zalo_phone?: string | null;
 
   creator_admin_phone?: string | null;
   creator_admin_name?: string | null;
@@ -37,6 +41,9 @@ thumb_url?: string | null;
 type RoomCardProps = {
   room: Room;
   adminLevel: number;
+  currentUserId?: string | null;
+  currentAdminPhone?: string | null;
+  currentAdminName?: string | null;
   index?: number;
   onNavigate: (href: string) => void;
 };
@@ -168,6 +175,9 @@ function getFullVideoUrls(roomData: any): string[] {
 export default function RoomCard({
   room,
   adminLevel,
+  currentUserId,
+  currentAdminPhone,
+  currentAdminName,
   index = 0,
   onNavigate,
 }: RoomCardProps) {
@@ -203,6 +213,35 @@ const [confirmStatus, setConfirmStatus] = useState<{
   prevStatus: string;
   nextStatus: string;
 } | null>(null);
+
+  const currentUserIdValue = String(currentUserId ?? "").trim();
+  const roomOwnerId = String((room as any).owner_id ?? "").trim();
+  const isOwnedByCurrentAdmin =
+    Boolean(currentUserIdValue) && roomOwnerId === currentUserIdValue;
+
+  const safeRoomForPrivateFields = useMemo(
+    () =>
+      isOwnedByCurrentAdmin
+        ? room
+        : {
+            ...room,
+            link_zalo: null,
+            zalo_phone: null,
+          },
+    [isOwnedByCurrentAdmin, room]
+  );
+
+  useEffect(() => {
+    setShareRoomData(safeRoomForPrivateFields);
+  }, [safeRoomForPrivateFields]);
+
+  const contactPhone =
+    String(currentAdminPhone ?? "").trim() || null;
+
+  const contactName =
+    String(currentAdminName ?? "").trim() ||
+    String((room as any).creator_admin_name ?? "").trim() ||
+    "Liên hệ";
 
   // ✅ build thumb.webp theo UUID (room.id) để tránh trùng room_code
   // rooms/{uuid}/images/thumb.webp
@@ -401,10 +440,17 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
     if (error) throw error;
 
     const fullRoom = data ?? room;
-    const fullImages = getFullImageUrls(fullRoom);
-    const fullVideos = getFullVideoUrls(fullRoom);
+    const sanitizedFullRoom = isOwnedByCurrentAdmin
+      ? fullRoom
+      : {
+          ...fullRoom,
+          link_zalo: null,
+          zalo_phone: null,
+        };
+    const fullImages = getFullImageUrls(sanitizedFullRoom);
+    const fullVideos = getFullVideoUrls(sanitizedFullRoom);
 
-    setShareRoomData(fullRoom);
+    setShareRoomData(sanitizedFullRoom);
     setShareImages(fullImages.length ? fullImages : images);
     setShareVideos(fullVideos.length ? fullVideos : videos);
     setShareOpen(true);
@@ -412,7 +458,7 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
   } catch (err) {
     console.error("openAdminShareModal error:", err);
 
-    setShareRoomData(room);
+    setShareRoomData(safeRoomForPrivateFields);
     setShareImages(images);
     setShareVideos(videos);
     setShareOpen(true);
@@ -606,15 +652,15 @@ return (
       
 
     {/* ADMIN BUTTON */}
-    {room.creator_admin_phone && (
+    {(safeAdminLevel === 1 || safeAdminLevel === 2) && contactPhone && (
       <button
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setAdminPhone(room.creator_admin_phone || null);
+          setAdminPhone(contactPhone);
         }}
-        title={room.creator_admin_name || "Liên hệ"}
+        title={contactName}
         className="
           ai-admin-button ai-admin-gradient-border
           !absolute left-2 top-1 z-30
@@ -1021,9 +1067,9 @@ return (
         "
         onClick={(e) => e.stopPropagation()}
       >
-        {room.creator_admin_name && (
+        {contactName && (
           <div className="mb-3 mt-1 text-center text-sm font-medium text-[#5f5141]">
-            {room.creator_admin_name}
+            {contactName}
           </div>
         )}
 

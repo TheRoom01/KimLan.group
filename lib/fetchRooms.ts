@@ -28,6 +28,7 @@ export type FetchRoomsParams = {
   contractTerms?: ("short" | "long")[];
   sortMode?: "updated_desc" | "price_asc" | "price_desc";
   status?: string | null;
+  currentUserId?: string | null;
 };
 
 /**
@@ -225,6 +226,7 @@ export async function fetchRooms(
     contractTerms,
     sortMode,
     status,
+    currentUserId,
   } = params;
 
   const effectiveRoomTypes =
@@ -348,9 +350,22 @@ p_anon_session_id: anonSessionId,
   const rows = ((data as any)?.data ?? []) as any[];
 
   // ✅ Giảm work/memory ở FE bằng cách chỉ giữ field cần render list
-  // ✅ Cách A: DB/RPC đã tự tính quyền theo auth.uid() rồi,
-// nên không dựa vào adminLevel (tránh bug vừa login vẫn anon)
-const projected = rows;
+  // Đồng thời ẩn riêng link_zalo / zalo_phone nếu phòng không thuộc user admin đang đăng nhập.
+  const projected = rows.map((row) => {
+    const rowOwnerId = String((row as any)?.owner_id ?? "").trim();
+    const isOwnRoom =
+      role > 0 &&
+      !!currentUserId &&
+      rowOwnerId === String(currentUserId).trim();
+
+    if (isOwnRoom) return row;
+
+    return {
+      ...row,
+      link_zalo: null,
+      zalo_phone: null,
+    };
+  });
 
   // ✅ nextCursor phải lấy đúng từ RPC:
   // - updated_desc => object {updated_at,id}

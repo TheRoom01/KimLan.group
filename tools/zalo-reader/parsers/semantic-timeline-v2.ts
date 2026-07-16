@@ -11,9 +11,7 @@ import type {
 
 import { splitIntoBuildingSegments } from "./building-segmenter";
 import { classifyTextMessage } from "./message-classifier";
-import {
-  buildMediaBundles,
-} from "./media-matcher-v2";
+import { buildMediaBundles } from "./media-matcher-v2";
 import {
   cleanText,
   isNoiseText,
@@ -134,7 +132,8 @@ function makeSyntheticRoom(params: {
   const { segment, bundles } = params;
   const firstMedia = bundles[0];
   const firstMessage = segment.messages[0];
-  const lastMessage = segment.messages[segment.messages.length - 1] || firstMessage;
+  const lastMessage =
+    segment.messages[segment.messages.length - 1] || firstMessage;
 
   const messageIndex =
     firstMedia?.firstMessageIndex ?? Math.max(0, segment.messages.length - 1);
@@ -142,7 +141,10 @@ function makeSyntheticRoom(params: {
   return {
     id: `${segment.id}:synthetic-room`,
     messageId: String(
-      firstMedia?.messageIds[0] || lastMessage?.msgId || lastMessage?.cliMsgId || ""
+      firstMedia?.messageIds[0] ||
+        lastMessage?.msgId ||
+        lastMessage?.cliMsgId ||
+        "",
     ).trim(),
     messageIndex,
     timestamp:
@@ -156,51 +158,69 @@ function makeSyntheticRoom(params: {
   } satisfies RoomAnchor;
 }
 
-function assignMediaToRoomsByNearest(params: {
+function pickRoomIndexForTimeline(params: {
+  rooms: RoomAnchor[];
+  messageIndex: number;
+}) {
+  const { rooms, messageIndex } = params;
+  if (rooms.length === 0) return -1;
+
+  let candidate = -1;
+  for (let index = 0; index < rooms.length; index++) {
+    if (rooms[index].messageIndex <= messageIndex) {
+      candidate = index;
+      continue;
+    }
+    break;
+  }
+
+  if (candidate >= 0) return candidate;
+  return 0;
+}
+
+function assignMediaToRoomsByTimeline(params: {
   rooms: RoomAnchor[];
   bundles: MediaBundle[];
-  uncertainScoreDelta?: number;
 }) {
   const assignedByRoomId = new Map<string, MediaBundle[]>();
   const warningsByRoomId = new Map<string, Set<string>>();
   const unassignedBundles: MediaBundle[] = [];
-  const uncertainScoreDelta = Math.max(0, Number(params.uncertainScoreDelta ?? 2));
 
   for (const room of params.rooms) {
     assignedByRoomId.set(room.id, []);
     warningsByRoomId.set(room.id, new Set<string>());
   }
 
-  for (const bundle of params.bundles) {
-    const bundleCenter = (bundle.firstMessageIndex + bundle.lastMessageIndex) / 2;
-    const ranked = params.rooms
-      .map((room) => ({
-        room,
-        distance: Math.abs(room.messageIndex - bundleCenter),
-      }))
-      .sort((a, b) => a.distance - b.distance);
+  const sortedBundles = [...params.bundles].sort((a, b) => {
+    if (a.firstMessageIndex !== b.firstMessageIndex) {
+      return a.firstMessageIndex - b.firstMessageIndex;
+    }
 
-    const best = ranked[0];
-    const second = ranked[1];
+    if (a.firstTimestamp !== b.firstTimestamp) {
+      return a.firstTimestamp - b.firstTimestamp;
+    }
 
-    if (!best) {
+    return a.id.localeCompare(b.id);
+  });
+
+  for (const bundle of sortedBundles) {
+    if (params.rooms.length === 0) {
       unassignedBundles.push(bundle);
       continue;
     }
 
-    assignedByRoomId.get(best.room.id)?.push(bundle);
+    const roomIndex = pickRoomIndexForTimeline({
+      rooms: params.rooms,
+      messageIndex: bundle.firstMessageIndex,
+    });
 
-    if (second && second.distance - best.distance <= uncertainScoreDelta) {
-      warningsByRoomId.get(best.room.id)?.add(
-        `MEDIA_ASSIGNMENT_UNCERTAIN:${bundle.id}:${best.distance.toFixed(1)}/${second.distance.toFixed(1)}`
-      );
+    const targetRoom = params.rooms[roomIndex];
+    if (!targetRoom) {
+      unassignedBundles.push(bundle);
+      continue;
     }
 
-    if (best.distance > 12) {
-      warningsByRoomId.get(best.room.id)?.add(
-        `MEDIA_ASSIGNMENT_LOW_CONFIDENCE:${bundle.id}`
-      );
-    }
+    assignedByRoomId.get(targetRoom.id)?.push(bundle);
   }
 
   return {
@@ -210,12 +230,18 @@ function assignMediaToRoomsByNearest(params: {
   };
 }
 
-function distributeText(params: {
+function distributeTimelineText(params: {
   segment: BuildingSegment;
   rooms: RoomAnchor[];
 }) {
+  const houseInfoTexts = [...params.segment.buildingTexts];
+  const roomTextsById = new Map<string, string[]>();
+
+  for (const room of params.rooms) {
+    roomTextsById.set(room.id, []);
+  }
+
   const firstRoomIndex = params.rooms[0]?.messageIndex ?? Number.MAX_SAFE_INTEGER;
-  const buildingTexts = [...params.segment.buildingTexts];
 
   params.segment.messages.forEach((message, messageIndex) => {
     if (message.kind !== "text") return;
@@ -228,24 +254,39 @@ function distributeText(params: {
     for (const text of candidateTexts) {
       if (!text || isNoiseText(text)) continue;
 
-      if (classification.buildingLines.length > 0 || looksLikeSharedBuildingText(text) || messageIndex < firstRoomIndex) {
-        buildingTexts.push(text);
+      if (
+        classification.buildingLines.length > 0 ||
+        looksLikeSharedBuildingText(text) ||
+        messageIndex < firstRoomIndex
+      ) {
+        houseInfoTexts.push(text);
         continue;
       }
 
-      const nearest = [...params.rooms].sort(
-        (a, b) => Math.abs(a.messageIndex - messageIndex) - Math.abs(b.messageIndex - messageIndex)
-      )[0];
+      const roomIndex = pickRoomIndexForTimeline({
+        rooms: params.rooms,
+        messageIndex,
+      });
 
-      if (nearest) {
-        nearest.descriptionTexts.push(text);
-      } else {
-        buildingTexts.push(text);
+      if (roomIndex < 0) {
+        houseInfoTexts.push(text);
+        continue;
       }
+
+      const targetRoom = params.rooms[roomIndex];
+      if (!targetRoom) {
+        houseInfoTexts.push(text);
+        continue;
+      }
+
+      roomTextsById.get(targetRoom.id)?.push(text);
     }
   });
 
-  return uniqueTexts(buildingTexts);
+  return {
+    houseInfoText: uniqueTexts(houseInfoTexts).join("\n").trim(),
+    roomTextsById,
+  };
 }
 
 function flattenVideoPayloads(bundles: MediaBundle[]) {
@@ -290,7 +331,7 @@ function buildRoomsForSegment(params: {
   if (rooms.length === 0) {
     const hasMedia = bundles.length > 0;
     const hasText = segment.messages.some(
-      (message) => message.kind === "text" && Boolean(cleanText(message.text))
+      (message) => message.kind === "text" && Boolean(cleanText(message.text)),
     );
 
     const mayCreate =
@@ -302,18 +343,17 @@ function buildRoomsForSegment(params: {
     rooms = [makeSyntheticRoom({ segment, bundles })];
   }
 
-  const assignment = assignMediaToRoomsByNearest({
+  const assignment = assignMediaToRoomsByTimeline({
     rooms,
     bundles,
-    uncertainScoreDelta: options.uncertainScoreDelta,
   });
 
-  const buildingTexts = distributeText({
+  const distributed = distributeTimelineText({
     segment,
     rooms,
   });
 
-  const houseInfoText = buildingTexts.join("\n").trim();
+  const houseInfoText = distributed.houseInfoText;
   const result: SemanticRoomPreview[] = [];
 
   for (const room of rooms) {
@@ -322,23 +362,29 @@ function buildRoomsForSegment(params: {
       .map((bundle) => bundle.album)
       .filter((album): album is SemanticAlbumPreview => Boolean(album));
 
-    const imageUrls = Array.from(new Set(albums.flatMap((album) => album.imageUrls)));
-    const imageMessageIds = Array.from(new Set(albums.flatMap((album) => album.imageMessageIds)));
+    const imageUrls = Array.from(
+      new Set(albums.flatMap((album) => album.imageUrls)),
+    );
+    const imageMessageIds = Array.from(
+      new Set(albums.flatMap((album) => album.imageMessageIds)),
+    );
 
     const videoBundles = assigned.filter((bundle) => bundle.kind === "video");
-    const videoMessageIds = Array.from(new Set(videoBundles.flatMap((bundle) => bundle.messageIds)));
-    const videoUrls = Array.from(new Set(videoBundles.flatMap((bundle) => bundle.videoUrls || [])));
-    const videoThumbUrls = Array.from(new Set(videoBundles.flatMap((bundle) => bundle.videoThumbUrls || [])));
+    const videoMessageIds = Array.from(
+      new Set(videoBundles.flatMap((bundle) => bundle.messageIds)),
+    );
+    const videoUrls = Array.from(
+      new Set(videoBundles.flatMap((bundle) => bundle.videoUrls || [])),
+    );
+    const videoThumbUrls = Array.from(
+      new Set(videoBundles.flatMap((bundle) => bundle.videoThumbUrls || [])),
+    );
     const videos = flattenVideoPayloads(videoBundles);
 
     const warnings = new Set<string>(segment.warnings);
 
     if (bundles.length > 0 && hadRealRoomMarker) {
-      warnings.add("SEMANTIC_MEDIA_BIAS:nearest");
-    }
-
-    for (const warning of assignment.warningsByRoomId.get(room.id) || []) {
-      warnings.add(warning);
+      warnings.add("SEMANTIC_MEDIA_BIAS:timeline-local");
     }
 
     if (!hadRealRoomMarker) {
@@ -365,7 +411,7 @@ function buildRoomsForSegment(params: {
             "INCOMPLETE_ALBUM",
             album.albumKey,
             `${album.actualImageCount}/${album.expectedImageCount}`,
-          ].join(":")
+          ].join(":"),
         );
       }
     }
@@ -378,18 +424,22 @@ function buildRoomsForSegment(params: {
       warnings.add(`UNASSIGNED_MEDIA:${assignment.unassignedBundles.length}`);
     }
 
-    const descriptionTexts = uniqueTexts(room.descriptionTexts);
+    const descriptionTexts = uniqueTexts(
+      distributed.roomTextsById.get(room.id) || [],
+    );
     const markerText = cleanText(room.markerText);
     const markerMessageId =
       room.messageId || assigned[0]?.messageIds[0] || segment.messages[0]?.msgId || "";
     const markerTimestamp =
       room.timestamp || assigned[0]?.firstTimestamp || messageTimestamp(segment.messages[0]);
     const senderUid =
-      room.senderUid || assigned.find((bundle) => bundle.senderUid)?.senderUid || dominantSender(segment.messages);
+      room.senderUid ||
+      assigned.find((bundle) => bundle.senderUid)?.senderUid ||
+      dominantSender(segment.messages);
 
     const sourceHash = sha256(
       [
-        "indexeddb-semantic-room-v2",
+        "indexeddb-semantic-room-v3",
         groupName,
         groupId,
         segment.knownAddressKey,
@@ -398,7 +448,7 @@ function buildRoomsForSegment(params: {
         markerText,
         ...imageMessageIds,
         ...videoMessageIds,
-      ].join("|")
+      ].join("|"),
     );
 
     result.push({
@@ -448,7 +498,7 @@ function parseOneTimeline(params: {
         groupName: params.groupName,
         groupId: params.groupId,
         options: params.options,
-      })
+      }),
     )
     .sort((a, b) => b.markerTimestamp - a.markerTimestamp);
 }
@@ -462,7 +512,7 @@ export function buildSemanticTimelineRooms(params: {
 }) {
   const options: SemanticParserOptions = {
     mediaBias: "auto",
-    buildingBoundary: "address-or-separator",
+    buildingBoundary: "separator",
     splitBySender: false,
     allowMediaOnly: true,
     allowTextOnly: true,
@@ -497,7 +547,7 @@ export function buildSemanticTimelineRooms(params: {
         groupId: params.groupId,
         messages,
         options,
-      })
+      }),
     )
     .sort((a, b) => b.markerTimestamp - a.markerTimestamp);
 }

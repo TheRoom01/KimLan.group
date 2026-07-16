@@ -6,9 +6,15 @@ import type {
 
 import { classifyTextMessage } from "./message-classifier";
 import {
+  cleanText,
+  extractAddressKey,
+  isProjectHeaderText,
+  isSeparatorText,
   isVideoMessage,
+  looksLikeBuildingStart,
   messageTimestamp,
   sortMessages,
+  splitTextLines,
   uniqueTexts,
 } from "./utils";
 
@@ -40,12 +46,7 @@ function shouldSplitForBuildingStart(params: {
   nextIsProjectHeader: boolean;
   boundaryMode: SemanticParserOptions["buildingBoundary"];
 }) {
-  const {
-    current,
-    nextAddressKey,
-    nextIsProjectHeader,
-    boundaryMode,
-  } = params;
+  const { current, nextAddressKey, nextIsProjectHeader, boundaryMode } = params;
 
   if (current.messages.length === 0) return false;
   if (boundaryMode === "separator") return false;
@@ -54,14 +55,6 @@ function shouldSplitForBuildingStart(params: {
 
   if (nextAddressKey) {
     if (!current.knownAddressKey) {
-      /*
-       * Mẫu:
-       * CẬP NHẬT DỰ ÁN DUY TRÌ: địa chỉ
-       * 31 Ký Hoà Quận 5
-       *
-       * Hai message này vẫn là cùng một tòa nhà vì segment hiện tại
-       * chưa có phòng/media và chưa biết địa chỉ.
-       */
       return hasRoomOrMedia;
     }
 
@@ -69,15 +62,6 @@ function shouldSplitForBuildingStart(params: {
   }
 
   if (nextIsProjectHeader) {
-    /*
-     * Một tiêu đề dự án mạnh luôn là ranh giới mới khi segment hiện tại
-     * đã có bất kỳ dữ liệu có nghĩa nào. Không yêu cầu phải thấy phòng/media,
-     * vì lịch sử quét có thể bắt đầu giữa một bài đăng cũ và chỉ còn form tòa nhà.
-     *
-     * Ví dụ cần tách:
-     *   [form cũ chưa thấy marker]
-     *   HIFRIENDZ THÔNG BÁO DỰ ÁN DUY TRÌ QUẬN 3:
-     */
     return (
       hasRoomOrMedia ||
       current.knownAddressKey.length > 0 ||
@@ -85,28 +69,115 @@ function shouldSplitForBuildingStart(params: {
     );
   }
 
-  /*
-   * Có những form mở tòa nhà mới không dùng tiêu đề "Dự án":
-   *   Khai Trương CHDV cao cấp
-   *   📌Địa chỉ: 90/88F Nguyễn Đình Chiểu - Quận 1
-   *
-   * Nếu segment hiện tại đã có phòng/media, một form tòa nhà mạnh
-   * tiếp theo phải mở segment mới, kể cả addressKey chưa đọc được.
-   */
   return hasRoomOrMedia;
+}
+
+function isStrongBlockStartLine(input: string) {
+  const text = cleanText(input);
+  if (!text) return false;
+
+  return (
+    isProjectHeaderText(text) ||
+    Boolean(extractAddressKey(text)) ||
+    looksLikeBuildingStart(text) ||
+    /^(?:dia chi|dc)\s*[:\-]/i.test(text)
+  );
+}
+
+function cloneTextMessageIntoParts(
+  message: SemanticIndexedDbMessage,
+  sourceIndex: number,
+) {
+  const text = cleanText(message.text);
+  if (!text) return [message];
+
+  const lines = splitTextLines(text)
+    .map((line) => cleanText(line))
+    .filter(Boolean);
+
+  if (lines.length <= 1) return [message];
+
+  const parts: SemanticIndexedDbMessage[] = [];
+  const baseId = String(message.msgId || message.cliMsgId || `msg-${sourceIndex}`);
+  const baseCliId = String(message.cliMsgId || message.msgId || baseId);
+  const orderBase = Number(
+    message.domHydration?.order ?? sourceIndex * 1000,
+  );
+
+  let buffer: string[] = [];
+  let partIndex = 0;
+
+  const flush = () => {
+    if (buffer.length === 0) return;
+
+    const chunk = cleanText(buffer.join("\n"));
+    buffer = [];
+
+    if (!chunk) return;
+
+    parts.push({
+      ...message,
+      text: chunk,
+      msgId: `${baseId}::part${String(partIndex).padStart(3, "0")}`,
+      cliMsgId: `${baseCliId}::part${String(partIndex).padStart(3, "0")}`,
+      domHydration: {
+        ...(message.domHydration || {}),
+        order: orderBase + partIndex,
+      },
+    });
+
+    partIndex += 1;
+  };
+
+  for (const line of lines) {
+    if (isSeparatorText(line)) {
+      flush();
+      continue;
+    }
+
+    const startsNewBlock = isStrongBlockStartLine(line);
+
+    if (startsNewBlock && buffer.length > 0) {
+      flush();
+    }
+
+    buffer.push(line);
+  }
+
+  flush();
+
+  return parts.length > 0 ? parts : [message];
+}
+
+function expandMessagesForBlockParsing(messages: SemanticIndexedDbMessage[]) {
+  const expanded: SemanticIndexedDbMessage[] = [];
+
+  messages.forEach((message, sourceIndex) => {
+    if (message.kind !== "text") {
+      expanded.push(message);
+      return;
+    }
+
+    const parts = cloneTextMessageIntoParts(message, sourceIndex);
+    expanded.push(...parts);
+  });
+
+  return expanded;
 }
 
 export function splitIntoBuildingSegments(params: {
   messages: SemanticIndexedDbMessage[];
   options?: SemanticParserOptions;
 }) {
-  const messages = sortMessages(params.messages);
+  const sortedOriginal = sortMessages(params.messages);
+  const expandedMessages = expandMessagesForBlockParsing(sortedOriginal);
+  const messages = sortMessages(expandedMessages);
+
   const options = params.options || {};
-  const boundaryMode =
-    options.buildingBoundary || "address-or-separator";
+  const boundaryMode = options.buildingBoundary || "address-or-separator";
   const boundaryGapMs = Math.max(
     60_000,
-    Number(options.boundaryGapMs || 45 * 60 * 1000)
+    Number(options.boundaryGapMs || 45 * 60 * 1000),
   );
 
   const segments: BuildingSegment[] = [];
@@ -126,14 +197,10 @@ export function splitIntoBuildingSegments(params: {
     const message = messages[sourceIndex];
     const timestamp = messageTimestamp(message);
     const classification =
-      message.kind === "text"
-        ? classifyTextMessage(message)
-        : null;
+      message.kind === "text" ? classifyTextMessage(message) : null;
 
     if (classification?.separator) {
-      if (boundaryMode !== "address") {
-        flush();
-      }
+      flush();
       continue;
     }
 
@@ -144,16 +211,16 @@ export function splitIntoBuildingSegments(params: {
           nextAddressKey: classification.addressKey,
           nextIsProjectHeader: classification.projectHeader,
           boundaryMode,
-        })
+        }),
     );
 
     const splitForLargeGap = Boolean(
-      current.messages.length > 0 &&
+      boundaryMode !== "separator" &&
+        current.messages.length > 0 &&
         timestamp > 0 &&
         lastTimestamp > 0 &&
         timestamp - lastTimestamp > boundaryGapMs &&
-        (classification?.buildingStart ||
-          classification?.roomAnchors.length)
+        (classification?.buildingStart || classification?.roomAnchors.length),
     );
 
     if (splitForBuilding || splitForLargeGap) {

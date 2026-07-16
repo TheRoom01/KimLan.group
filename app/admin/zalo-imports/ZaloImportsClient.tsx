@@ -539,6 +539,29 @@ export default function ZaloImportsClient() {
           grid-template-columns: 1.2fr 1fr 1fr;
           gap: 12px;
         }
+          /* CŨ: không có */
+
+
+        @media (max-width: 760px) {
+          .zalo-import-compact-main {
+            grid-template-columns: 1fr;
+          }
+
+          .zalo-import-thumbnail-strip {
+            max-width: 100%;
+            overflow-x: auto;
+          }
+
+          /* phần cover ảnh nhỏ lại trên mobile */
+          .zalo-import-compact-main > div:first-child {
+            max-width: 100%;
+          }
+
+          .zalo-import-compact-main > div:first-child > div:first-child {
+            height: 180px !important;
+            min-height: 180px !important;
+          }
+        }
 
         .zalo-import-card-actions,
         .zalo-import-modal-actions {
@@ -3197,10 +3220,12 @@ const compactMediaColumn: CSSProperties = {
   minWidth: 0,
 };
 
+// MỚI
 const compactImageFrame: CSSProperties = {
   position: "relative",
-  minHeight: 270,
-  aspectRatio: "16 / 10",
+  width: "100%",
+  minHeight: 220,
+  height: 220,
   overflow: "hidden",
   borderRadius: 14,
   background: "#0f172a",

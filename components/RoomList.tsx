@@ -15,6 +15,9 @@ type RoomListProps = {
   showSkeleton: boolean;
   roomsToRender: any[];
   adminLevel: 0 | 1 | 2;
+  currentUserId?: string | null;
+  currentAdminPhone?: string | null;
+  currentAdminName?: string | null;
   pageIndex: number;
   loading: boolean;
   hasNext: boolean;
@@ -29,6 +32,9 @@ const RoomList = ({
   showSkeleton,
   roomsToRender,
   adminLevel,
+  currentUserId,
+  currentAdminPhone,
+  currentAdminName,
   onNavigate,
   isRefreshing = false,
 }: RoomListProps) => {
@@ -66,6 +72,9 @@ const RoomList = ({
               key={room.id}
               room={room}
               adminLevel={adminLevel}
+              currentUserId={currentUserId}
+              currentAdminPhone={currentAdminPhone}
+              currentAdminName={currentAdminName}
               index={index}
               onNavigate={onNavigate}
             />

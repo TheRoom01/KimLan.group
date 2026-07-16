@@ -568,6 +568,14 @@ function titleCaseStreet(input: string) {
     .join(" ");
 }
 
+function stripAddressCommentSegments(input: string) {
+  return String(input || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 
 type ExtractedAddressParts = {
   houseNumber: string;
@@ -1261,6 +1269,8 @@ function extractAddressParts(
       )
         .replace(/\r\n?/g, "\n")
         .replace(/_+/g, ", ")
+        .replace(/\([^)]*\)/g, " ")
+        .replace(/\[[^\]]*\]/g, " ")
         .replace(
           /\b(?:hotline|liên hệ|lien he|sđt|sdt|phone|zalo|phòng|phong|room|giá|gia|trống|trong)\b.*$/i,
           ""
@@ -1536,6 +1546,9 @@ function extractAddressParts(
           /^(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]?\s*/i,
           ""
         )
+        .replace(/\([^)]*\)/g, " ")
+        .replace(/\[[^\]]*\]/g, " ")
+        .replace(/\s+/g, " ")
         .trim();
 
     const location =
@@ -1544,24 +1557,26 @@ function extractAddressParts(
       );
 
     candidate =
-      location.cleanedAddress
+      stripAddressCommentSegments(
+        location.cleanedAddress
         /*
          * 553, Lê Văn Thọ
          * → 553 Lê Văn Thọ
          */
-        .replace(
-          new RegExp(
-            `^(${houseNumberSource})\\s*[,;]\\s*(?=[A-Za-zÀ-ỹ])`,
-            "i"
-          ),
-          "$1 "
-        )
-        .replace(
-          /[\s,:;|\-–—]+$/g,
-          ""
-        )
-        .replace(/\s+/g, " ")
-        .trim();
+          .replace(
+            new RegExp(
+              `^(${houseNumberSource})\\s*[,;]\\s*(?=[A-Za-zÀ-ỹ])`,
+              "i"
+            ),
+            "$1 "
+          )
+          .replace(
+            /[\s,:;|\-–—]+$/g,
+            ""
+          )
+          .replace(/\s+/g, " ")
+          .trim()
+      );
 
     const streetMatch =
       candidate.match(

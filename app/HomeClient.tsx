@@ -240,6 +240,9 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
 
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentAdminPhone, setCurrentAdminPhone] = useState<string | null>(null);
+  const [currentAdminName, setCurrentAdminName] = useState<string | null>(null);
 
   // ================== ANON LOCK ==================
 const [isAnonLocked, setIsAnonLocked] = useState(false);
@@ -429,6 +432,47 @@ useEffect(() => {
     clearVipTimer();
   };
 }, [pathname]);
+
+
+useEffect(() => {
+  let cancelled = false;
+
+  const loadCurrentAdminProfile = async () => {
+    setCurrentAdminPhone(null);
+    setCurrentAdminName(null);
+
+    if (!currentUserId) {
+      return;
+    }
+
+    try {
+      const { data } = await supabase
+        .from("admin_users")
+        .select("phone, full_name")
+        .eq("user_id", currentUserId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      setCurrentAdminPhone(
+        String((data as any)?.phone ?? "").trim() || null
+      );
+      setCurrentAdminName(
+        String((data as any)?.full_name ?? "").trim() || null
+      );
+    } catch {
+      if (cancelled) return;
+      setCurrentAdminPhone(null);
+      setCurrentAdminName(null);
+    }
+  };
+
+  void loadCurrentAdminProfile();
+
+  return () => {
+    cancelled = true;
+  };
+}, [currentUserId]);
 
 // ================== PAGINATION (cache) ==================
  const initCursor: string | UpdatedDescCursor | null =
@@ -2211,6 +2255,7 @@ const res = await fetchRooms({
   limit: LIMIT,
   cursor: cursorForThisPage,
   adminLevel,
+  currentUserId,
 
   // ✅ ưu tiên URL snapshot khi đang hydrate-from-URL
   search: (pending?.search ?? appliedSearch).trim()
@@ -2374,6 +2419,7 @@ if (targetIndex === pageIndexRef.current) {
   },
     [
       adminLevel,
+      currentUserId,
       appliedSearch,
       minPriceApplied,
       maxPriceApplied,
@@ -2823,6 +2869,7 @@ useEffect(() => {
 
     const uid = data.session?.user?.id ?? null;
     lastSessionUserIdRef.current = uid;
+    setCurrentUserId(uid);
     setIsLoggedIn(!!uid);
 
     // nếu không có session thì hạ quyền
@@ -2839,11 +2886,13 @@ useEffect(() => {
       const uid = session?.user?.id ?? null;
 
         lastSessionUserIdRef.current = uid;
+        setCurrentUserId(uid);
         setIsLoggedIn(!!uid);
       return;
     }
 
     const nextUid = session?.user?.id ?? null;
+    setCurrentUserId(nextUid);
     setIsLoggedIn(!!nextUid);
     const prevUid = lastSessionUserIdRef.current;
 
@@ -3232,6 +3281,9 @@ return (
           showSkeleton={showSkeleton}
           roomsToRender={roomsToRender}
           adminLevel={adminLevel}
+          currentUserId={currentUserId}
+          currentAdminPhone={currentAdminPhone}
+          currentAdminName={currentAdminName}
           pageIndex={pageIndex}
           loading={loading}
           hasNext={hasNext}

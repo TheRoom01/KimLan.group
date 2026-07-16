@@ -5,30 +5,23 @@ import type {
   SemanticVideoPayload,
 } from "./types";
 
-import {
-  messageTimestamp,
-  isVideoMessage,
-} from "./utils";
+import { isVideoMessage, messageTimestamp } from "./utils";
 
 function stableUrlSet(urls: string[]) {
   return Array.from(
     new Set(
       urls
         .map((url) => String(url || "").trim())
-        .filter(Boolean)
-    )
+        .filter(Boolean),
+    ),
   );
 }
 
-function getFallbackImageUrls(
-  message: SemanticIndexedDbMessage
-) {
+function getFallbackImageUrls(message: SemanticIndexedDbMessage) {
   const raw = message as any;
 
   const candidates = [
-    ...(Array.isArray(raw.imageUrls)
-      ? raw.imageUrls
-      : []),
+    ...(Array.isArray(raw.imageUrls) ? raw.imageUrls : []),
     raw.hdUrl,
     raw.originalUrl,
     raw.originUrl,
@@ -66,13 +59,11 @@ function getFallbackImageUrls(
         lower.includes("icon") ||
         lower.includes("logo")
       );
-    }) as string[]
+    }) as string[],
   );
 }
 
-function normalizeImageMessage(
-  message: SemanticIndexedDbMessage
-) {
+function normalizeImageMessage(message: SemanticIndexedDbMessage) {
   const imageUrls = getFallbackImageUrls(message);
   if (imageUrls.length === 0) return message;
 
@@ -83,9 +74,7 @@ function normalizeImageMessage(
   };
 }
 
-function dominantSender(
-  messages: SemanticIndexedDbMessage[]
-) {
+function dominantSender(messages: SemanticIndexedDbMessage[]) {
   const counts = new Map<string, number>();
 
   for (const message of messages) {
@@ -95,63 +84,119 @@ function dominantSender(
   }
 
   return (
-    Array.from(counts.entries()).sort(
-      (a, b) => b[1] - a[1]
-    )[0]?.[0] || ""
+    Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || ""
   );
 }
 
-function flattenAlbumUrls(
-  messages: SemanticIndexedDbMessage[]
-) {
+function flattenAlbumUrls(messages: SemanticIndexedDbMessage[]) {
   return stableUrlSet(
     messages.flatMap((message) =>
-      Array.isArray(message.imageUrls)
-        ? message.imageUrls
-        : []
-    )
+      Array.isArray(message.imageUrls) ? message.imageUrls : [],
+    ),
   );
 }
 
 function getVideoPayload(
-  message: SemanticIndexedDbMessage
+  message: SemanticIndexedDbMessage,
 ): SemanticVideoPayload | null {
   const sourceUrl = String(
-    message.videoUrls?.find((url) => String(url || "").trim()) || ""
+    message.videoUrls?.find((url) => String(url || "").trim()) || "",
   ).trim();
 
   if (!sourceUrl) return null;
 
   const thumbnailUrl = String(
-    message.videoThumbUrls?.find((url) => String(url || "").trim()) || ""
+    message.videoThumbUrls?.find((url) => String(url || "").trim()) || "",
   ).trim();
 
   const durationMs = Number(message.videoDebug?.durationMs || 0);
   const width = Number(message.videoDebug?.width || 0);
   const height = Number(message.videoDebug?.height || 0);
   const sizeBytes = Number(
-    message.videoDebug?.fileSize || message.videoDebug?.sizeBytes || 0
+    message.videoDebug?.fileSize || message.videoDebug?.sizeBytes || 0,
   );
 
   return {
     sourceUrl,
     thumbnailUrl: thumbnailUrl || undefined,
     durationMs:
-      Number.isFinite(durationMs) && durationMs > 0
-        ? durationMs
-        : undefined,
+      Number.isFinite(durationMs) && durationMs > 0 ? durationMs : undefined,
     width: Number.isFinite(width) && width > 0 ? width : undefined,
     height: Number.isFinite(height) && height > 0 ? height : undefined,
     sizeBytes:
-      Number.isFinite(sizeBytes) && sizeBytes > 0
-        ? sizeBytes
-        : undefined,
+      Number.isFinite(sizeBytes) && sizeBytes > 0 ? sizeBytes : undefined,
   };
 }
 
-export function buildMediaBundles(
-  messages: SemanticIndexedDbMessage[]
-) {
+type ImageRun = {
+  layoutKey: string;
+  runKey: string;
+  messages: SemanticIndexedDbMessage[];
+  messageIndexes: number[];
+  firstIndex: number;
+  lastIndex: number;
+};
+
+function buildImageRuns(messages: SemanticIndexedDbMessage[]) {
+  const runs: ImageRun[] = [];
+  let current: ImageRun | null = null;
+  let lastImageIndex = -1;
+  let lastLayoutKey = "";
+
+  const closeCurrent = () => {
+    if (current && current.messages.length > 0) {
+      runs.push(current);
+    }
+    current = null;
+  };
+
+  messages.forEach((rawMessage, index) => {
+    const message = normalizeImageMessage(rawMessage);
+    const imageUrls = Array.isArray(message.imageUrls) ? message.imageUrls : [];
+    const isImage = imageUrls.length > 0;
+
+    if (!isImage) {
+      closeCurrent();
+      lastImageIndex = -1;
+      lastLayoutKey = "";
+      return;
+    }
+
+    const layoutKey =
+      message.groupLayoutId != null
+        ? `album:${String(message.groupLayoutId)}`
+        : `single:${String(message.msgId || message.cliMsgId || index)}`;
+
+    const contiguousSameRun =
+      current != null &&
+      lastImageIndex === index - 1 &&
+      lastLayoutKey === layoutKey;
+
+    if (!contiguousSameRun) {
+      closeCurrent();
+      current = {
+        layoutKey,
+        runKey: `${layoutKey}:${index}`,
+        messages: [],
+        messageIndexes: [],
+        firstIndex: index,
+        lastIndex: index,
+      };
+    }
+
+    current!.messages.push(message);
+    current!.messageIndexes.push(index);
+    current!.lastIndex = index;
+
+    lastImageIndex = index;
+    lastLayoutKey = layoutKey;
+  });
+
+  closeCurrent();
+  return runs;
+}
+
+export function buildMediaBundles(messages: SemanticIndexedDbMessage[]) {
   const indexesByMessageId = new Map<string, number>();
 
   messages.forEach((message, index) => {
@@ -164,29 +209,11 @@ export function buildMediaBundles(
     }
   });
 
-  const imageMessages = messages
-    .map(normalizeImageMessage)
-    .filter((message) =>
-      Boolean(Array.isArray(message.imageUrls) && message.imageUrls.length > 0)
-    );
-
-  const albumMap = new Map<string, SemanticIndexedDbMessage[]>();
-
-  for (const message of imageMessages) {
-    const key =
-      message.groupLayoutId != null
-        ? `album:${String(message.groupLayoutId)}`
-        : `single:${String(message.msgId || message.cliMsgId)}`;
-
-    const current = albumMap.get(key) || [];
-    current.push(message);
-    albumMap.set(key, current);
-  }
-
+  const imageRuns = buildImageRuns(messages);
   const bundles: MediaBundle[] = [];
 
-  for (const [albumKey, items] of albumMap.entries()) {
-    const sorted = [...items].sort((a, b) => {
+  for (const run of imageRuns) {
+    const sorted = [...run.messages].sort((a, b) => {
       const ai = Number(a.imageIndex);
       const bi = Number(b.imageIndex);
 
@@ -212,20 +239,19 @@ export function buildMediaBundles(
     const actualImageCount = imageUrls.length;
 
     const album: SemanticAlbumPreview = {
-      albumKey,
+      albumKey: run.runKey,
       groupLayoutId: sorted[0]?.groupLayoutId ?? null,
       expectedImageCount,
       actualImageCount,
       complete:
-        expectedImageCount == null ||
-        actualImageCount >= expectedImageCount,
+        expectedImageCount == null || actualImageCount >= expectedImageCount,
       imageMessageIds,
       imageUrls,
     };
 
     const messageIndexes = sorted
       .map((message) =>
-        indexesByMessageId.get(String(message.msgId || message.cliMsgId || ""))
+        indexesByMessageId.get(String(message.msgId || message.cliMsgId || "")),
       )
       .filter((value): value is number => Number.isFinite(value));
 
@@ -242,10 +268,8 @@ export function buildMediaBundles(
       messageIndexes,
       firstMessageIndex: Math.min(...messageIndexes),
       lastMessageIndex: Math.max(...messageIndexes),
-      firstTimestamp:
-        timestamps.length > 0 ? Math.min(...timestamps) : 0,
-      lastTimestamp:
-        timestamps.length > 0 ? Math.max(...timestamps) : 0,
+      firstTimestamp: timestamps.length > 0 ? Math.min(...timestamps) : 0,
+      lastTimestamp: timestamps.length > 0 ? Math.max(...timestamps) : 0,
       senderUid: dominantSender(sorted),
       album,
     });
