@@ -283,7 +283,12 @@ export default function RoomDetailPage() {
 const currentUserIdValue = String(user?.id ?? "").trim();
 const roomOwnerId = String(room?.owner_id ?? "").trim();
 const canSeePrivateFields =
-  Boolean(currentUserIdValue) && roomOwnerId === currentUserIdValue;
+  adminLevel === 1 ||
+  (
+    adminLevel === 2 &&
+    Boolean(currentUserIdValue) &&
+    roomOwnerId === currentUserIdValue
+  );
   
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null);

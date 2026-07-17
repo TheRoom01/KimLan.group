@@ -349,23 +349,32 @@ p_anon_session_id: anonSessionId,
   // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null, total_count?: number }
   const rows = ((data as any)?.data ?? []) as any[];
 
-  // ✅ Giảm work/memory ở FE bằng cách chỉ giữ field cần render list
-  // Đồng thời ẩn riêng link_zalo / zalo_phone nếu phòng không thuộc user admin đang đăng nhập.
-  const projected = rows.map((row) => {
-    const rowOwnerId = String((row as any)?.owner_id ?? "").trim();
-    const isOwnRoom =
-      role > 0 &&
-      !!currentUserId &&
-      rowOwnerId === String(currentUserId).trim();
+  // ✅ Quyền xem link_zalo / zalo_phone:
+// - Admin L1: xem tất cả
+// - Admin L2: chỉ xem phòng của chính mình
+// - Public/Anon: không xem
+const projected = rows.map((row) => {
+  const rowOwnerId = String((row as any)?.owner_id ?? "").trim();
+  const userId = String(currentUserId ?? "").trim();
 
-    if (isOwnRoom) return row;
+  const canSeePrivateFields =
+    role === 1 ||
+    (
+      role === 2 &&
+      Boolean(userId) &&
+      rowOwnerId === userId
+    );
 
-    return {
-      ...row,
-      link_zalo: null,
-      zalo_phone: null,
-    };
-  });
+  if (canSeePrivateFields) {
+    return row;
+  }
+
+  return {
+    ...row,
+    link_zalo: null,
+    zalo_phone: null,
+  };
+});
 
   // ✅ nextCursor phải lấy đúng từ RPC:
   // - updated_desc => object {updated_at,id}

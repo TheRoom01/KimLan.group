@@ -1067,67 +1067,159 @@ return (
       )}
 
    {/* ADMIN MODAL */}
-{adminPhone &&
-  typeof window !== "undefined" &&
-  createPortal(
-    <div
-      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40 backdrop-blur-[5px]"
-      onClick={() => setAdminPhone(null)}
-    >
-      <div
-        className="
-          relative
-          w-[88%] max-w-[250px] rounded-[20px]
+    {adminPhone &&
+      typeof window !== "undefined" &&
+      createPortal(
+        <div
+          className="
+            fixed inset-0 z-[2147483647]
+            flex items-center justify-center
+            bg-black/50
+            backdrop-blur-[6px]
+          "
+          onClick={() => setAdminPhone(null)}
+        >
+          <div
+            className="
+              relative
+              w-[88%]
+              max-w-[250px]
+              rounded-[20px]
 
-         bg-[linear-gradient(180deg,rgba(249, 236, 213, 0.41),rgba(218,196,166,0.48))]
-          backdrop-blur-[42px]
-          backdrop-saturate-[190%]
-          backdrop-saturate-[160%]
+              bg-[linear-gradient(180deg,rgba(249,236,213,0.72),rgba(218,196,166,0.68))]
+              backdrop-blur-[42px]
+              backdrop-saturate-[180%]
 
-          border border-[#fff4df]/60
+              border
+              border-white/70
 
-          shadow-[0_30px_80px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.72),inset_0_-1px_0_rgba(255,255,255,0.22)]
+              shadow-[0_30px_80px_rgba(0,0,0,0.62),inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-1px_0_rgba(255,255,255,0.25)]
 
-          p-4
-          animate-[fadeIn_0.2s_ease]
+              p-4
 
-          before:absolute before:inset-0
-          before:rounded-[20px]
-          before:bg-[linear-gradient(120deg,rgba(255,255,255,0.6),transparent_42%)]
-          before:opacity-45
-          before:pointer-events-none
-        "
-        onClick={(e) => e.stopPropagation()}
-      >
-        {contactName && (
-          <div className="mb-3 mt-1 text-center text-sm font-medium text-[#5f5141]">
-            {contactName}
+              animate-[fadeIn_0.2s_ease]
+
+              before:absolute
+              before:inset-0
+              before:rounded-[20px]
+              before:bg-[linear-gradient(120deg,rgba(255,255,255,0.55),transparent_42%)]
+              before:opacity-45
+              before:pointer-events-none
+            "
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative z-10 mb-3 mt-1 text-center">
+              {contactName && (
+                <div
+                  className="
+                    text-[15px]
+                    font-bold
+                    text-[#34271d]
+                    drop-shadow-[0_1px_1px_rgba(255,255,255,0.7)]
+                  "
+                >
+                  {contactName}
+                </div>
+              )}
+
+              <div
+                className="
+                  mt-1
+                  text-[13px]
+                  font-semibold
+                  tracking-[0.04em]
+                  text-[#4a392b]
+                  drop-shadow-[0_1px_1px_rgba(255,255,255,0.65)]
+                "
+              >
+                {adminPhone.replace(
+                  /(\d{4})(\d{3})(\d{3})/,
+                  "$1 $2 $3"
+                )}
+              </div>
+            </div>
+
+            <div className="relative z-10 flex flex-col gap-2">
+              <a
+                href={`tel:${adminPhone}`}
+                className="
+                  w-full
+                  rounded-xl
+
+                  border
+                  border-white/70
+
+                  bg-[rgba(250,244,234,0.88)]
+
+                  py-3
+
+                  text-center
+                  text-[16px]
+                  font-bold
+                  text-[#2f241b]
+
+                  backdrop-blur-[18px]
+
+                  shadow-[0_5px_14px_rgba(45,32,20,0.16),inset_0_1px_0_rgba(255,255,255,0.9)]
+
+                  transition
+                  duration-150
+
+                  hover:bg-[rgba(255,250,241,0.96)]
+                  active:scale-[0.98]
+                "
+              >
+                <span className="flex items-center justify-center gap-2 leading-none">
+                  <span className="text-[18px]">📞</span>
+                  <span>Gọi điện</span>
+                </span>
+              </a>
+
+              <a
+                href={`https://zalo.me/${adminPhone}`}
+                target="_blank"
+                rel="noreferrer"
+                className="
+                  w-full
+                  rounded-xl
+
+                  border
+                  border-white/70
+
+                  bg-[rgba(247,237,221,0.9)]
+
+                  py-3
+
+                  text-center
+                  text-[16px]
+                  font-bold
+                  text-[#2f241b]
+
+                  backdrop-blur-[18px]
+
+                  shadow-[0_5px_14px_rgba(45,32,20,0.16),inset_0_1px_0_rgba(255,255,255,0.9)]
+
+                  transition
+                  duration-150
+
+                  hover:bg-[rgba(255,248,236,0.98)]
+                  active:scale-[0.98]
+                "
+              >
+                <span className="flex items-center justify-center gap-2 leading-none">
+                  <img
+                    src="/zalo.svg"
+                    alt="Zalo"
+                    className="h-[20px] w-[20px]"
+                  />
+
+                  <span>Zalo</span>
+                </span>
+              </a>
+            </div>
           </div>
-        )}
-
-        <div className="flex flex-col gap-2">
-          <a
-            href={`tel:${adminPhone}`}
-            className="w-full rounded-xl border border-[#fff4df]/45 bg-[rgba(243,234,220,0.68)] py-3 text-center font-semibold text-[#5b4a38] backdrop-blur-[18px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-          >
-            📞 Gọi điện
-          </a>
-
-          <a
-            href={`https://zalo.me/${adminPhone}`}
-            target="_blank"
-            rel="noreferrer"
-            className="w-full rounded-xl border border-[#fff4df]/45 bg-[rgba(239,224,201,0.72)] py-3 text-center font-semibold text-[#5b4a38] backdrop-blur-[18px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
-          >
-            <span className="flex items-center justify-center gap-2 leading-none">
-              <img src="/zalo.svg" alt="Zalo" className="h-[20px] w-[20px]" />
-              <span>Zalo</span>
-            </span>
-          </a>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )}
+        </div>,
+        document.body
+      )}
   </>
 );}

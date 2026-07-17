@@ -997,8 +997,8 @@ const detailSample =
         status: normalizeStatus(room.status ?? prev.status),
 
         description: room.description ?? prev.description,
-        link_zalo: room.link_zalo ?? prev.link_zalo,
-        zalo_phone: room.zalo_phone ?? prev.zalo_phone,
+        link_zalo: room.link_zalo ?? "",
+        zalo_phone: room.zalo_phone ?? "",
 
         chinh_sach: room.chinh_sach ?? prev.chinh_sach,
         media: nextMedia,
