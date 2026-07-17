@@ -1,0 +1,140 @@
+name: Activate semantic Zalo Reader
+
+on:
+  push:
+    branches:
+      - agent/activate-semantic-zalo-reader
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/activate-semantic-zalo-reader
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Activate semantic parser in the executed reader
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          reader_path = Path("tools/zalo-reader/zalo-reader.before-semantic-parser.ts")
+          source = reader_path.read_text(encoding="utf-8")
+
+          parser_import = 'import { buildSemanticTimelineRooms } from "./parsers";'
+          url_import = 'import { fileURLToPath, pathToFileURL } from "url";'
+
+          if parser_import not in source:
+              if url_import not in source:
+                  raise SystemExit("Reader URL import insertion point was not found")
+              source = source.replace(url_import, url_import + "\n" + parser_import, 1)
+
+          function_start = source.find("function writeIndexedDbRoomPreview(")
+          if function_start < 0:
+              raise SystemExit("writeIndexedDbRoomPreview was not found")
+
+          built_start = source.find("  const builtRooms =", function_start)
+          built_end = source.find("\n\n  const newestRoomVersions =", built_start)
+          if built_start < 0 or built_end < 0:
+              raise SystemExit("Legacy builtRooms block was not found")
+
+          current_block = source[built_start:built_end]
+          replacement = '''  const rawGroupEntry =
+    params.config.groups.find((entry) => {
+      if (typeof entry === "string") {
+        return entry.trim() === params.groupName;
+      }
+
+      return (
+        String((entry as any)?.name || "").trim() ===
+        params.groupName
+      );
+    });
+
+  const parserName =
+    rawGroupEntry && typeof rawGroupEntry === "object"
+      ? String((rawGroupEntry as any).parser || "semantic-timeline")
+      : "semantic-timeline";
+
+  const parserOptions =
+    rawGroupEntry && typeof rawGroupEntry === "object"
+      ? (rawGroupEntry as any).parserOptions
+      : undefined;
+
+  console.log(
+    [
+      "Parser phòng:",
+      parserName,
+      `(${params.groupName})`,
+    ].join(" ")
+  );
+
+  const builtRooms: IndexedDbRoomPreview[] =
+    parserName === "legacy"
+      ? buildRoomsFromIndexedDbMessages({
+          groupName: params.groupName,
+          groupId: params.groupId,
+          messages: params.messages,
+          maxGapMs,
+        })
+      : (buildSemanticTimelineRooms({
+          groupName: params.groupName,
+          groupId: params.groupId,
+          messages: params.messages as any,
+          maxGapMs,
+          parserOptions,
+        }) as IndexedDbRoomPreview[]);'''
+
+          if "buildSemanticTimelineRooms({" not in current_block:
+              source = source[:built_start] + replacement + source[built_end:]
+
+          reader_path.write_text(source, encoding="utf-8")
+
+          semantic_path = Path("tools/zalo-reader/parsers/semantic-timeline-v2.ts")
+          semantic = semantic_path.read_text(encoding="utf-8")
+          semantic = semantic.replace(
+              'buildingBoundary: "separator",',
+              'buildingBoundary: "address-or-separator",',
+              1,
+          )
+          semantic_path.write_text(semantic, encoding="utf-8")
+
+          final_reader = reader_path.read_text(encoding="utf-8")
+          required = [
+              parser_import,
+              "const rawGroupEntry =",
+              "buildSemanticTimelineRooms({",
+              "parserOptions,",
+          ]
+          missing = [value for value in required if value not in final_reader]
+          if missing:
+              raise SystemExit("Semantic Reader patch incomplete: " + ", ".join(missing))
+          PY
+
+      - name: Run semantic parser regression tests
+        run: npx tsx tools/zalo-reader/parsers/semantic-parser-smoke-test.ts
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Commit tested fix
+        shell: bash
+        run: |
+          git rm .github/workflows/activate-semantic-zalo-reader.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/zalo-reader/zalo-reader.before-semantic-parser.ts tools/zalo-reader/parsers/semantic-timeline-v2.ts
+          git commit -m "Activate semantic parser in Zalo Reader"
+          git push
