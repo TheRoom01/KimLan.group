@@ -9,6 +9,7 @@ import TabButton from './TabButton'
 import RoomInfoTab from './RoomInfoTab'
 import RoomFeeTab from './RoomFeeTab'
 import RoomAmenityTab from './RoomAmenityTab'
+import AutoReadModal, { type AutoReadCandidate } from './AutoReadModal'
 
 /* ================= STORAGE KEY HELPERS ================= */
 // Symbols: func toSafeStorageKey
@@ -145,6 +146,7 @@ const [saving, setSaving] = useState(false)
 const [errorMsg, setErrorMsg] = useState<string | null>(null)
 const [uploading, setUploading] = useState(false)
 const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+const [showAutoRead, setShowAutoRead] = useState(false)
 
   // ✅ NEW: dùng để chọn RPC L1/L2 khi cần fallback (bypass RLS)
   const [adminLevel, setAdminLevel] = useState<number | null>(null)
@@ -858,6 +860,7 @@ const detailSample =
   useEffect(() => {
   setErrorMsg(null)
   setShowCloseConfirm(false)
+  setShowAutoRead(false)
 
     if (isPending) {
     draftRoomIdRef.current = `zalo-pending-${String(pendingId || '').trim()}`
@@ -1133,6 +1136,63 @@ const requestClose = () => {
 
 const cancelCloseConfirm = () => {
   setShowCloseConfirm(false)
+}
+
+const applyAutoReadCandidate = (
+  candidate: AutoReadCandidate,
+  shared: {
+    room: Partial<RoomForm>
+    detail: Partial<RoomDetail>
+  }
+) => {
+  const nextRoom = { ...shared.room, ...candidate.room }
+  const nextDetail = { ...shared.detail, ...candidate.detail }
+
+  setRoomForm((prev) => {
+    const patch = Object.fromEntries(
+      Object.entries(nextRoom).filter(([, value]) => {
+        if (typeof value === 'number') {
+          return Number.isFinite(value) && value > 0
+        }
+
+        if (typeof value === 'boolean') return true
+
+        return String(value ?? '').trim() !== ''
+      })
+    ) as Partial<RoomForm>
+
+    return {
+      ...prev,
+      ...patch,
+      // Auto read không được thay đổi media hiện tại.
+      media: prev.media,
+    }
+  })
+
+  setDetailForm((prev) => {
+    const patch = Object.fromEntries(
+      Object.entries(nextDetail).filter(([, value]) => {
+        if (typeof value === 'number') {
+          return Number.isFinite(value) && value > 0
+        }
+
+        if (typeof value === 'boolean') return true
+
+        return String(value ?? '').trim() !== ''
+      })
+    ) as Partial<RoomDetail>
+
+    return {
+      ...prev,
+      ...patch,
+    }
+  })
+
+  setFeeAutofillDone(true)
+  setActiveTab('info')
+  onNotify?.(
+    '✅ Auto read đã điền dữ liệu vào form. Vui lòng kiểm tra lại trước khi lưu.'
+  )
 }
 
   if (!open) return null
@@ -1615,7 +1675,34 @@ const stopBackdropEvents = (e: any) => {
         onTouchStart={stopBackdropEvents}
       >
         <div style={modalBody}>
-          <h3>{isPending ? 'Chỉnh sửa import Zalo' : isEdit ? 'Chỉnh sửa phòng' : 'Thêm phòng mới'}</h3>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            <h3 style={{ margin: 0 }}>
+              {isPending
+                ? 'Chỉnh sửa import Zalo'
+                : isEdit
+                  ? 'Chỉnh sửa phòng'
+                  : 'Thêm phòng mới'}
+            </h3>
+
+            {!isPending && !isEdit && !isClone && (
+              <button
+                type="button"
+                onClick={() => setShowAutoRead(true)}
+                style={btnAutoRead}
+                disabled={saving || uploading}
+              >
+                Auto read
+              </button>
+            )}
+          </div>
 
           {errorMsg && <div style={errorBox}>Lỗi: {errorMsg}</div>}
 
@@ -1709,6 +1796,12 @@ const stopBackdropEvents = (e: any) => {
 </div>
 
             </div>
+
+      <AutoReadModal
+        open={showAutoRead}
+        onClose={() => setShowAutoRead(false)}
+        onApply={applyAutoReadCandidate}
+      />
 
       {showCloseConfirm && (
         <div style={confirmOverlay} onPointerDown={(e) => e.stopPropagation()}>
@@ -1822,6 +1915,17 @@ const btnSync: CSSProperties = {
   borderRadius: 10,
   cursor: 'pointer',
   fontWeight: 600,
+}
+
+const btnAutoRead: CSSProperties = {
+  background: '#eff6ff',
+  color: '#1d4ed8',
+  border: '1px solid #2563eb',
+  padding: '9px 14px',
+  borderRadius: 10,
+  cursor: 'pointer',
+  fontWeight: 700,
+  whiteSpace: 'nowrap',
 }
 
 const confirmOverlay: CSSProperties = {
