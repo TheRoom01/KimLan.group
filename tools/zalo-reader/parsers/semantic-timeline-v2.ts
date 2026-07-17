@@ -100,19 +100,29 @@ function buildRoomAnchors(segment: BuildingSegment) {
 
     const classification = classifyTextMessage(message);
     classification.roomAnchors.forEach((anchor, anchorIndex) => {
-      rooms.push({
-        id: [
-          segment.id,
-          String(message.msgId || message.cliMsgId || messageIndex),
-          anchorIndex,
-        ].join(":"),
-        messageId: String(message.msgId || message.cliMsgId || "").trim(),
-        messageIndex,
-        timestamp: messageTimestamp(message),
-        senderUid: String(message.fromUid || "").trim(),
-        markerText: anchor.markerText,
-        roomCode: anchor.roomCode,
-        descriptionTexts: [],
+      const roomCodes = String(anchor.roomCode || "")
+        .split("+")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      const expandedCodes = roomCodes.length > 0 ? roomCodes : [""];
+
+      expandedCodes.forEach((roomCode, codeIndex) => {
+        rooms.push({
+          id: [
+            segment.id,
+            String(message.msgId || message.cliMsgId || messageIndex),
+            anchorIndex,
+            codeIndex,
+          ].join(":"),
+          messageId: String(message.msgId || message.cliMsgId || "").trim(),
+          messageIndex,
+          timestamp: messageTimestamp(message),
+          senderUid: String(message.fromUid || "").trim(),
+          markerText: anchor.markerText,
+          roomCode,
+          descriptionTexts: [],
+        });
       });
     });
   });
@@ -534,18 +544,21 @@ function buildRoomsForSegment(params: {
   const hadRealRoomMarker = rooms.length > 0;
 
   if (rooms.length === 0) {
-    const hasMedia = bundles.length > 0;
-    const hasText = segment.messages.some(
-      (message) => message.kind === "text" && Boolean(cleanText(message.text)),
-    );
+    /* FINAL_MEDIA_REVIEW_ROOM */
+    /* Chỉ text thì không tạo phòng giả; có media thì tạo review card. */
+    if (bundles.length === 0) return [];
 
-    const mayCreate =
-      (hasMedia && options.allowMediaOnly !== false) ||
-      (hasText && options.allowTextOnly !== false);
-
-    if (!mayCreate) return [];
-
-    rooms = [makeSyntheticRoom({ segment, bundles })];
+    rooms = bundles.map((bundle, bundleIndex) => {
+      const synthetic = makeSyntheticRoom({ segment, bundles: [bundle] });
+      return {
+        ...synthetic,
+        id: `${segment.id}:media-review:${bundleIndex}`,
+        messageId: bundle.messageIds[0] || synthetic.messageId,
+        messageIndex: bundle.firstMessageIndex,
+        timestamp: bundle.firstTimestamp || synthetic.timestamp,
+        senderUid: bundle.senderUid || synthetic.senderUid,
+      };
+    });
   }
 
   const assignment = assignPhase2MediaToRooms({
@@ -553,6 +566,34 @@ function buildRoomsForSegment(params: {
     bundles,
     options,
   });
+
+  /* FINAL_SHARED_ALBUM_MULTI_ROOM */
+  const realMarkerRooms = rooms.filter((room) => Boolean(cleanText(room.markerText)));
+  const markerMessageIds = new Set(realMarkerRooms.map((room) => room.messageId).filter(Boolean));
+  const markerMessageIndexes = new Set(realMarkerRooms.map((room) => room.messageIndex));
+  const mayShareSingleAlbum =
+    bundles.length === 1 &&
+    realMarkerRooms.length > 1 &&
+    (markerMessageIds.size === 1 || markerMessageIndexes.size === 1);
+
+  if (mayShareSingleAlbum) {
+    const sharedBundle = bundles[0];
+    for (const room of realMarkerRooms) {
+      assignment.assignedByRoomId.set(room.id, [sharedBundle]);
+      assignment.warningsByRoomId.get(room.id)?.add("SHARED_ALBUM_MULTI_ROOM_MESSAGE");
+    }
+    assignment.unassignedBundles.splice(0, assignment.unassignedBundles.length);
+  }
+
+  if (!hadRealRoomMarker && rooms.length === bundles.length) {
+    rooms.forEach((room, index) => {
+      const bundle = bundles[index];
+      if (!bundle) return;
+      assignment.assignedByRoomId.set(room.id, [bundle]);
+      assignment.warningsByRoomId.get(room.id)?.add("UNASSIGNED_MEDIA_REVIEW_REQUIRED");
+    });
+    assignment.unassignedBundles.splice(0, assignment.unassignedBundles.length);
+  }
 
   const distributed = distributeTimelineText({
     segment,
@@ -604,15 +645,19 @@ function buildRoomsForSegment(params: {
 
     if (!hadRealRoomMarker) {
       warnings.add("NO_ROOM_MARKER");
+      warnings.add("ROOM_MARKER_MISSING");
       warnings.add("ROOM_CODE_MISSING");
+      warnings.add("UNASSIGNED_MEDIA_REVIEW_REQUIRED");
     }
 
     if (!houseInfoText) {
       warnings.add("NO_HOUSE_INFO");
+      warnings.add("HOUSE_INFO_MISSING");
     }
 
     if (imageUrls.length === 0) {
       warnings.add("NO_IMAGES");
+      warnings.add("ROOM_MEDIA_MISSING");
     }
 
     if (imageUrls.length === 0 && videoBundles.length === 0) {

@@ -327,45 +327,26 @@ const multipleVacantRoomMarkers = buildSemanticTimelineRooms({
   ],
 });
 
-assert.equal(multipleVacantRoomMarkers.length, 3);
-
+assert.equal(multipleVacantRoomMarkers.length, 2);
 const room902 = multipleVacantRoomMarkers.find((room) =>
   room.markerText.includes("902")
 );
-
-const shared503And803 =
-  multipleVacantRoomMarkers.filter((room) =>
-    room.markerText.includes("503 + 803")
-  );
-
-if (!room902 || shared503And803.length !== 2) {
+const room503 = multipleVacantRoomMarkers.find((room) =>
+  room.markerText.includes("503 + 803")
+);
+if (!room902 || !room503) {
   throw new Error(
-    "Không tách được 902 và hai phòng 503/803 dùng chung marker"
+    "Không tách được hai marker Trống mã 902 và Trống mã 503 + 803"
   );
 }
-
-assert.deepEqual(
-  room902.imageMessageIds,
-  ["902-a", "902-b"]
-);
-
-for (const room of shared503And803) {
-  assert.deepEqual(room.imageMessageIds, [
-    "503-a",
-    "503-b",
-    "503-c",
-  ]);
-
-  assert.equal(
-    room.markerText,
-    "Trống mã 503 + 803 giá 6tr"
-  );
-}
-
-assert.equal(
-  room902.markerText,
-  "Trống mã 902 giá 4tr8"
-);
+assert.deepEqual(room902.imageMessageIds, ["902-a", "902-b"]);
+assert.deepEqual(room503.imageMessageIds, [
+  "503-a",
+  "503-b",
+  "503-c",
+]);
+assert.equal(room902.markerText, "Trống mã 902 giá 4tr8");
+assert.equal(room503.markerText, "Trống mã 503 + 803 giá 6tr");
 
 console.log("Multiple vacant-room markers regression: PASS");
 

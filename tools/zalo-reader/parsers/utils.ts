@@ -138,9 +138,26 @@ function normalizeAddressStreet(input: string) {
     .trim();
 }
 
+/* FINAL_BLOCK_ROOM_DATE_GUARD */
+function isDatedRoomMarkerText(input: unknown) {
+  const text = cleanText(input);
+  if (!text || !hasRoomPrice(text)) return false;
+
+  return text
+    .split("\n")
+    .map((line) => stripLeadingDecorations(line))
+    .some((line) =>
+      /^\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+(?=(?:trong|trong san|con trong|phong trong|dang trong|available|phong|ma phong|ma)\b)/i.test(
+        line
+      )
+    );
+}
 export function extractAddressKey(input: unknown) {
   const text = cleanText(input);
   if (!text) return "";
+
+  /* Ngày đăng + trạng thái phòng + giá không phải địa chỉ. */
+  if (isDatedRoomMarkerText(text)) return "";
 
   /*
    * Phải xét từng dòng riêng. stableText() sẽ gom newline thành

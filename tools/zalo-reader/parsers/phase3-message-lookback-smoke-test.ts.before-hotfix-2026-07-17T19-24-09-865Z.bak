@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 
 import { buildSemanticTimelineRooms } from "./index";
-import type { SemanticIndexedDbMessage } from "./types";
 import {
   filterMessagesByLookback,
   getMessageTimestampMs,
@@ -124,7 +123,7 @@ assert.deepEqual(
 const parsedRooms = buildSemanticTimelineRooms({
   groupName: "TEST-PHASE-3",
   groupId: "g1",
-  messages: filtered.messages as SemanticIndexedDbMessage[],
+  messages: filtered.messages,
 });
 
 assert.equal(parsedRooms.length, 1);

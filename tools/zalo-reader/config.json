@@ -2,6 +2,8 @@
   "webBaseUrl": "https://canhodichvu.vercel.app",
   "internalSecret": "",
   "scanIntervalMs": 600000,
+  "messageLookbackHours": 24,
+"strictMessageLookback": true,
   "networkDebug": false,
   "networkDebugOnly": false,
   "debugRetentionDays": 7,
@@ -19,6 +21,7 @@
   "indexedDbRoomPreview": true,
   "indexedDbRoomPreviewMaxGapMs": 600000,
   "indexedDbImportEnabled": true,
+  
   "indexedDbImportLimit": 20,
   "indexedDbScrollStepRatio": 0.7,
   "indexedDbScrollWaitMs": 800,

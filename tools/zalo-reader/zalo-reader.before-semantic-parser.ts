@@ -13910,8 +13910,7 @@ if (activeGroupHint) {
     });
 
   const roomImportMessages =
-    messageLookbackResult.messages
-      as IndexedDbGroupMessage[];
+    messageLookbackResult.messages as IndexedDbGroupMessage[];
 
   const lookbackStats =
     messageLookbackResult.stats;
