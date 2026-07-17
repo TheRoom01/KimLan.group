@@ -705,10 +705,7 @@ function useImportActions({
 
     if (!ok) return;
 
-    const reason =
-      window.prompt(
-        "Lý do từ chối (có thể bỏ trống):"
-      ) || "";
+    const reason = "";
 
     setBusyAction("reject");
 
