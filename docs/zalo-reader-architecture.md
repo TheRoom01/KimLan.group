@@ -1,230 +1,106 @@
 # Zalo Reader architecture
 
-## Goal
+## Mục tiêu
 
-Make the Zalo Reader import flow easy to locate, understand, test, and debug without changing its current behavior.
+Giữ luồng Reader Zalo dễ tìm, dễ debug và ít rủi ro thay đổi hành vi.
 
-## Current entry points
-
-- Reader import API: `app/api/internal/zalo-reader/import/route.ts`
-- Admin import API: `app/api/admin/zalo-imports/**`
-- Admin UI: `app/admin/zalo-imports/ZaloImportsClient.tsx`
-- Parser: `lib/zalo-import/parser.ts`
-- Existing-room resolver: `lib/zalo-import/resolve.ts`
-- Quality and auto-import rules: `lib/zalo-import/quality.ts`
-- Pending-room publisher: `lib/zalo-import/publish-pending-room.ts`
-- Temporary R2 helpers: `lib/r2/zalo-temp.ts`
-
-## Problem
-
-`app/api/internal/zalo-reader/import/route.ts` currently owns too many responsibilities:
-
-1. Internal-secret authentication
-2. Request parsing and sanitizing
-3. Duplicate detection
-4. Room parsing
-5. Existing-room resolution
-6. Image processing and R2 upload
-7. Video and thumbnail download/upload
-8. Supabase persistence
-9. Import diagnostics
-10. Quality scoring
-11. Auto publishing
-12. HTTP response and error formatting
-
-This makes a single failure difficult to locate and makes safe changes expensive.
-
-## Target structure
+## Kiến trúc đang áp dụng
 
 ```text
+Zalo Reader client
+    ↓
 app/api/internal/zalo-reader/import/route.ts
-
-lib/zalo-reader/
-├── import-service.ts
-├── request.ts
-├── media.ts
-├── repository.ts
-├── parser.ts
-├── quality.ts
-├── publisher.ts
-└── types.ts
+    ↓
+lib/zalo-reader/import-service.ts
+    ├── lib/zalo-import/parser.ts
+    ├── lib/zalo-import/resolve.ts
+    ├── lib/zalo-import/quality.ts
+    ├── lib/zalo-import/publish-pending-room.ts
+    └── lib/r2/zalo-temp.ts
 ```
 
-## Responsibility rules
+## Điểm vào duy nhất
 
-### `route.ts`
+### HTTP route
 
-Only:
+`app/api/internal/zalo-reader/import/route.ts`
 
-- validate internal secret
-- decode the HTTP request
-- call `importZaloMessage`
-- convert service results/errors to `NextResponse`
+Route chỉ khai báo Node.js runtime và chuyển tiếp `POST` sang import service. Không đặt parser, Supabase, R2 hoặc publish logic trong route.
 
-It must not query Supabase or upload media directly.
+### Import service
 
-### `import-service.ts`
+`lib/zalo-reader/import-service.ts`
 
-The single orchestration flow:
+Đây là file trung tâm để debug toàn bộ luồng:
 
 ```text
-validate input
-→ find duplicate
+auth
+→ parse request
+→ duplicate lookup
 → parse room
 → resolve existing room
-→ create pending batch
-→ save media
+→ create batch
+→ upload media
 → update diagnostics
 → evaluate quality
-→ optionally publish
-→ return result
+→ optional publish
+→ response
 ```
 
-### `request.ts`
+Khi lỗi xảy ra, bắt đầu tìm tại `import-service.ts`, sau đó đi vào đúng module chuyên trách được import ở đầu file.
 
-Contains request-only helpers:
+## Module hỗ trợ
 
-- request input normalization
-- PostgREST-safe JSON conversion
-- source hash creation
+### `lib/zalo-reader/request.ts`
+
+Chứa các helper thuần liên quan đến request và dữ liệu đầu vào:
+
+- internal secret validation
+- source hash
+- PostgREST-safe string và JSON
+- error formatting
+- number normalization
 - reader issue normalization
-- numeric input normalization
 
-### `media.ts`
+### `lib/zalo-reader/media.ts`
 
-Contains all image/video behavior:
+Chứa các helper media thuần:
 
 - Base64 decoding
-- remote Zalo URL validation
-- remote media download with timeout and size limits
+- video và thumbnail temporary key
+- Zalo remote URL allowlist
+- download timeout và size limit
 - MIME normalization
-- temporary R2 key generation
-- image/video/thumbnail upload
+- image/video extension detection
 
-### `repository.ts`
+### `lib/zalo-reader/types.ts`
 
-The only module that directly works with Zalo import tables:
+Chứa contract dùng chung cho image, video, issue, request và import stage.
 
-- find duplicate batch
-- create import batch
-- save image rows
-- save video rows
-- update parser result and diagnostics
-- create/update pending room
+## Quy tắc debug
 
-Room publishing may keep using `publisher.ts` because it writes final room tables and moves permanent media.
+1. Request không vào được: mở `route.ts`, secret và request logs.
+2. Nội dung phòng sai: mở `lib/zalo-import/parser.ts`.
+3. Kế thừa hoặc tìm phòng trùng sai: mở `lib/zalo-import/resolve.ts`.
+4. Ảnh/video lỗi: mở phần media trong `import-service.ts`, sau đó `lib/zalo-reader/media.ts` hoặc `lib/r2/zalo-temp.ts`.
+5. Điểm chất lượng hoặc auto-import sai: mở `lib/zalo-import/quality.ts`.
+6. Approve/publish sai: mở `lib/zalo-import/publish-pending-room.ts`.
 
-### `parser.ts`
+## Nguyên tắc an toàn
 
-Keep parsing rules together in one searchable file. Do not split every field into a separate parser file unless the main parser becomes impossible to navigate.
+Refactor kiến trúc này không thay đổi:
 
-Use clear sections:
-
-1. normalization
-2. room code
-3. money and fees
-4. address
-5. amenities and policy
-6. main parser
-
-### `types.ts`
-
-Shared contracts only:
-
-- `IncomingZaloMessage`
-- `IncomingImage`
-- `IncomingVideo`
-- `ImportIssue`
-- `ImportStage`
-- `ImportResult`
-- media persistence types
-
-## Debug logging
-
-Every import should use one trace ID and five stable stages:
-
-```text
-[ZR:<traceId>][request]
-[ZR:<traceId>][parser]
-[ZR:<traceId>][media]
-[ZR:<traceId>][database]
-[ZR:<traceId>][publish]
-```
-
-Logs should contain IDs and counts, not full Base64 data or secrets.
-
-Example:
-
-```text
-[ZR:8d3f2c][request] accepted group="Group A" images=4 videos=1
-[ZR:8d3f2c][parser] completed confidence=92 roomCode="301"
-[ZR:8d3f2c][media] completed images=4 videos=1 issues=0
-[ZR:8d3f2c][database] pending batch created batchId="..."
-```
-
-## Migration sequence
-
-Each phase should preserve current API request and response shapes.
-
-### Phase 1 — low risk
-
-- create `lib/zalo-reader/types.ts`
-- create `lib/zalo-reader/request.ts`
-- move pure request/sanitizing helpers out of `route.ts`
-- add trace-based logging
-
-### Phase 2 — medium risk
-
-- create `lib/zalo-reader/media.ts`
-- move URL validation, download, MIME and R2 upload helpers
-- keep database inserts in the existing route temporarily
-
-### Phase 3 — medium risk
-
-- create `lib/zalo-reader/repository.ts`
-- move all Zalo import batch/media persistence
-- make persistence methods return explicit typed results
-
-### Phase 4 — orchestration
-
-- create `lib/zalo-reader/import-service.ts`
-- move the main workflow from the route into the service
-- reduce `route.ts` to HTTP-only code
-
-### Phase 5 — cleanup
-
-- move active modules from `lib/zalo-import` to `lib/zalo-reader`
-- update imports
-- remove or archive `parser.before-*` and `zalo-reader.before-*` snapshots because Git already preserves history
-- remove obsolete test endpoints after confirming they are unused
-
-## Required checks for every phase
-
-- TypeScript typecheck
-- lint
-- parser smoke tests
-- duplicate message import
-- image-only import
-- video import with thumbnail
-- partial media failure
-- invalid secret
-- malformed JSON
-- manual approve
-- reject/remove pending import
-- auto-import dry run
-- auto publish when eligible
-
-## Non-goals
-
-This refactor must not initially change:
-
-- parser output fields
+- API request hoặc response shape
 - database schema
-- API request/response shape
-- quality score rules
-- admin approval behavior
-- media size limits
-- R2 object paths
+- parser output
+- R2 object path
+- media limits
+- quality scoring
 - auto-import eligibility
+- manual approve/reject behavior
 
-Behavior changes should be proposed in separate pull requests after the architecture is stable.
+Toàn bộ luồng cũ được chuyển nguyên trạng khỏi API route sang import service trước khi tiếp tục tối ưu nghiệp vụ. Vì vậy diff lớn chủ yếu là di chuyển code, không phải viết lại thuật toán.
+
+## Hướng phát triển sau này
+
+Chỉ tách thêm repository hoặc media orchestration khi một lỗi thực tế cho thấy `import-service.ts` còn khó theo dõi. Không chia parser thành quá nhiều file nhỏ; ưu tiên một nơi dễ tìm hơn là kiến trúc nhiều tầng.
