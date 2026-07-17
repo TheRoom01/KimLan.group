@@ -3,6 +3,8 @@ import type {
   SemanticIndexedDbMessage,
 } from "./types";
 
+import { analyzePhase2RoomMarkerMessage } from "./phase2-room-marker";
+
 import {
   cleanText,
   extractAddressKey,
@@ -43,10 +45,26 @@ export function classifyTextMessage(
   const buildingLines: string[] = [];
   const otherLines: string[] = [];
   const lines = splitTextLines(cleanedText);
-  const firstMarkerLineIndex = lines.findIndex(isRoomMarkerLine);
+
+  /* PHASE_2_FINAL_ROOM_MARKER */
+  const wholeMessageMarker =
+    analyzePhase2RoomMarkerMessage(cleanedText);
+  const firstMarkerLineIndex =
+    wholeMessageMarker
+      ? wholeMessageMarker.markerLineIndex
+      : lines.findIndex(isRoomMarkerLine);
+
+  if (wholeMessageMarker) {
+    roomAnchors.push({
+      markerText:
+        wholeMessageMarker.markerText,
+      roomCode:
+        wholeMessageMarker.roomCode,
+    });
+  }
 
   lines.forEach((line, lineIndex) => {
-    if (isRoomMarkerLine(line)) {
+    if (!wholeMessageMarker && isRoomMarkerLine(line)) {
       roomAnchors.push({
         markerText: line,
         roomCode: extractRoomCode(line),

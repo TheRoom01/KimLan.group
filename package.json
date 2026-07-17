@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "next dev --webpack",
-  "build": "next build",
-  "start": "next start",
-  "lint": "next lint",
-  "zalo-reader": "tsx tools/zalo-reader/zalo-reader.ts"
-},
+    "dev": "next dev --webpack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "zalo-reader": "tsx tools/zalo-reader/zalo-reader.ts",
+    "test:zalo-parser": "tsx tools/zalo-reader/parsers/semantic-parser-smoke-test.ts",
+    "patch:zalo-parser-phase1": "node tools/zalo-reader/apply-phase1-parser-wiring.mjs",
+    "build:webpack": "next build --webpack",
+    "patch:zalo-parser-phase2-final": "node tools/zalo-reader/apply-phase2-final-marker-album.mjs",
+    "patch:zalo-reader-phase3": "node tools/zalo-reader/apply-phase3-24h-import-limit.mjs",
+    "test:zalo-lookback": "tsx tools/zalo-reader/parsers/phase3-message-lookback-smoke-test.ts"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.978.0",
@@ -34,7 +40,4 @@
     "tsx": "^4.23.0",
     "typescript": "^5"
   }
-
 }
-
-

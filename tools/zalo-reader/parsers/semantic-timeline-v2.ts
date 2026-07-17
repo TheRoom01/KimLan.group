@@ -12,6 +12,7 @@ import type {
 import { splitIntoBuildingSegments } from "./building-segmenter";
 import { classifyTextMessage } from "./message-classifier";
 import { buildMediaBundles } from "./media-matcher-v2";
+import { assignPhase2MediaToRooms } from "./phase2-media-assignment";
 import {
   cleanText,
   isNoiseText,
@@ -178,9 +179,178 @@ function pickRoomIndexForTimeline(params: {
   return 0;
 }
 
+type ResolvedMediaBias = "before" | "after";
+
+function findPreviousRoomIndexForBundle(params: {
+  rooms: RoomAnchor[];
+  bundle: MediaBundle;
+}) {
+  let candidate = -1;
+
+  for (let index = 0; index < params.rooms.length; index++) {
+    if (
+      params.rooms[index].messageIndex <=
+      params.bundle.firstMessageIndex
+    ) {
+      candidate = index;
+      continue;
+    }
+
+    break;
+  }
+
+  return candidate;
+}
+
+function findNextRoomIndexForBundle(params: {
+  rooms: RoomAnchor[];
+  bundle: MediaBundle;
+}) {
+  return params.rooms.findIndex(
+    (room) =>
+      room.messageIndex >=
+      params.bundle.lastMessageIndex,
+  );
+}
+
+function resolveMediaBiasForTimeline(params: {
+  rooms: RoomAnchor[];
+  bundles: MediaBundle[];
+  options: SemanticParserOptions;
+}): ResolvedMediaBias {
+  if (params.options.mediaBias === "before") {
+    return "before";
+  }
+
+  if (params.options.mediaBias === "after") {
+    return "after";
+  }
+
+  let beforeScore = 0;
+  let afterScore = 0;
+
+  const sortedBundles = [...params.bundles].sort((a, b) => {
+    if (a.firstMessageIndex !== b.firstMessageIndex) {
+      return a.firstMessageIndex - b.firstMessageIndex;
+    }
+
+    return a.lastMessageIndex - b.lastMessageIndex;
+  });
+
+  for (const bundle of sortedBundles) {
+    const previousRoomIndex =
+      findPreviousRoomIndexForBundle({
+        rooms: params.rooms,
+        bundle,
+      });
+
+    const nextRoomIndex =
+      findNextRoomIndexForBundle({
+        rooms: params.rooms,
+        bundle,
+      });
+
+    if (previousRoomIndex < 0 && nextRoomIndex >= 0) {
+      /*
+       * Album xuất hiện trước marker đầu tiên là bằng chứng mạnh
+       * cho kiểu đăng: ảnh -> marker.
+       */
+      beforeScore += 4;
+      continue;
+    }
+
+    if (nextRoomIndex < 0 && previousRoomIndex >= 0) {
+      /*
+       * Album xuất hiện sau marker cuối cùng là bằng chứng mạnh
+       * cho kiểu đăng: marker -> ảnh.
+       */
+      afterScore += 4;
+      continue;
+    }
+
+    if (previousRoomIndex < 0 || nextRoomIndex < 0) {
+      continue;
+    }
+
+    const previousRoom = params.rooms[previousRoomIndex];
+    const nextRoom = params.rooms[nextRoomIndex];
+
+    const bundleSender = String(bundle.senderUid || "").trim();
+    const previousSender = String(
+      previousRoom.senderUid || "",
+    ).trim();
+    const nextSender = String(nextRoom.senderUid || "").trim();
+
+    if (bundleSender) {
+      if (
+        nextSender === bundleSender &&
+        previousSender !== bundleSender
+      ) {
+        beforeScore += 2;
+      } else if (
+        previousSender === bundleSender &&
+        nextSender !== bundleSender
+      ) {
+        afterScore += 2;
+      }
+    }
+
+    const previousGap = Math.max(
+      0,
+      bundle.firstMessageIndex - previousRoom.messageIndex,
+    );
+
+    const nextGap = Math.max(
+      0,
+      nextRoom.messageIndex - bundle.lastMessageIndex,
+    );
+
+    if (nextGap < previousGap) {
+      beforeScore += 1;
+    } else if (previousGap < nextGap) {
+      afterScore += 1;
+    }
+  }
+
+  if (beforeScore !== afterScore) {
+    return beforeScore > afterScore
+      ? "before"
+      : "after";
+  }
+
+  const firstRoom = params.rooms[0];
+  const firstBundle = sortedBundles[0];
+
+  if (
+    firstRoom &&
+    firstBundle &&
+    firstBundle.firstMessageIndex < firstRoom.messageIndex
+  ) {
+    return "before";
+  }
+
+  const lastRoom = params.rooms[params.rooms.length - 1];
+  const lastBundle = sortedBundles[sortedBundles.length - 1];
+
+  if (
+    lastRoom &&
+    lastBundle &&
+    lastBundle.lastMessageIndex > lastRoom.messageIndex
+  ) {
+    return "after";
+  }
+
+  /*
+   * Mặc định an toàn cho kiểu đăng phổ biến:
+   * marker phòng trước, album theo sau.
+   */
+  return "after";
+}
+
 function assignMediaToRoomsByTimeline(params: {
   rooms: RoomAnchor[];
   bundles: MediaBundle[];
+  options: SemanticParserOptions;
 }) {
   const assignedByRoomId = new Map<string, MediaBundle[]>();
   const warningsByRoomId = new Map<string, Set<string>>();
@@ -203,18 +373,53 @@ function assignMediaToRoomsByTimeline(params: {
     return a.id.localeCompare(b.id);
   });
 
+  const resolvedBias = resolveMediaBiasForTimeline({
+    rooms: params.rooms,
+    bundles: sortedBundles,
+    options: params.options,
+  });
+
   for (const bundle of sortedBundles) {
     if (params.rooms.length === 0) {
       unassignedBundles.push(bundle);
       continue;
     }
 
-    const roomIndex = pickRoomIndexForTimeline({
-      rooms: params.rooms,
-      messageIndex: bundle.firstMessageIndex,
-    });
+    const previousRoomIndex =
+      findPreviousRoomIndexForBundle({
+        rooms: params.rooms,
+        bundle,
+      });
+
+    const nextRoomIndex =
+      findNextRoomIndexForBundle({
+        rooms: params.rooms,
+        bundle,
+      });
+
+    /*
+     * before: album thuộc marker đứng ngay sau album.
+     * after:  album thuộc marker đứng ngay trước album.
+     *
+     * Nếu không có marker ở phía ưu tiên, fallback sang phía còn lại.
+     */
+    const preferredRoomIndex =
+      resolvedBias === "before"
+        ? nextRoomIndex
+        : previousRoomIndex;
+
+    const fallbackRoomIndex =
+      resolvedBias === "before"
+        ? previousRoomIndex
+        : nextRoomIndex;
+
+    const roomIndex =
+      preferredRoomIndex >= 0
+        ? preferredRoomIndex
+        : fallbackRoomIndex;
 
     const targetRoom = params.rooms[roomIndex];
+
     if (!targetRoom) {
       unassignedBundles.push(bundle);
       continue;
@@ -227,9 +432,9 @@ function assignMediaToRoomsByTimeline(params: {
     assignedByRoomId,
     warningsByRoomId,
     unassignedBundles,
+    resolvedBias,
   };
 }
-
 function distributeTimelineText(params: {
   segment: BuildingSegment;
   rooms: RoomAnchor[];
@@ -343,9 +548,10 @@ function buildRoomsForSegment(params: {
     rooms = [makeSyntheticRoom({ segment, bundles })];
   }
 
-  const assignment = assignMediaToRoomsByTimeline({
+  const assignment = assignPhase2MediaToRooms({
     rooms,
     bundles,
+    options,
   });
 
   const distributed = distributeTimelineText({
@@ -383,8 +589,17 @@ function buildRoomsForSegment(params: {
 
     const warnings = new Set<string>(segment.warnings);
 
+    for (const warning of
+      assignment.warningsByRoomId.get(room.id) || []) {
+      warnings.add(warning);
+    }
+
+    warnings.add(
+      `SEMANTIC_MEDIA_ASSIGNMENT:${assignment.assignmentMode}`
+    );
+
     if (bundles.length > 0 && hadRealRoomMarker) {
-      warnings.add("SEMANTIC_MEDIA_BIAS:timeline-local");
+      warnings.add(`SEMANTIC_MEDIA_BIAS:${assignment.resolvedBias}`);
     }
 
     if (!hadRealRoomMarker) {
@@ -428,6 +643,14 @@ function buildRoomsForSegment(params: {
       distributed.roomTextsById.get(room.id) || [],
     );
     const markerText = cleanText(room.markerText);
+
+    if (!room.roomCode) {
+      warnings.add("ROOM_CODE_MISSING");
+    }
+
+    if (room.roomCode.includes("+")) {
+      warnings.add(`MULTIPLE_ROOM_CODES:${room.roomCode}`);
+    }
     const markerMessageId =
       room.messageId || assigned[0]?.messageIds[0] || segment.messages[0]?.msgId || "";
     const markerTimestamp =
@@ -512,7 +735,7 @@ export function buildSemanticTimelineRooms(params: {
 }) {
   const options: SemanticParserOptions = {
     mediaBias: "auto",
-    buildingBoundary: "separator",
+    buildingBoundary: "address-or-separator",
     splitBySender: false,
     allowMediaOnly: true,
     allowTextOnly: true,

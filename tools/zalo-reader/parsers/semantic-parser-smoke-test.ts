@@ -1,7 +1,7 @@
 // @ts-ignore Node built-in type is available in the project runtime.
 import assert from "node:assert/strict";
 
-import { buildSemanticTimelineRooms } from "./semantic-timeline";
+import { buildSemanticTimelineRooms } from "./index";
 import type { SemanticIndexedDbMessage } from "./types";
 
 function textMessage(
@@ -349,3 +349,258 @@ assert.equal(room902.markerText, "Trống mã 902 giá 4tr8");
 assert.equal(room503.markerText, "Trống mã 503 + 803 giá 6tr");
 
 console.log("Multiple vacant-room markers regression: PASS");
+
+/*
+ * ========================================================
+ * GIAI ĐOẠN 2 BẢN CHỐT
+ * ========================================================
+ */
+const finalAlternatingMarkers = buildSemanticTimelineRooms({
+  groupName: "TEST-PHASE-2-FINAL",
+  groupId: "g1",
+  messages: [
+    textMessage(
+      "final-building-1",
+      "20 Nguyễn Cư Trinh Quận 1\nTòa nhà thang máy",
+      60_000
+    ),
+    textMessage(
+      "final-room-402",
+      "Lầu trên cùng p402 - 8tr",
+      61_000
+    ),
+    imageMessage(
+      "final-402-a",
+      "final-album-402",
+      0,
+      1,
+      62_000
+    ),
+    textMessage(
+      "final-room-701",
+      "701 2PN 17tr",
+      63_000
+    ),
+    imageMessage(
+      "final-701-a",
+      "final-album-701",
+      0,
+      1,
+      64_000
+    ),
+    textMessage(
+      "final-room-601-501",
+      "601 501 2PN 15tr",
+      65_000
+    ),
+    imageMessage(
+      "final-601-501-a",
+      "final-album-601-501",
+      0,
+      1,
+      66_000
+    ),
+    textMessage(
+      "final-room-204",
+      "Trống sẵn 204 : 5.800.000\nChốt Giảm : 5.500.000",
+      67_000
+    ),
+    imageMessage(
+      "final-204-a",
+      "final-album-204",
+      0,
+      1,
+      68_000
+    ),
+  ],
+});
+
+assert.equal(finalAlternatingMarkers.length, 4);
+assert.deepEqual(
+  finalAlternatingMarkers.find((room) =>
+    room.markerText.includes("p402")
+  )?.imageMessageIds,
+  ["final-402-a"]
+);
+assert.deepEqual(
+  finalAlternatingMarkers.find((room) =>
+    room.markerText.includes("701 2PN")
+  )?.imageMessageIds,
+  ["final-701-a"]
+);
+assert.deepEqual(
+  finalAlternatingMarkers.find((room) =>
+    room.markerText.includes("601 501")
+  )?.imageMessageIds,
+  ["final-601-501-a"]
+);
+assert.deepEqual(
+  finalAlternatingMarkers.find((room) =>
+    room.markerText.includes("Trống sẵn 204")
+  )?.imageMessageIds,
+  ["final-204-a"]
+);
+
+const finalRoomForm = buildSemanticTimelineRooms({
+  groupName: "TEST-PHASE-2-FINAL",
+  groupId: "g1",
+  messages: [
+    textMessage(
+      "final-room-form",
+      [
+        "‼️FORM XÁC NHẬN NHƯỢNG CỌC‼️",
+        "Địa chỉ dự án: 8/3 Hồ Hảo Hớn Quận 1",
+        "Mã phòng:",
+        "Giá phòng: 16.500.000",
+        "Số tiền cọc: 24.750.000",
+        "Phí nhượng: 50% giá phòng",
+        "Hạn check in: 31/7",
+        "HĐ còn lại: 9 tháng",
+      ].join("\n"),
+      70_000
+    ),
+    imageMessage(
+      "final-form-a",
+      "final-form-album",
+      0,
+      1,
+      71_000
+    ),
+  ],
+});
+
+assert.equal(finalRoomForm.length, 1);
+assert.match(
+  finalRoomForm[0].markerText,
+  /Giá phòng: 16\.500\.000/i
+);
+assert.deepEqual(
+  finalRoomForm[0].imageMessageIds,
+  ["final-form-a"]
+);
+assert.ok(
+  finalRoomForm[0].warnings.includes("ROOM_CODE_MISSING")
+);
+
+/*
+ * Cùng groupLayoutId nhưng có marker chữ xen giữa:
+ * album phải đóng ngay và ảnh sau text thuộc phòng tiếp theo.
+ */
+const finalTextBreaksAlbum = buildSemanticTimelineRooms({
+  groupName: "TEST-PHASE-2-FINAL",
+  groupId: "g1",
+  messages: [
+    textMessage(
+      "final-building-2",
+      "22 Nguyễn Cư Trinh Quận 1\nTòa nhà thang máy",
+      80_000
+    ),
+    textMessage(
+      "final-room-201",
+      "P201 - 6tr",
+      81_000
+    ),
+    imageMessage(
+      "final-shared-a",
+      "same-layout-id",
+      0,
+      2,
+      82_000
+    ),
+    textMessage(
+      "final-room-202",
+      "P202 - 6tr5",
+      83_000
+    ),
+    imageMessage(
+      "final-shared-b",
+      "same-layout-id",
+      1,
+      2,
+      84_000
+    ),
+  ],
+});
+
+assert.deepEqual(
+  finalTextBreaksAlbum.find((room) =>
+    room.markerText.includes("P201")
+  )?.imageMessageIds,
+  ["final-shared-a"]
+);
+assert.deepEqual(
+  finalTextBreaksAlbum.find((room) =>
+    room.markerText.includes("P202")
+  )?.imageMessageIds,
+  ["final-shared-b"]
+);
+
+const finalBatchMarkersThenAlbums =
+  buildSemanticTimelineRooms({
+    groupName: "TEST-PHASE-2-FINAL",
+    groupId: "g1",
+    messages: [
+      textMessage(
+        "final-building-3",
+        "24 Nguyễn Cư Trinh Quận 1\nTòa nhà thang máy",
+        90_000
+      ),
+      textMessage(
+        "final-batch-301",
+        "301 - 5tr",
+        91_000
+      ),
+      textMessage(
+        "final-batch-302",
+        "302 - 5tr5",
+        92_000
+      ),
+      textMessage(
+        "final-batch-303",
+        "303 - 6tr",
+        93_000
+      ),
+      imageMessage(
+        "final-batch-301-a",
+        "final-batch-album-301",
+        0,
+        1,
+        94_000
+      ),
+      imageMessage(
+        "final-batch-302-a",
+        "final-batch-album-302",
+        0,
+        1,
+        95_000
+      ),
+      imageMessage(
+        "final-batch-303-a",
+        "final-batch-album-303",
+        0,
+        1,
+        96_000
+      ),
+    ],
+  });
+
+assert.deepEqual(
+  finalBatchMarkersThenAlbums.find((room) =>
+    room.markerText.includes("301")
+  )?.imageMessageIds,
+  ["final-batch-301-a"]
+);
+assert.deepEqual(
+  finalBatchMarkersThenAlbums.find((room) =>
+    room.markerText.includes("302")
+  )?.imageMessageIds,
+  ["final-batch-302-a"]
+);
+assert.deepEqual(
+  finalBatchMarkersThenAlbums.find((room) =>
+    room.markerText.includes("303")
+  )?.imageMessageIds,
+  ["final-batch-303-a"]
+);
+
+console.log("Phase 2 final marker-album regression: PASS");

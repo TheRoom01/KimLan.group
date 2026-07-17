@@ -155,6 +155,12 @@ function buildImageRuns(messages: SemanticIndexedDbMessage[]) {
     const imageUrls = Array.isArray(message.imageUrls) ? message.imageUrls : [];
     const isImage = imageUrls.length > 0;
 
+    /* PHASE_2_FINAL_TEXT_BREAKS_ALBUM */
+    /*
+     * Bất kỳ message chữ/non-image nào xen giữa đều đóng album.
+     * Ảnh sau text luôn bắt đầu một album/run mới, kể cả khi
+     * Zalo tái sử dụng cùng groupLayoutId.
+     */
     if (!isImage) {
       closeCurrent();
       lastImageIndex = -1;
@@ -236,7 +242,8 @@ export function buildMediaBundles(messages: SemanticIndexedDbMessage[]) {
       .filter(Boolean);
 
     const imageUrls = flattenAlbumUrls(sorted);
-    const actualImageCount = imageUrls.length;
+    /* Một message ảnh = một ảnh; URL fallback không làm tăng count. */
+    const actualImageCount = sorted.length;
 
     const album: SemanticAlbumPreview = {
       albumKey: run.runKey,

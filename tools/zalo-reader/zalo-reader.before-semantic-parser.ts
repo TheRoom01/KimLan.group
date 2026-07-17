@@ -6,6 +6,16 @@ import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
+import {
+  buildSemanticTimelineRooms,
+  type SemanticParserOptions,
+} from "./parsers";
+
+import {
+  filterMessagesByLookback,
+  resolveMessageLookbackHours,
+  resolveStrictMessageLookback,
+} from "./parsers/phase3-message-lookback";
 
 const execFileAsync =
   promisify(execFile);
@@ -14,17 +24,17 @@ const execFileAsync =
   type GroupConfigEntry =
   | string
   | {
-      /**
-       * Khóa cố định do mình tự đặt.
-       *
-       * Không đổi khóa này khi nhóm Zalo đổi tên.
-       */
+      /** Khóa cố định, không đổi khi nhóm Zalo đổi tên. */
       key: string;
 
-      /**
-       * Tên nhóm hiện tại dùng để tìm và mở trên Zalo.
-       */
+      /** Tên nhóm hiện tại dùng để tìm và mở trên Zalo. */
       name: string;
+
+      /** Chọn parser theo từng nhóm. Mặc định là semantic-timeline. */
+      parser?: "legacy" | "semantic-timeline";
+
+      /** Tùy chọn được truyền thẳng cho Semantic Parser V2. */
+      parserOptions?: SemanticParserOptions;
     };
 
 type SavedGroupRef = {
@@ -7907,13 +7917,49 @@ function writeIndexedDbRoomPreview(
     )
   );
 
-  const builtRooms =
-    buildRoomsFromIndexedDbMessages({
-      groupName: params.groupName,
-      groupId: params.groupId,
-      messages: params.messages,
-      maxGapMs,
+  const rawGroupEntry =
+    params.config.groups.find((entry) => {
+      if (typeof entry === "string") {
+        return entry.trim() === params.groupName;
+      }
+
+      return String(entry.name || "").trim() === params.groupName;
     });
+
+  const parserName: "legacy" | "semantic-timeline" =
+    rawGroupEntry && typeof rawGroupEntry === "object" &&
+    rawGroupEntry.parser === "legacy"
+      ? "legacy"
+      : "semantic-timeline";
+
+  const parserOptions: SemanticParserOptions | undefined =
+    rawGroupEntry && typeof rawGroupEntry === "object"
+      ? rawGroupEntry.parserOptions
+      : undefined;
+
+  console.log(
+    [
+      "Parser phòng:",
+      parserName,
+      `(${params.groupName})`,
+    ].join(" ")
+  );
+
+  const builtRooms: IndexedDbRoomPreview[] =
+    parserName === "legacy"
+      ? buildRoomsFromIndexedDbMessages({
+          groupName: params.groupName,
+          groupId: params.groupId,
+          messages: params.messages,
+          maxGapMs,
+        })
+      : buildSemanticTimelineRooms({
+          groupName: params.groupName,
+          groupId: params.groupId,
+          messages: params.messages,
+          maxGapMs,
+          parserOptions,
+        });
 
   const newestRoomVersions =
     keepNewestIndexedDbRoomVersions(
@@ -13826,6 +13872,65 @@ if (activeGroupHint) {
         : []
     ) as IndexedDbGroupMessage[];
 
+  /* PHASE_3_24H_IMPORT_FILTER */
+  const phase3GroupConfig =
+    (Array.isArray(config.groups)
+      ? config.groups
+      : []
+    ).find((entry: any) => {
+      const candidateName =
+        typeof entry === "string"
+          ? entry
+          : String(entry?.name || entry?.key || "");
+
+      return (
+        candidateName.trim().toLocaleLowerCase("vi-VN") ===
+        String(groupName || "")
+          .trim()
+          .toLocaleLowerCase("vi-VN")
+      );
+    }) as any;
+
+  const messageLookbackHours =
+    resolveMessageLookbackHours({
+      groupValue:
+        typeof phase3GroupConfig === "object"
+          ? phase3GroupConfig?.messageLookbackHours
+          : undefined,
+      globalValue:
+        (config as any).messageLookbackHours,
+      fallbackHours: 24,
+    });
+
+  const messageLookbackResult =
+    filterMessagesByLookback({
+      messages: exportedMessages,
+      lookbackHours: messageLookbackHours,
+      nowMs: Date.now(),
+    });
+
+  const roomImportMessages =
+    messageLookbackResult.messages
+      as IndexedDbGroupMessage[];
+
+  const lookbackStats =
+    messageLookbackResult.stats;
+
+  console.log(
+    [
+      `Giới hạn Imports: ${lookbackStats.lookbackHours} giờ.`,
+      `Giữ ${lookbackStats.included}/${lookbackStats.total} message.`,
+      `Quá hạn: ${lookbackStats.excludedTooOld}.`,
+      `Thiếu timestamp: ${lookbackStats.excludedUnknownTimestamp}.`,
+      `Timestamp tương lai: ${lookbackStats.excludedFuture}.`,
+      `Mốc bắt đầu: ${new Date(
+        lookbackStats.cutoffMs
+      ).toLocaleString("vi-VN", {
+        timeZone: "Asia/Ho_Chi_Minh",
+      })}.`,
+    ].join(" ")
+  );
+
   const videoMessages =
     exportedMessages
       .filter(
@@ -13900,7 +14005,7 @@ if (activeGroupHint) {
         ),
 
         messages:
-          exportedMessages,
+          roomImportMessages,
 
         config,
       });
@@ -15312,11 +15417,38 @@ async function main() {
             });
           }
 
+          const strictMessageLookbackForGroup =
+            resolveStrictMessageLookback({
+              groupValue:
+                typeof groupEntry === "object"
+                  ? (groupEntry as any)
+                      ?.strictMessageLookback
+                  : undefined,
+              globalValue:
+                (config as any)
+                  .strictMessageLookback,
+              fallback: true,
+            });
+
           const shouldFallbackToDom =
             Boolean(
               config.indexedDbImportEnabled &&
-              !indexedDbTrusted
+              !indexedDbTrusted &&
+              !strictMessageLookbackForGroup
             );
+
+          if (
+            config.indexedDbImportEnabled &&
+            !indexedDbTrusted &&
+            strictMessageLookbackForGroup
+          ) {
+            console.warn(
+              [
+                "Không chạy DOM fallback vì strictMessageLookback đang bật.",
+                "DOM fallback không có timestamp đủ tin cậy để bảo đảm giới hạn 24 giờ.",
+              ].join(" ")
+            );
+          }
 
           console.log(
             indexedDbTrusted
