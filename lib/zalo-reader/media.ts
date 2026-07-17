@@ -1,5 +1,3 @@
-import type { ZaloMediaKind } from "./types";
-
 export function base64ToBuffer(base64: string) {
   const clean = String(base64 || "")
     .replace(/^data:[^;]+;base64,/, "")
@@ -36,7 +34,7 @@ export function makeZaloTempVideoThumbKey(
 
 export function validateRemoteZaloUrl(
   rawUrl: string,
-  kind: Extract<ZaloMediaKind, "video" | "thumbnail">
+  kind: "video" | "thumbnail"
 ) {
   let parsed: URL;
 
