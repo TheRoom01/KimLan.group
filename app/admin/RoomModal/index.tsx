@@ -749,13 +749,15 @@ for (const file of okFiles) {
   let roomSample: any | null = null;
 
   // --- attempt direct query ---
-  let q = supabase
-    .from("rooms")
-    .select("id, ward, district, link_zalo, zalo_phone, chinh_sach, updated_at")
-    .eq("house_number", house_number)
-    .eq("address", address)
-    .order("updated_at", { ascending: false })
-    .limit(1);
+ let q = supabase
+  .from("rooms")
+  .select(
+    "id, owner_id, ward, district, link_zalo, zalo_phone, chinh_sach, updated_at"
+  )
+  .eq("house_number", house_number)
+  .eq("address", address)
+  .order("updated_at", { ascending: false })
+  .limit(1);
 
   if (editingRoom?.id) q = q.neq("id", editingRoom.id);
 
@@ -805,15 +807,41 @@ const detailSample =
   null
 
 
-  // 3) OVERWRITE theo phòng mới nhất
-  setRoomForm((prev) => ({
-    ...prev,
-    ward: (roomSample as any).ward ?? "",
-    district: (roomSample as any).district ?? "",
-    link_zalo: (roomSample as any).link_zalo ?? "",
-    zalo_phone: (roomSample as any).zalo_phone ?? "",
-    chinh_sach: (roomSample as any).chinh_sach ?? "",
-  }));
+ // 3) OVERWRITE theo phòng mới nhất
+
+    const {
+      data: { user: currentUser },
+    } = await supabase.auth.getUser();
+
+    const currentUserId = String(currentUser?.id ?? "").trim();
+    const sampleOwnerId = String(
+      (roomSample as any)?.owner_id ?? ""
+    ).trim();
+
+    const canCopyPrivateFields =
+      adminLevel === 1 ||
+      (
+        adminLevel === 2 &&
+        Boolean(currentUserId) &&
+        sampleOwnerId === currentUserId
+      );
+
+    setRoomForm((prev) => ({
+      ...prev,
+
+      ward: (roomSample as any).ward ?? "",
+      district: (roomSample as any).district ?? "",
+
+      link_zalo: canCopyPrivateFields
+        ? (roomSample as any).link_zalo ?? ""
+        : "",
+
+      zalo_phone: canCopyPrivateFields
+        ? (roomSample as any).zalo_phone ?? ""
+        : "",
+
+      chinh_sach: (roomSample as any).chinh_sach ?? "",
+    }));
 
    // room_details: chỉ overwrite khi RPC không lỗi
   if (!detailErr) {
