@@ -27,63 +27,184 @@ type Props = {
   }) => void
 }
 
-const money = (raw?: string | null) => {
+const money = (raw?: string | null): number => {
   if (!raw) return 0
 
-  const s = raw
-    .toLowerCase()
+  let s = stripAccent(raw)
+    .replace(/\u00a0/g, ' ')
     .replace(/\s+/g, '')
     .replace(/,/g, '.')
+    .toLowerCase()
 
-  // 3k8 = 3.800; 100k = 100.000.
-  const compactThousand = s.match(/(\d+)\s*k\s*(\d{1,2})(?!\d)/i)
-  if (compactThousand) {
-    const whole = Number(compactThousand[1] || 0)
-    const tailRaw = String(compactThousand[2] || '')
-    const tail =
-      tailRaw.length === 1
-        ? Number(tailRaw) * 100
-        : Number(tailRaw) * 10
-
-    return whole * 1_000 + tail
+  // free
+  if (
+    /^(free|mienphi|miễnphí|0)$/i.test(s) ||
+    /(free|mienphi|miễnphí)/i.test(s)
+  ) {
+    return 0
   }
 
-  // 6tr5 = 6.500.000; 6tr50 = 6.500.000; 6tr500 = 6.500.000.
-  const compactMillion = s.match(
-    /(\d+)\s*(?:tr|triệu|trieu)\s*(\d{1,3})(?!\d)/i
+  // ==========================
+  // 3m2 -> 3.200.000
+  // 3m25 -> 3.250.000
+  // ==========================
+  let m = s.match(/^(\d+)m(\d{1,3})$/)
+  if (m) {
+    const whole = Number(m[1])
+
+    let tail = 0
+
+    if (m[2].length === 1) tail = Number(m[2]) * 100000
+    else if (m[2].length === 2) tail = Number(m[2]) * 10000
+    else tail = Number(m[2]) * 1000
+
+    return whole * 1000000 + tail
+  }
+
+  // ==========================
+  // 3tr5
+  // 3tr50
+  // 3tr500
+  // ==========================
+
+  m = s.match(/^(\d+)(?:tr|trieu|triệu)(\d{1,3})$/)
+
+  if (m) {
+    const whole = Number(m[1])
+
+    let tail = 0
+
+    if (m[2].length === 1)
+      tail = Number(m[2]) * 100000
+
+    else if (m[2].length === 2)
+      tail = Number(m[2]) * 10000
+
+    else
+      tail = Number(m[2]) * 1000
+
+    return whole * 1000000 + tail
+  }
+
+  // ==========================
+  // 3 triệu 5
+  // 3 triệu500
+  // ==========================
+
+  m = stripAccent(raw).match(
+    /(\d+)\s*trieu\s*(\d{1,3})/
   )
-  if (compactMillion) {
-    const whole = Number(compactMillion[1] || 0)
-    const tailRaw = String(compactMillion[2] || '')
-    const tail =
-      tailRaw.length === 1
-        ? Number(tailRaw) * 100_000
-        : tailRaw.length === 2
-          ? Number(tailRaw) * 10_000
-          : Number(tailRaw) * 1_000
 
-    return whole * 1_000_000 + tail
+  if (m) {
+    const whole = Number(m[1])
+
+    let tail = 0
+
+    if (m[2].length === 1)
+      tail = Number(m[2]) * 100000
+
+    else if (m[2].length === 2)
+      tail = Number(m[2]) * 10000
+
+    else
+      tail = Number(m[2]) * 1000
+
+    return whole * 1000000 + tail
   }
 
-  const million = s.match(
-    /(\d+)(?:[.,](\d+))?\s*(?:tr|triệu|trieu)/i
-  )
-  if (million) {
-    const whole = Number(million[1] || 0)
-    const fractionRaw = million[2] || ''
-    const fraction = fractionRaw ? Number(`0.${fractionRaw}`) : 0
-    return Math.round((whole + fraction) * 1_000_000)
-  }
+  // ==========================
+  // 3.2tr
+  // 3,2tr
+  // ==========================
 
-  const thousand = s.match(/(\d+(?:[.,]\d+)?)\s*k\b/i)
-  if (thousand) {
+  m = s.match(/^(\d+)(?:\.([0-9]+))?(?:tr|trieu|triệu)$/)
+
+  if (m) {
     return Math.round(
-      Number(thousand[1].replace(',', '.')) * 1_000
+      parseFloat(`${m[1]}.${m[2] || 0}`) * 1000000
     )
   }
 
+  // ==========================
+  // 3500k
+  // ==========================
+
+  m = s.match(/^(\d{4,5})k$/)
+
+  if (m) {
+    return Number(m[1]) * 1000
+  }
+
+  // ==========================
+  // 4k5
+  // 3k8
+  // ==========================
+
+  m = s.match(/^(\d+)k(\d)$/)
+
+  if (m) {
+    return Number(m[1]) * 1000 + Number(m[2]) * 100
+  }
+
+  // ==========================
+  // 4k50
+  // ==========================
+
+  m = s.match(/^(\d+)k(\d{2})$/)
+
+  if (m) {
+    return Number(m[1]) * 1000 + Number(m[2]) * 10
+  }
+
+  // ==========================
+  // 4.5k
+  // 4,5k
+  // ==========================
+
+  m = s.match(/^(\d+(?:\.\d+)?)k(?:wh)?$/)
+
+  if (m) {
+    return Math.round(parseFloat(m[1]) * 1000)
+  }
+
+  // ==========================
+  // 3 triệu
+  // 3tr
+  // ==========================
+
+  m = s.match(/^(\d+)(?:tr|trieu|triệu)$/)
+
+  if (m) {
+    return Number(m[1]) * 1000000
+  }
+
+  // ==========================
+  // 100k
+  // ==========================
+
+  m = s.match(/^(\d+)k$/)
+
+  if (m) {
+    return Number(m[1]) * 1000
+  }
+
+  // ==========================
+  // 3.500.000
+  // ==========================
+
+  if (/^\d{1,3}(?:\.\d{3})+$/.test(s)) {
+    return Number(s.replace(/\./g, ''))
+  }
+
+  // ==========================
+  // chỉ còn số
+  // ==========================
+
   const digits = s.replace(/[^\d]/g, '')
-  return digits ? Number(digits) : 0
+
+  if (!digits) return 0
+
+  return Number(digits)
 }
 
 const normalizeText = (value: string) =>
@@ -108,6 +229,118 @@ const firstMatch = (text: string, regexes: RegExp[]) => {
   }
   return ''
 }
+
+const extractPhone = (text:string) => {
+
+  const match = text.match(
+    /(?:\+?84|0)[\d\s.()-]{8,15}\d/g
+  )
+
+  if (!match) return ''
+
+  return match[0]
+    .replace(/[^\d]/g,'')
+    .replace(/^84/,'0')
+}
+const extractContactPhone = (text:string)=>{
+
+  const lines = text.split('\n')
+
+  for(const line of lines){
+
+    const s = stripAccent(line)
+
+    if(
+      /dan khach|lien he|sdt|so dt|dien thoai|phone|zalo/.test(s)
+    ){
+
+      const phone = line.match(
+        /(?:\+?84|0)[\d\s.()-]{8,15}\d/
+      )
+
+      if(phone){
+
+        return phone[0]
+          .replace(/[^\d]/g,'')
+          .replace(/^84/,'0')
+      }
+    }
+  }
+
+  return extractPhone(text)
+}
+
+const allMatches = (
+  text: string,
+  regexes: RegExp[]
+): string[] => {
+  const result: string[] = []
+
+  for (const regex of regexes) {
+    const re = new RegExp(
+      regex.source,
+      regex.flags.includes('g')
+        ? regex.flags
+        : regex.flags + 'g'
+    )
+
+    let m: RegExpExecArray | null
+
+    while ((m = re.exec(text))) {
+      if (m[1]) {
+        const value = m[1].trim()
+
+        if (
+          value &&
+          !result.includes(value)
+        ) {
+          result.push(value)
+        }
+      }
+    }
+  }
+
+  return result
+}
+
+const firstNonEmpty = (
+  ...values: Array<string | undefined | null>
+) => {
+  for (const v of values) {
+    if (v && v.trim()) return v.trim()
+  }
+
+  return ''
+}
+
+const mergeUniqueLines = (
+  lines: string[]
+) => {
+  return Array.from(
+    new Set(
+      lines
+        .map(x => x.trim())
+        .filter(Boolean)
+    )
+  ).join('\n')
+}
+
+const containsKeyword = (
+  text: string,
+  keywords: string[]
+) => {
+  const s = stripAccent(text)
+
+  return keywords.some(keyword =>
+    s.includes(stripAccent(keyword))
+  )
+}
+
+const normalizeSpaces = (s: string) =>
+  s
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim()
 
 type ParsedLine = {
   index: number
@@ -158,7 +391,7 @@ const consumeRange = (
 }
 
 const ADDRESS_DISTRICTS =
-  '(?:quận\\s*\\d{1,2}|q\\.?\\s*\\d{1,2}|bình\\s*thạnh|phú\\s*nhuận|tân\\s*bình|gò\\s*vấp|bình\\s*tân|tân\\s*phú|thủ\\s*đức|nhà\\s*bè|bình\\s*chánh|hóc\\s*môn|củ\\s*chi|cần\\s*giờ)'
+'(?:q\\.?\\s*\\d{1,2}|quận\\s*\\d{1,2}|tp\\.?\\s*thu\\s*duc|thủ\\s*đức|binh\\s*thanh|bình\\s*thạnh|phu\\s*nhuan|phú\\s*nhuận|tan\\s*binh|tân\\s*bình|go\\s*vap|gò\\s*vấp|binh\\s*tan|bình\\s*tân|tan\\s*phu|tân\\s*phú|nha\\s*be|nhà\\s*bè|hoc\\s*mon|hóc\\s*môn|cu\\s*chi|củ\\s*chi|binh\\s*chanh|bình\\s*chánh|can\\s*gio|cần\\s*giờ)'
 
 const findAddressSegment = (raw: string) => {
   const labeled = raw.match(
@@ -174,13 +407,12 @@ const findAddressSegment = (raw: string) => {
 
   // Hỗ trợ địa chỉ nằm trong tiêu đề:
   // "... - 958/13/12 LẠC LONG QUÂN - TÂN BÌNH"
-  const embedded = raw.match(
-    new RegExp(
-      `(\\d+[a-zA-Z]?(?:\\/\\d+[a-zA-Z]?)*\\s+[^\\n]{3,}?(?:[,\\-]\\s*${ADDRESS_DISTRICTS})?)(?=\\s*(?:💥|$))`,
-      'i'
-    )
+ const embedded = raw.match(
+  new RegExp(
+  `(\\d+[A-Za-z]?(?:\\/\\d+[A-Za-z]?)*(?:\\/[A-Za-z0-9]+)?\\s+[^\\n]{4,}?(?:${ADDRESS_DISTRICTS})?)$`,
+  'i'
   )
-
+  )
   if (!embedded?.[1]) return null
 
   return {
@@ -210,51 +442,65 @@ function parseAddress(
   )
 
   const clean = segment.value
-    .replace(/^(?:📍|🏠)\s*/, '')
+    .replace(/^[📍🏠📌]\s*/, '')
     .trim()
 
   const houseMatch = clean.match(
-    /^(\d+[a-zA-Z]?(?:\/\d+[a-zA-Z]?)*)\s+(.+)$/
+    /^(\d+[A-Za-z]?(?:\/[A-Za-z0-9]+)*)\s+(.+)$/i
   )
 
   const house_number = houseMatch?.[1] || ''
   let rest = houseMatch?.[2] || clean
 
+  rest = rest
+    .replace(/\bPRO\b\.?/ig, '')
+    .replace(/\bKDC\b/ig, 'KDC ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
   const district = firstMatch(rest, [
-    new RegExp(`(?:[,\\-]\\s*|\\b)(${ADDRESS_DISTRICTS})\\s*$`, 'i'),
+    new RegExp(`(${ADDRESS_DISTRICTS})`, 'i'),
   ])
 
   const ward = firstMatch(rest, [
     /(?:phường|p\.?)\s*([0-9]{1,2}|[a-zà-ỹ\s]+?)(?=,|\-|$)/i,
   ])
 
+  // bỏ phường/quận khỏi địa chỉ
   rest = rest
-    .replace(/,\s*(?:phường|p\.?)\s*[^,\-]+/i, '')
-    .replace(
-      new RegExp(`\\s*[,\\-]\\s*${ADDRESS_DISTRICTS}\\s*$`, 'i'),
-      ''
-    )
-    .trim()
-    .replace(/[,|\-]\s*$/, '')
+    .replace(/(?:phường|p\.?)\s*[a-zà-ỹ0-9\s]+(?=,|\-|$)/i, '')
+    .replace(new RegExp(ADDRESS_DISTRICTS, 'ig'), '')
+    .replace(/^[,\-\s]+/, '')
+    .replace(/[,\-\s]+$/, '')
+    .replace(/\s{2,}/g, ' ')
     .trim()
 
-  const normalizedDistrict = district
-    .replace(/^q\.?\s*/i, 'Quận ')
-    .replace(/\b\w/g, character => character.toUpperCase())
+  // Chuẩn hóa Quận
+  let districtValue = ''
+
+  if (district) {
+    districtValue = district.trim()
+
+    districtValue = districtValue.replace(
+      /^q\.?\s*(\d+)/i,
+      'Quận $1'
+    )
+
+    districtValue = districtValue.replace(
+      /^quận\s*(\d+)/i,
+      'Quận $1'
+    )
+
+    districtValue = districtValue
+    .trim()
+    .replace(/^./, c => c.toUpperCase())
+  }
 
   return {
     house_number,
     address: rest,
-    ward: ward
-      ? (/^\d+$/.test(ward) ? `Phường ${ward}` : ward)
-      : '',
-    district: district
-      ? (
-        /^\s*(?:quận|q\.?)\s*\d+\s*$/i.test(district)
-          ? normalizedDistrict
-          : normalizedDistrict
-      )
-      : '',
+    ward: ward.trim(),
+    district: districtValue,
   }
 }
 
@@ -473,78 +719,181 @@ function extractRoomMarkers(context: ParseContext) {
 }
 
 function parseFees(text: string): Partial<RoomDetail> {
-  const electricLine = firstMatch(text, [
-    /(?:điện|dien)\s*[:\-]?\s*([^,\n;]+)/i,
-  ])
+  const lines = text
+    .split('\n')
+    .map(x => normalizeSpaces(x))
+    .filter(Boolean)
 
-  const waterLine = firstMatch(text, [
-    /(?:nước|nuoc)\s*[:\-]?\s*([^,\n;]+)/i,
-  ])
+  let electric = 0
+  let water = 0
+  let service = 0
 
-  const serviceLine = firstMatch(text, [
-    /(?:phí\s*(?:quản\s*l[ýy]|dịch\s*vụ)?|phi\s*(?:quan\s*ly|dich\s*vu)?|dịch\s*vụ|dich\s*vu)\s*[:\-]?\s*([^,\n;]+)/i,
-  ])
+  let parking = 0
 
-  const parkingLine = firstMatch(text, [
-    /(?:gửi\s*xe|gui\s*xe|giữ\s*xe|giu\s*xe|parking|xe)\s*[:\-]?\s*([^,\n;]+)/i,
-  ])
+  let electricUnit = 'kWh'
+  let waterUnit = 'phòng/tháng'
+  let serviceUnit = 'phòng/tháng'
+  let parkingUnit = 'chiếc'
 
-  const parkingValue = money(parkingLine)
+  const otherNotes: string[] = []
 
-  const parkingHasMoneyUnit =
-    parkingValue > 0 &&
-    /(?:\d\s*k\b|\d\s*nghìn|\d\s*nghin|\d[\d.,]{3,}\s*(?:đ|d|đồng|dong)?|\d\s*(?:tr|triệu|trieu))/i.test(
-      parkingLine
-    )
+  for (const line of lines) {
+    const s = stripAccent(line)
 
-  const parkingIsNonMoney =
-    Boolean(parkingLine) &&
-    (
-      /\bfree\b|\bmiễn\s*phí\b|\bmien\s*phi\b/i.test(parkingLine) ||
-      !parkingHasMoneyUnit
-    )
+    // =====================
+    // ĐIỆN
+    // =====================
 
-  const otherFeeNotes: string[] = []
+    if (
+      containsKeyword(s, [
+        'điện',
+        'dien',
+        'electric'
+      ])
+    ) {
+      if (
+        /evn|nha nuoc|gia dan/.test(s)
+      ) {
+        otherNotes.push(line)
+        continue
+      }
 
-  if (parkingIsNonMoney) {
-    otherFeeNotes.push(`Xe: ${parkingLine.trim()}`)
+      const m = line.match(
+        /(\d+(?:[.,]\d+)?\s*k(?:wh)?)/i
+      )
+
+      if (m) {
+        electric = money(m[1])
+      }
+
+      continue
+    }
+
+    // =====================
+    // NƯỚC
+    // =====================
+
+    if (
+      containsKeyword(s, [
+        'nước',
+        'nuoc',
+        'nc'
+      ])
+    ) {
+      const m = line.match(
+        /(\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?)/i
+      )
+
+      if (m)
+        water = money(m[1])
+
+      if (
+        /nguoi|người/.test(s)
+      )
+        waterUnit = 'người/tháng'
+
+      else
+      if (
+        /phong|phòng/.test(s)
+      )
+        waterUnit = 'phòng/tháng'
+
+      continue
+    }
+
+    // =====================
+    // DỊCH VỤ
+    // =====================
+
+    if (
+      containsKeyword(s, [
+        'dịch vụ',
+        'dv',
+        'phi dv',
+        'phi qly',
+        'pql',
+        'phi quan ly',
+        'quan ly',
+        'quanly',
+        'pql'
+      ])
+    ) {
+      const prices =
+        line.match(
+          /\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?/gi
+        ) || []
+
+      if (prices.length) {
+        service = Math.max(
+          ...prices.map(money)
+        )
+      }
+
+      if (
+        /nguoi|người/.test(s)
+      )
+        serviceUnit = 'người/tháng'
+
+      else
+        serviceUnit = 'phòng/tháng'
+
+      continue
+    }
+
+    // =====================
+    // XE
+    // =====================
+
+    if (
+      containsKeyword(s, [
+        'xe',
+        'giu xe',
+        'gui xe',
+        'parking'
+      ])
+    ) {
+      if (
+        /free|mien phi|miễn phí/.test(s)
+      ) {
+        parking = 0
+        parkingUnit = 'Miễn phí'
+      }
+
+      const prices =
+        line.match(
+          /\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?/gi
+        ) || []
+
+      if (prices.length) {
+        parking = Math.max(
+          parking,
+          ...prices.map(money)
+        )
+
+        parkingUnit = 'chiếc/tháng'
+      }
+
+      otherNotes.push(line)
+
+      continue
+    }
   }
 
-  const waterUnit =
-    /(?:\/\s*(?:ng|người|nguoi)|mỗi\s*(?:ng|người|nguoi))/i.test(
-      waterLine
-    )
-      ? 'người/tháng'
-      : /(?:\/\s*(?:p|phòng|phong)|mỗi\s*(?:p|phòng|phong))/i.test(
-          waterLine
-        )
-        ? 'phòng/tháng'
-        : 'phòng/tháng'
-
-  const serviceUnit =
-    /(?:\/\s*(?:ng|người|nguoi)|mỗi\s*(?:ng|người|nguoi)|per\s*person)/i.test(
-      serviceLine
-    )
-      ? 'người/tháng'
-      : 'phòng/tháng'
-
   return {
-    electric_fee_value: money(electricLine),
-    electric_fee_unit: 'kWh',
+    electric_fee_value: electric,
+    electric_fee_unit: electricUnit,
 
-    water_fee_value: money(waterLine),
+    water_fee_value: water,
     water_fee_unit: waterUnit,
 
-    service_fee_value: money(serviceLine),
+    service_fee_value: service,
     service_fee_unit: serviceUnit,
 
-    parking_fee_value: parkingHasMoneyUnit ? parkingValue : 0,
-    parking_fee_unit: parkingHasMoneyUnit
-      ? (/tháng|thang/i.test(parkingLine) ? 'chiếc/tháng' : 'chiếc')
-      : 'chiếc',
+    parking_fee_value: parking,
+    parking_fee_unit: parkingUnit,
 
     other_fee_value: 0,
-    other_fee_note: otherFeeNotes.join('\n'),
+    other_fee_note: mergeUniqueLines(otherNotes),
   }
 }
 
@@ -579,10 +928,20 @@ function parseAmenities(text: string): Partial<RoomDetail> {
   const allowPet =
     !noPet &&
     (
-      allowCat ||
-      allowDog ||
-      /\bpet\b|\bthu cung\b/.test(normalizedPetLine) ||
-      /\bduoc\b|\bco\b|\bok\b|\bcho phep\b/.test(normalizedPetLine)
+    allowCat ||
+    allowDog ||
+
+    /\bpet\b/.test(s) ||
+
+    /\bthu cung\b/.test(s) ||
+
+    /\bcho nuoi\b/.test(s) ||
+
+    /\bduoc nuoi\b/.test(s) ||
+
+    /\bnhan pet\b/.test(s) ||
+
+    /\bco pet\b/.test(s)
     )
 
   return {
@@ -596,7 +955,18 @@ function parseAmenities(text: string): Partial<RoomDetail> {
     no_pet: noPet,
 
     has_parking:
-      /\bgiu xe\b|\bgui xe\b|\bde xe\b|\bparking\b/.test(s),
+
+    /giu xe/.test(s) ||
+
+    /gui xe/.test(s) ||
+
+    /de xe/.test(s) ||
+
+    /xe free/.test(s) ||
+
+    /phi xe/.test(s) ||
+
+    /parking/.test(s),
     has_basement: /\bham xe\b|\btang ham\b/.test(s),
 
     shared_washer: /\bmay giat chung\b|\bgiat chung\b/.test(s),
@@ -610,31 +980,96 @@ function parseAmenities(text: string): Partial<RoomDetail> {
 }
 
 function parsePolicies(text: string) {
-  const policyLines = text
+  const lines = text
     .split('\n')
-    .map(line => line.trim())
+    .map(x => x.trim())
     .filter(Boolean)
-    .filter(line => {
-      const s = stripAccent(line)
 
-      return (
-        /\bcoc\b/.test(s) ||
-        /\bhop dong\b|\bhd\b/.test(s) ||
-        /\bhoa hong\b|\bcommission\b/.test(s) ||
-        /\bhuy coc\b|\bhoan coc\b|\bmat coc\b/.test(s) ||
-        /\bcheck\s*in\b|\bvao o\b/.test(s) ||
-        /\bchinh sach\b/.test(s) ||
-        /\bbao truoc\b/.test(s) ||
-        /\bgiu toi da\b|\bgiu phong\b/.test(s) ||
-        /\bso luong nguoi o\b|\bso nguoi o\b/.test(s) ||
-        /\bkhach nuoc ngoai\b|\bnguoi nuoc ngoai\b/.test(s)
-      )
-    })
+  const result: string[] = []
 
-  return Array.from(new Set(policyLines)).join('\n')
+  const push = (line: string) => {
+    if (!line) return
+    if (!result.includes(line)) {
+      result.push(line)
+    }
+  }
+
+  for (const line of lines) {
+    const s = stripAccent(line)
+
+    // ===== CỌC =====
+    if (/\bcoc\b/.test(s)) {
+      push(line)
+      continue
+    }
+
+    // ===== HỢP ĐỒNG =====
+    if (/\bhop dong\b|\bhd\b/.test(s)) {
+      push(line)
+      continue
+    }
+
+    // ===== HOA HỒNG =====
+    if (/\bhoa hong\b/.test(s)) {
+      push(line)
+      continue
+    }
+
+    // ===== HUỶ CỌC =====
+    if (/\bhuy coc\b|\bhoan coc\b|\bmat coc\b/.test(s)) {
+      push(line)
+      continue
+    }
+
+    // ===== PET =====
+    if (
+      /(?:pet|thu cung|cho nuoi|nuoi pet|cho meo|cho cho)/i.test(s)
+    ) {
+      push(line)
+      continue
+    }
+
+    // ===== KHÁCH NƯỚC NGOÀI =====
+    if (
+      /(?:khach nuoc ngoai|nguoi nuoc ngoai|foreign)/i.test(s)
+    ) {
+      push(line)
+      continue
+    }
+
+    // ===== SỐ NGƯỜI =====
+    if (
+      /(?:so luong nguoi|so nguoi|toi da.*nguoi|o toi da)/i.test(s)
+    ) {
+      push(line)
+      continue
+    }
+
+    // ===== GIỮ PHÒNG =====
+    if (
+      /(?:giu phong|giu toi da|bo sung coc)/i.test(s)
+    ) {
+      push(line)
+      continue
+    }
+
+    // ===== CHECK IN =====
+    if (
+      /(?:check.?in|vao o|nhan phong)/i.test(s)
+    ) {
+      push(line)
+      continue
+    }
+
+    // ===== CHÍNH SÁCH =====
+    if (/chinh sach/i.test(s)) {
+      push(line)
+      continue
+    }
+  }
+
+  return result.join('\n')
 }
-
-
 
 export function parseAutoReadText(raw: string): AutoReadResult {
   const text = normalizeText(raw)
@@ -647,13 +1082,15 @@ export function parseAutoReadText(raw: string): AutoReadResult {
     status: /đã\s*thuê|da\s*thue/i.test(stripAccent(text))
       ? 'Đã thuê'
       : 'Trống',
-    zalo_phone: firstMatch(text, [
-      /(?:\+?84|0)(\d{9,10})\b/,
-    ]).replace(/^(\d)/, '0$1'),
+    
+    zalo_phone: extractContactPhone(text),
+
     link_zalo: firstMatch(text, [
       /(https?:\/\/(?:zalo\.me|chat\.zalo\.me)\/[^\s]+)/i,
     ]),
-    chinh_sach: parsePolicies(text),
+    chinh_sach: mergeUniqueLines([
+parsePolicies(text)
+]),
   }
 
   const sharedDetail: Partial<RoomDetail> = {
