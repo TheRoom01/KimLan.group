@@ -535,7 +535,7 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
               </button>
 
               <a
-                href="https://canhodichvu.vercel.app/admin/zalo-imports"
+                href="https://canhodichvu.pro/admin/zalo-imports"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={closeMenu}

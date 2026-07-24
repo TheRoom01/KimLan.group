@@ -30,7 +30,7 @@ export async function generateMetadata({
   const { id } = await params;
 
 const base =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.pro";
 
 // ✅ mặc định (trước khi query DB)
 let title = "The Room";

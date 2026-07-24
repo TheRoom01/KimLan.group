@@ -19,29 +19,112 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.vercel.app"),
-  title: "The Room",
-  description: "Kim Lân Group",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.pro"
+  ),
+
+  title: {
+    default: "The Room | Căn hộ dịch vụ - Kim Lân Group",
+    template: "%s | The Room",
+  },
+
+  description:
+    "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư và nhà cho thuê tại TP.HCM.",
+
+  applicationName: "The Room",
+
+  keywords: [
+    "căn hộ dịch vụ",
+    "phòng trọ",
+    "thuê phòng",
+    "chung cư",
+    "kim lân group",
+    "the room",
+    "căn hộ dịch vụ tphcm",
+    "phòng trọ tphcm",
+    "thuê căn hộ",
+  ],
+
+  authors: [
+    {
+      name: "Kim Lân Group",
+    },
+  ],
+
+  creator: "Kim Lân Group",
+
+  publisher: "Kim Lân Group",
+
+  verification: {
+    google: "OrAwsK9qi6-RNSZjZG8GfaIrYIy5xZcirO19CdFIdbM",
+  },
+
+  alternates: {
+    canonical: "/",
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+
   openGraph: {
     type: "website",
+    locale: "vi_VN",
     url: "/",
-    title: "The Room",
-    description: "Kim Lân Group",
+    siteName: "The Room",
+
+    title: "The Room | Căn hộ dịch vụ - Kim Lân Group",
+
+    description:
+      "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư và nhà cho thuê tại TP.HCM.",
+
     images: [
-    {
-      url: "/og-logo.jpg",
+      {
+        url: "/og-logo.jpg",
         width: 1200,
         height: 630,
-        alt: "Căn hộ dịch vụ - KimLanGroup",
+        alt: "The Room - Kim Lân Group",
       },
     ],
   },
- twitter: {
-  card: "summary_large_image",
-  title: "The Room",
-  description: "Kim Lân Group",
-  images: ["/og-logo.jpg"],
-},
+
+  twitter: {
+    card: "summary_large_image",
+    title: "The Room | Căn hộ dịch vụ",
+
+    description:
+      "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư tại TP.HCM.",
+
+    images: ["/og-logo.jpg"],
+  },
+
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+
+    apple: "/apple-touch-icon.png",
+  },
+
+  manifest: "/manifest.webmanifest",
+
+  formatDetection: {
+    telephone: false,
+    address: false,
+    email: false,
+  },
+
+  category: "Real Estate",
 };
 
 export default function RootLayout({
@@ -68,6 +151,19 @@ export default function RootLayout({
               f.parentNode.insertBefore(j,f);
               })(window,document,'script','dataLayer','GTM-KXSD23BK');
             `,
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "Kim Lân Group",
+              alternateName: "The Room",
+              url: "https://canhodichvu.pro",
+              logo: "https://canhodichvu.pro/og-logo.jpg",
+            }),
           }}
         />
       </head>
