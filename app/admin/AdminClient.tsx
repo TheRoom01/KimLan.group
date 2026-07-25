@@ -6,6 +6,7 @@ import RoomModal from "./RoomModal";
 import VipLinkManager from "./VipLinkManager";
 import type { Room, TabKey } from "@/app/types/room";
 import { supabase } from "@/lib/supabase";
+import { createPortal } from "react-dom";
 
 const PAGE_SIZE = 20;
 
@@ -53,19 +54,34 @@ export default function AdminClient({ initialRooms, initialTotal, report, }: Adm
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [adminLevel, setAdminLevel] = useState<number | null>(null);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
 
-const [toast, setToast] = useState<string | null>(null);
-const [linkPickerOpen, setLinkPickerOpen] = useState(false);
-const [linkPickerTitle, setLinkPickerTitle] = useState("Chọn link để mở");
-const [linkPickerLinks, setLinkPickerLinks] = useState<string[]>([]);
+  const [menuPos, setMenuPos] = useState({
+    top: 0,
+    left: 0,
+  });
 
-const [confirmOpen, setConfirmOpen] = useState(false);
-const [confirmTitle, setConfirmTitle] = useState("Xác nhận");
-const [confirmText, setConfirmText] = useState("");
-const confirmActionRef = useRef<null | (() => void | Promise<void>)>(null);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
 
-const toastTimerRef = useRef<number | null>(null);
-const [reportState] = useState(report ?? null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+  const [linkPickerTitle, setLinkPickerTitle] = useState("Chọn link để mở");
+  const [linkPickerLinks, setLinkPickerLinks] = useState<string[]>([]);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("Xác nhận");
+  const [confirmText, setConfirmText] = useState("");
+  const confirmActionRef = useRef<null | (() => void | Promise<void>)>(null);
+
+  const toastTimerRef = useRef<number | null>(null);
+  const [reportState] = useState(report ?? null);
+
+  const ROOM_STATUSES = [
+    "Đang trống",
+    "Sắp trống",
+    "Đã thuê",
+  ];
 
 const buildClonedRoom = (r: Room) => {
   const base = r as any;
@@ -135,6 +151,59 @@ const runConfirmAction = useCallback(async () => {
     await fn();
   }
 }, []);
+
+useEffect(() => {
+  if (!statusMenuOpen) return;
+
+  function handleClickOutside(e: MouseEvent) {
+    if (
+      statusMenuRef.current &&
+      !statusMenuRef.current.contains(e.target as Node)
+    ) {
+      setStatusMenuOpen(false);
+    }
+  }
+
+  function handleWheel() {
+    setStatusMenuOpen(false);
+  }
+
+  function handleScroll() {
+    setStatusMenuOpen(false);
+  }
+
+  function handleTouchStart(e: TouchEvent) {
+    if (
+      statusMenuRef.current &&
+      !statusMenuRef.current.contains(e.target as Node)
+    ) {
+      setStatusMenuOpen(false);
+    }
+  }
+
+  document.addEventListener("mousedown", handleClickOutside);
+
+  window.addEventListener("wheel", handleWheel, {
+    passive: true,
+  });
+
+  window.addEventListener("scroll", handleScroll, true);
+
+  document.addEventListener("touchstart", handleTouchStart, {
+    passive: true,
+  });
+
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+
+    window.removeEventListener("wheel", handleWheel);
+
+    window.removeEventListener("scroll", handleScroll, true);
+
+    document.removeEventListener("touchstart", handleTouchStart);
+  };
+}, [statusMenuOpen]);
+
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
@@ -337,47 +406,49 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
   [adminLevel, debouncedSearch, loadRooms, notify, openConfirm, page]
 );
 
-const toggleRoomStatus = useCallback(
-  async (room: any) => {
-    const current = normalizeStatus(room.status);
-    const next = current === "đã thuê" ? "Trống" : "Đã thuê";
+  const updateRoomStatus = useCallback(
+    async (status: string) => {
+      if (!selectedRoom) return;
 
-    openConfirm(
-      "Đổi trạng thái",
-      `Bạn có chắc muốn chuyển trạng thái phòng sang "${next}"?`,
-      async () => {
-        try {
-          setRooms((prev) =>
-            prev.map((r: any) =>
-              r.id === room.id ? { ...r, status: next } : r
-            )
-          );
+      setStatusMenuOpen(false);
 
-          const res = await supabase.rpc("update_room_status", {
-            p_room_id: room.id,
-            p_status: next,
-          });
+      openConfirm(
+        "Đổi trạng thái",
+        `Bạn có chắc muốn chuyển trạng thái phòng sang "${status}"?`,
+        async () => {
+          try {
+            setRooms((prev) =>
+              prev.map((r: any) =>
+                r.id === (selectedRoom as any).id
+                  ? { ...r, status }
+                  : r
+              )
+            );
 
-          if (res.error) {
-            throw new Error(res.error.message);
+            const res = await supabase.rpc("update_room_status", {
+              p_room_id: (selectedRoom as any).id,
+              p_status: status,
+            });
+
+            if (res.error) throw new Error(res.error.message);
+
+            notify("Đã cập nhật trạng thái");
+          } catch (e: any) {
+            setRooms((prev) =>
+              prev.map((r: any) =>
+                r.id === (selectedRoom as any).id
+                  ? { ...r, status: (selectedRoom as any).status }
+                  : r
+              )
+            );
+
+            setErrorMsg(e?.message ?? "Cập nhật thất bại");
           }
-
-          notify("Đã cập nhật trạng thái");
-        } catch (e: any) {
-          setRooms((prev) =>
-            prev.map((r: any) =>
-              r.id === room.id ? { ...r, status: room.status } : r
-            )
-          );
-
-          setErrorMsg(e?.message ?? "Cập nhật thất bại");
         }
-      }
-    );
-  },
-  [notify, openConfirm]
-);
-
+      );
+    },
+    [selectedRoom, notify, openConfirm]
+  );
 const openZaloUX = useCallback(
   (rawLink?: string | null) => {
     if (typeof window === "undefined") return;
@@ -618,8 +689,14 @@ const openZaloUX = useCallback(
         </tr>
       ) : (
         rooms.map((r) => {
-          const isRented =
-            normalizeStatus((r as any).status) === "đã thuê";
+          const status = normalizeStatus((r as any).status);
+
+          const badgeStyle =
+            status === "đã thuê"
+              ? badgeRed
+              : status === "sắp trống"
+              ? badgeYellow
+              : badgeGreen;
           const isHidden = Boolean((r as any).is_hidden);
 
           const zaloLink = String(
@@ -744,12 +821,25 @@ const openZaloUX = useCallback(
                   <button
                     style={{
                       ...badge,
-                      ...(isRented ? badgeRed : badgeGreen),
+                      ...badgeStyle,
                       cursor: "pointer",
                     }}
-                    onClick={() => toggleRoomStatus(r)}
+                    onClick={(e) => {
+                      const rect = (
+                        e.currentTarget as HTMLButtonElement
+                      ).getBoundingClientRect();
+
+                      setSelectedRoom(r);
+
+                      setMenuPos({
+                        top: rect.bottom + 8,
+                        left: rect.left,
+                      });
+
+                      setStatusMenuOpen(true);
+                    }}
                   >
-                    {(r as any).status ?? "Trống"}
+                    {(r as any).status ?? "Đang trống"}
                   </button>
                 )}
               </td>
@@ -968,6 +1058,75 @@ const openZaloUX = useCallback(
     </div>
   </div>
 )}
+
+{statusMenuOpen &&
+  selectedRoom &&
+  typeof window !== "undefined" &&
+  createPortal(
+    <div
+      ref={statusMenuRef}
+      style={{
+        position: "fixed",
+        top: menuPos.top,
+        left: menuPos.left,
+      }}
+      className="
+        z-[9999]
+        w-[170px]
+        overflow-hidden
+        rounded-2xl
+        border border-white/60
+        bg-white/80
+        backdrop-blur-2xl
+        backdrop-saturate-150
+        shadow-[0_20px_50px_rgba(0,0,0,0.18)]
+        animate-[fadeIn_.18s_ease]
+      "
+    >
+      {ROOM_STATUSES.filter(
+        (s) => s !== (selectedRoom as any).status
+      ).map((status, index, arr) => {
+        const colorClass =
+          status === "Đang trống"
+            ? "text-green-700 hover:bg-green-50"
+            : status === "Sắp trống"
+            ? "text-amber-700 hover:bg-amber-50"
+            : "text-red-700 hover:bg-red-50";
+
+        const dotClass =
+          status === "Đang trống"
+            ? "bg-green-500"
+            : status === "Sắp trống"
+            ? "bg-amber-500"
+            : "bg-red-500";
+
+        return (
+          <div key={status}>
+            <button
+              onClick={() => updateRoomStatus(status)}
+              className={`
+                flex w-full items-center gap-3
+                px-4 py-3
+                text-[15px] font-semibold
+                transition-all duration-150
+                ${colorClass}
+              `}
+            >
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
+              />
+              {status}
+            </button>
+
+            {index !== arr.length - 1 && (
+              <div className="mx-4 h-px bg-black/5" />
+            )}
+          </div>
+        );
+      })}
+    </div>,
+    document.body
+  )}
 
       {confirmOpen && (
         <div
@@ -1293,6 +1452,12 @@ const badgeGreen: CSSProperties = {
   borderColor: "#a7f3d0",
   color: "#065f46",
 };
+const badgeYellow: CSSProperties = {
+  background: "#fefce8",
+  borderColor: "#fde68a",
+  color: "#a16207",
+};
+
 const badgeHidden: CSSProperties = {
   background: "#f3f4f6",
   borderColor: "#e5e7eb",

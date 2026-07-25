@@ -781,7 +781,8 @@ const toggleTerm = (value: "short" | "long") => {
         {(
           [
             [null, "Tất cả"],
-            ["Trống", "Trống"],
+            ["Trống", "Đang trống"],
+            ["Sắp trống", "Sắp trống"],
             ["Đã thuê", "Đã thuê"],
           ] as const
         ).map(([v, label]) => (

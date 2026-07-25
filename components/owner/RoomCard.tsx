@@ -18,7 +18,6 @@ export default function RoomCard({
     room.status;
 
 
-
   const statusStyle =
     status === "Đã thuê"
       ? "bg-green-100 text-green-700"
@@ -27,7 +26,6 @@ export default function RoomCard({
       ? "bg-orange-100 text-orange-700"
       :
       "bg-gray-100 text-gray-700";
-
 
 
   return (
@@ -74,8 +72,6 @@ export default function RoomCard({
 
 
         </div>
-
-
 
         <span
           className={`
@@ -136,8 +132,6 @@ export default function RoomCard({
 
 
       </div>
-
-
 
       <Link
         href={`/owner/rooms/${room.id}`}

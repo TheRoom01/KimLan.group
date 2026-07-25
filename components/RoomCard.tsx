@@ -7,6 +7,7 @@ import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
 import { createPortal } from "react-dom";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
 import { supabase } from "@/lib/supabase";
+import { useRef } from "react";
 
 
 type Room = {
@@ -91,12 +92,21 @@ function formatTimeAgo(value?: string | null) {
 }
 
 function normalizeStatus(v?: string | null) {
-  const s = String(v ?? "").toLowerCase().trim();
+  const s = String(v ?? "").trim().toLowerCase();
 
-  if (s.includes("thuê")) return "Đã thuê";
-  if (s.includes("trống") || s === "trong") return "Trống";
+  if (s === "đang trống" || s === "trống" || s === "còn trống") {
+    return "Đang trống";
+  }
 
-  return "Trống";
+  if (s === "sắp trống") {
+    return "Sắp trống";
+  }
+
+  if (s === "đã thuê" || s === "da thue") {
+    return "Đã thuê";
+  }
+
+  return "Đang trống";
 }
 
 function getFullImageUrls(roomData: any): string[] {
@@ -202,6 +212,11 @@ export default function RoomCard({
 const [currentStatus, setCurrentStatus] = useState(
   normalizeStatus(room.status)
 );
+const badgeRef = useRef<HTMLButtonElement>(null);
+const [menuPos, setMenuPos] = useState({
+  top: 0,
+  left: 0,
+});
 
 // đặt trước return, cùng chỗ với các const khác
 const safeAdminLevel: 0 | 1 | 2 =
@@ -209,10 +224,7 @@ const safeAdminLevel: 0 | 1 | 2 =
 
 const [updatingStatus, setUpdatingStatus] = useState(false);
 
-const [confirmStatus, setConfirmStatus] = useState<{
-  prevStatus: string;
-  nextStatus: string;
-} | null>(null);
+const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   const currentUserIdValue = String(currentUserId ?? "").trim();
   const roomOwnerId = String((room as any).owner_id ?? "").trim();
@@ -516,7 +528,9 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
 
   const href = `/rooms/${room.id}?modal=1`;
 
-  const isRoomAvailable = currentStatus === "Trống";
+  const isAvailable = currentStatus === "Đang trống";
+const isComingAvailable = currentStatus === "Sắp trống";
+const statusMenuRef = useRef<HTMLDivElement>(null);
 
 const statusBadgeBaseClass =
   "inline-flex !min-h-0 items-center justify-center rounded-full font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
@@ -527,9 +541,19 @@ const statusBadgeAnonClass =
 const statusBadgeAdminClass =
   "!h-[30px] !min-h-0 !min-w-[92px] !px-1.5 !py-0 !text-[15px]";
 
-const statusBadgeColorClass = isRoomAvailable
-  ? "!bg-[#86efac] !text-[#14532d] !border-[#22c55e] shadow-[0_5px_16px_rgba(34,197,94,0.28)]"
-  : "!bg-[#fecaca] !text-[#7f1d1d] !border-[#f87171] shadow-[0_5px_16px_rgba(239,68,68,0.24)]";
+const statusBadgeColorClass =
+  currentStatus === "Đang trống"
+    ? "!bg-[#86efac] !text-[#14532d] !border-[#22c55e] shadow-[0_5px_16px_rgba(34,197,94,0.28)]"
+    : currentStatus === "Sắp trống"
+    ? "!bg-[#fde68a] !text-[#854d0e] !border-[#facc15] shadow-[0_5px_16px_rgba(250,204,21,0.25)]"
+    : "!bg-[#fecaca] !text-[#7f1d1d] !border-[#f87171] shadow-[0_5px_16px_rgba(239,68,68,0.24)]";
+
+const otherStatuses = [
+  "Đang trống",
+  "Sắp trống",
+  "Đã thuê",
+].filter((x) => x !== currentStatus);
+
 
 function handleToggleStatus(
   e: React.MouseEvent<HTMLButtonElement>
@@ -539,22 +563,92 @@ function handleToggleStatus(
 
   if (!isAdmin || updatingStatus) return;
 
-  const prevStatus = currentStatus;
-  const nextStatus = isRoomAvailable ? "Đã thuê" : "Trống";
+    setStatusMenuOpen((v) => !v);
+    const rect = badgeRef.current?.getBoundingClientRect();
 
-  setConfirmStatus({
-    prevStatus,
-    nextStatus,
-  });
+  if (rect) {
+    setMenuPos({
+      top: rect.bottom + 6,
+      left: rect.right - 140,
+    });
+  }
 }
 
-async function confirmToggleStatus() {
-  if (!confirmStatus || updatingStatus) return;
+useEffect(() => {
+  if (!statusMenuOpen) return;
 
-  const prevStatus = confirmStatus.prevStatus;
-  const nextStatus = confirmStatus.nextStatus;
+  function handlePointerDown(e: PointerEvent) {
+    if (
+      statusMenuRef.current &&
+      !statusMenuRef.current.contains(e.target as Node)
+    ) {
+      setStatusMenuOpen(false);
+    }
+  }
 
-  setConfirmStatus(null);
+  function handleWheel() {
+    setStatusMenuOpen(false);
+  }
+
+  function handleScroll() {
+    setStatusMenuOpen(false);
+  }
+
+  function handleTouchStart(e: TouchEvent) {
+    if (
+      statusMenuRef.current &&
+      !statusMenuRef.current.contains(e.target as Node)
+    ) {
+      setStatusMenuOpen(false);
+    }
+  }
+
+  document.addEventListener("pointerdown", handlePointerDown);
+
+  window.addEventListener("wheel", handleWheel, {
+    passive: true,
+  });
+
+  window.addEventListener("scroll", handleScroll, true);
+
+  document.addEventListener("touchstart", handleTouchStart, {
+    passive: true,
+  });
+
+  return () => {
+    document.removeEventListener("pointerdown", handlePointerDown);
+
+    window.removeEventListener("wheel", handleWheel);
+
+    window.removeEventListener("scroll", handleScroll, true);
+
+    document.removeEventListener("touchstart", handleTouchStart);
+  };
+}, [statusMenuOpen]);
+
+useEffect(() => {
+  if (!statusMenuOpen) return;
+
+  function onKey(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      setStatusMenuOpen(false);
+    }
+  }
+
+  document.addEventListener("keydown", onKey);
+
+  return () => {
+    document.removeEventListener("keydown", onKey);
+  };
+}, [statusMenuOpen]);
+
+
+async function updateRoomStatus(nextStatus: string) {
+  if (updatingStatus) return;
+
+  const prevStatus = currentStatus;
+
+  setStatusMenuOpen(false);
   setCurrentStatus(nextStatus);
   setUpdatingStatus(true);
 
@@ -569,16 +663,20 @@ async function confirmToggleStatus() {
       }),
     });
 
-    const json = await res.json().catch(() => null);
+    const json = await res.json();
 
     if (!res.ok) {
-      throw new Error(json?.error || "Cập nhật trạng thái thất bại");
+      throw new Error(json.error);
     }
 
-    setCurrentStatus(normalizeStatus(json?.data?.status || nextStatus));
+    setCurrentStatus(
+      normalizeStatus(
+        json?.data?.status ?? nextStatus
+      )
+    );
   } catch (err: any) {
     setCurrentStatus(prevStatus);
-    alert(err?.message || "Cập nhật trạng thái thất bại");
+    alert(err.message);
   } finally {
     setUpdatingStatus(false);
   }
@@ -842,20 +940,92 @@ return (
           </div>
 
           {isAdmin ? (
+            <div className="relative">
+
+  <button
+    ref={badgeRef}
+    type="button"
+    disabled={updatingStatus}
+    onClick={handleToggleStatus}
+    className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} ${statusBadgeColorClass}`}
+  >
+    {updatingStatus ? "Đang lưu..." : currentStatus}
+  </button>
+
+{statusMenuOpen &&
+  typeof window !== "undefined" &&
+  createPortal(
+    <div
+      ref={statusMenuRef}
+      style={{
+        position: "fixed",
+        top: menuPos.top,
+        left: menuPos.left,
+      }}
+      className="
+        z-[9999]
+        w-[170px]
+        overflow-hidden
+
+        rounded-2xl
+        border border-white/60
+
+        bg-white/80
+        backdrop-blur-2xl
+        backdrop-saturate-150
+
+        shadow-[0_20px_50px_rgba(0,0,0,0.18)]
+
+        animate-[fadeIn_.18s_ease]
+      "
+    >
+      {otherStatuses.map((status, index) => {
+        const colorClass =
+          status === "Đang trống"
+            ? "text-green-700 hover:bg-green-50"
+            : status === "Sắp trống"
+            ? "text-amber-700 hover:bg-amber-50"
+            : "text-red-700 hover:bg-red-50";
+
+        const dotClass =
+          status === "Đang trống"
+            ? "bg-green-500"
+            : status === "Sắp trống"
+            ? "bg-amber-500"
+            : "bg-red-500";
+
+        return (
+          <div key={status}>
             <button
-              type="button"
-              disabled={updatingStatus}
-              onClick={handleToggleStatus}
-              title="Bấm để đổi trạng thái phòng"
-              className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} ${statusBadgeColorClass} transition-all duration-150 active:scale-95 ${
-                updatingStatus ? "cursor-wait opacity-70" : "cursor-pointer hover:scale-105"
-              }`}
+              onClick={() => updateRoomStatus(status)}
+              className={`
+                flex w-full items-center gap-3
+                px-4 py-3
+                text-[15px] font-semibold
+                transition-all duration-150
+                ${colorClass}
+              `}
             >
-              {updatingStatus ? "Đang lưu" : isRoomAvailable ? "Còn Trống" : "Đã thuê"}
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
+              />
+              {status}
             </button>
+
+            {index !== otherStatuses.length - 1 && (
+              <div className="mx-4 h-px bg-black/5" />
+            )}
+          </div>
+        );
+      })}
+    </div>,
+    document.body
+  )}
+
+</div>
           ) : (
             <span className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass}`}>
-              {isRoomAvailable ? "Còn Trống" : "Đã thuê"}
+              {currentStatus}
             </span>
           )}
         </div>
@@ -990,83 +1160,7 @@ return (
     />
       )}
 
-    {/* STATUS CONFIRM MODAL */}
-    {confirmStatus &&
-      typeof window !== "undefined" &&
-      createPortal(
-        <div
-          className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/55 px-4 backdrop-blur-[4px]"
-          onClick={() => setConfirmStatus(null)}
-        >
-          <div
-            className="
-              w-full max-w-[340px] rounded-[24px]
-              border border-white/20
-              bg-[linear-gradient(180deg,rgba(35,35,40,0.96),rgba(18,18,22,0.96))]
-              p-5 text-white
-              shadow-[0_30px_90px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.12)]
-              backdrop-blur-[28px]
-            "
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-2 text-[17px] font-bold">
-              Xác nhận đổi trạng thái
-            </div>
-
-            <div className="text-sm leading-6 text-white/70">
-              Bạn muốn đổi trạng thái phòng này từ{" "}
-              <span className="font-bold text-white">
-                {confirmStatus.prevStatus}
-              </span>{" "}
-              sang{" "}
-              <span
-                className={
-                  confirmStatus.nextStatus === "Trống"
-                    ? "font-bold text-green-300"
-                    : "font-bold text-red-300"
-                }
-              >
-                {confirmStatus.nextStatus}
-              </span>
-              ?
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmStatus(null)}
-                className="
-                  rounded-2xl border border-white/15
-                  bg-white/10 px-4 py-2
-                  text-sm font-semibold text-white/80
-                  transition hover:bg-white/15 active:scale-95
-                "
-              >
-                Hủy
-              </button>
-
-              <button
-                type="button"
-                disabled={updatingStatus}
-                onClick={confirmToggleStatus}
-                className="
-                  rounded-2xl border border-blue-400/40
-                  bg-blue-600 px-4 py-2
-                  text-sm font-bold text-white
-                  shadow-[0_0_18px_rgba(37,99,235,0.45)]
-                  transition hover:bg-blue-500 active:scale-95
-                  disabled:cursor-wait disabled:opacity-60
-                "
-              >
-                {updatingStatus ? "Đang lưu..." : "OK"}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-   {/* ADMIN MODAL */}
+      {/* ADMIN MODAL */}
     {adminPhone &&
       typeof window !== "undefined" &&
       createPortal(

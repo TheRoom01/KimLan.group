@@ -658,9 +658,12 @@ function extractRoomMarkers(context: ParseContext) {
       price: price.value,
       line: line.raw,
       roomType: inferRoomType(line.raw),
-      status: /đã\s*thuê|da\s*thue/i.test(normalized)
-        ? 'Đã thuê'
-        : 'Trống',
+      status:
+      /sap\s*trong|sắp\s*trống|sap\s*co\s*phong|sắp\s*có\s*phòng/i.test(normalized)
+        ? 'Sắp trống'
+        : /da\s*thue|đã\s*thuê/i.test(normalized)
+          ? 'Đã thuê'
+          : 'Đang trống',
     })
   }
 
@@ -709,9 +712,12 @@ function extractRoomMarkers(context: ParseContext) {
       price: price.value,
       line: line.raw,
       roomType: inferRoomType(line.raw),
-      status: /đã\s*thuê|da\s*thue/i.test(line.normalized)
-        ? 'Đã thuê'
-        : 'Trống',
+      status:
+      /sap\s*trong|sắp\s*trống|sap\s*co\s*phong|sắp\s*có\s*phòng/i.test(line.normalized)
+        ? 'Sắp trống'
+        : /da\s*thue|đã\s*thuê/i.test(line.normalized)
+          ? 'Đã thuê'
+          : 'Đang trống',
     })
   }
 
@@ -1074,14 +1080,20 @@ function parsePolicies(text: string) {
 export function parseAutoReadText(raw: string): AutoReadResult {
   const text = normalizeText(raw)
   const context = createParseContext(text)
+  const normalized = stripAccent(text)
+
+const sharedStatus: RoomForm['status'] =
+  /sap\s*trong|sắp\s*trống|sap\s*co\s*phong|sắp\s*có\s*phòng/i.test(normalized)
+    ? 'Sắp trống'
+    : /da\s*thue|đã\s*thuê/i.test(normalized)
+      ? 'Đã thuê'
+      : 'Đang trống'
 
   const addressFields = parseAddress(context)
   const sharedRoom: Partial<RoomForm> = {
     ...addressFields,
     room_type: inferRoomType(text),
-    status: /đã\s*thuê|da\s*thue/i.test(stripAccent(text))
-      ? 'Đã thuê'
-      : 'Trống',
+    status: sharedStatus,
     
     zalo_phone: extractContactPhone(text),
 

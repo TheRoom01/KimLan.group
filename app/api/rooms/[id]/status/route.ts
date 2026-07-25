@@ -18,7 +18,13 @@ export async function PATCH(
     const body = await req.json().catch(() => null);
     const status = String(body?.status ?? "").trim();
 
-    if (!["Trống", "Đã thuê"].includes(status)) {
+    const validStatus = [
+      "Đang trống",
+      "Sắp trống",
+      "Đã thuê",
+    ];
+
+    if (!validStatus.includes(status)) {
       return NextResponse.json(
         { error: "Trạng thái không hợp lệ" },
         { status: 400 }
