@@ -269,11 +269,20 @@ useEffect(() => {
       {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
       <div style={infoGridStyle}>
        <Select
-          label="Trạng thái"
-          value={value.status}
-          options={["Trống", "Đã thuê"]}
-          onChange={(v: string) => onChange({ ...value, status: v as RoomStatus })}
-        />
+        label="Trạng thái"
+        value={value.status ?? "Đang trống"}
+        options={[
+          "Đang trống",
+          "Đã thuê",
+          "Sắp trống",
+        ]}
+        onChange={(v: string) =>
+          onChange({
+            ...value,
+            status: v as RoomStatus,
+          })
+        }
+      />
 
         <ReadOnly label="Ngày tạo" value={formatDate(updatedAt)} />
 

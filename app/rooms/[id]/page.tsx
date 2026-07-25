@@ -180,7 +180,21 @@ function renderSmartLinks(raw: string) {
 
 function humanStatus(status: any) {
   if (!status) return "";
-  if (status === "Trống") return "Còn Trống";
+
+  const s = String(status).trim().toLowerCase();
+
+  if (s === "trống" || s === "còn trống" || s === "đang trống") {
+    return "Đang trống";
+  }
+
+  if (s === "sắp trống") {
+    return "Sắp trống";
+  }
+
+  if (s === "đã thuê" || s === "da thue") {
+    return "Đã thuê";
+  }
+
   return String(status);
 }
 
@@ -1632,8 +1646,10 @@ return (
               <span
                 className={[
                   "text-sm px-2 py-[2px] rounded-full whitespace-nowrap",
-                  statusText === "Còn Trống"
+                  statusText === "Đang trống"
                     ? "bg-[rgba(34,197,94,0.18)] text-green-300 border border-green-400/30 backdrop-blur"
+                    : statusText === "Sắp trống"
+                    ? "bg-[rgba(234,179,8,0.18)] text-yellow-300 border border-yellow-400/30 backdrop-blur"
                     : "bg-[rgba(239,68,68,0.18)] text-red-300 border border-red-400/30 backdrop-blur",
                 ].join(" ")}
                 title={statusText}

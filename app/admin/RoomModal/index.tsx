@@ -92,11 +92,30 @@ type Props = {
   onSaved: (updatedRoom: Room, opts?: { isNew?: boolean }) => void | Promise<void>
 }
 
-function normalizeStatus(v?: RoomStatus | string | null) {
+function normalizeStatus(v?: RoomStatus | string | null): RoomStatus {
   const s = String(v ?? '').toLowerCase().trim()
-  if (s.includes('thuê')) return 'Đã thuê'
-  if (s.includes('trống') || s === 'trong') return 'Trống'
-  return 'Trống'
+
+  if (s.includes('thuê')) {
+    return 'Đã thuê'
+  }
+
+  if (s.includes('sắp')) {
+    return 'Sắp trống'
+  }
+
+  if (
+    s.includes('trống') ||
+    s === 'trong'
+  ) {
+    return 'Đang trống'
+  }
+
+  // dữ liệu cũ
+  if (s === 'ẩn') {
+    return 'Sắp trống'
+  }
+
+  return 'Đang trống'
 }
 
 /* ================= COMPONENT ================= */
@@ -127,7 +146,7 @@ export default function RoomModal({
     ward: '',
     district: '',
     price: 0,
-    status: 'Trống',
+    status: 'Đang trống',
     description: '',
     link_zalo: '',
     zalo_phone: '',
@@ -947,7 +966,7 @@ const detailSample =
       district: base.district ?? "",
 
       price: 0,
-      status: "Trống",
+      status: "Đang trống",
       description: "",
 
       link_zalo: base.link_zalo ?? "",
