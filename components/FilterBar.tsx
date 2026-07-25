@@ -781,10 +781,10 @@ const toggleTerm = (value: "short" | "long") => {
         {(
           [
             [null, "Tất cả"],
-            ["Trống", "Đang trống"],
+            ["Đang trống", "Đang trống"],
             ["Sắp trống", "Sắp trống"],
             ["Đã thuê", "Đã thuê"],
-          ] as const
+          ]as const
         ).map(([v, label]) => (
           <label key={label} className={optionClass(statusFilter === v)}>
             <input

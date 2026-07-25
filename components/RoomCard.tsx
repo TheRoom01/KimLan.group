@@ -997,7 +997,11 @@ return (
         return (
           <div key={status}>
             <button
-              onClick={() => updateRoomStatus(status)}
+               onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateRoomStatus(status);
+                }}
               className={`
                 flex w-full items-center gap-3
                 px-4 py-3

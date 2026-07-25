@@ -40,7 +40,6 @@ export default function RoomCard({
       "
     >
 
-
       <div
         className="
           flex
@@ -87,11 +86,7 @@ export default function RoomCard({
           {status}
 
         </span>
-
-
       </div>
-
-
 
       <div
         className="
@@ -100,7 +95,6 @@ export default function RoomCard({
           text-sm
         "
       >
-
         <p>
 
           Giá:
