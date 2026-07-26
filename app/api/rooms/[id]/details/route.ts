@@ -1,77 +1,102 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-const supabaseAdmin =
-  SUPABASE_URL && SERVICE_ROLE
-    ? createClient(SUPABASE_URL, SERVICE_ROLE, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null
+function getAdminClient() {
+  if (!SUPABASE_URL || !SERVICE_ROLE) return null;
+
+  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
 
 export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // DEBUG: xác nhận có service role không
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const { id: roomId } = await params;
+    const authorization = await authorizeRoomMutation(roomId);
+
+    if (!authorization.allowed) {
       return NextResponse.json(
-        { error: 'Missing SUPABASE_SERVICE_ROLE_KEY on server' },
-        { status: 500 }
-      )
+        { error: authorization.error },
+        { status: authorization.status },
+      );
     }
+
+    const supabaseAdmin = getAdminClient();
 
     if (!supabaseAdmin) {
       return NextResponse.json(
-        {
-          error:
-            'Missing server env: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Set it in .env.local / Codespaces secrets.',
-        },
-        { status: 500 }
-      )
+        { error: "Missing Supabase server environment" },
+        { status: 500 },
+      );
     }
 
-    const { id: roomId } = await params
-    const body = await req.json()
+    const body = (await request.json().catch(() => null)) as
+      | Record<string, unknown>
+      | null;
 
-    // payload chuẩn hoá: luôn gắn room_id theo URL param
+    if (!body || Array.isArray(body)) {
+      return NextResponse.json(
+        { error: "INVALID_INPUT" },
+        { status: 400 },
+      );
+    }
+
     const payload = {
       ...body,
       room_id: roomId,
+    };
+
+    const { data: existing, error: readError } = await supabaseAdmin
+      .from("room_details")
+      .select("room_id")
+      .eq("room_id", roomId)
+      .maybeSingle();
+
+    if (readError) {
+      return NextResponse.json(
+        { error: readError.message },
+        { status: 500 },
+      );
     }
 
-    // ✅ Không dùng upsert(onConflict) vì DB của bạn đang thiếu UNIQUE(room_id)
-    // Flow an toàn: UPDATE -> nếu chưa có thì INSERT -> nếu insert fail thì trả lỗi rõ
-    const up = await supabaseAdmin
-      .from('room_details')
-      .update(payload)
-      .eq('room_id', roomId)
+    const mutation = existing
+      ? supabaseAdmin
+          .from("room_details")
+          .update(payload)
+          .eq("room_id", roomId)
+      : supabaseAdmin.from("room_details").insert(payload);
 
-    if (!up.error && (up.count ?? 0) > 0) {
-      return NextResponse.json({ ok: true })
+    const { error } = await mutation;
+
+    if (error) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
+        { status: 500 },
+      );
     }
 
-    const ins = await supabaseAdmin.from('room_details').insert(payload)
-    if (!ins.error) {
-      return NextResponse.json({ ok: true })
-    }
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Save room details error:", error);
 
     return NextResponse.json(
-      {
-        error: (ins.error as any)?.message ?? 'Insert failed',
-        code: (ins.error as any)?.code ?? null,
-        details: (ins.error as any)?.details ?? null,
-        hint: (ins.error as any)?.hint ?? null,
-      },
-      { status: 500 }
-    )
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message ?? String(err) },
-      { status: 500 }
-    )
+      { error: "Save room details failed" },
+      { status: 500 },
+    );
   }
 }
