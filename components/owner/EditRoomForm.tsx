@@ -1,356 +1,120 @@
 "use client";
 
-
-import {
-  useState
-} from "react";
-
-
-import {
-  useRouter
-} from "next/navigation";
-
-
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { readApiResponse } from "@/lib/api/client";
 
 interface Props {
-
-  room:any;
-
+  room: {
+    id: string;
+    room_type?: string | null;
+    price?: number | null;
+    description?: string | null;
+  };
 }
 
+export default function EditRoomForm({ room }: Props) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    room_type: room.room_type ?? "",
+    price: room.price ?? 0,
+    description: room.description ?? "",
+  });
 
-
-export default function EditRoomForm({
-
-  room
-
-}:Props){
-
-
-
-  const router =
-    useRouter();
-
-
-
-  const [loading,setLoading]
-    = useState(false);
-
-
-
-  const [form,setForm]
-    = useState({
-
-      room_type:
-        room.room_type ?? "",
-
-
-      price:
-        room.price ?? 0,
-
-
-      description:
-        room.description ?? "",
-
-
-      status:
-        room.status ?? "Đang trống"
-
-    });
-
-
-
-  async function submit(){
-
-
-    try{
-
-
+  async function submit() {
+    try {
       setLoading(true);
+      setErrorMessage(null);
 
+      const response = await fetch(`/api/owner/rooms/${room.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(form),
+      });
 
+      await readApiResponse(response);
 
-      const res =
-        await fetch(
-          `/api/owner/rooms/${room.id}`,
-          {
-
-            method:"PATCH",
-
-            headers:{
-              "Content-Type":
-                "application/json"
-            },
-
-
-            body:
-              JSON.stringify(form)
-
-          }
-        );
-
-
-
-      if(!res.ok){
-
-        throw new Error(
-          "Update room failed"
-        );
-
-      }
-
-
-
-      router.push(
-        `/owner/rooms/${room.id}`
-      );
-
-
+      router.push(`/owner/rooms/${room.id}`);
       router.refresh();
-
-
-
-    }
-
-    catch(error){
-
-      console.error(error);
-
-      alert(
-        "Cập nhật phòng thất bại"
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Cập nhật phòng thất bại",
       );
-
-    }
-
-    finally{
-
+    } finally {
       setLoading(false);
-
     }
-
-
   }
 
-
-
   return (
-
-    <div
-      className="
-        rounded-xl
-        border
-        bg-white
-        p-6
-        space-y-5
-      "
-    >
-
+    <div className="space-y-5 rounded-xl border bg-white p-6">
+      {errorMessage && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
 
       <div>
-
-        <label>
-          Loại phòng
-        </label>
-
-
+        <label htmlFor="room_type">Loại phòng</label>
         <input
-
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
-
+          id="room_type"
+          className="mt-1 w-full rounded-lg border p-2"
           value={form.room_type}
-
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                room_type:e.target.value
-              })
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              room_type: event.target.value,
+            }))
           }
-
         />
-
       </div>
 
-
-
-
-
       <div>
-
-        <label>
-          Giá phòng
-        </label>
-
-
+        <label htmlFor="price">Giá phòng</label>
         <input
-
+          id="price"
           type="number"
-
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
-
+          min={0}
+          className="mt-1 w-full rounded-lg border p-2"
           value={form.price}
-
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                price:Number(
-                  e.target.value
-                )
-              })
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              price: Number(event.target.value),
+            }))
           }
-
         />
-
       </div>
 
-
-
-
-
       <div>
-
-        <label>
-          Mô tả
-        </label>
-
-
+        <label htmlFor="description">Mô tả</label>
         <textarea
-
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
-
-
+          id="description"
+          className="mt-1 w-full rounded-lg border p-2"
           rows={5}
-
-
           value={form.description}
-
-
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                description:e.target.value
-              })
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              description: event.target.value,
+            }))
           }
-
         />
-
-
       </div>
-
-
-
-
-
-      <div>
-
-
-        <label>
-          Trạng thái
-        </label>
-
-
-        <select
-
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
-
-
-          value={form.status}
-
-
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                status:e.target.value
-              })
-          }
-
-        >
-
-          <option>
-            Đang trống
-          </option>
-
-
-          <option>
-            Đã thuê
-          </option>
-
-
-          <option>
-            Sắp trống
-          </option>
-
-
-        </select>
-
-
-      </div>
-
-
-
-
 
       <button
-
+        type="button"
         onClick={submit}
-
-
         disabled={loading}
-
-
-        className="
-          rounded-lg
-          bg-blue-600
-          px-5
-          py-2
-          text-white
-          disabled:opacity-50
-        "
-
+        className="rounded-lg bg-blue-600 px-5 py-2 text-white disabled:opacity-50"
       >
-
-        {
-          loading
-          ?
-          "Đang lưu..."
-          :
-          "Lưu thay đổi"
-        }
-
-
+        {loading ? "Đang lưu..." : "Lưu thay đổi"}
       </button>
-
-
-
     </div>
-
   );
-
 }
