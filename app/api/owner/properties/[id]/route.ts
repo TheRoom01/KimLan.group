@@ -1,143 +1,43 @@
-import { NextResponse } from "next/server";
-
+import { getAuthenticatedUser } from "@/lib/api/auth";
 import {
-  createSupabaseServerClient
-} from "@/lib/supabase/server";
-
-
+  apiError,
+  apiSuccess,
+  mapDatabaseError,
+  mapUnknownError,
+} from "@/lib/api/response";
+import { parseUuid } from "@/lib/api/validation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(
-  request: Request,
+  _request: Request,
   {
     params,
   }: {
-    params: Promise<{
-      id: string;
-    }>;
-  }
+    params: Promise<{ id: string }>;
+  },
 ) {
-
-
   try {
+    const { id: rawId } = await params;
+    const propertyId = parseUuid(rawId, "property_id");
+    const supabase = await createSupabaseServerClient();
+    const user = await getAuthenticatedUser(supabase);
 
-
-    const {
-      id
-    } = await params;
-
-
-
-    if(!id){
-
-      return NextResponse.json(
-        {
-          error:"PROPERTY_ID_REQUIRED"
-        },
-        {
-          status:400
-        }
+    if (!user) {
+      return apiError(
+        "UNAUTHENTICATED",
+        "Bạn cần đăng nhập để thực hiện thao tác này",
+        401,
       );
-
     }
 
-
-
-    const supabase =
-      await createSupabaseServerClient();
-
-
-
-    const {
-      data:{
-        user
-      }
-    } =
-    await supabase.auth.getUser();
-
-
-
-    if(!user){
-
-      return NextResponse.json(
-        {
-          error:"UNAUTHENTICATED"
-        },
-        {
-          status:401
-        }
-      );
-
-    }
-
-
-
-    const {
-      data,
-      error
-    }
-    =
-    await supabase.rpc(
+    const { data, error } = await supabase.rpc(
       "get_owner_property_detail_v1",
-      {
-        p_property_id:id
-      }
+      { p_property_id: propertyId },
     );
 
-
-
-    if(error){
-
-      console.error(
-        "get owner property detail error:",
-        error
-      );
-
-
-      return NextResponse.json(
-        {
-          error:error.message
-        },
-        {
-          status:400
-        }
-      );
-
-    }
-
-
-
-    return NextResponse.json(
-      {
-        ok:true,
-        data
-      },
-      {
-        status:200
-      }
-    );
-
-
-
+    if (error) return mapDatabaseError(error);
+    return apiSuccess(data);
+  } catch (error) {
+    return mapUnknownError(error);
   }
-
-  catch(error:any){
-
-
-    console.error(
-      "owner property api error:",
-      error
-    );
-
-
-    return NextResponse.json(
-      {
-        error:error.message
-      },
-      {
-        status:500
-      }
-    );
-
-  }
-
 }
