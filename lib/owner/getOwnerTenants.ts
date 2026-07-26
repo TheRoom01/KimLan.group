@@ -41,6 +41,16 @@ export async function getOwnerTenants(){
   }
 
 
-  return data ?? [];
+  console.log(
+  "OWNER TENANTS RESULT",
+  JSON.stringify(
+    data,
+    null,
+    2
+  )
+);
+
+
+return data ?? [];
 
 }

@@ -73,228 +73,227 @@ export default async function TenantsPage() {
 
 
           tenants.map(
-            (
-              item:any
-            ) => {
+  (
+    item:any
+  ) => {
 
 
-              const tenant =
-                item.tenant;
+    const tenant =
+      item.tenant;
+
+
+    if(!tenant){
+
+      return null;
+
+    }
+
+
+    const activeContract =
+      item.active_contract;
+
+
+    const contractsCount =
+      item.contracts_count ?? 0;
 
 
 
-              if(!tenant){
+    return (
 
-                return null;
+      <div
 
+        key={
+          tenant.id
+        }
+
+        className="
+          rounded-xl
+          border
+          bg-white
+          p-6
+        "
+
+      >
+
+
+        <h2
+          className="
+            text-xl
+            font-semibold
+          "
+        >
+
+          {tenant.full_name}
+
+        </h2>
+
+
+
+        <p>
+
+          SĐT:
+
+          {" "}
+
+          {tenant.phone ?? "-"}
+
+        </p>
+
+
+
+        <p>
+
+          CCCD:
+
+          {" "}
+
+          {tenant.cccd ?? "-"}
+
+        </p>
+
+
+
+        <hr
+          className="
+            my-4
+          "
+        />
+
+
+
+        {
+          activeContract
+          ?
+
+          <>
+
+            <p>
+
+              Tòa nhà:
+
+              {" "}
+
+              {
+                activeContract.property?.name
+                ??
+                "-"
               }
 
+            </p>
 
 
-              return (
 
-                <div
+            <p>
 
-                  key={
-                    item.contract_id
-                  }
+              Phòng:
 
-                  className="
-                    rounded-xl
-                    border
-                    bg-white
-                    p-6
-                  "
+              {" "}
 
-                >
+              {
+                activeContract.room?.room_code
+                ??
+                "-"
+              }
 
+            </p>
 
 
-                  <h2
-                    className="
-                      text-xl
-                      font-semibold
-                    "
-                  >
 
-                    {tenant.full_name}
+            <p>
 
-                  </h2>
+              Giá thuê:
 
+              {" "}
 
+              {
+                activeContract.monthly_price
+                ?
+                Number(
+                  activeContract.monthly_price
+                ).toLocaleString(
+                  "vi-VN"
+                )
+                :
+                "-"
+              }
 
+              đ
 
+            </p>
 
-                  {
-                    item.status === "Đã kết thúc"
 
-                    &&
+          </>
 
-                    (
+          :
 
-                      <span
-                        className="
-                          mt-2
-                          inline-block
-                          rounded-full
-                          bg-gray-100
-                          px-3
-                          py-1
-                          text-xs
-                          text-gray-600
-                        "
-                      >
+          (
 
-                        Đã kết thúc HĐ
+            <p className="
+              text-gray-500
+            "
+            >
 
-                      </span>
+              Chưa có hợp đồng đang hiệu lực.
 
-                    )
-
-                  }
-
-
-
-
-
-
-                  <p>
-
-                    SĐT:
-
-                    {" "}
-
-                    {tenant.phone ?? "-"}
-
-                  </p>
-
-
-
-
-
-                  <p>
-
-                    CCCD:
-
-                    {" "}
-
-                    {tenant.cccd ?? "-"}
-
-                  </p>
-
-
-
-
-
-                  <hr
-                    className="
-                      my-4
-                    "
-                  />
-
-
-
-
-
-                  <p>
-
-                    Tòa nhà:
-
-                    {" "}
-
-                    {
-                      item.property?.name
-                      ??
-                      item.property?.address
-                      ??
-                      "-"
-                    }
-
-                  </p>
-
-
-
-
-
-                  <p>
-
-                    Phòng:
-
-                    {" "}
-
-                    {
-                      item.room?.room_code
-                      ??
-                      "-"
-                    }
-
-                  </p>
-
-
-
-
-
-                  <p>
-
-                    Giá thuê:
-
-                    {" "}
-
-                    {
-                      item.monthly_price
-                      ?
-                      item.monthly_price.toLocaleString(
-                        "vi-VN"
-                      )
-                      :
-                      "-"
-                    }
-
-                    đ
-
-                  </p>
-
-
-
-
-
-
-
-                  <Link
-
-                    href={
-                      `/owner/tenants/${tenant.id}`
-                    }
-
-                    className="
-                      mt-4
-                      inline-block
-                      rounded-lg
-                      border
-                      px-4
-                      py-2
-                      text-sm
-                      hover:bg-gray-100
-                    "
-
-                  >
-
-                    Xem chi tiết
-
-                  </Link>
-
-
-
-
-
-                </div>
-
-              );
-
-
-            }
+            </p>
 
           )
+
+        }
+
+
+
+        <p
+          className="
+            mt-3
+            text-sm
+            text-gray-500
+          "
+        >
+
+          Tổng số hợp đồng:
+
+          {" "}
+
+          {contractsCount}
+
+        </p>
+
+
+
+        <Link
+
+          href={
+            `/owner/tenants/${tenant.id}`
+          }
+
+          className="
+            mt-4
+            inline-block
+            rounded-lg
+            border
+            px-4
+            py-2
+            text-sm
+            hover:bg-gray-100
+          "
+
+        >
+
+          Xem chi tiết
+
+        </Link>
+
+
+
+      </div>
+
+    );
+
+
+  }
+
+)
 
         }
 

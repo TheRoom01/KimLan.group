@@ -8,6 +8,12 @@ import {
 } from "@/lib/supabase/server";
 
 
+import {
+  apiSuccess,
+  mapDatabaseError
+} from "@/lib/api/response";
+
+
 
 export async function POST(
 
@@ -69,23 +75,17 @@ body.monthly_price
 
 if(error){
 
-return NextResponse.json(
-
-{
-error:error.message
-},
-
-{
-status:400
-}
-
+return mapDatabaseError(
+  error
 );
 
 }
 
 
 
-return NextResponse.json(data);
+return apiSuccess(
+  data
+);
 
 
 }

@@ -7,7 +7,10 @@ import {
   createSupabaseServerClient
 } from "@/lib/supabase/server";
 
-
+import {
+  apiSuccess,
+  mapDatabaseError
+} from "@/lib/api/response";
 
 export async function PATCH(
 
@@ -72,29 +75,17 @@ export async function PATCH(
 
   if(error){
 
-    return NextResponse.json(
-
-      {
-        error:error.message
-      },
-
-      {
-        status:400
-      }
-
+    return mapDatabaseError(
+      error
     );
 
-  }
+}
 
 
 
-  return NextResponse.json({
-
-    success:true,
-
-    data
-
-  });
+return apiSuccess(
+  data
+);
 
 
 }

@@ -55,7 +55,6 @@ Không tìm thấy khách thuê.
 }
 
 
-
 const tenant =
 data.tenant;
 if (!tenant) {
@@ -79,16 +78,20 @@ if (!tenant) {
 
 }
 
-const contract =
-data.contract;
+const activeContract =
+  data.activeContract;
 
 
 const room =
-  data.room;
+  activeContract?.room;
 
 
 const property =
-  data.property;
+  activeContract?.property;
+
+
+const contracts =
+  data.contracts ?? [];
 
 
 return (
@@ -252,22 +255,33 @@ font-semibold
 </h2>
 
 
+{
+activeContract ? (
+
+<>
+
 <p>
 <strong>Tòa nhà:</strong>{" "}
-{property.name}
+{
+  activeContract?.property?.name
+  ??
+  activeContract?.property?.address
+  ??
+  "-"
+}
 </p>
 
 
 <p>
 <strong>Phòng:</strong>{" "}
-{room.room_code}
+{room?.room_code ?? "-"}
 </p>
 
 
 <p>
 <strong>Giá thuê:</strong>{" "}
 {
-contract.monthly_price
+activeContract.monthly_price
 ?.toLocaleString(
 "vi-VN"
 )
@@ -275,10 +289,20 @@ contract.monthly_price
 đ
 </p>
 
+</>
+
+) : (
+
+<p>
+Hiện chưa có hợp đồng đang hiệu lực.
+</p>
+
+)
+
+}
+
 
 </div>
-
-
 
 
 
@@ -300,20 +324,53 @@ font-semibold
 "
 >
 
-Hợp đồng
+Lịch sử hợp đồng
 
 </h2>
+
+
+{
+contracts.length === 0 ? (
+
+<p>
+Chưa có hợp đồng.
+</p>
+
+) : (
+
+<div
+className="
+space-y-4
+"
+>
+
+{
+contracts.map(
+(contract:any)=> (
+
+<div
+key={contract.id}
+className="
+rounded-lg
+border
+p-4
+"
+>
 
 
 <p>
 <strong>Bắt đầu:</strong>{" "}
 {
+contract.start_date
+?
 new Date(
 contract.start_date
 )
 .toLocaleDateString(
 "vi-VN"
 )
+:
+"-"
 }
 </p>
 
@@ -321,12 +378,16 @@ contract.start_date
 <p>
 <strong>Kết thúc:</strong>{" "}
 {
+contract.end_date
+?
 new Date(
 contract.end_date
 )
 .toLocaleDateString(
 "vi-VN"
 )
+:
+"-"
 }
 </p>
 
@@ -347,6 +408,33 @@ contract.deposit_amount
 <strong>Trạng thái:</strong>{" "}
 {contract.status}
 </p>
+
+
+<p>
+<strong>Phòng:</strong>{" "}
+{contract.room?.room_code ?? "-"}
+</p>
+
+
+<p>
+<strong>Tòa nhà:</strong>{" "}
+{contract.property?.name ?? "-"}
+</p>
+
+
+</div>
+
+)
+
+)
+
+}
+
+</div>
+
+)
+
+}
 
 
 </div>
