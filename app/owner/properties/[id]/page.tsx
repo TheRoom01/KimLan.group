@@ -1,50 +1,68 @@
-import { getProperty } from "../../../../lib/owner/getProperty";
-import { getPropertyRooms } from "../../../../lib/owner/getPropertyRooms";
 import Link from "next/link";
-import RoomCard from "../../../../components/owner/RoomCard";
+
+import {
+  getPropertyDetail
+} from "@/lib/owner/getPropertyDetail";
+
+import RoomCard from "@/components/owner/RoomCard";
+
 
 
 export default async function PropertyDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{
+    id: string;
+  }>;
 }) {
 
-  const { id } = await params;
+
+  const {
+    id
+  } = await params;
+
+
+
+  const data =
+    await getPropertyDetail(id);
+
 
 
   const property =
-    await getProperty(id);
+    data.property;
+
+
+
+  const summary =
+    data.summary;
+
 
 
   const rooms =
-    await getPropertyRooms(id);
+    data.rooms;
 
 
 
-  const totalRooms =
-    rooms.length;
+  if (!property) {
 
+    return (
 
-  const rentedRooms =
-    rooms.filter(
-      (room:any) =>
-        room.displayStatus === "Đã thuê"
-    ).length;
+      <div
+        className="
+          rounded-xl
+          border
+          bg-white
+          p-6
+        "
+      >
 
+        Không tìm thấy thông tin tòa nhà.
 
-  const emptyRooms =
-    rooms.filter(
-      (room:any) =>
-        room.displayStatus === "Đang trống"
-    ).length;
+      </div>
 
+    );
 
-  const upcomingRooms =
-    rooms.filter(
-      (room:any) =>
-        room.displayStatus === "Sắp trống"
-    ).length;
+  }
 
 
 
@@ -78,8 +96,11 @@ export default async function PropertyDetailPage({
               font-bold
             "
           >
+
             {property.name}
+
           </h1>
+
 
 
           <p
@@ -88,8 +109,11 @@ export default async function PropertyDetailPage({
               text-gray-500
             "
           >
+
             📍 {property.address}
+
           </p>
+
 
 
           <p
@@ -98,9 +122,13 @@ export default async function PropertyDetailPage({
               text-gray-400
             "
           >
+
             {property.district}
+
             {" • "}
+
             {property.city}
+
           </p>
 
 
@@ -130,6 +158,7 @@ export default async function PropertyDetailPage({
 
 
 
+
       {/* Statistics */}
 
       <div
@@ -143,28 +172,53 @@ export default async function PropertyDetailPage({
 
 
         <StatCard
+
           title="Tổng phòng"
-          value={totalRooms}
+
+          value={
+            summary.total_rooms
+          }
+
         />
 
 
+
         <StatCard
+
           title="Đã thuê"
-          value={rentedRooms}
+
+          value={
+            summary.rented_rooms
+          }
+
           color="text-green-600"
+
         />
 
 
+
         <StatCard
+
           title="Đang trống"
-          value={emptyRooms}
+
+          value={
+            summary.empty_rooms
+          }
+
         />
 
 
+
         <StatCard
+
           title="Sắp trống"
-          value={upcomingRooms}
+
+          value={
+            summary.upcoming_rooms
+          }
+
           color="text-orange-600"
+
         />
 
 
@@ -176,48 +230,118 @@ export default async function PropertyDetailPage({
 
       {/* Rooms */}
 
-      <div>
-
-        <h2
-          className="
-            mb-4
-            text-xl
-            font-semibold
-          "
-        >
-          Danh sách phòng
-        </h2>
-
+      <section>
 
 
         <div
           className="
-            grid
-            grid-cols-1
-            gap-5
-            sm:grid-cols-2
-            xl:grid-cols-3
+            mb-4
+            flex
+            items-center
+            justify-between
           "
         >
 
-          {
-            rooms.map(
-              (room:any)=>(
+          <h2
+            className="
+              text-xl
+              font-semibold
+            "
+          >
 
-                <RoomCard
-                  key={room.id}
-                  room={room}
-                />
+            Danh sách phòng
 
-              )
-            )
-          }
+          </h2>
+
+
+
+          <span
+            className="
+              text-sm
+              text-gray-500
+            "
+          >
+
+            {rooms.length} phòng
+
+          </span>
 
 
         </div>
 
 
-      </div>
+
+
+
+        {
+          rooms.length === 0 ?
+
+
+          (
+
+            <div
+              className="
+                rounded-xl
+                border
+                bg-white
+                p-6
+                text-gray-500
+              "
+            >
+
+              Chưa có phòng trong tòa nhà này.
+
+            </div>
+
+          )
+
+
+          :
+
+
+          (
+
+            <div
+              className="
+                grid
+                grid-cols-1
+                gap-5
+                sm:grid-cols-2
+                xl:grid-cols-3
+              "
+            >
+
+              {
+                rooms.map(
+                  (
+                    room:any
+                  ) => (
+
+                    <RoomCard
+
+                      key={
+                        room.id
+                      }
+
+                      room={
+                        room
+                      }
+
+                    />
+
+                  )
+                )
+              }
+
+
+            </div>
+
+          )
+
+        }
+
+
+      </section>
 
 
     </div>
@@ -229,14 +353,22 @@ export default async function PropertyDetailPage({
 
 
 
+
+
+
 function StatCard({
   title,
   value,
-  color="text-gray-900"
-}:{
+  color = "text-gray-900"
+
+}: {
+
   title:string;
+
   value:number;
+
   color?:string;
+
 }) {
 
 
@@ -258,8 +390,11 @@ function StatCard({
           text-gray-500
         "
       >
+
         {title}
+
       </p>
+
 
 
       <p
@@ -270,7 +405,9 @@ function StatCard({
           ${color}
         `}
       >
+
         {value}
+
       </p>
 
 

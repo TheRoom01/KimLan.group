@@ -274,26 +274,64 @@ export default function PropertyCard({
 
 
 
-        <Link
-          href={`/owner/properties/${property.id}`}
-          className="
-            block
-            rounded-xl
-            bg-black
-            px-4
-            py-2
-            text-center
-            text-sm
-            font-medium
-            text-white
-            transition
-            hover:bg-gray-800
-          "
-        >
+        <div
+  className="
+    space-y-2
+  "
+>
 
-          Xem chi tiết →
 
-        </Link>
+    <Link
+      href={`/owner/properties/${property.id}`}
+      className="
+        block
+        rounded-xl
+        bg-black
+        px-4
+        py-2
+        text-center
+        text-sm
+        font-medium
+        text-white
+        transition
+        hover:bg-gray-800
+      "
+    >
+
+      Xem chi tiết →
+
+    </Link>
+
+
+
+    <Link
+
+      href={
+        `/owner/rooms/create?property_id=${property.id}`
+      }
+
+      className="
+        block
+        rounded-xl
+        border
+        px-4
+        py-2
+        text-center
+        text-sm
+        font-medium
+        text-gray-700
+        transition
+        hover:bg-gray-50
+      "
+
+    >
+
+      + Tạo phòng mới
+
+    </Link>
+
+
+    </div>
 
 
       </div>

@@ -6,42 +6,93 @@ export async function getRoomDetail(roomId: string) {
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase
-    .from("rooms")
-    .select(`
+  .from("rooms")
+  .select(`
+
+    id,
+
+    room_code,
+
+    room_type,
+
+    price,
+
+    status,
+
+    address,
+
+    district,
+
+    ward,
+
+    property_id,
+
+
+    room_media (
+
       id,
-      room_code,
-      room_type,
-      price,
+
+      type,
+
+      provider,
+
+      url,
+
+      path,
+
+      is_cover,
+
+      sort_order,
+
+      created_at
+
+    ),
+
+
+    rental_contracts (
+
+      id,
+
       status,
-      address,
-      district,
-      ward,
-      property_id,
 
-      rental_contracts (
-        id,
-        status,
-        start_date,
-        end_date,
-        monthly_price,
-        deposit_amount,
+      start_date,
 
-        contract_tenants (
-          role,
+      end_date,
 
-          tenants (
-            id,
-            full_name,
-            phone,
-            cccd
-          )
+      monthly_price,
+
+      deposit_amount,
+
+
+      contract_tenants (
+
+        role,
+
+
+        tenants (
+
+          id,
+
+          full_name,
+
+          phone,
+
+          cccd
+
         )
+
       )
-    `)
-    .eq("id", roomId)
-    .single();
+
+    )
+
+  `)
+  .eq("id", roomId)
+  .single();
 
   if (error) throw error;
+
+  const media =
+  data.room_media ?? [];
 
   const today = new Date();
 
@@ -111,10 +162,18 @@ export async function getRoomDetail(roomId: string) {
     : tenantRelation?.tenants ?? null;
 
   return {
+
     ...data,
+
+    media,
+
     displayStatus,
+
     daysRemaining,
+
     contract,
+
     tenant,
+
   };
 }

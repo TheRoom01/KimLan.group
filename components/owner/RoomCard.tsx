@@ -8,6 +8,7 @@ interface RoomCardProps {
 }
 
 
+
 export default function RoomCard({
   room
 }:RoomCardProps){
@@ -18,14 +19,32 @@ export default function RoomCard({
     room.status;
 
 
+
   const statusStyle =
     status === "Đã thuê"
+
       ? "bg-green-100 text-green-700"
+
       :
+
     status === "Sắp trống"
+
       ? "bg-orange-100 text-orange-700"
+
       :
+
       "bg-gray-100 text-gray-700";
+
+
+
+  const tenants =
+    room.tenant ?? [];
+
+
+
+  const currentTenant =
+    tenants[0];
+
 
 
   return (
@@ -40,6 +59,9 @@ export default function RoomCard({
       "
     >
 
+
+      {/* Header */}
+
       <div
         className="
           flex
@@ -48,7 +70,9 @@ export default function RoomCard({
         "
       >
 
+
         <div>
+
 
           <h3
             className="
@@ -56,8 +80,11 @@ export default function RoomCard({
               font-semibold
             "
           >
+
             Phòng {room.room_code}
+
           </h3>
+
 
 
           <p
@@ -66,11 +93,15 @@ export default function RoomCard({
               text-gray-500
             "
           >
+
             {room.room_type}
+
           </p>
 
 
         </div>
+
+
 
         <span
           className={`
@@ -86,7 +117,15 @@ export default function RoomCard({
           {status}
 
         </span>
+
+
       </div>
+
+
+
+
+
+      {/* Basic info */}
 
       <div
         className="
@@ -95,20 +134,33 @@ export default function RoomCard({
           text-sm
         "
       >
+
+
         <p>
 
           Giá:
-          <strong className="ml-1">
+
+          <strong
+            className="
+              ml-1
+            "
+          >
+
             {room.price?.toLocaleString("vi-VN")}
+
             {" "}đ
+
           </strong>
 
+
         </p>
+
 
 
         {
           room.daysRemaining !== null &&
           room.daysRemaining !== undefined &&
+
           (
 
             <p
@@ -122,13 +174,104 @@ export default function RoomCard({
             </p>
 
           )
+
         }
 
 
       </div>
 
+
+
+
+
+      {/* Tenant */}
+
+      {
+        currentTenant &&
+
+        (
+
+          <div
+            className="
+              mt-4
+              rounded-lg
+              bg-gray-50
+              p-3
+              text-sm
+            "
+          >
+
+            <p
+              className="
+                font-medium
+              "
+            >
+
+              Khách thuê
+
+            </p>
+
+
+            <p>
+
+              {currentTenant.full_name}
+
+            </p>
+
+
+            <p
+              className="
+                text-gray-500
+              "
+            >
+
+              {currentTenant.phone}
+
+            </p>
+
+
+          </div>
+
+        )
+
+      }
+
+
+
+
+      {
+        !currentTenant &&
+        (
+
+          <div
+            className="
+              mt-4
+              rounded-lg
+              bg-gray-50
+              p-3
+              text-sm
+              text-gray-500
+            "
+          >
+
+            Chưa có khách thuê
+
+          </div>
+
+        )
+
+      }
+
+
+
+
+
+      {/* Action */}
+
       <Link
+
         href={`/owner/rooms/${room.id}`}
+
         className="
           mt-4
           block
@@ -140,11 +283,13 @@ export default function RoomCard({
           text-sm
           hover:bg-gray-50
         "
+
       >
 
-        Xem phòng →
+        Quản lý phòng →
 
       </Link>
+
 
 
     </div>

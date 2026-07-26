@@ -1,5 +1,20 @@
 import Link from "next/link";
-import { getRoomDetail } from "../../../../lib/owner/getRoomDetail";
+import {
+  getRoomDetail
+} from "@/lib/owner/getRoomDetail";
+
+import RoomStatusControl
+from "@/components/owner/RoomStatusControl";
+
+import RoomMediaGallery
+from "@/components/owner/RoomMediaGallery";
+
+import {
+  getRoomStatusLogs
+} from "@/lib/owner/getRoomStatusLogs";
+
+
+import RoomStatusHistory from "@/components/owner/RoomStatusHistory";  
 
 export default async function RoomDetailPage({
   params,
@@ -9,6 +24,8 @@ export default async function RoomDetailPage({
   const { id } = await params;
 
   const room = await getRoomDetail(id);
+
+  const statusLogs = await getRoomStatusLogs(id);
 
   const contract = room.contract;
   const tenant = room.tenant;
@@ -33,12 +50,42 @@ export default async function RoomDetailPage({
 
         </div>
 
-        <Link
-            href={`/owner/properties/${room.property_id}`}
-            className="rounded-lg border px-4 py-2 hover:bg-gray-100"
+        <div
+          className="
+            flex
+            gap-3
+          "
         >
+
+          <Link
+            href={`/owner/properties/${room.property_id}`}
+            className="
+              rounded-lg
+              border
+              px-4
+              py-2
+              hover:bg-gray-100
+            "
+          >
             ← Quay lại
-        </Link>
+          </Link>
+
+
+          <Link
+            href={`/owner/rooms/${room.id}/edit`}
+            className="
+              rounded-lg
+              border
+              px-4
+              py-2
+              hover:bg-gray-100
+            "
+          >
+            Chỉnh sửa phòng
+          </Link>
+
+
+        </div>
 
         </div>
 
@@ -58,26 +105,51 @@ export default async function RoomDetailPage({
           </div>
 
           <div>
-            <p className="text-gray-500">Trạng thái</p>
 
-            <div>
-                <p className="font-semibold">
+            <p className="text-gray-500">
+              Trạng thái
+            </p>
 
-                    {room.displayStatus}
+
+            <p className="font-semibold">
+              {room.displayStatus}
+            </p>
+
+
+            <div className="mt-3">
+
+              <RoomStatusControl
+
+                roomId={room.id}
+
+                currentStatus={room.status}
+
+              />
+
+            </div>
+
+
+            {
+              room.displayStatus === "Sắp trống" &&
+              room.daysRemaining !== null &&
+              (
+
+                <p
+                  className="
+                    mt-2
+                    text-sm
+                    text-orange-500
+                  "
+                >
+
+                  Còn {room.daysRemaining} ngày
 
                 </p>
 
-                {room.displayStatus === "Sắp trống" &&
-                    room.daysRemaining !== null && (
+              )
+            }
 
-                    <p className="text-sm text-orange-500">
 
-                        Còn {room.daysRemaining} ngày
-
-                    </p>
-
-                )}
-            </div>
           </div>
 
           <div>
@@ -94,27 +166,114 @@ export default async function RoomDetailPage({
 
         </div>
       </div>
+      
+      <RoomMediaGallery
+          media={room.media}
+        />
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold">
-          Khách thuê
-        </h2>
+      <div
+  className="
+    rounded-xl
+    border
+    bg-white
+    p-6
+  "
+>
 
-        {tenant ? (
-          <div className="space-y-2">
-            <p><strong>Họ tên:</strong> {tenant.full_name}</p>
-            <p><strong>SĐT:</strong> {tenant.phone}</p>
-            <p><strong>CCCD:</strong> {tenant.cccd ?? "-"}</p>
-          </div>
-        ) : (
-          <p>Chưa có khách thuê.</p>
-        )}
-      </div>
+  <h2
+    className="
+      mb-4
+      text-xl
+      font-semibold
+    "
+  >
+    Khách thuê
+  </h2>
+
+
+
+  {tenant ? (
+
+    <div
+      className="
+        space-y-2
+      "
+    >
+
+      <p>
+        <strong>Họ tên:</strong>{" "}
+        {tenant.full_name}
+      </p>
+
+
+      <p>
+        <strong>SĐT:</strong>{" "}
+        {tenant.phone}
+      </p>
+
+
+      <p>
+        <strong>CCCD:</strong>{" "}
+        {tenant.cccd ?? "-"}
+      </p>
+
+
+    </div>
+
+
+  ) : (
+
+
+    <div
+      className="
+        space-y-3
+      "
+    >
+
+      <p
+        className="
+          text-gray-500
+        "
+      >
+        Chưa có khách thuê.
+      </p>
+
+
+      <Link
+
+        href={`/owner/rooms/${room.id}/tenant/new`}
+
+        className="
+          inline-block
+          rounded-lg
+          bg-blue-600
+          px-4
+          py-2
+          text-white
+          hover:bg-blue-700
+        "
+
+      >
+
+        + Thêm khách thuê
+
+      </Link>
+
+
+    </div>
+
+
+  )}
+
+
+</div>
 
       <div className="rounded-xl border bg-white p-6">
         <h2 className="mb-4 text-xl font-semibold">
           Hợp đồng
         </h2>
+
+        
 
         {contract ? (
           <div className="space-y-2">
@@ -147,6 +306,12 @@ export default async function RoomDetailPage({
           <p>Chưa có hợp đồng.</p>
         )}
       </div>
+
+      <RoomStatusHistory
+
+          logs={statusLogs}
+
+        />
     </div>
   );
 }

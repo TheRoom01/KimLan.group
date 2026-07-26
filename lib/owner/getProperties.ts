@@ -7,38 +7,73 @@ export async function getProperties() {
 
   const supabase =
     await createSupabaseServerClient();
+  const {
+  data:userData
+}
+=
+await supabase.auth.getUser();
 
+
+const user =
+  userData.user;
+console.log(
+  "CURRENT USER:",
+  user?.id
+);
+
+if(!user){
+
+  throw new Error(
+    "Unauthorized"
+  );
+
+}
 
   const { data, error } = await supabase
-    .from("properties")
-    .select(`
+  .from("properties")
+  .select(`
+
+    id,
+    code,
+    name,
+    house_number,
+    address,
+    district,
+    city,
+    cover_image,
+    status,
+    created_at,
+
+
+    property_owners!inner(
+
+      user_id
+
+    ),
+
+
+    rooms!rooms_property_id_fkey (
+
       id,
-      code,
-      name,
-      house_number,
-      address,
-      district,
-      city,
-      cover_image,
       status,
-      created_at,
 
-      rooms!rooms_property_id_fkey (
+      rental_contracts (
 
-        id,
         status,
+        end_date
 
-        rental_contracts (
+      )
 
-            status,
-            end_date
+    )
 
-        )
+  `)
 
-        )
+  .eq(
+    "property_owners.user_id",
+    user.id
+  )
 
-    `)
-    .order("name");
+  .order("name");
 
 
   if (error) {

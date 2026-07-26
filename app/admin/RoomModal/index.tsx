@@ -90,6 +90,7 @@ type Props = {
 
   // ✅ onSaved nhận room mới để trang admin cập nhật ngay
   onSaved: (updatedRoom: Room, opts?: { isNew?: boolean }) => void | Promise<void>
+  
 }
 
 function normalizeStatus(v?: RoomStatus | string | null): RoomStatus {
@@ -617,42 +618,92 @@ for (const file of okFiles) {
       return { publicUrl }
     }
 
-    let put: Response
+    // Vercel Function không phù hợp để nhận file lớn.
+// Chỉ cho phép fallback qua server với file nhỏ hơn hoặc bằng 4MB.
+const MAX_SERVER_FALLBACK_BYTES = 4 * 1024 * 1024
+
+try {
+  const put = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: requiredHeaders,
+    body: file,
+  })
+
+  if (!put.ok) {
+    const status = put.status
+    const contentType = put.headers.get('content-type') || ''
+
+    let rawText = ''
     try {
-      put = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: requiredHeaders,
-        body: file,
-      })
-  } catch (e: any) {
-  console.warn('R2 PUT failed, trying fallback...', e);
+      rawText = await put.text()
+    } catch {}
 
-  try {
-    return await uploadViaServerR2({ room_id, file, fixed_name });
-  } catch (fallbackErr: any) {
-    console.error('Fallback upload failed', fallbackErr);
-    throw new Error('Upload thất bại cả R2 direct và fallback.');
+    const snippet = rawText.slice(0, 500).trim()
+
+    const detail =
+      `[r2/put] status=${status} content-type=${contentType}\n` +
+      (snippet ? `response: ${snippet}` : '(no body)')
+
+    throw new Error(detail)
   }
-}
 
-    if (!put.ok) {
-      const status = put.status
-      const ct = put.headers.get('content-type') || ''
-      let rawText = ''
-      try {
-        rawText = await put.text()
-      } catch {}
+   return { publicUrl }
+    } catch (directError: any) {
+      console.error('Direct R2 upload failed:', directError)
 
-      const snippet = (rawText || '').slice(0, 300).trim()
-      const detail =
-        `[r2/put] status=${status} content-type=${ct}\n` +
-        (snippet ? `response: ${snippet}` : '(no body)')
+      const canUseServerFallback =
+        file.size <= MAX_SERVER_FALLBACK_BYTES
 
-      console.error(detail)
-      throw new Error(`R2 PUT failed (HTTP ${status})\n\n${detail}`)
+      if (canUseServerFallback) {
+        try {
+          console.warn(
+            `Trying server fallback for small file: ${file.name} (${file.size} bytes)`
+          )
+
+          return await uploadViaServerR2({
+            room_id,
+            file,
+            fixed_name,
+          })
+        } catch (fallbackError: any) {
+          console.error('Server fallback upload failed:', fallbackError)
+
+          throw new Error(
+            `Upload trực tiếp lên R2 và fallback đều thất bại.\n\n` +
+            `R2: ${String(
+              directError?.message || directError || 'unknown_error'
+            )}\n\n` +
+            `Fallback: ${String(
+              fallbackError?.message || fallbackError || 'unknown_error'
+            )}`
+          )
+        }
+      }
+
+      const sizeMb = (file.size / 1024 / 1024).toFixed(1)
+
+      if (file.type.startsWith('video/')) {
+        throw new Error(
+          `Không thể upload video trực tiếp lên R2.\n\n` +
+          `File: ${file.name}\n` +
+          `Dung lượng: ${sizeMb}MB\n\n` +
+          `Video không thể fallback qua server vì vượt giới hạn payload. ` +
+          `Vui lòng kiểm tra CORS của bucket R2.\n\n` +
+          `Chi tiết: ${String(
+            directError?.message || directError || 'Failed to fetch'
+          )}`
+        )
+      }
+
+      throw new Error(
+        `Upload trực tiếp lên R2 thất bại.\n\n` +
+        `File: ${file.name}\n` +
+        `Dung lượng: ${sizeMb}MB\n\n` +
+        `Chi tiết: ${String(
+          directError?.message || directError || 'Failed to fetch'
+        )}`
+      )
     }
-
-    return { publicUrl }
   }
 
   const { publicUrl } = await presignAndPutToR2({

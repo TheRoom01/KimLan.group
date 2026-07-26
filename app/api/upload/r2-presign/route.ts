@@ -94,7 +94,10 @@ const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
       CacheControl: cacheControl,
     })
 
-    const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: 60 })
+    const uploadUrl = await getSignedUrl(s3, cmd, {
+      expiresIn: 15 * 60, // 15 phút
+    })
+
     const publicUrl = `${R2_PUBLIC_BASE_URL}/${key}`
 
     return NextResponse.json({
