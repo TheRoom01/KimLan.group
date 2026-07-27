@@ -1,16 +1,12 @@
 import Link from "next/link";
 
 import PropertyInvitationsPanel from "@/components/owner/PropertyInvitationsPanel";
+import PropertyMembersPanel, {
+  type PropertyMemberItem,
+} from "@/components/owner/PropertyMembersPanel";
 import RoomCard from "@/components/owner/RoomCard";
 import { getPropertyDetail } from "@/lib/owner/getPropertyDetail";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-type PropertyMember = {
-  id?: string;
-  user_id?: string;
-  role?: string;
-  status?: string;
-};
 
 export default async function PropertyDetailPage({
   params,
@@ -39,11 +35,12 @@ export default async function PropertyDetailPage({
     supabase.auth.getUser(),
     supabase.rpc("can_manage_property", { p_property_id: property.id }),
   ]);
-  const members = (data.members ?? []) as PropertyMember[];
+  const members = (data.members ?? []) as PropertyMemberItem[];
   const currentMembership = members.find(
     (member) => member.user_id === user?.id && member.status === "active",
   );
   const canManage = canManageResult === true;
+  const isOwner = currentMembership?.role === "owner";
   const rooms = data.rooms ?? [];
   const summary = data.summary;
   const displayName =
@@ -167,42 +164,12 @@ export default async function PropertyDetailPage({
         )}
       </section>
 
-      <section className="rounded-2xl border bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Thành viên tòa nhà</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Membership active quyết định quyền xem và quản lý dữ liệu.
-            </p>
-          </div>
-          <span className="text-sm text-gray-500">{members.length} thành viên</span>
-        </div>
-
-        {members.length === 0 ? (
-          <p className="mt-4 text-sm text-gray-500">Chưa có membership.</p>
-        ) : (
-          <div className="mt-4 divide-y rounded-xl border">
-            {members.map((member, index) => (
-              <div
-                key={member.id ?? `${member.user_id}-${index}`}
-                className="flex items-center justify-between gap-4 p-4 text-sm"
-              >
-                <div>
-                  <p className="font-medium">
-                    {member.user_id === user?.id ? "Tài khoản của bạn" : member.user_id}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Role: {member.role ?? "-"}
-                  </p>
-                </div>
-                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
-                  {member.status ?? "-"}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <PropertyMembersPanel
+        propertyId={property.id}
+        currentUserId={user?.id}
+        initialMembers={members}
+        isOwner={isOwner}
+      />
 
       {canManage ? <PropertyInvitationsPanel propertyId={property.id} /> : null}
     </div>
