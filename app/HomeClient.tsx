@@ -248,6 +248,7 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
 const [isAnonLocked, setIsAnonLocked] = useState(false);
 const [isLoggedIn, setIsLoggedIn] = useState(false);
 const [hasVipAccess, setHasVipAccess] = useState(false);
+const vipAccessTokenHashRef = useRef<string | null>(null);
 
 const lockTimerRef = useRef<number | null>(null);
 const vipTimerRef = useRef<number | null>(null);
@@ -373,7 +374,10 @@ useEffect(() => {
         expiresAt?: number;
         creatorAdminPhone?: string | null;
         creatorAdminName?: string | null;
+        tokenHash?: string | null;
       };
+      vipAccessTokenHashRef.current =
+  String(parsed.tokenHash ?? "").trim() || null;
 
       const expiresAt = Number(parsed.expiresAt ?? 0);
 
@@ -435,6 +439,8 @@ useEffect(() => {
       }
 
       const expiresAtMs = new Date(json.expiresAt).getTime();
+      vipAccessTokenHashRef.current =
+  String(json.tokenHash ?? "").trim() || null;
 
       if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
         localStorage.removeItem(VIP_ACCESS_KEY);
@@ -455,6 +461,7 @@ useEffect(() => {
           savedAt: Date.now(),
           creatorAdminPhone: vipPhone,
           creatorAdminName: vipName,
+          tokenHash: vipAccessTokenHashRef.current,
         })
       );
 
@@ -464,9 +471,18 @@ useEffect(() => {
       setVipAdminPhone(vipPhone);
       setVipAdminName(vipName);
 
+
+      // ✅ VIP vừa mở khóa -> fetch lại list với p_vip_token_hash
+      resetPagination(0);
+
+      queueMicrotask(() => {
+        fetchPageRef.current(0);
+      });
+
+
       const msLeft = expiresAtMs - Date.now();
       clearVipTimer();
-
+      
       vipTimerRef.current = window.setTimeout(() => {
         localStorage.removeItem(VIP_ACCESS_KEY);
         clearVipAccess();
@@ -2326,7 +2342,9 @@ const res = await fetchRooms({
   adminLevel,
   currentUserId,
 
-  // ✅ ưu tiên URL snapshot khi đang hydrate-from-URL
+ vipAccessTokenHash:
+  vipAccessTokenHashRef.current ?? null,
+
   search: (pending?.search ?? appliedSearch).trim()
     ? (pending?.search ?? appliedSearch).trim()
     : undefined,
@@ -2345,12 +2363,14 @@ const res = await fetchRooms({
     : undefined,
 
   move: pending?.move ?? moveFilter ?? undefined,
-petPolicies: (pending?.pets ?? petFilters).length
-  ? (pending?.pets ?? petFilters)
-  : undefined,
-contractTerms: (pending?.terms ?? termFilters).length
-  ? (pending?.terms ?? termFilters)
-  : undefined,
+
+  petPolicies: (pending?.pets ?? petFilters).length
+    ? (pending?.pets ?? petFilters)
+    : undefined,
+
+  contractTerms: (pending?.terms ?? termFilters).length
+    ? (pending?.terms ?? termFilters)
+    : undefined,
 });
 
 // ✅ sau lần fetch đầu tiên theo URL snapshot thì clear để các fetch sau dùng state bình thường
@@ -3408,18 +3428,23 @@ return (
 
     {isAnonLocked && !hasVipAccess && (
       <AnonymousLockModal
-      phone="0967.467.587"
-      zaloUrl="https://zalo.me/0967467587"
-      onUnlocked={() => {
-        setHasVipAccess(true);
-        setIsAnonLocked(false);
+        phone="0967.467.587"
+        zaloUrl="https://zalo.me/0967467587"
+        onUnlocked={() => {
 
-        resetPagination(0);
-        queueMicrotask(() => {
-          fetchPageRef.current(0);
-        });
-      }}
-    />
+          setHasVipAccess(true);
+          setIsAnonLocked(false);
+
+
+          // reload data với quyền VIP
+          resetPagination(0);
+
+          queueMicrotask(() => {
+            fetchPageRef.current(0);
+          });
+
+        }}
+      />
     )}
 
     <div

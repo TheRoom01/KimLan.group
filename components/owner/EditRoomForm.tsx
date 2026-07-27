@@ -1,356 +1,557 @@
 "use client";
 
+import { ChangeEvent, FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
+import { readApiResponse } from "@/lib/api/client";
 import {
-  useState
-} from "react";
+  uploadRoomMediaFiles,
+  validateRoomMediaFiles,
+  type RoomMediaUploadProgress,
+} from "@/lib/owner/uploadRoomMedia";
 
+type RoomMedia = {
+  id?: string;
+  type?: "image" | "video";
+  url?: string;
+  is_cover?: boolean;
+};
 
-import {
-  useRouter
-} from "next/navigation";
+type EditableRoom = {
+  id: string;
+  room_code?: string | null;
+  room_type?: string | null;
+  price?: number | null;
+  description?: string | null;
+  chinh_sach?: string | null;
+  link_zalo?: string | null;
+  zalo_phone?: string | null;
+  publish_status?: string | null;
+  details?: Record<string, any> | null;
+  media?: RoomMedia[];
+};
 
+const INPUT_CLASS =
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-600 focus:ring-2 focus:ring-gray-200";
 
+export default function EditRoomForm({ room }: { room: EditableRoom }) {
+  const router = useRouter();
+  const details = room.details ?? {};
+  const currentMedia = room.media ?? [];
+  const [files, setFiles] = useState<File[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] =
+    useState<RoomMediaUploadProgress | null>(null);
 
-interface Props {
+  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []);
+    setErrorMessage(null);
 
-  room:any;
-
-}
-
-
-
-export default function EditRoomForm({
-
-  room
-
-}:Props){
-
-
-
-  const router =
-    useRouter();
-
-
-
-  const [loading,setLoading]
-    = useState(false);
-
-
-
-  const [form,setForm]
-    = useState({
-
-      room_type:
-        room.room_type ?? "",
-
-
-      price:
-        room.price ?? 0,
-
-
-      description:
-        room.description ?? "",
-
-
-      status:
-        room.status ?? "Đang trống"
-
-    });
-
-
-
-  async function submit(){
-
-
-    try{
-
-
-      setLoading(true);
-
-
-
-      const res =
-        await fetch(
-          `/api/owner/rooms/${room.id}`,
-          {
-
-            method:"PATCH",
-
-            headers:{
-              "Content-Type":
-                "application/json"
-            },
-
-
-            body:
-              JSON.stringify(form)
-
-          }
-        );
-
-
-
-      if(!res.ok){
-
-        throw new Error(
-          "Update room failed"
-        );
-
-      }
-
-
-
-      router.push(
-        `/owner/rooms/${room.id}`
+    try {
+      validateRoomMediaFiles(selected);
+      setFiles(selected);
+    } catch (error) {
+      setFiles([]);
+      event.target.value = "";
+      setErrorMessage(
+        error instanceof Error ? error.message : "Danh sách media không hợp lệ",
       );
-
-
-      router.refresh();
-
-
-
     }
-
-    catch(error){
-
-      console.error(error);
-
-      alert(
-        "Cập nhật phòng thất bại"
-      );
-
-    }
-
-    finally{
-
-      setLoading(false);
-
-    }
-
-
   }
 
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setErrorMessage(null);
+    setUploadStatus(null);
 
+    const form = new FormData(event.currentTarget);
+    const petPolicy = String(form.get("pet_policy") ?? "no_pet");
+    const allowPet = petPolicy === "allowed";
+
+    const payload = {
+      room_code: form.get("room_code"),
+      room_type: form.get("room_type"),
+      price: form.get("price"),
+      description: form.get("description"),
+      chinh_sach: form.get("chinh_sach"),
+      link_zalo: form.get("link_zalo"),
+      zalo_phone: form.get("zalo_phone"),
+      publish_status: form.get("publish_status"),
+      room_details: {
+        electric_fee_value: form.get("electric_fee_value"),
+        electric_fee_unit: form.get("electric_fee_unit"),
+        water_fee_value: form.get("water_fee_value"),
+        water_fee_unit: form.get("water_fee_unit"),
+        service_fee_value: form.get("service_fee_value"),
+        service_fee_unit: form.get("service_fee_unit"),
+        parking_fee_value: form.get("parking_fee_value"),
+        parking_fee_unit: form.get("parking_fee_unit"),
+        other_fee_value: form.get("other_fee_value"),
+        other_fee_note: form.get("other_fee_note"),
+        has_elevator: form.get("has_elevator") === "on",
+        has_stairs: form.get("has_stairs") === "on",
+        shared_washer: form.get("shared_washer") === "on",
+        private_washer: form.get("private_washer") === "on",
+        shared_dryer: form.get("shared_dryer") === "on",
+        private_dryer: form.get("private_dryer") === "on",
+        has_parking: form.get("has_parking") === "on",
+        has_basement: form.get("has_basement") === "on",
+        fingerprint_lock: form.get("fingerprint_lock") === "on",
+        allow_pet: allowPet,
+        allow_cat: allowPet && form.get("allow_cat") === "on",
+        allow_dog: allowPet && form.get("allow_dog") === "on",
+        no_pet: !allowPet,
+        short_term: form.get("short_term") === "on",
+        long_term: form.get("long_term") === "on",
+        other_amenities: form.get("other_amenities"),
+        detail_json:
+          details.detail_json && typeof details.detail_json === "object"
+            ? details.detail_json
+            : {},
+      },
+    };
+
+    try {
+      const response = await fetch(`/api/owner/rooms/${room.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      await readApiResponse<unknown>(response);
+
+      if (files.length > 0) {
+        await uploadRoomMediaFiles({
+          roomId: room.id,
+          files,
+          startSortOrder: currentMedia.length,
+          coverAlreadyExists: currentMedia.some(
+            (media) => media.type === "image" && media.is_cover === true,
+          ),
+          onProgress: setUploadStatus,
+        });
+      }
+
+      router.push(`/owner/rooms/${room.id}`);
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Cập nhật phòng thất bại",
+      );
+    } finally {
+      setLoading(false);
+      setUploadStatus(null);
+    }
+  }
 
   return (
+    <form onSubmit={submit} className="space-y-6">
+      <Section title="Thông tin phòng">
+        <div className="grid gap-5 md:grid-cols-2">
+          <Field label="Mã phòng" htmlFor="room_code" required>
+            <input
+              id="room_code"
+              name="room_code"
+              className={INPUT_CLASS}
+              maxLength={100}
+              defaultValue={room.room_code ?? ""}
+              required
+            />
+          </Field>
 
-    <div
-      className="
-        rounded-xl
-        border
-        bg-white
-        p-6
-        space-y-5
-      "
-    >
+          <Field label="Loại phòng" htmlFor="room_type">
+            <input
+              id="room_type"
+              name="room_type"
+              className={INPUT_CLASS}
+              maxLength={120}
+              defaultValue={room.room_type ?? ""}
+            />
+          </Field>
 
+          <Field label="Giá phòng" htmlFor="price">
+            <input
+              id="price"
+              name="price"
+              type="number"
+              min={0}
+              step={1}
+              className={INPUT_CLASS}
+              defaultValue={room.price ?? ""}
+            />
+          </Field>
 
-      <div>
+          <Field
+              label="Trạng thái hiển thị"
+              htmlFor="publish_status"
+              hint="Phòng Xuất bản sẽ hiển thị công khai. Chọn Ẩn để tạm ngừng hiển thị."
+            >
+              <select
+                id="publish_status"
+                name="publish_status"
+                className={INPUT_CLASS}
+                defaultValue={room.publish_status ?? "published"}
+              >
+                <option value="draft">Lưu nội bộ</option>
+                <option value="published">Xuất bản công khai</option>
+                <option value="hidden">Ẩn khỏi trang công khai</option>
+              </select>
+          </Field>
 
-        <label>
-          Loại phòng
-        </label>
+          <Field label="Số điện thoại Zalo" htmlFor="zalo_phone">
+            <input
+              id="zalo_phone"
+              name="zalo_phone"
+              className={INPUT_CLASS}
+              maxLength={30}
+              defaultValue={room.zalo_phone ?? ""}
+            />
+          </Field>
 
+          <Field label="Link Zalo" htmlFor="link_zalo">
+            <input
+              id="link_zalo"
+              name="link_zalo"
+              type="url"
+              className={INPUT_CLASS}
+              maxLength={2000}
+              defaultValue={room.link_zalo ?? ""}
+            />
+          </Field>
 
-        <input
+          <div className="md:col-span-2">
+            <Field label="Mô tả" htmlFor="description">
+              <textarea
+                id="description"
+                name="description"
+                className={`${INPUT_CLASS} min-h-28 resize-y`}
+                maxLength={5000}
+                defaultValue={room.description ?? ""}
+              />
+            </Field>
+          </div>
 
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
+          <div className="md:col-span-2">
+            <Field label="Chính sách" htmlFor="chinh_sach">
+              <textarea
+                id="chinh_sach"
+                name="chinh_sach"
+                className={`${INPUT_CLASS} min-h-24 resize-y`}
+                maxLength={5000}
+                defaultValue={room.chinh_sach ?? ""}
+              />
+            </Field>
+          </div>
+        </div>
+      </Section>
 
-          value={form.room_type}
+      <Section title="Chi phí dịch vụ">
+        <div className="grid gap-5 md:grid-cols-2">
+          <FeeField
+            label="Tiền điện"
+            valueName="electric_fee_value"
+            unitName="electric_fee_unit"
+            value={details.electric_fee_value}
+            unit={details.electric_fee_unit}
+          />
+          <FeeField
+            label="Tiền nước"
+            valueName="water_fee_value"
+            unitName="water_fee_unit"
+            value={details.water_fee_value}
+            unit={details.water_fee_unit}
+          />
+          <FeeField
+            label="Phí dịch vụ"
+            valueName="service_fee_value"
+            unitName="service_fee_unit"
+            value={details.service_fee_value}
+            unit={details.service_fee_unit}
+          />
+          <FeeField
+            label="Phí giữ xe"
+            valueName="parking_fee_value"
+            unitName="parking_fee_unit"
+            value={details.parking_fee_value}
+            unit={details.parking_fee_unit}
+          />
+          <FeeField
+            label="Phí khác"
+            valueName="other_fee_value"
+            unitName="other_fee_note"
+            value={details.other_fee_value}
+            unit={details.other_fee_note}
+          />
+        </div>
+      </Section>
 
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                room_type:e.target.value
-              })
-          }
+      <Section title="Tiện nghi và chính sách thuê">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Checkbox name="has_elevator" label="Thang máy" checked={details.has_elevator} />
+          <Checkbox name="has_stairs" label="Cầu thang bộ" checked={details.has_stairs} />
+          <Checkbox name="has_parking" label="Chỗ để xe" checked={details.has_parking} />
+          <Checkbox name="has_basement" label="Hầm xe" checked={details.has_basement} />
+          <Checkbox
+            name="fingerprint_lock"
+            label="Khóa vân tay"
+            checked={details.fingerprint_lock}
+          />
+          <Checkbox
+            name="shared_washer"
+            label="Máy giặt chung"
+            checked={details.shared_washer}
+          />
+          <Checkbox
+            name="private_washer"
+            label="Máy giặt riêng"
+            checked={details.private_washer}
+          />
+          <Checkbox
+            name="shared_dryer"
+            label="Máy sấy chung"
+            checked={details.shared_dryer}
+          />
+          <Checkbox
+            name="private_dryer"
+            label="Máy sấy riêng"
+            checked={details.private_dryer}
+          />
+          <Checkbox
+            name="short_term"
+            label="Cho thuê ngắn hạn"
+            checked={details.short_term}
+          />
+          <Checkbox
+            name="long_term"
+            label="Cho thuê dài hạn"
+            checked={details.long_term ?? true}
+          />
+        </div>
 
-        />
+        <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <Field label="Chính sách thú cưng" htmlFor="pet_policy">
+            <select
+              id="pet_policy"
+              name="pet_policy"
+              className={INPUT_CLASS}
+              defaultValue={details.no_pet ? "no_pet" : "allowed"}
+            >
+              <option value="no_pet">Không nhận thú cưng</option>
+              <option value="allowed">Cho phép thú cưng</option>
+            </select>
+          </Field>
 
-      </div>
+          <div className="flex items-end gap-4 pb-2">
+            <Checkbox name="allow_cat" label="Cho phép mèo" checked={details.allow_cat} />
+            <Checkbox name="allow_dog" label="Cho phép chó" checked={details.allow_dog} />
+          </div>
 
+          <div className="md:col-span-2">
+            <Field label="Tiện nghi khác" htmlFor="other_amenities">
+              <textarea
+                id="other_amenities"
+                name="other_amenities"
+                className={`${INPUT_CLASS} min-h-20 resize-y`}
+                maxLength={2000}
+                defaultValue={details.other_amenities ?? ""}
+              />
+            </Field>
+          </div>
+        </div>
+      </Section>
 
+      <Section title="Media">
+        {currentMedia.length > 0 ? (
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {currentMedia.map((media, index) => (
+              <div
+                key={media.id ?? `${media.url}-${index}`}
+                className="overflow-hidden rounded-lg border bg-gray-50"
+              >
+                {media.type === "video" ? (
+                  <video
+                    src={media.url}
+                    controls
+                    preload="metadata"
+                    className="h-28 w-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={media.url}
+                    alt={`Media phòng ${index + 1}`}
+                    className="h-28 w-full object-cover"
+                  />
+                )}
+                <p className="px-2 py-1 text-xs text-gray-500">
+                  {media.is_cover ? "Ảnh đại diện" : media.type === "video" ? "Video" : "Ảnh"}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mb-4 text-sm text-gray-500">Phòng chưa có media.</p>
+        )}
 
-
-
-      <div>
-
-        <label>
-          Giá phòng
-        </label>
-
-
-        <input
-
-          type="number"
-
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
-
-          value={form.price}
-
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                price:Number(
-                  e.target.value
-                )
-              })
-          }
-
-        />
-
-      </div>
-
-
-
-
-
-      <div>
-
-        <label>
-          Mô tả
-        </label>
-
-
-        <textarea
-
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
-
-
-          rows={5}
-
-
-          value={form.description}
-
-
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                description:e.target.value
-              })
-          }
-
-        />
-
-
-      </div>
-
-
-
-
-
-      <div>
-
-
-        <label>
-          Trạng thái
-        </label>
-
-
-        <select
-
-          className="
-            mt-1
-            w-full
-            rounded-lg
-            border
-            p-2
-          "
-
-
-          value={form.status}
-
-
-          onChange={
-            e=>
-              setForm({
-                ...form,
-                status:e.target.value
-              })
-          }
-
+        <Field
+          label="Thêm ảnh/video"
+          htmlFor="media_files"
+          hint="Media hiện có được giữ nguyên. Ảnh tối đa 15 MB; video tối đa 50 MB."
         >
+          <input
+            id="media_files"
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            onChange={handleFiles}
+            disabled={loading}
+            className="block w-full rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-black file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+          />
+        </Field>
 
-          <option>
-            Đang trống
-          </option>
+        {files.length > 0 ? (
+          <p className="mt-3 text-sm text-gray-600">Đã chọn {files.length} file mới.</p>
+        ) : null}
+      </Section>
 
+      {uploadStatus ? (
+        <div className="rounded-lg border bg-white p-4 text-sm">
+          Đang tải file {uploadStatus.current}/{uploadStatus.total}: {uploadStatus.fileName}
+        </div>
+      ) : null}
 
-          <option>
-            Đã thuê
-          </option>
+      {errorMessage ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {errorMessage}
+        </div>
+      ) : null}
 
-
-          <option>
-            Sắp trống
-          </option>
-
-
-        </select>
-
-
+      <div className="flex justify-end gap-3">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          disabled={loading}
+          className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+        >
+          Hủy
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-lg bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? "Đang lưu..." : "Lưu thay đổi"}
+        </button>
       </div>
-
-
-
-
-
-      <button
-
-        onClick={submit}
-
-
-        disabled={loading}
-
-
-        className="
-          rounded-lg
-          bg-blue-600
-          px-5
-          py-2
-          text-white
-          disabled:opacity-50
-        "
-
-      >
-
-        {
-          loading
-          ?
-          "Đang lưu..."
-          :
-          "Lưu thay đổi"
-        }
-
-
-      </button>
-
-
-
-    </div>
-
+    </form>
   );
+}
 
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border bg-white p-6 shadow-sm">
+      <h2 className="mb-5 text-lg font-semibold">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  required = false,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  required?: boolean;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-800">
+        {label}
+        {required ? <span className="text-red-600"> *</span> : null}
+      </label>
+      {children}
+      {hint ? <p className="text-xs text-gray-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+function FeeField({
+  label,
+  valueName,
+  unitName,
+  value,
+  unit,
+}: {
+  label: string;
+  valueName: string;
+  unitName: string;
+  value: unknown;
+  unit: unknown;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={valueName} className="block text-sm font-medium text-gray-800">
+        {label}
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          id={valueName}
+          name={valueName}
+          type="number"
+          min={0}
+          step="any"
+          className={INPUT_CLASS}
+          defaultValue={value === null || value === undefined ? "" : String(value)}
+          placeholder="Số tiền"
+        />
+        <input
+          name={unitName}
+          className={INPUT_CLASS}
+          maxLength={2000}
+          defaultValue={unit === null || unit === undefined ? "" : String(unit)}
+          placeholder="Đơn vị / ghi chú"
+        />
+      </div>
+    </div>
+  );
+}
+
+function Checkbox({
+  name,
+  label,
+  checked,
+}: {
+  name: string;
+  label: string;
+  checked?: boolean;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-gray-800">
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={Boolean(checked)}
+        className="h-4 w-4 rounded border-gray-300"
+      />
+      {label}
+    </label>
+  );
 }

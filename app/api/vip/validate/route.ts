@@ -73,17 +73,43 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json(
-      {
-        valid: true,
-        expiresAt: row.expires_at,
-        creatorAdminPhone:
-          String(row.creator_admin_phone ?? "").trim() || null,
-        creatorAdminName:
-          String(row.creator_admin_name ?? "").trim() || null,
-      },
-      { status: 200 }
-    );
+    const response = NextResponse.json(
+    {
+      valid: true,
+
+      expiresAt: row.expires_at,
+
+      creatorAdminPhone:
+        String(row.creator_admin_phone ?? "").trim() || null,
+
+      creatorAdminName:
+        String(row.creator_admin_name ?? "").trim() || null,
+
+      // ✅ trả hash token để client gửi xuống RPC
+      tokenHash,
+    });
+
+
+response.cookies.set(
+  "vip_access_hash",
+  tokenHash,
+  {
+    httpOnly:true,
+    secure:
+      process.env.NODE_ENV === "production",
+
+    sameSite:"lax",
+
+    expires:
+      new Date(row.expires_at),
+
+    path:"/",
+  }
+);
+
+
+return response;
+
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : String(err);

@@ -1,104 +1,54 @@
+import { getAuthenticatedUser } from "@/lib/api/auth";
 import {
-  NextResponse
-} from "next/server";
-
-
+  apiError,
+  apiSuccess,
+  mapDatabaseError,
+  mapUnknownError,
+} from "@/lib/api/response";
 import {
-  createSupabaseServerClient
-} from "@/lib/supabase/server";
-
-
+  parseUuid,
+  readJsonObject,
+} from "@/lib/api/validation";
+import { parseUpdateOwnerRoomStatusInput } from "@/lib/owner/validation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function PATCH(
-
-  request:Request,
-
+  request: Request,
   {
-    params
-  }:{
-    params:Promise<{
-      id:string
-    }>
-  }
-
-){
-
-
+    params,
+  }: {
+    params: Promise<{ id: string }>;
+  },
+) {
   try {
+    const { id: rawId } = await params;
+    const roomId = parseUuid(rawId, "room_id");
+    const supabase = await createSupabaseServerClient();
+    const user = await getAuthenticatedUser(supabase);
 
-
-    const {
-      id
-    } = await params;
-
-
-
-    const body =
-      await request.json();
-
-
-
-    const supabase =
-      await createSupabaseServerClient();
-
-
-
-    const {
-      data,
-      error
-    } =
-    await supabase.rpc(
-      "update_owner_room_status_v1",
-      {
-
-        p_room_id:id,
-
-        p_new_status:
-          body.status,
-
-        p_note:
-          body.note ?? null
-
-      }
-    );
-
-
-
-    if(error){
-
-      throw error;
-
+    if (!user) {
+      return apiError(
+        "UNAUTHENTICATED",
+        "Bạn cần đăng nhập để thực hiện thao tác này",
+        401,
+      );
     }
 
+    const body = await readJsonObject(request);
+    const input = parseUpdateOwnerRoomStatusInput(body);
 
-
-    return NextResponse.json({
-
-      success:true,
-
-      data
-
-    });
-
-
-
-  }
-
-  catch(error:any){
-
-
-    return NextResponse.json(
-
+    const { data, error } = await supabase.rpc(
+      "update_owner_room_status_v1",
       {
-        error:error.message
+        p_room_id: roomId,
+        p_new_status: input.status,
+        p_note: input.note,
       },
-
-      {
-        status:400
-      }
-
     );
 
+    if (error) return mapDatabaseError(error);
+    return apiSuccess(data);
+  } catch (error) {
+    return mapUnknownError(error);
   }
-
 }

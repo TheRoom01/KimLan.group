@@ -1,179 +1,185 @@
-import { createSupabaseServerClient } from "../supabase/server";
+import {
+  normalizeContractStatus,
+  normalizeRoomStatus,
+  type ContractStatus,
+  type RoomStatus,
+} from "@/lib/owner/types";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const UPCOMING_ROOM_DAYS = 30;
+
+function daysUntil(dateValue?: string | null): number | null {
+  if (!dateValue) return null;
+
+  const target = new Date(`${dateValue}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (Number.isNaN(target.getTime())) return null;
+
+  return Math.ceil(
+    (target.getTime() - today.getTime()) /
+      (1000 * 60 * 60 * 24),
+  );
+}
+
+function contractPriority(status: ContractStatus | null): number {
+  if (status === "Đang hiệu lực") return 0;
+  if (status === "Chờ nhận phòng") return 1;
+  return 2;
+}
 
 export async function getRoomDetail(roomId: string) {
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase
-  .from("rooms")
-  .select(`
-
-    id,
-
-    room_code,
-
-    room_type,
-
-    price,
-
-    status,
-
-    address,
-
-    district,
-
-    ward,
-
-    property_id,
-
-
-    room_media (
-
+    .from("rooms")
+    .select(`
       id,
-
-      type,
-
-      provider,
-
-      url,
-
-      path,
-
-      is_cover,
-
-      sort_order,
-
-      created_at
-
-    ),
-
-
-    rental_contracts (
-
-      id,
-
+      room_code,
+      room_type,
+      price,
       status,
-
-      start_date,
-
-      end_date,
-
-      monthly_price,
-
-      deposit_amount,
-
-
-      contract_tenants (
-
-        role,
-
-
-        tenants (
-
-          id,
-
-          full_name,
-
-          phone,
-
-          cccd
-
+      description,
+      chinh_sach,
+      link_zalo,
+      zalo_phone,
+      address,
+      house_number,
+      district,
+      ward,
+      property_id,
+      lifecycle_status,
+      publish_status,
+      is_hidden,
+      archived_at,
+      room_details (
+        id,
+        electric_fee_value,
+        electric_fee_unit,
+        water_fee_value,
+        water_fee_unit,
+        service_fee_value,
+        service_fee_unit,
+        parking_fee_value,
+        parking_fee_unit,
+        other_fee_value,
+        other_fee_note,
+        has_elevator,
+        has_stairs,
+        shared_washer,
+        private_washer,
+        shared_dryer,
+        private_dryer,
+        has_parking,
+        has_basement,
+        fingerprint_lock,
+        allow_pet,
+        allow_cat,
+        allow_dog,
+        no_pet,
+        short_term,
+        long_term,
+        other_amenities,
+        detail_json
+      ),
+      room_media (
+        id,
+        type,
+        provider,
+        url,
+        path,
+        is_cover,
+        sort_order,
+        created_at
+      ),
+      rental_contracts (
+        id,
+        status,
+        start_date,
+        end_date,
+        monthly_price,
+        deposit_amount,
+        created_at,
+        contract_tenants (
+          role,
+          tenants (
+            id,
+            full_name,
+            phone,
+            cccd
+          )
         )
-
       )
-
-    )
-
-  `)
-  .eq("id", roomId)
-  .single();
+    `)
+    .eq("id", roomId)
+    .single();
 
   if (error) throw error;
 
-  const media =
-  data.room_media ?? [];
+  const media = [...(data.room_media ?? [])].sort(
+    (left: any, right: any) =>
+      Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0),
+  );
 
-  const today = new Date();
+  const contracts = [...(data.rental_contracts ?? [])].sort(
+    (left: any, right: any) => {
+      const statusDifference =
+        contractPriority(normalizeContractStatus(left.status)) -
+        contractPriority(normalizeContractStatus(right.status));
 
-  const contract = data.rental_contracts?.[0];
+      if (statusDifference !== 0) return statusDifference;
 
-  let displayStatus = data.status;
-  let daysRemaining: number | null = null;
-
-  if (contract) {
-
-    if (contract.end_date) {
-
-      daysRemaining = Math.ceil(
-        (new Date(contract.end_date).getTime() - today.getTime()) /
-        (1000 * 60 * 60 * 24)
+      return String(right.created_at ?? "").localeCompare(
+        String(left.created_at ?? ""),
       );
+    },
+  );
 
-    }
+  const contract =
+    contracts.find((candidate: any) => {
+      const status = normalizeContractStatus(candidate.status);
+      return status === "Đang hiệu lực" || status === "Chờ nhận phòng";
+    }) ?? null;
+  const contractStatus = normalizeContractStatus(contract?.status);
+  const storedStatus = normalizeRoomStatus(data.status) ?? "Đang trống";
+  const daysRemaining = daysUntil(contract?.end_date);
 
-    if (contract.status === "Đang hiệu lực") {
+  let displayStatus: RoomStatus = storedStatus;
 
-      if (
-        daysRemaining !== null &&
-        daysRemaining >= 0 &&
-        daysRemaining <= UPCOMING_ROOM_DAYS
-      ) {
-
-        displayStatus = "Sắp trống";
-
-      } else {
-
-        displayStatus = "Đã thuê";
-
-      }
-
-    }
-
-    if (contract.status === "Chờ nhận phòng") {
-
-      displayStatus = "Đã thuê";
-
-    }
-
-    if (
-      contract.status === "Đã kết thúc" ||
-      contract.status === "Đã hủy"
-    ) {
-
-      displayStatus = "Đang trống";
-
-    }
-
-  } else {
-
-    displayStatus = "Đang trống";
-
+  if (contractStatus === "Đang hiệu lực") {
+    displayStatus =
+      daysRemaining !== null &&
+      daysRemaining >= 0 &&
+      daysRemaining <= UPCOMING_ROOM_DAYS
+        ? "Sắp trống"
+        : "Đã thuê";
+  } else if (contractStatus === "Chờ nhận phòng") {
+    displayStatus = "Đã thuê";
   }
 
   const tenantRelation =
     contract?.contract_tenants?.find(
-        (x: any) => x.role === "Chủ hợp đồng"
-    ) ??
-    contract?.contract_tenants?.[0];
+      (item: any) => item.role === "Chủ hợp đồng",
+    ) ?? contract?.contract_tenants?.[0];
 
-    const tenant = Array.isArray(tenantRelation?.tenants)
+  const tenant = Array.isArray(tenantRelation?.tenants)
     ? tenantRelation.tenants[0]
     : tenantRelation?.tenants ?? null;
+  const detailsRelation = data.room_details;
+  const details = Array.isArray(detailsRelation)
+    ? detailsRelation[0] ?? null
+    : detailsRelation ?? null;
 
   return {
-
     ...data,
-
+    status: storedStatus,
     media,
-
+    details,
     displayStatus,
-
     daysRemaining,
-
+    contracts,
     contract,
-
     tenant,
-
   };
 }

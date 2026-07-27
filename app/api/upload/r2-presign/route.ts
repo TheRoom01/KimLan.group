@@ -1,14 +1,15 @@
-import { NextResponse } from "next/server"
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+import { NextResponse } from "next/server";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
 
-export const runtime = "nodejs"
+export const runtime = "nodejs";
 
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || ""
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || ""
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || ""
-const R2_PUBLIC_BASE_URL = process.env.R2_PUBLIC_BASE_URL || ""
-const R2_BUCKET = "rooms-media"
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
+const R2_PUBLIC_BASE_URL = process.env.R2_PUBLIC_BASE_URL || "";
+const R2_BUCKET = "rooms-media";
 
 const s3 = new S3Client({
   region: "auto",
@@ -17,104 +18,128 @@ const s3 = new S3Client({
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
   },
-})
+});
 
 function missingEnv() {
-  const miss: string[] = []
-  if (!R2_ACCOUNT_ID) miss.push("R2_ACCOUNT_ID")
-  if (!R2_ACCESS_KEY_ID) miss.push("R2_ACCESS_KEY_ID")
-  if (!R2_SECRET_ACCESS_KEY) miss.push("R2_SECRET_ACCESS_KEY")
-  if (!R2_PUBLIC_BASE_URL) miss.push("R2_PUBLIC_BASE_URL")
-  return miss
+  const missing: string[] = [];
+  if (!R2_ACCOUNT_ID) missing.push("R2_ACCOUNT_ID");
+  if (!R2_ACCESS_KEY_ID) missing.push("R2_ACCESS_KEY_ID");
+  if (!R2_SECRET_ACCESS_KEY) missing.push("R2_SECRET_ACCESS_KEY");
+  if (!R2_PUBLIC_BASE_URL) missing.push("R2_PUBLIC_BASE_URL");
+  return missing;
 }
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const miss = missingEnv()
-    if (miss.length) {
+    const missing = missingEnv();
+
+    if (missing.length) {
       return NextResponse.json(
-        { error: `Missing R2 env: ${miss.join(", ")}` },
-        { status: 500 }
-      )
+        { error: `Missing R2 env: ${missing.join(", ")}` },
+        { status: 500 },
+      );
     }
 
-    const body = (await req.json().catch(() => ({}))) as any
+    const body = (await request.json().catch(() => null)) as
+      | Record<string, unknown>
+      | null;
 
-    const roomId = String(body?.room_id || "").trim()
-    const fixedName = String(body?.fixed_name || "").trim()
-    const fileName = String(body?.file_name || "").trim()
-    const contentType = String(body?.content_type || "").trim()
-    const size = Number(body?.size || 0)
+    const roomId = String(body?.room_id || "").trim();
+    const fixedName = String(body?.fixed_name || "").trim();
+    const fileName = String(body?.file_name || "").trim();
+    const contentType = String(body?.content_type || "").trim();
+    const size = Number(body?.size || 0);
 
-    if (!roomId || !fileName || !contentType || !Number.isFinite(size) || size <= 0) {
+    if (
+      !roomId ||
+      !fileName ||
+      !contentType ||
+      !Number.isFinite(size) ||
+      size <= 0
+    ) {
       return NextResponse.json(
         { error: "Missing room_id/file_name/content_type/size" },
-        { status: 400 }
-      )
+        { status: 400 },
+      );
     }
 
-    const isVideo = contentType.startsWith("video/")
-    const isImage = contentType.startsWith("image/")
+    const authorization = await authorizeRoomMutation(roomId);
+
+    if (!authorization.allowed) {
+      return NextResponse.json(
+        { error: authorization.error },
+        { status: authorization.status },
+      );
+    }
+
+    const isVideo = contentType.startsWith("video/");
+    const isImage = contentType.startsWith("image/");
+
     if (!isVideo && !isImage) {
-      return NextResponse.json({ error: "Chỉ hỗ trợ image/* hoặc video/*" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Chỉ hỗ trợ image/* hoặc video/*" },
+        { status: 400 },
+      );
     }
 
-    // backend rule giống route cũ
     if (isVideo) {
-      const MAX_VIDEO_MB = 50
-const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
-      if (size > MAX_VIDEO_BYTES) {
-        return NextResponse.json({ error: `Video quá lớn. Giới hạn ${MAX_VIDEO_MB}MB` }, { status: 400 })
+      const maxVideoBytes = 50 * 1024 * 1024;
+
+      if (size > maxVideoBytes) {
+        return NextResponse.json(
+          { error: "Video quá lớn. Giới hạn 50MB" },
+          { status: 400 },
+        );
       }
-      // ✅ allow any video/* (no mp4-only restriction)
     }
 
-    // chỉ cho fixed thumb.webp đối với ảnh
-    const allowFixedThumb = !isVideo && fixedName === "thumb.webp"
+    const allowFixedThumb = !isVideo && fixedName === "thumb.webp";
+
     if (allowFixedThumb && contentType !== "image/webp") {
-      return NextResponse.json({ error: "thumb.webp phải là image/webp" }, { status: 400 })
+      return NextResponse.json(
+        { error: "thumb.webp phải là image/webp" },
+        { status: 400 },
+      );
     }
 
-    const ext = fileName.split(".").pop()?.toLowerCase() || "bin"
-    const folder = isVideo ? "video" : "images"
-
+    const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
+    const folder = isVideo ? "video" : "images";
     const key = allowFixedThumb
       ? `rooms/${roomId}/${folder}/thumb.webp`
-      : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${ext}`
+      : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${extension}`;
 
-    const isThumb = key.endsWith("/thumb.webp")
+    const isThumb = key.endsWith("/thumb.webp");
     const cacheControl = isThumb
       ? "public, max-age=300, must-revalidate"
-      : "public, max-age=31536000, immutable"
+      : "public, max-age=31536000, immutable";
 
-    const cmd = new PutObjectCommand({
+    const command = new PutObjectCommand({
       Bucket: R2_BUCKET,
       Key: key,
       ContentType: contentType,
       CacheControl: cacheControl,
-    })
+    });
 
-    const uploadUrl = await getSignedUrl(s3, cmd, {
-      expiresIn: 15 * 60, // 15 phút
-    })
-
-    const publicUrl = `${R2_PUBLIC_BASE_URL}/${key}`
+    const uploadUrl = await getSignedUrl(s3, command, {
+      expiresIn: 15 * 60,
+    });
 
     return NextResponse.json({
       key,
-      publicUrl,
+      publicUrl: `${R2_PUBLIC_BASE_URL}/${key}`,
       uploadUrl,
       requiredHeaders: {
         "Content-Type": contentType,
         "Cache-Control": cacheControl,
       },
       type: isVideo ? "video" : "image",
-    })
-  } catch (e: any) {
-    console.error("R2 presign error:", e)
+    });
+  } catch (error) {
+    console.error("R2 presign error:", error);
+
     return NextResponse.json(
-      { error: `Presign failed: ${String(e?.message || e?.name || "unknown_error")}` },
-      { status: 500 }
-    )
+      { error: "Presign failed" },
+      { status: 500 },
+    );
   }
 }

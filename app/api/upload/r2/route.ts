@@ -1,14 +1,14 @@
-import { NextResponse } from "next/server"
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+import { NextResponse } from "next/server";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
 
-export const runtime = "nodejs"
+export const runtime = "nodejs";
 
-
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY!
-const R2_BUCKET = "rooms-media"
-const R2_PUBLIC_BASE_URL = process.env.R2_PUBLIC_BASE_URL!
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
+const R2_BUCKET = "rooms-media";
+const R2_PUBLIC_BASE_URL = process.env.R2_PUBLIC_BASE_URL || "";
 
 const s3 = new S3Client({
   region: "auto",
@@ -17,86 +17,101 @@ const s3 = new S3Client({
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
   },
-})
+});
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-
-        if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_PUBLIC_BASE_URL) {
+    if (
+      !R2_ACCOUNT_ID ||
+      !R2_ACCESS_KEY_ID ||
+      !R2_SECRET_ACCESS_KEY ||
+      !R2_PUBLIC_BASE_URL
+    ) {
       return NextResponse.json(
-        { error: "Upload failed: missing R2 env (ACCOUNT_ID/ACCESS_KEY_ID/SECRET_ACCESS_KEY/PUBLIC_BASE_URL)" },
-        { status: 500 }
-      )
+        { error: "Upload failed: missing R2 env" },
+        { status: 500 },
+      );
     }
 
-    const form = await req.formData()
-    const file = form.get("file") as File
-    const roomId = String(form.get("room_id") || "").trim()
-    const fixedName = String(form.get("fixed_name") || "").trim()
-    
-    if (!file || !roomId) {
-      return NextResponse.json({ error: "Missing file or room_id" }, { status: 400 })
+    const form = await request.formData();
+    const file = form.get("file");
+    const roomId = String(form.get("room_id") || "").trim();
+    const fixedName = String(form.get("fixed_name") || "").trim();
+
+    if (!(file instanceof File) || !roomId) {
+      return NextResponse.json(
+        { error: "Missing file or room_id" },
+        { status: 400 },
+      );
     }
 
-    const isVideo = file.type.startsWith("video/")
+    const authorization = await authorizeRoomMutation(roomId);
 
-    // ===== ENFORCE VIDEO RULE (BACKEND) =====
-    if (isVideo) {
-      const MAX_VIDEO_MB = 50
-      const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
-
-      if (file.size > MAX_VIDEO_BYTES) {
-        return NextResponse.json(
-          { error: `Video quá lớn. Giới hạn ${MAX_VIDEO_MB}MB` },
-          { status: 400 }
-        )
-      }
-
-      // ✅ allow any video/* (no mp4-only restriction)
+    if (!authorization.allowed) {
+      return NextResponse.json(
+        { error: authorization.error },
+        { status: authorization.status },
+      );
     }
-    // =======================================
 
-    const ext = file.name.split(".").pop()?.toLowerCase() || "bin"
-    const folder = isVideo ? "video" : "images"
+    const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
 
-    // ✅ cho phép ép tên thumb.webp (chỉ cho ảnh)
-    const allowFixedThumb = !isVideo && fixedName === "thumb.webp"
+    if (!isVideo && !isImage) {
+      return NextResponse.json(
+        { error: "Chỉ hỗ trợ image/* hoặc video/*" },
+        { status: 400 },
+      );
+    }
+
+    if (isVideo && file.size > 50 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: "Video quá lớn. Giới hạn 50MB" },
+        { status: 400 },
+      );
+    }
+
+    const allowFixedThumb = isImage && fixedName === "thumb.webp";
+
     if (allowFixedThumb && file.type !== "image/webp") {
-      return NextResponse.json({ error: "thumb.webp phải là image/webp" }, { status: 400 })
+      return NextResponse.json(
+        { error: "thumb.webp phải là image/webp" },
+        { status: 400 },
+      );
     }
 
-        const key = allowFixedThumb
+    const extension = file.name.split(".").pop()?.toLowerCase() || "bin";
+    const folder = isVideo ? "video" : "images";
+    const key = allowFixedThumb
       ? `rooms/${roomId}/${folder}/thumb.webp`
-      : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${ext}`
+      : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${extension}`;
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-
-    // ✅ thumb.webp là file "cố định tên", không nên immutable 1 năm vì đổi cover sẽ bị cache rất lâu
-    const isThumb = allowFixedThumb || key.endsWith("/thumb.webp")
+    const isThumb = key.endsWith("/thumb.webp");
     const cacheControl = isThumb
-      ? "public, max-age=300, must-revalidate" // 5 phút + revalidate
-      : "public, max-age=31536000, immutable" // ảnh/video thường: cache mạnh
+      ? "public, max-age=300, must-revalidate"
+      : "public, max-age=31536000, immutable";
 
     await s3.send(
       new PutObjectCommand({
         Bucket: R2_BUCKET,
         Key: key,
-        Body: buffer,
+        Body: Buffer.from(await file.arrayBuffer()),
         ContentType: file.type,
         CacheControl: cacheControl,
-      })
-    )
-
-    const url = `${R2_PUBLIC_BASE_URL}/${key}`
+      }),
+    );
 
     return NextResponse.json({
       key,
-      url,
+      url: `${R2_PUBLIC_BASE_URL}/${key}`,
       type: isVideo ? "video" : "image",
-    })
+    });
+  } catch (error) {
+    console.error("R2 upload error:", error);
 
-  } catch (e: any) {
-    console.error("R2 upload error:", e)
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Upload failed" },
+      { status: 500 },
+    );
   }
 }
