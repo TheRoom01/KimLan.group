@@ -342,7 +342,17 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_contract_terms: pContractTerms,
 
   // 4) statuses
-  p_statuses: status ? [String(status)] : null,
+  p_statuses:
+  typeof status === "string"
+    ? Array.from(
+        new Set(
+          status
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        )
+      )
+    : null,
 
   // 5) sort + keyset cursor (updated_desc cần 2 khóa)
     p_sort: (sortMode ?? "updated_desc") as any,

@@ -3,6 +3,8 @@
 import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 export type SortMode = "updated_desc" | "price_asc" | "price_desc";
+type RoomStatusFilter = "Đang trống" | "Sắp trống" | "Đã thuê";
+const ROOM_STATUS_SEPARATOR = ",";
 
 type FilterBarProps = {
   districts: string[];
@@ -315,6 +317,42 @@ const toggleTerm = (value: "short" | "long") => {
     return next.length ? next : [];
   });
 };
+
+const selectedStatuses = String(statusFilter ?? "")
+  .split(ROOM_STATUS_SEPARATOR)
+  .map((value) => value.trim())
+  .filter(
+    (value): value is RoomStatusFilter =>
+      value === "Đang trống" ||
+      value === "Sắp trống" ||
+      value === "Đã thuê"
+  );
+
+const setSelectedStatuses = (next: RoomStatusFilter[]) => {
+  setStatusFilter(
+    next.length ? next.join(ROOM_STATUS_SEPARATOR) : null
+  );
+};
+
+const toggleStatus = (value: RoomStatusFilter) => {
+  if (value === "Đã thuê") {
+    setSelectedStatuses(
+      selectedStatuses.includes("Đã thuê") ? [] : ["Đã thuê"]
+    );
+    return;
+  }
+
+  const compatibleStatuses = selectedStatuses.filter(
+    (status) => status !== "Đã thuê"
+  );
+
+  const next = compatibleStatuses.includes(value)
+    ? compatibleStatuses.filter((status) => status !== value)
+    : [...compatibleStatuses, value];
+
+  setSelectedStatuses(next);
+};
+
   const onTrackPointerDown = (e: React.PointerEvent) => {
     if (loading) return;
     // click/tap vào track => chọn thumb gần nhất rồi kéo luôn
@@ -778,33 +816,39 @@ const toggleTerm = (value: "short" | "long") => {
 
         <div className="text-[14px] font-semibold text-white">Trạng thái</div>
 
-        {(
-          [
-            [null, "Tất cả"],
-            ["Đang trống", "Đang trống"],
-            ["Sắp trống", "Sắp trống"],
-            ["Đã thuê", "Đã thuê"],
-          ]as const
-        ).map(([v, label]) => (
-          <label key={label} className={optionClass(statusFilter === v)}>
+        <label
+        className={optionClass(selectedStatuses.length === 0)}
+      >
+        <input
+          type="checkbox"
+          checked={selectedStatuses.length === 0}
+          className={checkboxClass}
+          onChange={() => setStatusFilter(null)}
+        />
+        <span className="text-[14px] font-medium leading-tight">
+          Tất cả
+        </span>
+      </label>
+
+      {(
+        ["Đang trống", "Sắp trống", "Đã thuê"] as const
+      ).map((status) => {
+        const checked = selectedStatuses.includes(status);
+
+        return (
+          <label key={status} className={optionClass(checked)}>
             <input
-              type="radio"
-              name="statusFilter"
-              checked={statusFilter === v}
-              className="
-                h-4 w-4
-                accent-[#D8B487]
-              "
-              onChange={() => {
-                setStatusFilter(v);
-                setOpenFilter(null);
-              }}
+              type="checkbox"
+              checked={checked}
+              className={checkboxClass}
+              onChange={() => toggleStatus(status)}
             />
             <span className="text-[14px] font-medium leading-tight">
-              {label}
+              {status}
             </span>
           </label>
-        ))}
+        );
+      })}
       </div>
     )}
   </div>
