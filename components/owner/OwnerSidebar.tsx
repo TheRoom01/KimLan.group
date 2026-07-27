@@ -46,7 +46,9 @@ const menus = [
   },
 ];
 
-function isMenuActive(pathname: string, href: string) {
+function isMenuActive(pathname: string | null, href: string) {
+  if (!pathname) return href === "/owner";
+
   return (
     pathname === href ||
     (href !== "/owner" && pathname.startsWith(`${href}/`))
