@@ -58,7 +58,7 @@ begin
       detail = 'Cannot manage members of an archived property';
   end if;
 
-  if not public.is_admin_l1()
+  if not coalesce(public.is_admin_l1(), false)
     and not exists (
       select 1
       from public.property_members pm
@@ -143,7 +143,7 @@ begin
       detail = 'property_id and member_id are required';
   end if;
 
-  if not public.is_admin_l1()
+  if not coalesce(public.is_admin_l1(), false)
     and not exists (
       select 1
       from public.property_members pm
