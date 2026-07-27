@@ -30,15 +30,20 @@ export default async function PropertyDetailPage({
   }
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const [
+    {
+      data: { user },
+    },
+    { data: canManageResult },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.rpc("can_manage_property", { p_property_id: property.id }),
+  ]);
   const members = (data.members ?? []) as PropertyMember[];
   const currentMembership = members.find(
     (member) => member.user_id === user?.id && member.status === "active",
   );
-  const canManage =
-    currentMembership?.role === "owner" || currentMembership?.role === "manager";
+  const canManage = canManageResult === true;
   const rooms = data.rooms ?? [];
   const summary = data.summary;
   const displayName =
@@ -65,6 +70,11 @@ export default async function PropertyDetailPage({
               approvalStatus={property.approval_status}
               lifecycleStatus={property.lifecycle_status}
             />
+            {currentMembership?.role ? (
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                {currentMembership.role}
+              </span>
+            ) : null}
           </div>
           <p className="mt-2 text-gray-500">{fullAddress || "Chưa có địa chỉ"}</p>
           {property.code ? (
@@ -74,12 +84,20 @@ export default async function PropertyDetailPage({
 
         <div className="flex flex-wrap gap-2">
           {canManage && property.lifecycle_status !== "archived" ? (
-            <Link
-              href={`/owner/rooms/create?property_id=${property.id}`}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-            >
-              + Tạo phòng
-            </Link>
+            <>
+              <Link
+                href={`/owner/properties/${property.id}/edit`}
+                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              >
+                Chỉnh sửa tòa nhà
+              </Link>
+              <Link
+                href={`/owner/rooms/create?property_id=${property.id}`}
+                className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                + Tạo phòng
+              </Link>
+            </>
           ) : null}
           <Link
             href="/owner/properties"
