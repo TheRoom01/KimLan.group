@@ -9,10 +9,10 @@ export default function OwnerLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-[#f4eadc] text-[#3f2a1b]">
       <OwnerSidebar />
 
-      <main className="flex-1 p-6 overflow-auto">
+      <main className="mx-auto w-full max-w-[1600px] px-3 pb-28 pt-4 sm:px-5 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-8">
         {children}
       </main>
     </div>
