@@ -31,6 +31,34 @@ function contractPriority(status: ContractStatus | null): number {
 
 export async function getOwnerRooms() {
   const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Unauthorized");
+  }
+
+  const { data: memberships, error: membershipError } = await supabase
+    .from("property_members")
+    .select("property_id")
+    .eq("user_id", user.id)
+    .eq("status", "active");
+
+  if (membershipError) {
+    console.error("[Owner] getOwnerRooms memberships:", membershipError);
+    throw membershipError;
+  }
+
+  const propertyIds = [
+    ...new Set(
+      (memberships ?? [])
+        .map((membership: any) => String(membership.property_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  if (propertyIds.length === 0) return [];
 
   const { data, error } = await supabase
     .from("rooms")
@@ -70,6 +98,7 @@ export async function getOwnerRooms() {
         )
       )
     `)
+    .in("property_id", propertyIds)
     .eq("lifecycle_status", "active")
     .order("room_code", { ascending: true });
 
