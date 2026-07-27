@@ -5,8 +5,21 @@ import {
   mapDatabaseError,
   mapUnknownError,
 } from "@/lib/api/response";
-import { parseUuid } from "@/lib/api/validation";
+import { parseUuid, readJsonObject } from "@/lib/api/validation";
+import { parseCreateOwnerPropertyInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+async function getContext(rawPropertyId: string) {
+  const propertyId = parseUuid(rawPropertyId, "property_id");
+  const supabase = await createSupabaseServerClient();
+  const user = await getAuthenticatedUser(supabase);
+
+  return {
+    propertyId,
+    supabase,
+    user,
+  };
+}
 
 export async function GET(
   _request: Request,
@@ -17,10 +30,8 @@ export async function GET(
   },
 ) {
   try {
-    const { id: rawId } = await params;
-    const propertyId = parseUuid(rawId, "property_id");
-    const supabase = await createSupabaseServerClient();
-    const user = await getAuthenticatedUser(supabase);
+    const { id } = await params;
+    const { propertyId, supabase, user } = await getContext(id);
 
     if (!user) {
       return apiError(
@@ -34,6 +45,70 @@ export async function GET(
       "get_owner_property_detail_v1",
       { p_property_id: propertyId },
     );
+
+    if (error) return mapDatabaseError(error);
+    return apiSuccess(data);
+  } catch (error) {
+    return mapUnknownError(error);
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string }>;
+  },
+) {
+  try {
+    const { id } = await params;
+    const { propertyId, supabase, user } = await getContext(id);
+
+    if (!user) {
+      return apiError(
+        "UNAUTHENTICATED",
+        "Bạn cần đăng nhập để thực hiện thao tác này",
+        401,
+      );
+    }
+
+    const { data: canManage, error: permissionError } = await supabase.rpc(
+      "can_manage_property",
+      { p_property_id: propertyId },
+    );
+
+    if (permissionError) return mapDatabaseError(permissionError);
+    if (canManage !== true) {
+      return apiError(
+        "FORBIDDEN",
+        "Bạn không có quyền cập nhật tòa nhà này",
+        403,
+      );
+    }
+
+    const body = await readJsonObject(request);
+    const input = parseCreateOwnerPropertyInput(body);
+
+    const { data, error } = await supabase
+      .from("properties")
+      .update({
+        name: input.name,
+        house_number: input.house_number,
+        address: input.address,
+        ward: input.ward,
+        district: input.district,
+        city: input.city,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        cover_image: input.cover_image,
+        note: input.note,
+      })
+      .eq("id", propertyId)
+      .select(
+        "id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, note, approval_status, lifecycle_status, updated_at",
+      )
+      .single();
 
     if (error) return mapDatabaseError(error);
     return apiSuccess(data);
