@@ -124,7 +124,11 @@ export default async function RoomDetailPage({
         ) : null}
       </div>
 
-      <RoomMediaGallery media={room.media} />
+      <RoomMediaGallery
+        media={room.media}
+        roomId={room.id}
+        canManage={canManage === true && !isArchived}
+      />
 
       <RoomDetailsSummary details={room.details} policy={room.chinh_sach} />
 
