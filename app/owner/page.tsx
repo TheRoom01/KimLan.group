@@ -18,13 +18,13 @@ import { getOwnerDashboard } from "@/lib/owner/getOwnerDashboard";
 import { getOwnerRooms } from "@/lib/owner/getOwnerRooms";
 
 type DashboardContract = {
-  id?: string | null;
-  tenant?: string | null;
-  room?: string | null;
-  property?: string | null;
-  monthly_price?: number | string | null;
-  created_at?: string | null;
-  end_date?: string | null;
+  id?: unknown;
+  tenant?: unknown;
+  room?: unknown;
+  property?: unknown;
+  monthly_price?: unknown;
+  created_at?: unknown;
+  end_date?: unknown;
 };
 
 type PropertyOverview = {
@@ -42,6 +42,57 @@ function toNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function asString(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized || null;
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return String(value);
+  }
+
+  return null;
+}
+
+function firstRelation(value: unknown): unknown {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
+
+function relationLabel(
+  value: unknown,
+  fallback: string,
+  preferredKeys: string[],
+): string {
+  const relation = firstRelation(value);
+  const scalar = asString(relation);
+  if (scalar) return scalar;
+
+  if (relation && typeof relation === "object") {
+    const record = relation as Record<string, unknown>;
+
+    for (const key of preferredKeys) {
+      const label = asString(record[key]);
+      if (label) return label;
+    }
+  }
+
+  return fallback;
+}
+
+function relationId(value: unknown): string | null {
+  const relation = firstRelation(value);
+  const scalar = asString(relation);
+  if (scalar) return scalar;
+
+  if (relation && typeof relation === "object") {
+    return asString((relation as Record<string, unknown>).id);
+  }
+
+  return null;
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
@@ -50,47 +101,66 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "Chưa cập nhật";
+function formatDate(value: unknown) {
+  const raw = asString(value);
+  if (!raw) return "Chưa cập nhật";
 
-  const date = new Date(value);
+  const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return "Chưa cập nhật";
 
   return date.toLocaleDateString("vi-VN");
 }
 
-function daysUntil(value?: string | null) {
-  if (!value) return null;
+function daysUntil(value: unknown) {
+  const raw = asString(value);
+  if (!raw) return null;
 
-  const target = new Date(`${value}T00:00:00`);
+  const target = new Date(`${raw}T00:00:00`);
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
   if (Number.isNaN(target.getTime())) return null;
-
   return Math.ceil((target.getTime() - now.getTime()) / 86_400_000);
 }
 
-function propertyDisplayName(property: any) {
-  if (!property) return "Chưa gắn tòa nhà";
+function propertyDisplayName(propertyValue: unknown) {
+  const property = firstRelation(propertyValue);
+  const scalar = asString(property);
+  if (scalar) return scalar;
 
-  return (
-    property.name ||
-    [property.house_number, property.address, property.district]
-      .filter(Boolean)
-      .join(" ") ||
-    "Tòa nhà chưa đặt tên"
-  );
+  if (!property || typeof property !== "object") {
+    return "Chưa gắn tòa nhà";
+  }
+
+  const record = property as Record<string, unknown>;
+  const directName = asString(record.name);
+  if (directName) return directName;
+
+  const address = [
+    asString(record.house_number),
+    asString(record.address),
+    asString(record.district),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return address || "Tòa nhà chưa đặt tên";
 }
 
-function buildPropertyOverview(rooms: any[]): PropertyOverview[] {
+function buildPropertyOverview(rooms: unknown[]): PropertyOverview[] {
   const groups = new Map<string, PropertyOverview>();
 
-  for (const room of rooms) {
-    const propertyId = room.property?.id || room.property_id || "unassigned";
+  for (const candidate of rooms) {
+    if (!candidate || typeof candidate !== "object") continue;
+
+    const room = candidate as Record<string, unknown>;
+    const property = firstRelation(room.property);
+    const propertyId =
+      relationId(property) || asString(room.property_id) || "unassigned";
+
     const current = groups.get(propertyId) ?? {
       id: propertyId,
-      name: propertyDisplayName(room.property),
+      name: propertyDisplayName(property),
       total: 0,
       rented: 0,
       empty: 0,
@@ -100,19 +170,23 @@ function buildPropertyOverview(rooms: any[]): PropertyOverview[] {
 
     current.total += 1;
 
-    if (room.displayStatus === "Đang trống") {
+    const displayStatus = asString(room.displayStatus);
+    const contract = firstRelation(room.contract);
+    const contractRecord =
+      contract && typeof contract === "object"
+        ? (contract as Record<string, unknown>)
+        : null;
+
+    if (displayStatus === "Đang trống") {
       current.empty += 1;
     } else {
       current.rented += 1;
       current.monthlyRevenue += toNumber(
-        room.contract?.monthly_price ?? room.price,
+        contractRecord?.monthly_price ?? room.price,
       );
     }
 
-    if (room.displayStatus === "Sắp trống") {
-      current.upcoming += 1;
-    }
-
+    if (displayStatus === "Sắp trống") current.upcoming += 1;
     groups.set(propertyId, current);
   }
 
@@ -122,26 +196,55 @@ function buildPropertyOverview(rooms: any[]): PropertyOverview[] {
   });
 }
 
+function normalizeContract(value: unknown): DashboardContract {
+  if (!value || typeof value !== "object") return {};
+  return value as DashboardContract;
+}
+
+function normalizeContracts(value: unknown): DashboardContract[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(normalizeContract);
+}
+
 export default async function OwnerPage() {
-  const [dashboardData, rooms] = await Promise.all([
+  const [dashboardData, roomData] = await Promise.all([
     getOwnerDashboard(),
     getOwnerRooms(),
   ]);
 
-  const summary = dashboardData?.summary ?? {};
-  const recentContracts = (dashboardData?.recent_contracts ?? []) as DashboardContract[];
-  const expiringContracts = (dashboardData?.expiring_contracts ?? []) as DashboardContract[];
-  const propertyOverview = buildPropertyOverview(rooms as any[]);
+  const dashboard =
+    dashboardData && typeof dashboardData === "object"
+      ? (dashboardData as Record<string, unknown>)
+      : {};
+  const summary =
+    dashboard.summary && typeof dashboard.summary === "object"
+      ? (dashboard.summary as Record<string, unknown>)
+      : {};
+  const rooms = Array.isArray(roomData) ? roomData : [];
+  const recentContracts = normalizeContracts(dashboard.recent_contracts);
+  const expiringContracts = normalizeContracts(dashboard.expiring_contracts);
+  const propertyOverview = buildPropertyOverview(rooms);
 
   const totalRooms = toNumber(summary.total_rooms ?? rooms.length);
   const rentedRooms = toNumber(summary.rented_rooms);
   const emptyRooms = toNumber(summary.empty_rooms);
   const upcomingRooms = toNumber(summary.upcoming_rooms);
-  const occupancyRate = totalRooms > 0 ? Math.round((rentedRooms / totalRooms) * 100) : 0;
+  const occupancyRate =
+    totalRooms > 0 ? Math.round((rentedRooms / totalRooms) * 100) : 0;
 
-  const rentValues = (rooms as any[])
-    .map((room) => toNumber(room.contract?.monthly_price ?? room.price))
+  const rentValues = rooms
+    .map((candidate) => {
+      if (!candidate || typeof candidate !== "object") return 0;
+      const room = candidate as Record<string, unknown>;
+      const contract = firstRelation(room.contract);
+      const contractRecord =
+        contract && typeof contract === "object"
+          ? (contract as Record<string, unknown>)
+          : null;
+      return toNumber(contractRecord?.monthly_price ?? room.price);
+    })
     .filter((value) => value > 0);
+
   const averageRent =
     rentValues.length > 0
       ? Math.round(
@@ -225,7 +328,6 @@ export default async function OwnerPage() {
         <div className="grid grid-cols-2 gap-3 p-3 sm:gap-4 sm:p-5 xl:grid-cols-4 xl:p-6">
           {kpis.map((item) => {
             const Icon = item.icon;
-
             return (
               <article
                 key={item.label}
@@ -269,7 +371,6 @@ export default async function OwnerPage() {
                   So sánh số phòng đang thuê và đang trống theo dữ liệu hiện tại.
                 </p>
               </div>
-
               <div className="flex items-center gap-4 text-xs font-medium text-[#74583e]">
                 <span className="inline-flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-sm bg-[#75451f]" />
@@ -283,9 +384,7 @@ export default async function OwnerPage() {
             </div>
 
             {chartItems.length === 0 ? (
-              <div className="mt-6 rounded-2xl border border-dashed border-[#a9825f]/35 bg-[#f8ead7] px-5 py-12 text-center text-sm text-[#7d624b]">
-                Chưa có dữ liệu phòng để hiển thị biểu đồ.
-              </div>
+              <EmptyState>Chưa có dữ liệu phòng để hiển thị biểu đồ.</EmptyState>
             ) : (
               <div className="mt-6 overflow-x-auto pb-2">
                 <div className="min-w-[620px]">
@@ -297,7 +396,6 @@ export default async function OwnerPage() {
                         style={{ bottom: `${step}%` }}
                       />
                     ))}
-
                     <div className="absolute inset-0 grid grid-cols-6 items-end gap-5 px-6 pt-8">
                       {chartItems.map((item) => (
                         <div
@@ -318,10 +416,7 @@ export default async function OwnerPage() {
                               label="Đang trống"
                             />
                           </div>
-                          <p
-                            title={item.name}
-                            className="mt-3 line-clamp-2 min-h-10 text-center text-xs font-semibold leading-4 text-[#5f4631]"
-                          >
+                          <p className="mt-3 line-clamp-2 min-h-10 text-center text-xs font-semibold leading-4 text-[#5f4631]">
                             {item.name}
                           </p>
                         </div>
@@ -347,8 +442,7 @@ export default async function OwnerPage() {
                 href="/owner/properties"
                 className="hidden items-center gap-1 text-sm font-semibold text-[#744722] hover:underline sm:inline-flex"
               >
-                Xem tất cả
-                <ArrowRight size={16} />
+                Xem tất cả <ArrowRight size={16} />
               </Link>
             </div>
 
@@ -376,7 +470,6 @@ export default async function OwnerPage() {
                           item.total > 0
                             ? Math.round((item.rented / item.total) * 100)
                             : 0;
-
                         return (
                           <tr
                             key={item.id}
@@ -428,7 +521,6 @@ export default async function OwnerPage() {
                       item.total > 0
                         ? Math.round((item.rented / item.total) * 100)
                         : 0;
-
                     return (
                       <article
                         key={item.id}
@@ -445,7 +537,6 @@ export default async function OwnerPage() {
                             {formatCurrency(item.monthlyRevenue)}
                           </span>
                         </div>
-
                         <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
                           <MiniMetric label="Đang thuê" value={item.rented} />
                           <MiniMetric label="Đang trống" value={item.empty} />
@@ -473,7 +564,6 @@ export default async function OwnerPage() {
                 Hôm nay
               </span>
             </div>
-
             <div className="mt-4 space-y-2.5">
               <AttentionItem
                 href="/owner/contracts"
@@ -516,17 +606,33 @@ export default async function OwnerPage() {
             ) : (
               <div className="mt-4 divide-y divide-[#b58f69]/20">
                 {expiringContracts.slice(0, 4).map((item, index) => {
+                  const id = relationId(item.id);
+                  const propertyName = relationLabel(
+                    item.property,
+                    "Tòa nhà",
+                    ["name", "property_name", "address"],
+                  );
+                  const roomName = relationLabel(item.room, "Phòng", [
+                    "room_code",
+                    "name",
+                    "code",
+                  ]);
+                  const tenantName = relationLabel(item.tenant, "", [
+                    "full_name",
+                    "name",
+                    "tenant_name",
+                  ]);
                   const remaining = daysUntil(item.end_date);
 
                   return (
                     <Link
-                      key={item.id ?? `${item.room}-${index}`}
-                      href={item.id ? `/owner/contracts/${item.id}` : "/owner/contracts"}
+                      key={id ?? `${propertyName}-${roomName}-${index}`}
+                      href={id ? `/owner/contracts/${id}` : "/owner/contracts"}
                       className="group flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-[#4e3523]">
-                          {item.property || "Tòa nhà"} · {item.room || "Phòng"}
+                          {propertyName} · {roomName}
                         </p>
                         <p className="mt-1 text-xs text-[#80634a]">
                           {formatDate(item.end_date)}
@@ -534,9 +640,9 @@ export default async function OwnerPage() {
                             ? ` · còn ${Math.max(remaining, 0)} ngày`
                             : ""}
                         </p>
-                        {item.tenant ? (
+                        {tenantName ? (
                           <p className="mt-1 truncate text-xs text-[#9a7758]">
-                            {item.tenant}
+                            {tenantName}
                           </p>
                         ) : null}
                       </div>
@@ -561,7 +667,6 @@ export default async function OwnerPage() {
               </div>
               <CircleDollarSign size={25} className="text-[#efd3ad]" />
             </div>
-
             <p className="mt-6 break-words text-2xl font-bold sm:text-3xl">
               {formatCurrency(projectedRevenue)}
             </p>
@@ -595,62 +700,84 @@ export default async function OwnerPage() {
             href="/owner/contracts"
             className="inline-flex items-center gap-1 text-sm font-semibold text-[#744722] hover:underline"
           >
-            Xem tất cả
-            <ArrowRight size={16} />
+            Xem tất cả <ArrowRight size={16} />
           </Link>
         </div>
 
         {recentContracts.length === 0 ? (
-          <p className="mt-5 rounded-2xl border border-dashed border-[#aa825d]/35 bg-[#f8ead7] px-5 py-10 text-center text-sm text-[#7d624b]">
-            Chưa có hợp đồng.
-          </p>
+          <EmptyState>Chưa có hợp đồng.</EmptyState>
         ) : (
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {recentContracts.slice(0, 6).map((item, index) => (
-              <article
-                key={item.id ?? `${item.room}-${index}`}
-                className="rounded-2xl border border-[#a77c55]/20 bg-[#f7e8d3] p-4 transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-bold text-[#4d3422]">
-                      {item.tenant || "Khách thuê"}
-                    </p>
-                    <p className="mt-1 truncate text-sm text-[#775941]">
-                      {item.property || "Tòa nhà"} · {item.room || "Phòng"}
-                    </p>
-                  </div>
-                  <span className="rounded-lg bg-[#79502d] p-2 text-[#fff6e8]">
-                    <KeyRound size={16} />
-                  </span>
-                </div>
+            {recentContracts.slice(0, 6).map((item, index) => {
+              const id = relationId(item.id);
+              const tenantName = relationLabel(item.tenant, "Khách thuê", [
+                "full_name",
+                "name",
+                "tenant_name",
+              ]);
+              const propertyName = relationLabel(item.property, "Tòa nhà", [
+                "name",
+                "property_name",
+                "address",
+              ]);
+              const roomName = relationLabel(item.room, "Phòng", [
+                "room_code",
+                "name",
+                "code",
+              ]);
 
-                <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#b28e69]/25 pt-3">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-wide text-[#9a7657]">
-                      Giá thuê
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-[#5a3b25]">
-                      {toNumber(item.monthly_price) > 0
-                        ? formatCurrency(toNumber(item.monthly_price))
-                        : "Chưa cập nhật"}
-                    </p>
+              return (
+                <article
+                  key={id ?? `${propertyName}-${roomName}-${index}`}
+                  className="rounded-2xl border border-[#a77c55]/20 bg-[#f7e8d3] p-4 transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-[#4d3422]">
+                        {tenantName}
+                      </p>
+                      <p className="mt-1 truncate text-sm text-[#775941]">
+                        {propertyName} · {roomName}
+                      </p>
+                    </div>
+                    <span className="rounded-lg bg-[#79502d] p-2 text-[#fff6e8]">
+                      <KeyRound size={16} />
+                    </span>
                   </div>
-                  {item.id ? (
-                    <Link
-                      href={`/owner/contracts/${item.id}`}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#744722] hover:underline"
-                    >
-                      Chi tiết
-                      <ArrowRight size={14} />
-                    </Link>
-                  ) : null}
-                </div>
-              </article>
-            ))}
+                  <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#b28e69]/25 pt-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-[#9a7657]">
+                        Giá thuê
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-[#5a3b25]">
+                        {toNumber(item.monthly_price) > 0
+                          ? formatCurrency(toNumber(item.monthly_price))
+                          : "Chưa cập nhật"}
+                      </p>
+                    </div>
+                    {id ? (
+                      <Link
+                        href={`/owner/contracts/${id}`}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-[#744722] hover:underline"
+                      >
+                        Chi tiết <ArrowRight size={14} />
+                      </Link>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function EmptyState({ children }: { children: string }) {
+  return (
+    <div className="mt-6 rounded-2xl border border-dashed border-[#a9825f]/35 bg-[#f8ead7] px-5 py-10 text-center text-sm text-[#7d624b]">
+      {children}
     </div>
   );
 }
