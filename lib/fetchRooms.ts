@@ -16,6 +16,7 @@ export type FetchRoomsParams = {
   cursor?: string | UpdatedDescCursor | null;
 
   adminLevel?: 0 | 1 | 2;
+  vipAccessTokenHash?: string | null;
 
   search?: string;
   minPrice?: number;
@@ -311,6 +312,15 @@ const pContractTerms =
       )
     : null;
 const anonSessionId = await getAnonSessionId(adminLevel);
+if (params.vipAccessTokenHash) {
+  console.log(
+    "[VIP RPC HASH PRESENT]",
+    params.vipAccessTokenHash.slice(0, 12)
+  );
+} else {
+  console.log("[VIP RPC HASH EMPTY]");
+}
+
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: role,
@@ -318,6 +328,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 
   // 2) cursor (uuid) — dùng cho sort giá + fallback
   p_cursor: cursorId ? String(cursorId) : null,
+  p_vip_token_hash:
+  params.vipAccessTokenHash ?? null,
 
   // 3) filter/search
   p_search: normalizedSearch ? normalizedSearch : null,
@@ -333,13 +345,13 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_statuses: status ? [String(status)] : null,
 
   // 5) sort + keyset cursor (updated_desc cần 2 khóa)
- p_sort: (sortMode ?? "updated_desc") as any,
-p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
-p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
-p_cursor_id: cursorId ? String(cursorId) : null, 
-p_anon_session_id: anonSessionId,
+    p_sort: (sortMode ?? "updated_desc") as any,
+    p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
+    p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
+    p_cursor_id: cursorId ? String(cursorId) : null, 
+    p_anon_session_id: anonSessionId,
 
-});
+  });
 
   if (error) {
     console.error(error);
