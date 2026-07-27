@@ -41,11 +41,48 @@ export async function getRoomDetail(roomId: string) {
       price,
       status,
       description,
+      chinh_sach,
+      link_zalo,
+      zalo_phone,
       address,
       house_number,
       district,
       ward,
       property_id,
+      lifecycle_status,
+      publish_status,
+      is_hidden,
+      archived_at,
+      room_details (
+        id,
+        electric_fee_value,
+        electric_fee_unit,
+        water_fee_value,
+        water_fee_unit,
+        service_fee_value,
+        service_fee_unit,
+        parking_fee_value,
+        parking_fee_unit,
+        other_fee_value,
+        other_fee_note,
+        has_elevator,
+        has_stairs,
+        shared_washer,
+        private_washer,
+        shared_dryer,
+        private_dryer,
+        has_parking,
+        has_basement,
+        fingerprint_lock,
+        allow_pet,
+        allow_cat,
+        allow_dog,
+        no_pet,
+        short_term,
+        long_term,
+        other_amenities,
+        detail_json
+      ),
       room_media (
         id,
         type,
@@ -99,7 +136,11 @@ export async function getRoomDetail(roomId: string) {
     },
   );
 
-  const contract = contracts[0] ?? null;
+  const contract =
+    contracts.find((candidate: any) => {
+      const status = normalizeContractStatus(candidate.status);
+      return status === "Đang hiệu lực" || status === "Chờ nhận phòng";
+    }) ?? null;
   const contractStatus = normalizeContractStatus(contract?.status);
   const storedStatus = normalizeRoomStatus(data.status) ?? "Đang trống";
   const daysRemaining = daysUntil(contract?.end_date);
@@ -115,8 +156,6 @@ export async function getRoomDetail(roomId: string) {
         : "Đã thuê";
   } else if (contractStatus === "Chờ nhận phòng") {
     displayStatus = "Đã thuê";
-  } else if (contractStatus === "Đã kết thúc" || contractStatus === "Đã hủy") {
-    displayStatus = storedStatus;
   }
 
   const tenantRelation =
@@ -127,11 +166,16 @@ export async function getRoomDetail(roomId: string) {
   const tenant = Array.isArray(tenantRelation?.tenants)
     ? tenantRelation.tenants[0]
     : tenantRelation?.tenants ?? null;
+  const detailsRelation = data.room_details;
+  const details = Array.isArray(detailsRelation)
+    ? detailsRelation[0] ?? null
+    : detailsRelation ?? null;
 
   return {
     ...data,
     status: storedStatus,
     media,
+    details,
     displayStatus,
     daysRemaining,
     contracts,
