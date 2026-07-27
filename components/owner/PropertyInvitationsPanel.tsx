@@ -34,6 +34,7 @@ export default function PropertyInvitationsPanel({
   propertyId: string;
 }) {
   const [invitations, setInvitations] = useState<PropertyInvitation[]>([]);
+  const [origin, setOrigin] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export default function PropertyInvitationsPanel({
   }, [propertyId]);
 
   useEffect(() => {
+    setOrigin(window.location.origin);
     void loadInvitations();
   }, [loadInvitations]);
 
@@ -93,18 +95,14 @@ export default function PropertyInvitationsPanel({
       );
 
       const result = await readApiResponse<InviteResult>(response);
-      const invitation = result.invitation;
 
-      if (!invitation) {
+      if (!result.invitation) {
         throw new Error("API không trả về lời mời vừa tạo");
       }
 
-      setInvitations((current) => [
-        invitation,
-        ...current.filter((item) => item.id !== invitation.id),
-      ]);
-      setNotice("Đã tạo lời mời manager. Sao chép link bên dưới để gửi cho người nhận.");
       formElement.reset();
+      await loadInvitations();
+      setNotice("Đã tạo lời mời manager. Sao chép link bên dưới để gửi cho người nhận.");
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -125,18 +123,8 @@ export default function PropertyInvitationsPanel({
       const response = await fetch(`/api/owner/invitations/${invitationId}`, {
         method: "DELETE",
       });
-      await readApiResponse(response);
-      setInvitations((current) =>
-        current.map((item) =>
-          item.id === invitationId
-            ? {
-                ...item,
-                status: "revoked",
-                revoked_at: new Date().toISOString(),
-              }
-            : item,
-        ),
-      );
+      await readApiResponse<unknown>(response);
+      await loadInvitations();
       setNotice("Đã thu hồi lời mời.");
     } catch (revokeError) {
       setError(
@@ -150,7 +138,8 @@ export default function PropertyInvitationsPanel({
   }
 
   async function copyInvitationLink(token: string) {
-    const link = `${window.location.origin}/owner/invitations/accept?token=${token}`;
+    const base = origin || window.location.origin;
+    const link = `${base}/owner/invitations/accept?token=${token}`;
 
     try {
       await navigator.clipboard.writeText(link);
@@ -195,7 +184,11 @@ export default function PropertyInvitationsPanel({
           />
         </Field>
 
-        <Field label="Số điện thoại" htmlFor="phone" hint="Bắt buộc email hoặc số điện thoại">
+        <Field
+          label="Số điện thoại"
+          htmlFor="phone"
+          hint="Bắt buộc email hoặc số điện thoại"
+        >
           <input
             id="phone"
             name="phone"
@@ -219,7 +212,7 @@ export default function PropertyInvitationsPanel({
           </select>
         </Field>
 
-        <div className="md:col-span-2 flex justify-end">
+        <div className="flex justify-end md:col-span-2">
           <button
             type="submit"
             disabled={submitting}
@@ -267,10 +260,8 @@ export default function PropertyInvitationsPanel({
         ) : (
           <div className="space-y-3">
             {invitations.map((invitation) => {
-              const link =
-                typeof window === "undefined"
-                  ? `/owner/invitations/accept?token=${invitation.token}`
-                  : `${window.location.origin}/owner/invitations/accept?token=${invitation.token}`;
+              const relativeLink = `/owner/invitations/accept?token=${invitation.token}`;
+              const link = origin ? `${origin}${relativeLink}` : relativeLink;
 
               return (
                 <div key={invitation.id} className="rounded-xl border p-4">
@@ -317,7 +308,9 @@ export default function PropertyInvitationsPanel({
                           disabled={revokingId === invitation.id}
                           className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                         >
-                          {revokingId === invitation.id ? "Đang thu hồi..." : "Thu hồi"}
+                          {revokingId === invitation.id
+                            ? "Đang thu hồi..."
+                            : "Thu hồi"}
                         </button>
                       </div>
                     </div>
@@ -369,7 +362,9 @@ function StatusBadge({ status }: { status: InvitationStatus }) {
   };
 
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${styles[status]}`}>
+    <span
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${styles[status]}`}
+    >
       {labels[status]}
     </span>
   );
