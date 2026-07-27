@@ -1,208 +1,148 @@
 import { createSupabaseServerClient } from "../supabase/server";
 
 const UPCOMING_ROOM_DAYS = 30;
+const ACTIVE_CONTRACT_STATUSES = new Set(["active", "Đang hiệu lực"]);
+const PENDING_CONTRACT_STATUSES = new Set(["pending", "Chờ nhận phòng"]);
 
+type ContractReference = {
+  status?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  created_at?: string | null;
+};
+
+function dateValue(value?: string | null) {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function selectCurrentContract(contracts: ContractReference[] | null | undefined) {
+  return [...(contracts ?? [])]
+    .filter((contract) => {
+      const status = String(contract.status ?? "");
+      return ACTIVE_CONTRACT_STATUSES.has(status) || PENDING_CONTRACT_STATUSES.has(status);
+    })
+    .sort((left, right) => {
+      const leftActive = ACTIVE_CONTRACT_STATUSES.has(String(left.status ?? ""));
+      const rightActive = ACTIVE_CONTRACT_STATUSES.has(String(right.status ?? ""));
+
+      if (leftActive !== rightActive) return leftActive ? -1 : 1;
+
+      return (
+        dateValue(right.start_date) - dateValue(left.start_date) ||
+        dateValue(right.created_at) - dateValue(left.created_at)
+      );
+    })[0];
+}
 
 export async function getProperties() {
-
-  const supabase =
-    await createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
-  data:userData
-}
-=
-await supabase.auth.getUser();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-
-const user =
-  userData.user;
-console.log(
-  "CURRENT USER:",
-  user?.id
-);
-
-if(!user){
-
-  throw new Error(
-    "Unauthorized"
-  );
-
-}
-
-  const { data, error } = await supabase
-  .from("properties")
-  .select(`
-
-    id,
-    code,
-    name,
-    house_number,
-    address,
-    district,
-    city,
-    cover_image,
-    status,
-    created_at,
-
-
-    property_owners!inner(
-
-      user_id
-
-    ),
-
-
-    rooms!rooms_property_id_fkey (
-
-      id,
-      status,
-
-      rental_contracts (
-
-        status,
-        end_date
-
-      )
-
-    )
-
-  `)
-
-  .eq(
-    "property_owners.user_id",
-    user.id
-  )
-
-  .order("name");
-
-
-  if (error) {
-
-    console.error(
-      "[Owner] getProperties:",
-      error
-    );
-
-    throw error;
-
+  if (!user) {
+    throw new Error("Unauthorized");
   }
 
+  const { data, error } = await supabase
+    .from("property_members")
+    .select(`
+      role,
+      status,
+      properties!property_members_property_id_fkey (
+        id,
+        code,
+        name,
+        house_number,
+        address,
+        ward,
+        district,
+        city,
+        cover_image,
+        status,
+        approval_status,
+        lifecycle_status,
+        created_at,
+        rooms!rooms_property_id_fkey (
+          id,
+          status,
+          lifecycle_status,
+          rental_contracts (
+            status,
+            start_date,
+            end_date,
+            created_at
+          )
+        )
+      )
+    `)
+    .eq("user_id", user.id)
+    .eq("status", "active");
 
+  if (error) {
+    console.error("[Owner] getProperties:", error);
+    throw error;
+  }
 
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
+  return (data ?? [])
+    .map((membership: any) => {
+      const property = Array.isArray(membership.properties)
+        ? membership.properties[0]
+        : membership.properties;
 
-
-  return (data ?? []).map(
-    (property:any)=>{
-
+      if (!property) return null;
 
       let rentedRooms = 0;
       let emptyRooms = 0;
       let upcomingRooms = 0;
-
-
-
-      property.rooms?.forEach(
-        (room:any)=>{
-
-
-          const contract =
-            room.rental_contracts?.[0];
-
-
-
-          if (
-            contract?.status ===
-            "Đang hiệu lực"
-          ) {
-
-
-            const endDate =
-              new Date(
-                contract.end_date
-              );
-
-
-            const diffDays =
-              Math.ceil(
-                (
-                  endDate.getTime()
-                  -
-                  today.getTime()
-                )
-                /
-                (
-                  1000 *
-                  60 *
-                  60 *
-                  24
-                )
-              );
-
-
-            if (
-              diffDays <=
-              UPCOMING_ROOM_DAYS
-            ) {
-
-              upcomingRooms++;
-
-            } else {
-
-              rentedRooms++;
-
-            }
-
-
-          }
-
-          else if (
-            contract?.status ===
-            "Chờ nhận phòng"
-          ) {
-
-            rentedRooms++;
-
-          }
-
-          else {
-
-            emptyRooms++;
-
-          }
-
-
-        }
+      const activeRooms = (property.rooms ?? []).filter(
+        (room: any) => (room.lifecycle_status ?? "active") === "active",
       );
 
+      for (const room of activeRooms) {
+        const contract = selectCurrentContract(room.rental_contracts);
+        const status = String(contract?.status ?? "");
 
+        if (ACTIVE_CONTRACT_STATUSES.has(status)) {
+          const endDate = contract?.end_date ? new Date(contract.end_date) : null;
+          const diffDays = endDate
+            ? Math.ceil((endDate.getTime() - today.getTime()) / 86_400_000)
+            : null;
+
+          if (diffDays !== null && diffDays >= 0 && diffDays <= UPCOMING_ROOM_DAYS) {
+            upcomingRooms += 1;
+          } else {
+            rentedRooms += 1;
+          }
+        } else if (PENDING_CONTRACT_STATUSES.has(status)) {
+          rentedRooms += 1;
+        } else if (room.status === "Sắp trống") {
+          upcomingRooms += 1;
+        } else if (room.status === "Đã thuê") {
+          rentedRooms += 1;
+        } else {
+          emptyRooms += 1;
+        }
+      }
 
       return {
-
         ...property,
-
-
-        total_rooms:
-          property.rooms?.length ?? 0,
-
-
-        rented_rooms:
-          rentedRooms,
-
-
-        empty_rooms:
-          emptyRooms,
-
-
-        upcoming_rooms:
-          upcomingRooms,
-
-
+        membership_role: membership.role,
+        total_rooms: activeRooms.length,
+        rented_rooms: rentedRooms,
+        empty_rooms: emptyRooms,
+        upcoming_rooms: upcomingRooms,
       };
-
-
-    }
-  );
-
+    })
+    .filter(Boolean)
+    .sort((left: any, right: any) => {
+      const leftName = String(left.name ?? left.code ?? left.address ?? "");
+      const rightName = String(right.name ?? right.code ?? right.address ?? "");
+      return leftName.localeCompare(rightName, "vi");
+    });
 }
