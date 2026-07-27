@@ -40,6 +40,8 @@ export async function getOwnerRooms() {
       room_type,
       price,
       status,
+      publish_status,
+      lifecycle_status,
       property_id,
       properties!rooms_property_id_fkey (
         id,
@@ -74,8 +76,12 @@ export async function getOwnerRooms() {
   if (error) throw error;
 
   return (data ?? []).map((room: any) => {
-    const contracts = [...(room.rental_contracts ?? [])].sort(
-      (left: any, right: any) => {
+    const contracts = [...(room.rental_contracts ?? [])]
+      .filter((candidate: any) => {
+        const status = normalizeContractStatus(candidate.status);
+        return status === "Đang hiệu lực" || status === "Chờ nhận phòng";
+      })
+      .sort((left: any, right: any) => {
         const priorityDifference =
           contractPriority(normalizeContractStatus(left.status)) -
           contractPriority(normalizeContractStatus(right.status));
@@ -85,8 +91,7 @@ export async function getOwnerRooms() {
         return String(right.created_at ?? "").localeCompare(
           String(left.created_at ?? ""),
         );
-      },
-    );
+      });
 
     const contract = contracts[0] ?? null;
     const contractStatus = normalizeContractStatus(contract?.status);
