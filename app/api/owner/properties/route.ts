@@ -6,13 +6,19 @@ import {
   mapUnknownError,
 } from "@/lib/api/response";
 import { readJsonObject } from "@/lib/api/validation";
-import { parseCreateOwnerPropertyInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createSupabaseServerClient();
-    const user = await getAuthenticatedUser(supabase);
+
+    const supabase =
+      await createSupabaseServerClient();
+
+
+    const user =
+      await getAuthenticatedUser(supabase);
+
 
     if (!user) {
       return apiError(
@@ -22,17 +28,68 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await readJsonObject(request);
-    const payload = parseCreateOwnerPropertyInput(body);
 
-    const { data, error } = await supabase.rpc(
-      "create_owner_property_v1",
-      { p_payload: payload },
+    const body =
+      await readJsonObject(request);
+
+
+
+    const {
+      house_number,
+      address,
+      ward,
+      district,
+      city,
+      note,
+
+    } = body;
+
+
+
+    const { data, error } =
+      await supabase.rpc(
+        "create_property_v2",
+        {
+          p_house_number:
+            String(house_number ?? ""),
+
+          p_address:
+            String(address ?? ""),
+
+          p_ward:
+            String(ward ?? ""),
+
+          p_district:
+            String(district ?? ""),
+
+          p_city:
+            city
+              ? String(city)
+              : "Hồ Chí Minh",
+
+          p_note:
+            note
+              ? String(note)
+              : null,
+        },
+      );
+
+
+
+    if (error) {
+      return mapDatabaseError(error);
+    }
+
+
+    return apiSuccess(
+      data,
+      201,
     );
 
-    if (error) return mapDatabaseError(error);
-    return apiSuccess(data, 201);
-  } catch (error) {
+
+  } catch(error){
+
     return mapUnknownError(error);
+
   }
 }

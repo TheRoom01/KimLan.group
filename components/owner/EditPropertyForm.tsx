@@ -202,13 +202,7 @@ export default function EditPropertyForm({
         />
       </Field>
 
-      {property.approval_status === "pending" ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Tòa nhà đang chờ duyệt. Cập nhật nội dung không làm thay đổi trạng thái
-          phê duyệt hiện tại.
-        </div>
-      ) : null}
-
+      
       {error ? (
         <div
           role="alert"

@@ -105,23 +105,7 @@ export default async function PropertyDetailPage({
         </div>
       </div>
 
-      {property.approval_status === "pending" ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Tòa nhà đang chờ Admin duyệt. Phòng mới chỉ được lưu ở trạng thái nháp
-          và chưa thể xuất bản công khai.
-        </div>
-      ) : null}
-
-      {property.approval_status === "rejected" ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          Tòa nhà đã bị từ chối duyệt. Kiểm tra ghi chú phê duyệt và cập nhật dữ
-          liệu trước khi gửi lại.
-          {property.approval_note ? (
-            <p className="mt-2 font-medium">Ghi chú: {property.approval_note}</p>
-          ) : null}
-        </div>
-      ) : null}
-
+      
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard title="Tổng phòng" value={summary.total_rooms} />
         <StatCard

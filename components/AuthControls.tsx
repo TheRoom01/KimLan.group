@@ -70,6 +70,8 @@ export default function AuthControls() {
   const router = useRouter();
   const pathname = usePathname();
 
+  const isOwnerPortal = pathname.startsWith("/owner");
+
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [user, setUser] = useState<any>(null);
 
@@ -630,6 +632,16 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
           document.body
         )
       : null;
+
+    /**
+   * Owner Portal có auth gate riêng.
+   * Không render nút tài khoản và modal auth của website chính tại /owner.
+   *
+   * Điều kiện này phải đặt sau toàn bộ hook để không vi phạm Rules of Hooks.
+   */
+  if (isOwnerPortal) {
+    return null;
+  }
 
   // ===== controls (portal to #auth-anchor) =====
 const controls = (

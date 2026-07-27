@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import PropertyCard from "@/components/owner/PropertyCard";
 import { getProperties } from "@/lib/owner/getProperties";
+import PropertyJoinRequestPanel from "@/components/owner/PropertyJoinRequestPanel";
 
 export default async function PropertiesPage() {
   const properties = await getProperties();
@@ -12,7 +13,7 @@ export default async function PropertiesPage() {
         <div>
           <h1 className="text-3xl font-bold">Danh sách tòa nhà</h1>
           <p className="mt-1 text-gray-500">
-            Tổng cộng: {properties.length} tòa nhà bạn đang tham gia quản lý
+            Tổng cộng: {properties.length} tài sản bạn có quyền truy cập
           </p>
         </div>
 
@@ -20,15 +21,17 @@ export default async function PropertiesPage() {
           href="/owner/properties/create"
           className="inline-flex items-center justify-center rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
         >
-          + Tạo tòa nhà
+          + Thêm tòa nhà
         </Link>
       </div>
+      
+      <PropertyJoinRequestPanel />
 
       {properties.length === 0 ? (
         <div className="rounded-2xl border border-dashed bg-white p-8 text-center">
           <h2 className="text-lg font-semibold">Chưa có tòa nhà</h2>
           <p className="mt-2 text-sm text-gray-500">
-            Tạo tòa nhà đầu tiên hoặc chấp nhận lời mời manager từ một owner khác.
+            Tạo tài sản mới hoặc tham gia quản lý tòa nhà được chia sẻ bởi chủ sở hữu khác.
           </p>
           <Link
             href="/owner/properties/create"

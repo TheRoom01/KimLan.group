@@ -2,22 +2,25 @@ import Link from "next/link";
 
 type PropertyCardData = {
   id: string;
-  code?: string | null;
-  name?: string | null;
+
   house_number?: string | null;
   address?: string | null;
   ward?: string | null;
   district?: string | null;
   city?: string | null;
+ 
   cover_image?: string | null;
-  approval_status?: string | null;
+
   lifecycle_status?: string | null;
   membership_role?: string | null;
+  member_count?:number;
+
   total_rooms?: number;
   rented_rooms?: number;
   empty_rooms?: number;
   upcoming_rooms?: number;
 };
+
 
 function getStatusLabel(property: PropertyCardData) {
   if (property.lifecycle_status === "archived") {
@@ -34,41 +37,39 @@ function getStatusLabel(property: PropertyCardData) {
     };
   }
 
-  switch (property.approval_status) {
-    case "approved":
-      return {
-        text: "Đã duyệt",
-        className: "bg-green-100 text-green-700",
-      };
-    case "rejected":
-      return {
-        text: "Bị từ chối",
-        className: "bg-red-100 text-red-700",
-      };
-    case "pending":
-      return {
-        text: "Chờ duyệt",
-        className: "bg-amber-100 text-amber-800",
-      };
-    default:
-      return {
-        text: "Bản nháp",
-        className: "bg-gray-100 text-gray-700",
-      };
-  }
+  return {
+    text:"Đang hoạt động",
+    className:"bg-green-100 text-green-700",
+  };
 }
 
 function getRoleLabel(role?: string | null) {
   switch (role) {
     case "owner":
-      return "Owner";
+      return "Chủ sở hữu";
+
     case "manager":
-      return "Manager";
+      return "Quản lý";
+
     case "viewer":
-      return "Viewer";
+      return "Chỉ xem";
+
     default:
       return "Thành viên";
   }
+}
+
+function getPropertyDisplayName(
+  property: PropertyCardData,
+) {
+  return [
+    property.house_number,
+    property.address,
+    property.ward,
+    property.district,
+  ]
+    .filter(Boolean)
+    .join(", ") || "Chưa có địa chỉ";
 }
 
 export default function PropertyCard({
@@ -77,16 +78,14 @@ export default function PropertyCard({
   property: PropertyCardData;
 }) {
   const displayName =
-    property.name ||
-    [property.house_number, property.address].filter(Boolean).join(" ") ||
-    property.code ||
-    "Chưa đặt tên";
+    getPropertyDisplayName(property);
   const fullAddress = [
     property.house_number,
     property.address,
     property.ward,
     property.district,
     property.city,
+    
   ]
     .filter(Boolean)
     .join(", ");
@@ -105,7 +104,7 @@ export default function PropertyCard({
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-gray-400">
-            Chưa có ảnh tòa nhà
+            Chưa có ảnh tài sản
           </div>
         )}
 
@@ -129,12 +128,46 @@ export default function PropertyCard({
           </p>
         </div>
 
-        <div className="grid grid-cols-4 gap-2 text-center">
+        <div
+          className="
+            grid
+            grid-cols-2
+            gap-3
+            sm:grid-cols-4
+            text-center
+          "
+        >
           <Stat value={property.total_rooms ?? 0} label="Phòng" />
           <Stat value={property.rented_rooms ?? 0} label="Đã thuê" emphasis="green" />
           <Stat value={property.empty_rooms ?? 0} label="Trống" />
           <Stat value={property.upcoming_rooms ?? 0} label="Sắp trống" emphasis="amber" />
         </div>
+         
+         <div
+          className="
+          rounded-xl
+          border
+          border-[#aa825d]/20
+          bg-[#fff8ed]
+          px-3
+          py-2
+          text-xs
+          text-[#74583e]
+          "
+          >
+
+          <p className="font-bold text-[#4d3422]">
+
+          {property.member_count ?? 1}
+
+          </p>
+
+
+          <p>
+          Đồng sở hữu
+          </p>
+
+          </div>
 
         <div className="space-y-2">
           <Link
@@ -149,7 +182,7 @@ export default function PropertyCard({
               href={`/owner/rooms/create?property_id=${property.id}`}
               className="block rounded-xl border px-4 py-2 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
             >
-              + Tạo phòng mới
+              + Thêm phòng
             </Link>
           ) : null}
         </div>

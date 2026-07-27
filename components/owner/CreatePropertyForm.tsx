@@ -6,10 +6,15 @@ import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
 
 type CreatePropertyResult = {
-  ok?: boolean;
-  property?: {
-    id?: string;
-  };
+  mode:
+    | "created"
+    | "request_pending";
+
+  property_id?: string;
+
+  request_id?: string;
+
+  message?: string;
 };
 
 const INPUT_CLASS =
@@ -27,16 +32,11 @@ export default function CreatePropertyForm() {
 
     const form = new FormData(event.currentTarget);
     const payload = {
-      code: form.get("code"),
-      name: form.get("name"),
       house_number: form.get("house_number"),
       address: form.get("address"),
       ward: form.get("ward"),
       district: form.get("district"),
       city: form.get("city"),
-      latitude: form.get("latitude"),
-      longitude: form.get("longitude"),
-      cover_image: form.get("cover_image"),
       note: form.get("note"),
     };
 
@@ -49,15 +49,56 @@ export default function CreatePropertyForm() {
         body: JSON.stringify(payload),
       });
 
-      const result = await readApiResponse<CreatePropertyResult>(response);
-      const propertyId = result.property?.id;
+      const result =
+        await readApiResponse<CreatePropertyResult>(
+          response,
+        );
 
-      if (!propertyId) {
-        throw new Error("API không trả về mã tòa nhà vừa tạo");
+
+      if (
+        result.mode === "created"
+      ) {
+
+        if (!result.property_id) {
+          throw new Error(
+            "Không nhận được mã tòa nhà mới",
+          );
+        }
+
+
+        router.push(
+          `/owner/properties/${result.property_id}`,
+        );
+
+
+      } else if (
+        result.mode === "request_pending"
+      ) {
+
+
+        alert(
+          "Tòa nhà này đã tồn tại. Yêu cầu đồng sở hữu đã được gửi tới chủ sở hữu hiện tại để duyệt.",
+        );
+
+
+        router.push(
+          "/owner/properties",
+        );
+
+
+      } else {
+
+
+        throw new Error(
+          result.message ||
+          "Phản hồi không hợp lệ từ hệ thống",
+        );
+
       }
 
-      router.push(`/owner/properties/${propertyId}`);
+
       router.refresh();
+
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -75,26 +116,7 @@ export default function CreatePropertyForm() {
       className="space-y-6 rounded-2xl border bg-white p-6 shadow-sm"
     >
       <div className="grid gap-5 md:grid-cols-2">
-        <Field label="Tên tòa nhà" htmlFor="name">
-          <input
-            id="name"
-            name="name"
-            className={INPUT_CLASS}
-            maxLength={200}
-            placeholder="Ví dụ: Kim Lân Nguyễn Trãi"
-          />
-        </Field>
-
-        <Field label="Mã tòa nhà" htmlFor="code" hint="Để trống để hệ thống tự sinh">
-          <input
-            id="code"
-            name="code"
-            className={INPUT_CLASS}
-            maxLength={50}
-            placeholder="KL-NT01"
-          />
-        </Field>
-
+        
         <Field label="Số nhà" htmlFor="house_number" required>
           <input
             id="house_number"
@@ -144,41 +166,7 @@ export default function CreatePropertyForm() {
             required
           />
         </Field>
-
-        <Field label="URL ảnh đại diện" htmlFor="cover_image">
-          <input
-            id="cover_image"
-            name="cover_image"
-            type="url"
-            className={INPUT_CLASS}
-            maxLength={2000}
-            placeholder="https://..."
-          />
-        </Field>
-
-        <Field label="Vĩ độ" htmlFor="latitude">
-          <input
-            id="latitude"
-            name="latitude"
-            type="number"
-            step="any"
-            min={-90}
-            max={90}
-            className={INPUT_CLASS}
-          />
-        </Field>
-
-        <Field label="Kinh độ" htmlFor="longitude">
-          <input
-            id="longitude"
-            name="longitude"
-            type="number"
-            step="any"
-            min={-180}
-            max={180}
-            className={INPUT_CLASS}
-          />
-        </Field>
+      
       </div>
 
       <Field label="Ghi chú" htmlFor="note">
@@ -190,11 +178,7 @@ export default function CreatePropertyForm() {
         />
       </Field>
 
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        Tòa nhà mới sẽ ở trạng thái chờ duyệt. Bạn vẫn có thể tạo phòng nháp và
-        bổ sung dữ liệu trong thời gian chờ Admin phê duyệt.
-      </div>
-
+      
       {error ? (
         <div
           role="alert"

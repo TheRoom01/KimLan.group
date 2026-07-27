@@ -57,13 +57,39 @@ function includesToken(error: unknown, token: string): boolean {
     .some((value) => value.includes(token));
 }
 
+const DATABASE_MESSAGES:Record<string,string>={
+
+
+UNAUTHENTICATED:
+"Phiên đăng nhập đã hết hạn.",
+
+
+PROPERTY_PERMISSION_DENIED:
+"Bạn không có quyền quản lý tòa nhà này.",
+
+
+ROOM_CODE_REQUIRED:
+"Mã phòng không được để trống.",
+
+
+ROOM_ALREADY_EXISTS:
+"Phòng này đã tồn tại trong tòa nhà. Hệ thống sẽ mở dữ liệu hiện có để bạn chỉnh sửa.",
+
+
+ROOM_CREATED:
+"Tạo phòng thành công."
+
+};
+
 export function mapDatabaseError(error: unknown) {
+  
   const databaseError = error as {
     code?: string;
     message?: string;
     details?: string;
   };
-
+  
+  
   const code = String(databaseError?.code ?? "");
 
   if (includesToken(error, "UNAUTHENTICATED")) {
@@ -89,6 +115,20 @@ export function mapDatabaseError(error: unknown) {
   if (code === "P0002" || includesToken(error, "NOT_FOUND")) {
     return apiError("NOT_FOUND", "Không tìm thấy dữ liệu", 404);
   }
+
+  const databaseMessage =
+  DATABASE_MESSAGES[
+    String(databaseError?.message ?? "")
+  ];
+
+  if (databaseMessage) {
+    return apiError(
+      "CONFLICT",
+      databaseMessage,
+      409,
+    );
+  }
+
 
   if (
     code === "P0001" ||
@@ -149,3 +189,4 @@ export function mapUnknownError(error: unknown) {
     500,
   );
 }
+

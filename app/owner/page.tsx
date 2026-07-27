@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  BarChart3,
   Building2,
   CalendarClock,
   Clock3,
@@ -13,8 +12,12 @@ import {
   Warehouse,
 } from "lucide-react";
 
+import OwnerPropertyDashboard, {
+  type OwnerPropertyDashboardItem,
+} from "@/components/owner/OwnerPropertyDashboard";
 import { getOwnerDashboard } from "@/lib/owner/getOwnerDashboard";
 import { getOwnerRooms } from "@/lib/owner/getOwnerRooms";
+import { getProperties } from "@/lib/owner/getProperties";
 
 type DashboardContract = {
   id?: unknown;
@@ -26,15 +29,7 @@ type DashboardContract = {
   end_date?: unknown;
 };
 
-type PropertyOverview = {
-  id: string;
-  name: string;
-  total: number;
-  rented: number;
-  empty: number;
-  upcoming: number;
-  monthlyRevenue: number;
-};
+type PropertyOverview = OwnerPropertyDashboardItem;
 
 function toNumber(value: unknown) {
   const parsed = Number(value ?? 0);
@@ -124,48 +119,144 @@ function daysUntil(value: unknown) {
 
 function propertyDisplayName(propertyValue: unknown) {
   const property = firstRelation(propertyValue);
-  const scalar = asString(property);
-  if (scalar) return scalar;
 
   if (!property || typeof property !== "object") {
-    return "Chưa gắn tòa nhà";
+    return "Chưa có địa chỉ";
   }
 
-  const record = property as Record<string, unknown>;
-  const directName = asString(record.name);
-  if (directName) return directName;
+  const record =
+    property as Record<string, unknown>;
 
-  const address = [
+  const fullAddress = [
     asString(record.house_number),
     asString(record.address),
+    asString(record.ward),
     asString(record.district),
+    asString(record.city),
   ]
     .filter(Boolean)
-    .join(" ");
+    .join(", ");
 
-  return address || "Tòa nhà chưa đặt tên";
+
+  return (
+    fullAddress ||
+    asString(record.name) ||
+    "Chưa có địa chỉ"
+  );
 }
 
-function buildPropertyOverview(rooms: unknown[]): PropertyOverview[] {
+function buildPropertyOverview(
+  properties: unknown[],
+  rooms: unknown[],
+): PropertyOverview[] {
   const groups = new Map<string, PropertyOverview>();
 
-  for (const candidate of rooms) {
+  /**
+   * Khởi tạo từ getProperties() để luôn có đủ danh sách tòa nhà
+   * user đang quản lý, kể cả tòa nhà chưa có phòng.
+   */
+  for (const candidate of properties) {
     if (!candidate || typeof candidate !== "object") continue;
 
-    const room = candidate as Record<string, unknown>;
-    const property = firstRelation(room.property);
-    const propertyId =
-      relationId(property) || asString(room.property_id) || "unassigned";
+    const property = candidate as Record<string, unknown>;
+    const propertyId = asString(property.id);
 
-    const current = groups.get(propertyId) ?? {
+    if (!propertyId) continue;
+
+    const houseNumber = asString(property.house_number);
+    const address = asString(property.address);
+    const ward = asString(property.ward);
+    const district = asString(property.district);
+    const city = asString(property.city);
+
+    const fullAddress = [
+      houseNumber,
+      address,
+      ward,
+      district,
+      city,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    groups.set(propertyId, {
       id: propertyId,
+      code: asString(property.code),
       name: propertyDisplayName(property),
+      houseNumber,
+      address,
+      ward,
+      district,
+      city,
+      fullAddress,
       total: 0,
       rented: 0,
       empty: 0,
       upcoming: 0,
       monthlyRevenue: 0,
-    };
+    });
+  }
+
+  /**
+   * Tính số phòng và doanh thu từ getOwnerRooms().
+   * Dữ liệu room vẫn được giới hạn theo property membership.
+   */
+  for (const candidate of rooms) {
+    if (!candidate || typeof candidate !== "object") continue;
+
+    const room = candidate as Record<string, unknown>;
+    const propertyRelation = firstRelation(room.property);
+    const propertyRecord =
+      propertyRelation && typeof propertyRelation === "object"
+        ? (propertyRelation as Record<string, unknown>)
+        : {};
+
+    const propertyId =
+      relationId(propertyRelation) ||
+      asString(room.property_id);
+
+    if (!propertyId) continue;
+
+    let current = groups.get(propertyId);
+
+    /**
+     * Fallback phòng trường hợp dữ liệu property relation tồn tại
+     * nhưng chưa có trong danh sách khởi tạo.
+     */
+    if (!current) {
+      const houseNumber = asString(propertyRecord.house_number);
+      const address = asString(propertyRecord.address);
+      const ward = asString(propertyRecord.ward);
+      const district = asString(propertyRecord.district);
+      const city = asString(propertyRecord.city);
+
+      current = {
+        id: propertyId,
+        code: asString(propertyRecord.code),
+        name: propertyDisplayName(propertyRecord),
+        houseNumber,
+        address,
+        ward,
+        district,
+        city,
+        fullAddress: [
+          houseNumber,
+          address,
+          ward,
+          district,
+          city,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        total: 0,
+        rented: 0,
+        empty: 0,
+        upcoming: 0,
+        monthlyRevenue: 0,
+      };
+
+      groups.set(propertyId, current);
+    }
 
     current.total += 1;
 
@@ -179,18 +270,28 @@ function buildPropertyOverview(rooms: unknown[]): PropertyOverview[] {
     if (displayStatus === "Đang trống") {
       current.empty += 1;
     } else {
+      /**
+       * Giữ nguyên logic dashboard hiện tại:
+       * phòng "Sắp trống" vẫn đang có người thuê nên vẫn thuộc
+       * số phòng đang lấp đầy.
+       */
       current.rented += 1;
+
       current.monthlyRevenue += toNumber(
         contractRecord?.monthly_price ?? room.price,
       );
     }
 
-    if (displayStatus === "Sắp trống") current.upcoming += 1;
-    groups.set(propertyId, current);
+    if (displayStatus === "Sắp trống") {
+      current.upcoming += 1;
+    }
   }
 
   return [...groups.values()].sort((left, right) => {
-    if (right.total !== left.total) return right.total - left.total;
+    if (right.total !== left.total) {
+      return right.total - left.total;
+    }
+
     return left.name.localeCompare(right.name, "vi");
   });
 }
@@ -203,10 +304,11 @@ function normalizeContracts(value: unknown): DashboardContract[] {
 }
 
 export default async function OwnerPage() {
-  const [dashboardData, roomData] = await Promise.all([
-    getOwnerDashboard(),
-    getOwnerRooms(),
-  ]);
+  const [dashboardData, roomData, propertyData] = await Promise.all([
+  getOwnerDashboard(),
+  getOwnerRooms(),
+  getProperties(),
+]);
 
   const dashboard =
     dashboardData && typeof dashboardData === "object"
@@ -217,9 +319,10 @@ export default async function OwnerPage() {
       ? (dashboard.summary as Record<string, unknown>)
       : {};
   const rooms = Array.isArray(roomData) ? roomData : [];
+  const properties = Array.isArray(propertyData) ? propertyData : [];
   const recentContracts = normalizeContracts(dashboard.recent_contracts);
   const expiringContracts = normalizeContracts(dashboard.expiring_contracts);
-  const propertyOverview = buildPropertyOverview(rooms);
+  const propertyOverview = buildPropertyOverview(properties, rooms);
 
   const totalRooms = toNumber(summary.total_rooms ?? rooms.length);
   const rentedRooms = toNumber(summary.rented_rooms);
@@ -235,12 +338,7 @@ export default async function OwnerPage() {
     (total, item) => total + item.monthlyRevenue,
     0,
   );
-  const maxChartValue = Math.max(
-    1,
-    ...propertyOverview.map((item) => Math.max(item.rented, item.empty)),
-  );
-  const chartItems = propertyOverview.slice(0, 6);
-
+ 
   const kpis = [
     {
       label: "Tổng số BĐS",
@@ -345,187 +443,8 @@ export default async function OwnerPage() {
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-12 xl:gap-5">
         <div className="min-w-0 space-y-4 xl:col-span-8 xl:space-y-5">
-          <section className="min-w-0 rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:rounded-[22px] sm:p-6">
-            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[#744923]">
-                  <BarChart3 size={20} />
-                  <h2 className="text-sm font-bold uppercase tracking-wide sm:text-lg">
-                    Thống kê phòng mỗi tòa nhà
-                  </h2>
-                </div>
-                <p className="mt-1 text-sm text-[#846951]">
-                  So sánh phòng đang thuê và đang trống trong phạm vi bạn quản lý.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-[#74583e]">
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-[#75451f]" />
-                  Đang thuê
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-[#d9b989]" />
-                  Đang trống
-                </span>
-              </div>
-            </div>
-
-            {chartItems.length === 0 ? (
-              <div className="mt-6 rounded-2xl border border-dashed border-[#a9825f]/35 bg-[#f8ead7] px-5 py-10 text-center text-sm text-[#7d624b]">
-                Chưa có dữ liệu phòng để hiển thị biểu đồ.
-              </div>
-            ) : (
-              <div className="mt-5 grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {chartItems.map((item) => (
-                  <article
-                    key={item.id}
-                    className="min-w-0 rounded-2xl border border-[#a9825f]/20 bg-[#f8ead7] p-3"
-                  >
-                    <div className="flex h-32 items-end justify-center gap-2 sm:h-40">
-                      <ChartBar
-                        value={item.rented}
-                        maxValue={maxChartValue}
-                        tone="dark"
-                        label="Đang thuê"
-                      />
-                      <ChartBar
-                        value={item.empty}
-                        maxValue={maxChartValue}
-                        tone="light"
-                        label="Đang trống"
-                      />
-                    </div>
-                    <p
-                      title={item.name}
-                      className="mt-3 line-clamp-2 min-h-8 break-words text-center text-[11px] font-semibold leading-4 text-[#5f4631] sm:text-xs"
-                    >
-                      {item.name}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="min-w-0 overflow-hidden rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:rounded-[22px]">
-            <div className="flex min-w-0 items-center justify-between gap-3 px-4 py-4 sm:px-6">
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-[#4f321e] sm:text-lg">
-                  Tổng quan chi tiết tòa nhà
-                </h2>
-                <p className="mt-1 text-sm text-[#846951]">
-                  Công suất phòng và doanh thu dự kiến theo tháng.
-                </p>
-              </div>
-              <Link
-                href="/owner/properties"
-                className="hidden shrink-0 items-center gap-1 text-sm font-semibold text-[#744722] hover:underline sm:inline-flex"
-              >
-                Xem tất cả
-                <ArrowRight size={16} />
-              </Link>
-            </div>
-
-            {propertyOverview.length === 0 ? (
-              <div className="border-t border-[#a77c55]/15 px-5 py-10 text-center text-sm text-[#80634a]">
-                Chưa có tòa nhà hoặc phòng để tổng hợp.
-              </div>
-            ) : (
-              <>
-                <div className="hidden lg:block">
-                  <table className="w-full table-fixed border-collapse text-left text-sm">
-                    <thead className="bg-[#754722] text-[#fff5e7]">
-                      <tr>
-                        <th className="w-[34%] px-4 py-3 font-semibold">Tòa nhà</th>
-                        <th className="w-[18%] px-3 py-3 font-semibold">Lấp đầy</th>
-                        <th className="px-2 py-3 text-center font-semibold">Trống</th>
-                        <th className="px-2 py-3 text-center font-semibold">Đang thuê</th>
-                        <th className="px-2 py-3 text-center font-semibold">Sắp trống</th>
-                        <th className="w-[20%] px-4 py-3 text-right font-semibold">Doanh thu</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {propertyOverview.map((item, index) => {
-                        const rate =
-                          item.total > 0
-                            ? Math.round((item.rented / item.total) * 100)
-                            : 0;
-
-                        return (
-                          <tr
-                            key={item.id}
-                            className={`border-t border-[#b99673]/20 ${
-                              index % 2 === 0 ? "bg-[#fffaf2]" : "bg-[#f6e8d5]"
-                            }`}
-                          >
-                            <td className="px-4 py-3.5 font-semibold text-[#4d3422]">
-                              <span className="line-clamp-2 break-words">
-                                {item.name}
-                              </span>
-                            </td>
-                            <td className="px-3 py-3.5">
-                              <div className="flex items-center gap-2">
-                                <span className="w-9 shrink-0 font-semibold text-[#61442f]">
-                                  {rate}%
-                                </span>
-                                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[#dfc8a8]">
-                                  <div
-                                    className="h-full rounded-full bg-[#7a4b27]"
-                                    style={{ width: `${rate}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-2 py-3.5 text-center">{item.empty}</td>
-                            <td className="px-2 py-3.5 text-center">{item.rented}</td>
-                            <td className="px-2 py-3.5 text-center">{item.upcoming}</td>
-                            <td className="break-words px-4 py-3.5 text-right font-semibold text-[#5c3d27]">
-                              {formatCurrency(item.monthlyRevenue)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="space-y-3 border-t border-[#a77c55]/15 p-3 lg:hidden">
-                  {propertyOverview.map((item) => {
-                    const rate =
-                      item.total > 0
-                        ? Math.round((item.rented / item.total) * 100)
-                        : 0;
-
-                    return (
-                      <article
-                        key={item.id}
-                        className="min-w-0 rounded-2xl border border-[#a87d56]/20 bg-[#f8ead7] p-4"
-                      >
-                        <div className="min-w-0">
-                          <p className="break-words font-bold text-[#4d3422]">
-                            {item.name}
-                          </p>
-                          <p className="mt-1 text-xs text-[#80634a]">
-                            {item.total} phòng · {rate}% lấp đầy
-                          </p>
-                          <p className="mt-2 break-words text-sm font-semibold text-[#684324]">
-                            {formatCurrency(item.monthlyRevenue)}/tháng
-                          </p>
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-                          <MiniMetric label="Đang thuê" value={item.rented} />
-                          <MiniMetric label="Đang trống" value={item.empty} />
-                          <MiniMetric label="Sắp trống" value={item.upcoming} />
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </section>
+          <OwnerPropertyDashboard items={propertyOverview} />
+          
         </div>
 
         <aside className="min-w-0 space-y-4 xl:col-span-4 xl:space-y-5">
@@ -753,47 +672,6 @@ export default async function OwnerPage() {
   );
 }
 
-function ChartBar({
-  value,
-  maxValue,
-  tone,
-  label,
-}: {
-  value: number;
-  maxValue: number;
-  tone: "dark" | "light";
-  label: string;
-}) {
-  const percentage = value > 0 ? Math.max((value / maxValue) * 100, 5) : 2;
-
-  return (
-    <div className="flex h-full w-7 min-w-0 flex-col justify-end sm:w-8">
-      <span className="mb-1 text-center text-xs font-bold text-[#5c402d]">
-        {value}
-      </span>
-      <div
-        title={`${label}: ${value}`}
-        className={`w-full rounded-t-md transition hover:opacity-85 ${
-          tone === "dark"
-            ? "bg-gradient-to-t from-[#643815] to-[#8a572d]"
-            : "bg-gradient-to-t from-[#c9a16d] to-[#e2c79f]"
-        }`}
-        style={{ height: `${percentage}%` }}
-      />
-    </div>
-  );
-}
-
-function MiniMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-0 rounded-xl bg-[#fff8ed] px-1.5 py-2.5 sm:px-2">
-      <p className="font-bold text-[#5d3d27]">{value}</p>
-      <p className="mt-1 break-words text-[10px] leading-3 text-[#8a6b50]">
-        {label}
-      </p>
-    </div>
-  );
-}
 
 function AttentionItem({
   href,

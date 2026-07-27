@@ -12,6 +12,7 @@ import {
   Users,
   Warehouse,
 } from "lucide-react";
+import OwnerAccountPanel from "@/components/owner/OwnerAccountPanel";
 
 const menus = [
   {
@@ -61,7 +62,21 @@ export default function OwnerSidebar() {
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-[#6f4526]/30 bg-[#704522] text-[#fff6e8] shadow-[0_8px_30px_rgba(83,48,22,0.18)]">
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:h-[72px] lg:px-8">
+        <div
+          className="
+            mx-auto
+            flex
+            h-16
+            min-w-0
+            max-w-[1440px]
+            items-center
+            gap-3
+            px-4
+            sm:px-6
+            lg:h-[72px]
+            lg:px-8
+          "
+        >
           <Link
             href="/owner"
             className="flex shrink-0 items-center gap-2 rounded-xl px-1 py-2 font-semibold tracking-tight"
@@ -94,7 +109,7 @@ export default function OwnerSidebar() {
             })}
           </nav>
 
-          <div className="ml-auto hidden items-center gap-2 md:flex">
+          <div className="ml-auto hidden items-center gap-2 lg:flex">
             <Link
               href="/owner/rooms"
               className="flex min-w-[180px] items-center gap-2 rounded-xl border border-[#f3d9b4]/25 bg-[#5d361c]/45 px-3 py-2 text-sm text-[#f8e8d2] transition hover:bg-[#5d361c]/70 lg:min-w-[220px]"
@@ -111,24 +126,17 @@ export default function OwnerSidebar() {
               <Bell size={18} />
             </Link>
 
-            <div className="hidden items-center gap-2 rounded-xl border border-[#f3d9b4]/20 bg-white/5 px-3 py-2 xl:flex">
-              <div className="grid h-7 w-7 place-items-center rounded-full bg-[#f2d9b6] text-xs font-bold text-[#633b20]">
-                KL
-              </div>
-              <div className="leading-tight">
-                <p className="text-sm font-semibold">Kim Lân</p>
-                <p className="text-[11px] text-[#e8cfad]">Owner Portal</p>
-              </div>
-            </div>
           </div>
 
           <Link
-            href="/owner/contracts"
-            aria-label="Xem hợp đồng"
-            className="ml-auto grid h-10 w-10 place-items-center rounded-xl border border-[#f3d9b4]/20 bg-white/5 md:hidden"
-          >
-            <Bell size={18} />
-          </Link>
+              href="/owner/contracts"
+              aria-label="Xem hợp đồng"
+              className="ml-auto grid h-10 w-10 place-items-center rounded-xl border border-[#f3d9b4]/20 bg-white/5 md:hidden"
+            >
+              <Bell size={18} />
+            </Link>
+
+            <OwnerAccountPanel />
         </div>
       </header>
 

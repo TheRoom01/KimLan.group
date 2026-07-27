@@ -186,20 +186,20 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
           </Field>
 
           <Field
-            label="Trạng thái xuất bản"
-            htmlFor="publish_status"
-            hint="Xuất bản chỉ thành công khi tòa nhà đã được duyệt và đang hoạt động"
-          >
-            <select
-              id="publish_status"
-              name="publish_status"
-              className={INPUT_CLASS}
-              defaultValue={room.publish_status ?? "draft"}
+              label="Trạng thái hiển thị"
+              htmlFor="publish_status"
+              hint="Phòng Xuất bản sẽ hiển thị công khai. Chọn Ẩn để tạm ngừng hiển thị."
             >
-              <option value="draft">Bản nháp</option>
-              <option value="published">Xuất bản</option>
-              <option value="hidden">Ẩn</option>
-            </select>
+              <select
+                id="publish_status"
+                name="publish_status"
+                className={INPUT_CLASS}
+                defaultValue={room.publish_status ?? "published"}
+              >
+                <option value="draft">Lưu nội bộ</option>
+                <option value="published">Xuất bản công khai</option>
+                <option value="hidden">Ẩn khỏi trang công khai</option>
+              </select>
           </Field>
 
           <Field label="Số điện thoại Zalo" htmlFor="zalo_phone">

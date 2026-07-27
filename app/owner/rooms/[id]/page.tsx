@@ -76,12 +76,7 @@ export default async function RoomDetailPage({
 
       {isArchived ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          Phòng đã được lưu trữ và bị ẩn công khai. Dữ liệu media và lịch sử hợp
-          đồng vẫn được giữ nguyên.
-        </div>
-      ) : room.publish_status === "draft" ? (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          Phòng đang ở trạng thái nháp và chưa hiển thị công khai.
+          Phòng đã được lưu trữ và bị ẩn công khai. Dữ liệu media và lịch sử hợp đồng vẫn được giữ nguyên.
         </div>
       ) : null}
 

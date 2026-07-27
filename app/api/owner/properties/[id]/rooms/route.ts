@@ -35,7 +35,7 @@ export async function POST(
     const payload = parseCreateOwnerRoomInput(body);
 
     const { data, error } = await supabase.rpc(
-      "create_owner_room_v1",
+      "create_owner_room_v2",
       {
         p_property_id: propertyId,
         p_payload: payload,
@@ -43,7 +43,20 @@ export async function POST(
     );
 
     if (error) return mapDatabaseError(error);
-    return apiSuccess(data, 201);
+
+    if (
+      data &&
+      typeof data === "object" &&
+      "mode" in data &&
+      data.mode === "existing"
+    ) {
+
+      return apiSuccess(data, 200);
+
+    }
+
+
+    return apiSuccess(data,201);
   } catch (error) {
     return mapUnknownError(error);
   }

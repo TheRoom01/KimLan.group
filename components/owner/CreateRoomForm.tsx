@@ -7,10 +7,16 @@ import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
 
 type CreateRoomResult = {
-  ok?: boolean;
+  mode?: "created" | "existing";
+
+  room_id?: string;
+
+  message?: string;
+
   room?: {
     id?: string;
   };
+
   details_saved?: boolean;
 };
 
@@ -158,11 +164,30 @@ export default function CreateRoomForm({
         },
       );
 
-      const createResult = await readApiResponse<CreateRoomResult>(createResponse);
-      const roomId = createResult.room?.id;
+      const createResult =
+        await readApiResponse<CreateRoomResult>(
+          createResponse,
+        );
+
+
+      const roomId =
+        createResult.room_id ??
+        createResult.room?.id;
+
 
       if (!roomId) {
-        throw new Error("API không trả về mã phòng vừa tạo");
+        throw new Error(
+          "API không trả về mã phòng",
+        );
+      }
+     
+     if (createResult.mode === "existing") {
+
+        router.push(
+          `/owner/rooms/${roomId}/edit`
+        );
+
+        return;
       }
 
       setCreatedRoomId(roomId);
@@ -201,8 +226,24 @@ export default function CreateRoomForm({
           }),
         });
 
-        await readApiResponse(mediaResponse);
+      await readApiResponse(mediaResponse);
       }
+
+      /**
+       * Chỉ công khai phòng sau khi toàn bộ media đã upload
+       * và metadata đã được lưu thành công.
+       *
+       * Trường hợp không chọn media, phòng vẫn được publish
+       * ngay sau bước tạo bản ghi.
+       */
+      const publishResponse = await fetch(
+        `/api/owner/rooms/${roomId}/publish`,
+        {
+          method: "POST",
+        },
+      );
+
+      await readApiResponse<unknown>(publishResponse);
 
       router.push(`/owner/rooms/${roomId}`);
       router.refresh();
@@ -409,9 +450,10 @@ export default function CreateRoomForm({
         ) : null}
       </Section>
 
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        Phòng được tạo ở trạng thái nháp và không hiển thị công khai. Chỉ có thể
-        xuất bản sau khi tòa nhà đã được duyệt.
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
+        Phòng sẽ được xuất bản công khai tự động sau khi thông tin và toàn bộ
+        ảnh/video được lưu thành công. Hãy kiểm tra giá thuê, mô tả và media
+        trước khi tạo phòng.
       </div>
 
       {uploadStatus ? (
@@ -428,13 +470,14 @@ export default function CreateRoomForm({
           <p>{error}</p>
           {createdRoomId ? (
             <p className="mt-2">
-              Bản ghi phòng đã được tạo. Media tải thành công trước thời điểm lỗi
-              vẫn được giữ lại. {" "}
+              Bản ghi phòng đã được tạo nhưng chưa được xuất bản công khai vì quy
+              trình lưu media chưa hoàn tất. Những file tải thành công trước thời
+              điểm lỗi vẫn được giữ lại.{" "}
               <Link
                 className="font-semibold underline"
                 href={`/owner/rooms/${createdRoomId}`}
               >
-                Mở phòng
+                Mở phòng để kiểm tra
               </Link>
             </p>
           ) : null}
@@ -456,7 +499,7 @@ export default function CreateRoomForm({
           disabled={submitting}
           className="rounded-lg bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {submitting ? "Đang lưu..." : "Tạo phòng nháp"}
+          {submitting ? "Đang tạo và xuất bản..." : "Tạo và xuất bản phòng"}
         </button>
       </div>
     </form>

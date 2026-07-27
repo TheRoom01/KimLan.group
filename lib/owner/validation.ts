@@ -16,40 +16,138 @@ export type UpdateOwnerRoomInput = {
   room_type: string | null;
   price: number | null;
   description: string | null;
+  chinh_sach: string | null;
+
+  publish_status:
+    | "draft"
+    | "published"
+    | "hidden"
+    | null;
 };
+
+
+const ROOM_PUBLISH_STATUSES = [
+  "draft",
+  "published",
+  "hidden",
+] as const;
+
+
+type RoomPublishStatus =
+  (typeof ROOM_PUBLISH_STATUSES)[number];
 
 export function parseUpdateOwnerRoomInput(
   body: JsonObject,
 ): UpdateOwnerRoomInput {
+
+  const publishStatus =
+    parseOptionalString(
+      body.publish_status,
+      "Trạng thái đăng tin",
+      50,
+    );
+
+
+  if (
+    publishStatus &&
+    !ROOM_PUBLISH_STATUSES.includes(
+      publishStatus as RoomPublishStatus,
+    )
+  ) {
+    throw new RequestValidationError(
+      "Trạng thái đăng tin không hợp lệ",
+      {
+        field: "publish_status",
+      },
+    );
+  }
+
+
   return {
-    room_type: parseOptionalString(body.room_type, "Loại phòng", 120),
-    price: parseNonNegativeInteger(body.price, "Giá phòng", {
-      optional: true,
-    }),
-    description: parseOptionalString(body.description, "Mô tả", 5000),
+
+    room_type:
+      parseOptionalString(
+        body.room_type,
+        "Loại phòng",
+        120,
+      ),
+
+
+    price:
+      parseNonNegativeInteger(
+        body.price,
+        "Giá phòng",
+        {
+          optional: true,
+        },
+      ),
+
+
+    description:
+      parseOptionalString(
+        body.description,
+        "Mô tả",
+        5000,
+      ),
+
+
+    chinh_sach:
+      parseOptionalString(
+        body.chinh_sach,
+        "Chính sách",
+        5000,
+      ),
+
+
+    publish_status:
+      publishStatus as RoomPublishStatus | null,
+
   };
 }
 
 export type UpdateOwnerRoomStatusInput = {
+
   status: RoomStatus;
+
   note: string | null;
+
 };
+
 
 export function parseUpdateOwnerRoomStatusInput(
   body: JsonObject,
 ): UpdateOwnerRoomStatusInput {
-  const status = String(body.status ?? "").trim();
+
+  const status =
+    String(body.status ?? "")
+      .trim();
+
 
   if (!isRoomStatus(status)) {
-    throw new RequestValidationError("Trạng thái phòng không hợp lệ", {
-      field: "status",
-    });
+
+    throw new RequestValidationError(
+      "Trạng thái phòng không hợp lệ",
+      {
+        field: "status",
+      },
+    );
+
   }
 
+
   return {
+
     status,
-    note: parseOptionalString(body.note, "Ghi chú", 500),
+
+    note:
+      parseOptionalString(
+        body.note,
+        "Ghi chú",
+        500,
+      ),
+
   };
+
 }
 
 export type CreateOwnerContractInput = {
@@ -269,31 +367,99 @@ function parseRoomDetails(value: unknown): JsonObject | null {
 }
 
 export type CreateOwnerRoomInput = {
+
   room_code: string;
+
   room_type: string | null;
+
   price: number | null;
+
   description: string | null;
+
   chinh_sach: string | null;
+
+
+  // Cho phép nhập khi tạo mới
   link_zalo: string | null;
+
   zalo_phone: string | null;
+
+
   room_details: JsonObject | null;
+
 };
 
 export function parseCreateOwnerRoomInput(
   body: JsonObject,
 ): CreateOwnerRoomInput {
+
   return {
-    room_code: parseRequiredString(body.room_code, "Mã phòng", 100),
-    room_type: parseOptionalString(body.room_type, "Loại phòng", 120),
-    price: parseNonNegativeInteger(body.price, "Giá phòng", {
-      optional: true,
-    }),
-    description: parseOptionalString(body.description, "Mô tả", 5000),
-    chinh_sach: parseOptionalString(body.chinh_sach, "Chính sách", 5000),
-    link_zalo: parseOptionalString(body.link_zalo, "Liên kết Zalo", 2000),
-    zalo_phone: parseOptionalString(body.zalo_phone, "Số Zalo", 30),
-    room_details: parseRoomDetails(body.room_details ?? body.details),
+
+    room_code:
+      parseRequiredString(
+        body.room_code,
+        "Mã phòng",
+        100,
+      ),
+
+
+    room_type:
+      parseOptionalString(
+        body.room_type,
+        "Loại phòng",
+        120,
+      ),
+
+
+    price:
+      parseNonNegativeInteger(
+        body.price,
+        "Giá phòng",
+        {
+          optional:true,
+        },
+      ),
+
+
+    description:
+      parseOptionalString(
+        body.description,
+        "Mô tả",
+        5000,
+      ),
+
+
+    chinh_sach:
+      parseOptionalString(
+        body.chinh_sach,
+        "Chính sách",
+        5000,
+      ),
+
+
+    link_zalo:
+      parseOptionalString(
+        body.link_zalo,
+        "Liên kết Zalo",
+        2000,
+      ),
+
+
+    zalo_phone:
+      parseOptionalString(
+        body.zalo_phone,
+        "Số Zalo",
+        30,
+      ),
+
+
+    room_details:
+      parseRoomDetails(
+        body.room_details ?? body.details,
+      ),
+
   };
+
 }
 
 export type InvitePropertyManagerInput = {

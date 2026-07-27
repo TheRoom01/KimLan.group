@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from "../supabase/server";
 
-const UPCOMING_ROOM_DAYS = 30;
+const UPCOMING_CONTRACT_DAYS = 30;
 const ACTIVE_CONTRACT_STATUSES = new Set(["active", "Đang hiệu lực"]);
 const PENDING_CONTRACT_STATUSES = new Set(["pending", "Chờ nhận phòng"]);
 
@@ -109,39 +109,98 @@ export async function getProperties() {
         const status = String(contract?.status ?? "");
 
         if (ACTIVE_CONTRACT_STATUSES.has(status)) {
-          const endDate = contract?.end_date ? new Date(contract.end_date) : null;
-          const diffDays = endDate
-            ? Math.ceil((endDate.getTime() - today.getTime()) / 86_400_000)
+          const endDate = contract?.end_date
+            ? new Date(contract.end_date)
             : null;
 
-          if (diffDays !== null && diffDays >= 0 && diffDays <= UPCOMING_ROOM_DAYS) {
+          const diffDays = endDate
+            ? Math.ceil(
+                (endDate.getTime() - today.getTime()) /
+                86_400_000,
+              )
+            : null;
+
+
+          /**
+           * Chỉ xem là sắp trống khi:
+           * - Có hợp đồng active
+           * - Có ngày hết hạn
+           * - Còn <= 30 ngày
+           * - Chưa hết hạn
+           */
+          if (
+            diffDays !== null &&
+            diffDays >= 0 &&
+            diffDays <= UPCOMING_CONTRACT_DAYS
+          ) {
             upcomingRooms += 1;
           } else {
             rentedRooms += 1;
           }
-        } else if (PENDING_CONTRACT_STATUSES.has(status)) {
+
+        } else if (
+          PENDING_CONTRACT_STATUSES.has(status)
+        ) {
+
+          /**
+           * Chờ nhận phòng vẫn tính đang thuê
+           */
           rentedRooms += 1;
-        } else if (room.status === "Sắp trống") {
-          upcomingRooms += 1;
-        } else if (room.status === "Đã thuê") {
-          rentedRooms += 1;
+
         } else {
-          emptyRooms += 1;
+
+          /**
+           * Không có hợp đồng hiện tại
+           */
+          if (
+            room.status === "Đã thuê"
+          ) {
+            rentedRooms += 1;
+
+          } else {
+            emptyRooms += 1;
+          }
         }
       }
 
       return {
         ...property,
-        membership_role: membership.role,
-        total_rooms: activeRooms.length,
-        rented_rooms: rentedRooms,
-        empty_rooms: emptyRooms,
-        upcoming_rooms: upcomingRooms,
-      };
+
+        membership_role:
+          membership.role,
+
+
+        member_count:
+          property.property_members?.length ?? 1,
+
+
+        total_rooms:
+          activeRooms.length,
+
+
+        rented_rooms:
+          rentedRooms,
+
+
+        empty_rooms:
+          emptyRooms,
+
+
+        upcoming_rooms:
+          upcomingRooms,
+        };
+
     })
+    
     .filter(Boolean)
     .sort((left: any, right: any) => {
-      const leftName = String(left.name ?? left.code ?? left.address ?? "");
+      const leftName =
+      String(
+        left.fullAddress ??
+        left.address ??
+        left.name ??
+        "",
+      );
       const rightName = String(right.name ?? right.code ?? right.address ?? "");
       return leftName.localeCompare(rightName, "vi");
     });
