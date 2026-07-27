@@ -4,7 +4,6 @@ import {
   BarChart3,
   Building2,
   CalendarClock,
-  CircleDollarSign,
   Clock3,
   FileText,
   Home,
@@ -196,14 +195,11 @@ function buildPropertyOverview(rooms: unknown[]): PropertyOverview[] {
   });
 }
 
-function normalizeContract(value: unknown): DashboardContract {
-  if (!value || typeof value !== "object") return {};
-  return value as DashboardContract;
-}
-
 function normalizeContracts(value: unknown): DashboardContract[] {
   if (!Array.isArray(value)) return [];
-  return value.map(normalizeContract);
+  return value.filter(
+    (item): item is DashboardContract => Boolean(item && typeof item === "object"),
+  );
 }
 
 export default async function OwnerPage() {
@@ -231,27 +227,9 @@ export default async function OwnerPage() {
   const upcomingRooms = toNumber(summary.upcoming_rooms);
   const occupancyRate =
     totalRooms > 0 ? Math.round((rentedRooms / totalRooms) * 100) : 0;
-
-  const rentValues = rooms
-    .map((candidate) => {
-      if (!candidate || typeof candidate !== "object") return 0;
-      const room = candidate as Record<string, unknown>;
-      const contract = firstRelation(room.contract);
-      const contractRecord =
-        contract && typeof contract === "object"
-          ? (contract as Record<string, unknown>)
-          : null;
-      return toNumber(contractRecord?.monthly_price ?? room.price);
-    })
-    .filter((value) => value > 0);
-
-  const averageRent =
-    rentValues.length > 0
-      ? Math.round(
-          rentValues.reduce((total, value) => total + value, 0) /
-            rentValues.length,
-        )
-      : 0;
+  const emptyPropertyCount = propertyOverview.filter(
+    (property) => property.empty > 0,
+  ).length;
 
   const projectedRevenue = propertyOverview.reduce(
     (total, item) => total + item.monthlyRevenue,
@@ -269,32 +247,36 @@ export default async function OwnerPage() {
       value: toNumber(summary.total_properties),
       suffix: "Tòa nhà",
       icon: Building2,
+      href: null,
     },
     {
       label: "Tỷ lệ lấp đầy",
       value: `${occupancyRate}%`,
       suffix: `${rentedRooms}/${totalRooms} phòng đang thuê`,
       icon: TrendingUp,
+      href: null,
     },
     {
-      label: "Giá thuê trung bình",
-      value: averageRent > 0 ? formatCurrency(averageRent) : "—",
-      suffix: "Theo dữ liệu phòng hiện tại",
-      icon: CircleDollarSign,
+      label: "Tòa nhà còn phòng trống",
+      value: emptyPropertyCount,
+      suffix: `${emptyRooms} phòng đang trống · Bấm để xem`,
+      icon: Warehouse,
+      href: "/owner/rooms?status=empty",
     },
     {
       label: "Hợp đồng sắp hết hạn",
       value: expiringContracts.length,
       suffix: "Trong 30 ngày tới",
       icon: CalendarClock,
+      href: "/owner/contracts",
     },
   ];
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <section className="overflow-hidden rounded-[24px] border border-[#8b5a32]/20 bg-[#fff8ec] shadow-[0_18px_45px_rgba(91,57,29,0.10)]">
-        <div className="flex flex-col gap-4 border-b border-[#8b5a32]/15 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-7">
-          <div>
+    <div className="min-w-0 space-y-4 sm:space-y-6">
+      <section className="min-w-0 overflow-hidden rounded-2xl border border-[#8b5a32]/20 bg-[#fff8ec] shadow-[0_18px_45px_rgba(91,57,29,0.10)] sm:rounded-[24px]">
+        <div className="flex min-w-0 flex-col gap-4 border-b border-[#8b5a32]/15 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-7">
+          <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#946c48]">
               <Sparkles size={14} />
               Tổng quan vận hành
@@ -303,75 +285,81 @@ export default async function OwnerPage() {
               Dashboard chủ nhà
             </h1>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7b604a]">
-              Theo dõi tòa nhà, công suất phòng và các hợp đồng cần xử lý trong một màn hình.
+              Theo dõi tòa nhà, công suất phòng và các hợp đồng cần xử lý.
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/owner/properties/create"
-              className="inline-flex items-center gap-2 rounded-xl bg-[#744722] px-4 py-2.5 text-sm font-semibold text-[#fff8eb] shadow-sm transition hover:bg-[#623817]"
-            >
-              <Building2 size={17} />
-              Thêm tòa nhà
-            </Link>
-            <Link
-              href="/owner/rooms"
-              className="inline-flex items-center gap-2 rounded-xl border border-[#9a704b]/30 bg-[#f5e5cf] px-4 py-2.5 text-sm font-semibold text-[#684324] transition hover:bg-[#ecd4b5]"
-            >
-              <Warehouse size={17} />
-              Quản lý phòng
-            </Link>
-          </div>
+          <Link
+            href="/owner/properties/create"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 py-2.5 text-sm font-semibold text-[#fff8eb] shadow-sm transition hover:bg-[#623817] sm:w-auto"
+          >
+            <Building2 size={17} />
+            Thêm tòa nhà
+          </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 p-3 sm:gap-4 sm:p-5 xl:grid-cols-4 xl:p-6">
+        <div className="grid min-w-0 grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:gap-4 sm:p-5 xl:grid-cols-4 xl:p-6">
           {kpis.map((item) => {
             const Icon = item.icon;
-            return (
-              <article
-                key={item.label}
-                className="group relative min-h-[150px] overflow-hidden rounded-[20px] bg-gradient-to-br from-[#84532d] to-[#68401f] p-4 text-[#fff7e9] shadow-[0_14px_28px_rgba(91,54,24,0.18)] sm:min-h-[165px] sm:p-5"
-              >
+            const content = (
+              <>
                 <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#f4d9b5]/10 transition group-hover:scale-110" />
-                <div className="relative flex h-full flex-col justify-between gap-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#f1d7b5] sm:text-sm">
+                <div className="relative flex h-full min-w-0 flex-col justify-between gap-5">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <p className="min-w-0 text-xs font-semibold uppercase tracking-[0.07em] text-[#f1d7b5] sm:text-sm">
                       {item.label}
                     </p>
-                    <Icon className="text-[#f1d2a8]" size={22} />
+                    <Icon className="shrink-0 text-[#f1d2a8]" size={22} />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="break-words text-2xl font-bold leading-tight sm:text-3xl">
                       {item.value}
                     </p>
-                    <p className="mt-2 text-[11px] leading-4 text-[#ead0ad] sm:text-xs">
+                    <p className="mt-2 break-words text-[11px] leading-4 text-[#ead0ad] sm:text-xs">
                       {item.suffix}
                     </p>
                   </div>
                 </div>
+              </>
+            );
+
+            const className =
+              "group relative min-h-[138px] min-w-0 overflow-hidden rounded-[18px] bg-gradient-to-br from-[#84532d] to-[#68401f] p-4 text-[#fff7e9] shadow-[0_14px_28px_rgba(91,54,24,0.18)] transition sm:min-h-[155px] sm:p-5";
+
+            return item.href ? (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={`${className} hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(91,54,24,0.25)]`}
+              >
+                {content}
+              </Link>
+            ) : (
+              <article key={item.label} className={className}>
+                {content}
               </article>
             );
           })}
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-12">
-        <div className="space-y-5 xl:col-span-8">
-          <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
+      <div className="grid min-w-0 gap-4 xl:grid-cols-12 xl:gap-5">
+        <div className="min-w-0 space-y-4 xl:col-span-8 xl:space-y-5">
+          <section className="min-w-0 rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:rounded-[22px] sm:p-6">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 text-[#744923]">
                   <BarChart3 size={20} />
-                  <h2 className="text-base font-bold uppercase tracking-wide sm:text-lg">
+                  <h2 className="text-sm font-bold uppercase tracking-wide sm:text-lg">
                     Thống kê phòng mỗi tòa nhà
                   </h2>
                 </div>
                 <p className="mt-1 text-sm text-[#846951]">
-                  So sánh số phòng đang thuê và đang trống theo dữ liệu hiện tại.
+                  So sánh phòng đang thuê và đang trống trong phạm vi bạn quản lý.
                 </p>
               </div>
-              <div className="flex items-center gap-4 text-xs font-medium text-[#74583e]">
+
+              <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-[#74583e]">
                 <span className="inline-flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-sm bg-[#75451f]" />
                   Đang thuê
@@ -384,54 +372,46 @@ export default async function OwnerPage() {
             </div>
 
             {chartItems.length === 0 ? (
-              <EmptyState>Chưa có dữ liệu phòng để hiển thị biểu đồ.</EmptyState>
+              <div className="mt-6 rounded-2xl border border-dashed border-[#a9825f]/35 bg-[#f8ead7] px-5 py-10 text-center text-sm text-[#7d624b]">
+                Chưa có dữ liệu phòng để hiển thị biểu đồ.
+              </div>
             ) : (
-              <div className="mt-6 overflow-x-auto pb-2">
-                <div className="min-w-[620px]">
-                  <div className="relative h-[260px] border-b border-l border-[#b49372]/35">
-                    {[0, 25, 50, 75, 100].map((step) => (
-                      <div
-                        key={step}
-                        className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[#cbb293]/30"
-                        style={{ bottom: `${step}%` }}
+              <div className="mt-5 grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                {chartItems.map((item) => (
+                  <article
+                    key={item.id}
+                    className="min-w-0 rounded-2xl border border-[#a9825f]/20 bg-[#f8ead7] p-3"
+                  >
+                    <div className="flex h-32 items-end justify-center gap-2 sm:h-40">
+                      <ChartBar
+                        value={item.rented}
+                        maxValue={maxChartValue}
+                        tone="dark"
+                        label="Đang thuê"
                       />
-                    ))}
-                    <div className="absolute inset-0 grid grid-cols-6 items-end gap-5 px-6 pt-8">
-                      {chartItems.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex h-full min-w-0 flex-col justify-end"
-                        >
-                          <div className="flex h-[190px] items-end justify-center gap-2">
-                            <ChartBar
-                              value={item.rented}
-                              maxValue={maxChartValue}
-                              tone="dark"
-                              label="Đang thuê"
-                            />
-                            <ChartBar
-                              value={item.empty}
-                              maxValue={maxChartValue}
-                              tone="light"
-                              label="Đang trống"
-                            />
-                          </div>
-                          <p className="mt-3 line-clamp-2 min-h-10 text-center text-xs font-semibold leading-4 text-[#5f4631]">
-                            {item.name}
-                          </p>
-                        </div>
-                      ))}
+                      <ChartBar
+                        value={item.empty}
+                        maxValue={maxChartValue}
+                        tone="light"
+                        label="Đang trống"
+                      />
                     </div>
-                  </div>
-                </div>
+                    <p
+                      title={item.name}
+                      className="mt-3 line-clamp-2 min-h-8 break-words text-center text-[11px] font-semibold leading-4 text-[#5f4631] sm:text-xs"
+                    >
+                      {item.name}
+                    </p>
+                  </article>
+                ))}
               </div>
             )}
           </section>
 
-          <section className="overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)]">
-            <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
-              <div>
-                <h2 className="text-base font-bold uppercase tracking-wide text-[#4f321e] sm:text-lg">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:rounded-[22px]">
+            <div className="flex min-w-0 items-center justify-between gap-3 px-4 py-4 sm:px-6">
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-[#4f321e] sm:text-lg">
                   Tổng quan chi tiết tòa nhà
                 </h2>
                 <p className="mt-1 text-sm text-[#846951]">
@@ -440,9 +420,10 @@ export default async function OwnerPage() {
               </div>
               <Link
                 href="/owner/properties"
-                className="hidden items-center gap-1 text-sm font-semibold text-[#744722] hover:underline sm:inline-flex"
+                className="hidden shrink-0 items-center gap-1 text-sm font-semibold text-[#744722] hover:underline sm:inline-flex"
               >
-                Xem tất cả <ArrowRight size={16} />
+                Xem tất cả
+                <ArrowRight size={16} />
               </Link>
             </div>
 
@@ -452,16 +433,16 @@ export default async function OwnerPage() {
               </div>
             ) : (
               <>
-                <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <div className="hidden lg:block">
+                  <table className="w-full table-fixed border-collapse text-left text-sm">
                     <thead className="bg-[#754722] text-[#fff5e7]">
                       <tr>
-                        <th className="px-5 py-3 font-semibold">Tòa nhà</th>
-                        <th className="px-4 py-3 font-semibold">Lấp đầy</th>
-                        <th className="px-4 py-3 text-center font-semibold">Phòng trống</th>
-                        <th className="px-4 py-3 text-center font-semibold">Đang thuê</th>
-                        <th className="px-4 py-3 text-center font-semibold">Sắp trống</th>
-                        <th className="px-5 py-3 text-right font-semibold">Doanh thu/tháng</th>
+                        <th className="w-[34%] px-4 py-3 font-semibold">Tòa nhà</th>
+                        <th className="w-[18%] px-3 py-3 font-semibold">Lấp đầy</th>
+                        <th className="px-2 py-3 text-center font-semibold">Trống</th>
+                        <th className="px-2 py-3 text-center font-semibold">Đang thuê</th>
+                        <th className="px-2 py-3 text-center font-semibold">Sắp trống</th>
+                        <th className="w-[20%] px-4 py-3 text-right font-semibold">Doanh thu</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -470,6 +451,7 @@ export default async function OwnerPage() {
                           item.total > 0
                             ? Math.round((item.rented / item.total) * 100)
                             : 0;
+
                         return (
                           <tr
                             key={item.id}
@@ -477,24 +459,17 @@ export default async function OwnerPage() {
                               index % 2 === 0 ? "bg-[#fffaf2]" : "bg-[#f6e8d5]"
                             }`}
                           >
-                            <td className="px-5 py-3.5 font-semibold text-[#4d3422]">
-                              {item.id === "unassigned" ? (
-                                item.name
-                              ) : (
-                                <Link
-                                  href={`/owner/properties/${item.id}`}
-                                  className="hover:text-[#8a5327] hover:underline"
-                                >
-                                  {item.name}
-                                </Link>
-                              )}
+                            <td className="px-4 py-3.5 font-semibold text-[#4d3422]">
+                              <span className="line-clamp-2 break-words">
+                                {item.name}
+                              </span>
                             </td>
-                            <td className="px-4 py-3.5">
+                            <td className="px-3 py-3.5">
                               <div className="flex items-center gap-2">
-                                <span className="w-9 font-semibold text-[#61442f]">
+                                <span className="w-9 shrink-0 font-semibold text-[#61442f]">
                                   {rate}%
                                 </span>
-                                <div className="h-1.5 w-20 overflow-hidden rounded-full bg-[#dfc8a8]">
+                                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[#dfc8a8]">
                                   <div
                                     className="h-full rounded-full bg-[#7a4b27]"
                                     style={{ width: `${rate}%` }}
@@ -502,10 +477,10 @@ export default async function OwnerPage() {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3.5 text-center">{item.empty}</td>
-                            <td className="px-4 py-3.5 text-center">{item.rented}</td>
-                            <td className="px-4 py-3.5 text-center">{item.upcoming}</td>
-                            <td className="px-5 py-3.5 text-right font-semibold text-[#5c3d27]">
+                            <td className="px-2 py-3.5 text-center">{item.empty}</td>
+                            <td className="px-2 py-3.5 text-center">{item.rented}</td>
+                            <td className="px-2 py-3.5 text-center">{item.upcoming}</td>
+                            <td className="break-words px-4 py-3.5 text-right font-semibold text-[#5c3d27]">
                               {formatCurrency(item.monthlyRevenue)}
                             </td>
                           </tr>
@@ -515,28 +490,30 @@ export default async function OwnerPage() {
                   </table>
                 </div>
 
-                <div className="space-y-3 border-t border-[#a77c55]/15 p-3 md:hidden">
+                <div className="space-y-3 border-t border-[#a77c55]/15 p-3 lg:hidden">
                   {propertyOverview.map((item) => {
                     const rate =
                       item.total > 0
                         ? Math.round((item.rented / item.total) * 100)
                         : 0;
+
                     return (
                       <article
                         key={item.id}
-                        className="rounded-2xl border border-[#a87d56]/20 bg-[#f8ead7] p-4"
+                        className="min-w-0 rounded-2xl border border-[#a87d56]/20 bg-[#f8ead7] p-4"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-bold text-[#4d3422]">{item.name}</p>
-                            <p className="mt-1 text-xs text-[#80634a]">
-                              {item.total} phòng · {rate}% lấp đầy
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-[#79502d] px-2.5 py-1 text-xs font-semibold text-[#fff5e7]">
-                            {formatCurrency(item.monthlyRevenue)}
-                          </span>
+                        <div className="min-w-0">
+                          <p className="break-words font-bold text-[#4d3422]">
+                            {item.name}
+                          </p>
+                          <p className="mt-1 text-xs text-[#80634a]">
+                            {item.total} phòng · {rate}% lấp đầy
+                          </p>
+                          <p className="mt-2 break-words text-sm font-semibold text-[#684324]">
+                            {formatCurrency(item.monthlyRevenue)}/tháng
+                          </p>
                         </div>
+
                         <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
                           <MiniMetric label="Đang thuê" value={item.rented} />
                           <MiniMetric label="Đang trống" value={item.empty} />
@@ -551,19 +528,20 @@ export default async function OwnerPage() {
           </section>
         </div>
 
-        <aside className="space-y-5 xl:col-span-4">
-          <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-5">
+        <aside className="min-w-0 space-y-4 xl:col-span-4 xl:space-y-5">
+          <section className="min-w-0 rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:rounded-[22px] sm:p-5">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Clock3 size={19} className="text-[#754722]" />
-                <h2 className="font-bold uppercase tracking-wide text-[#4f321e]">
+              <div className="flex min-w-0 items-center gap-2">
+                <Clock3 size={19} className="shrink-0 text-[#754722]" />
+                <h2 className="text-sm font-bold uppercase tracking-wide text-[#4f321e] sm:text-base">
                   Việc cần chú ý
                 </h2>
               </div>
-              <span className="rounded-full bg-[#ead2b2] px-2.5 py-1 text-xs font-semibold text-[#6f4727]">
+              <span className="shrink-0 rounded-full bg-[#ead2b2] px-2.5 py-1 text-xs font-semibold text-[#6f4727]">
                 Hôm nay
               </span>
             </div>
+
             <div className="mt-4 space-y-2.5">
               <AttentionItem
                 href="/owner/contracts"
@@ -572,7 +550,7 @@ export default async function OwnerPage() {
                 description={`${expiringContracts.length} hợp đồng hết hạn trong 30 ngày`}
               />
               <AttentionItem
-                href="/owner/rooms"
+                href="/owner/rooms?status=empty"
                 icon={Home}
                 title="Phòng đang trống"
                 description={`${emptyRooms} phòng cần lấp đầy`}
@@ -586,14 +564,14 @@ export default async function OwnerPage() {
             </div>
           </section>
 
-          <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-bold uppercase tracking-wide text-[#4f321e]">
+          <section className="min-w-0 rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:rounded-[22px] sm:p-5">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <h2 className="min-w-0 text-sm font-bold uppercase tracking-wide text-[#4f321e] sm:text-base">
                 Gia hạn hợp đồng sắp tới
               </h2>
               <Link
                 href="/owner/contracts"
-                className="text-xs font-semibold text-[#81532f] hover:underline"
+                className="shrink-0 text-xs font-semibold text-[#81532f] hover:underline"
               >
                 Xem tất cả
               </Link>
@@ -606,29 +584,33 @@ export default async function OwnerPage() {
             ) : (
               <div className="mt-4 divide-y divide-[#b58f69]/20">
                 {expiringContracts.slice(0, 4).map((item, index) => {
-                  const id = relationId(item.id);
+                  const remaining = daysUntil(item.end_date);
+                  const contractId = relationId(item.id);
                   const propertyName = relationLabel(
                     item.property,
                     "Tòa nhà",
-                    ["name", "property_name", "address"],
+                    ["name", "address", "code"],
                   );
                   const roomName = relationLabel(item.room, "Phòng", [
                     "room_code",
                     "name",
                     "code",
                   ]);
-                  const tenantName = relationLabel(item.tenant, "", [
-                    "full_name",
-                    "name",
-                    "tenant_name",
-                  ]);
-                  const remaining = daysUntil(item.end_date);
+                  const tenantName = relationLabel(
+                    item.tenant,
+                    "",
+                    ["full_name", "name"],
+                  );
 
                   return (
                     <Link
-                      key={id ?? `${propertyName}-${roomName}-${index}`}
-                      href={id ? `/owner/contracts/${id}` : "/owner/contracts"}
-                      className="group flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                      key={contractId ?? `${roomName}-${index}`}
+                      href={
+                        contractId
+                          ? `/owner/contracts/${contractId}`
+                          : "/owner/contracts"
+                      }
+                      className="group flex min-w-0 items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-[#4e3523]">
@@ -657,39 +639,32 @@ export default async function OwnerPage() {
             )}
           </section>
 
-          <section className="rounded-[22px] bg-gradient-to-br from-[#79502d] to-[#5b351c] p-5 text-[#fff8eb] shadow-[0_16px_34px_rgba(86,50,23,0.20)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#eacda7]">
-                  Tổng hợp tài chính
-                </p>
-                <h2 className="mt-1 text-lg font-bold">Doanh thu dự kiến/tháng</h2>
-              </div>
-              <CircleDollarSign size={25} className="text-[#efd3ad]" />
-            </div>
-            <p className="mt-6 break-words text-2xl font-bold sm:text-3xl">
+          <section className="min-w-0 rounded-2xl bg-gradient-to-br from-[#79502d] to-[#5b351c] p-5 text-[#fff8eb] shadow-[0_16px_34px_rgba(86,50,23,0.20)] sm:rounded-[22px]">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#eacda7]">
+              Tổng hợp tài chính
+            </p>
+            <h2 className="mt-1 text-lg font-bold">Doanh thu dự kiến/tháng</h2>
+            <p className="mt-5 break-words text-2xl font-bold sm:text-3xl">
               {formatCurrency(projectedRevenue)}
             </p>
             <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-xl bg-white/10 p-3">
+              <div className="min-w-0 rounded-xl bg-white/10 p-3">
                 <p className="text-xs text-[#e6c9a5]">Phòng đang thuê</p>
                 <p className="mt-1 text-lg font-bold">{rentedRooms}</p>
               </div>
-              <div className="rounded-xl bg-white/10 p-3">
-                <p className="text-xs text-[#e6c9a5]">Giá thuê TB</p>
-                <p className="mt-1 truncate text-sm font-bold">
-                  {averageRent > 0 ? formatCurrency(averageRent) : "—"}
-                </p>
+              <div className="min-w-0 rounded-xl bg-white/10 p-3">
+                <p className="text-xs text-[#e6c9a5]">Tòa nhà còn trống</p>
+                <p className="mt-1 text-lg font-bold">{emptyPropertyCount}</p>
               </div>
             </div>
           </section>
         </aside>
       </div>
 
-      <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold uppercase tracking-wide text-[#4f321e] sm:text-lg">
+      <section className="min-w-0 rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:rounded-[22px] sm:p-6">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-[#4f321e] sm:text-lg">
               Hợp đồng gần đây
             </h2>
             <p className="mt-1 text-sm text-[#846951]">
@@ -698,27 +673,29 @@ export default async function OwnerPage() {
           </div>
           <Link
             href="/owner/contracts"
-            className="inline-flex items-center gap-1 text-sm font-semibold text-[#744722] hover:underline"
+            className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-[#744722] hover:underline"
           >
-            Xem tất cả <ArrowRight size={16} />
+            Xem tất cả
+            <ArrowRight size={16} />
           </Link>
         </div>
 
         {recentContracts.length === 0 ? (
-          <EmptyState>Chưa có hợp đồng.</EmptyState>
+          <p className="mt-5 rounded-2xl border border-dashed border-[#aa825d]/35 bg-[#f8ead7] px-5 py-10 text-center text-sm text-[#7d624b]">
+            Chưa có hợp đồng.
+          </p>
         ) : (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-5 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {recentContracts.slice(0, 6).map((item, index) => {
-              const id = relationId(item.id);
+              const contractId = relationId(item.id);
               const tenantName = relationLabel(item.tenant, "Khách thuê", [
                 "full_name",
                 "name",
-                "tenant_name",
               ]);
               const propertyName = relationLabel(item.property, "Tòa nhà", [
                 "name",
-                "property_name",
                 "address",
+                "code",
               ]);
               const roomName = relationLabel(item.room, "Phòng", [
                 "room_code",
@@ -728,10 +705,10 @@ export default async function OwnerPage() {
 
               return (
                 <article
-                  key={id ?? `${propertyName}-${roomName}-${index}`}
-                  className="rounded-2xl border border-[#a77c55]/20 bg-[#f7e8d3] p-4 transition hover:-translate-y-0.5 hover:shadow-md"
+                  key={contractId ?? `${roomName}-${index}`}
+                  className="min-w-0 rounded-2xl border border-[#a77c55]/20 bg-[#f7e8d3] p-4 transition hover:-translate-y-0.5 hover:shadow-md"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-bold text-[#4d3422]">
                         {tenantName}
@@ -740,27 +717,29 @@ export default async function OwnerPage() {
                         {propertyName} · {roomName}
                       </p>
                     </div>
-                    <span className="rounded-lg bg-[#79502d] p-2 text-[#fff6e8]">
+                    <span className="shrink-0 rounded-lg bg-[#79502d] p-2 text-[#fff6e8]">
                       <KeyRound size={16} />
                     </span>
                   </div>
-                  <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#b28e69]/25 pt-3">
-                    <div>
+
+                  <div className="mt-4 flex min-w-0 items-end justify-between gap-3 border-t border-[#b28e69]/25 pt-3">
+                    <div className="min-w-0">
                       <p className="text-[11px] uppercase tracking-wide text-[#9a7657]">
                         Giá thuê
                       </p>
-                      <p className="mt-1 text-sm font-bold text-[#5a3b25]">
+                      <p className="mt-1 break-words text-sm font-bold text-[#5a3b25]">
                         {toNumber(item.monthly_price) > 0
                           ? formatCurrency(toNumber(item.monthly_price))
                           : "Chưa cập nhật"}
                       </p>
                     </div>
-                    {id ? (
+                    {contractId ? (
                       <Link
-                        href={`/owner/contracts/${id}`}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-[#744722] hover:underline"
+                        href={`/owner/contracts/${contractId}`}
+                        className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-[#744722] hover:underline"
                       >
-                        Chi tiết <ArrowRight size={14} />
+                        Chi tiết
+                        <ArrowRight size={14} />
                       </Link>
                     ) : null}
                   </div>
@@ -770,14 +749,6 @@ export default async function OwnerPage() {
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-function EmptyState({ children }: { children: string }) {
-  return (
-    <div className="mt-6 rounded-2xl border border-dashed border-[#a9825f]/35 bg-[#f8ead7] px-5 py-10 text-center text-sm text-[#7d624b]">
-      {children}
     </div>
   );
 }
@@ -796,7 +767,7 @@ function ChartBar({
   const percentage = value > 0 ? Math.max((value / maxValue) * 100, 5) : 2;
 
   return (
-    <div className="flex h-full w-8 flex-col justify-end sm:w-10">
+    <div className="flex h-full w-7 min-w-0 flex-col justify-end sm:w-8">
       <span className="mb-1 text-center text-xs font-bold text-[#5c402d]">
         {value}
       </span>
@@ -815,9 +786,11 @@ function ChartBar({
 
 function MiniMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl bg-[#fff8ed] px-2 py-2.5">
+    <div className="min-w-0 rounded-xl bg-[#fff8ed] px-1.5 py-2.5 sm:px-2">
       <p className="font-bold text-[#5d3d27]">{value}</p>
-      <p className="mt-1 text-[10px] leading-3 text-[#8a6b50]">{label}</p>
+      <p className="mt-1 break-words text-[10px] leading-3 text-[#8a6b50]">
+        {label}
+      </p>
     </div>
   );
 }
@@ -836,7 +809,7 @@ function AttentionItem({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-3 rounded-2xl border border-[#ad835d]/20 bg-[#f5e4cd] p-3 transition hover:bg-[#eed8bb]"
+      className="group flex min-w-0 items-center gap-3 rounded-2xl border border-[#ad835d]/20 bg-[#f5e4cd] p-3 transition hover:bg-[#eed8bb]"
     >
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#79502d] text-[#fff6e8]">
         <Icon size={18} />
