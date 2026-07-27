@@ -7,6 +7,7 @@ export type UpdatedDescCursor = {
   search_score?: number;
 };
 
+
 export type FetchRoomsParams = {
   limit: number;
 
@@ -135,10 +136,12 @@ const expandDistrictLegacyValues = (districts?: string[] | null) => {
     if (match?.[1]) {
       out.add(match[1]); // số thuần cho DB legacy
     }
-  }
+    }
 
   return out.size ? Array.from(out) : null;
 };
+
+
 
 const normalizeSearchKeyword = (value?: string | null) => {
   return String(value ?? "")
@@ -195,10 +198,7 @@ function hasValidStoredVipAccess() {
     const parsed = JSON.parse(raw);
     const expiresAt = Number(parsed?.expiresAt ?? 0);
 
-    if (
-      !Number.isFinite(expiresAt) ||
-      expiresAt <= Date.now()
-    ) {
+    if (!expiresAt || Date.now() >= expiresAt) {
       localStorage.removeItem(VIP_ACCESS_KEY);
       return false;
     }
@@ -217,11 +217,8 @@ async function getAnonSessionId(adminLevel?: 0 | 1 | 2) {
   if (adminLevel === 1 || adminLevel === 2) return null;
   if (typeof window === "undefined") return null;
 
-  /*
-   * VIP đã được /api/vip/validate xác thực và lưu thời hạn ở HomeClient.
-   * Không gắn anonymous session vào request VIP, nếu không RPC sẽ tiếp tục
-   * áp dụng giới hạn khách thường và filter có thể trả về 0 phòng.
-   */
+  // VIP đã được /api/vip/validate xác thực và còn hạn.
+  // Không gắn anon session, nếu không RPC vẫn áp giới hạn khách thường.
   if (hasValidStoredVipAccess()) return null;
 
   const oldId = localStorage.getItem(ANON_SESSION_KEY);
@@ -244,7 +241,7 @@ export async function fetchRooms(
   nextCursor: string | UpdatedDescCursor | null;
   total?: number;
 }> {
-  const {
+    const {
     limit,
     cursor,
     adminLevel,
@@ -272,112 +269,107 @@ export async function fetchRooms(
   // - updated_desc dùng {updated_at, id}
   // - price_asc/price_desc/fallback dùng uuid string
   const cursorObj: UpdatedDescCursor | null =
-    cursor && typeof cursor === "object"
-      ? {
-          id: String((cursor as any).id),
-          updated_at: String((cursor as any).updated_at),
-          created_at: String((cursor as any).created_at),
-          search_score:
-            Number.isFinite(Number((cursor as any).search_score))
-              ? Number((cursor as any).search_score)
-              : undefined,
-        }
-      : null;
+  cursor && typeof cursor === "object"
+    ? {
+        id: String((cursor as any).id),
+        updated_at: String((cursor as any).updated_at),
+        created_at: String((cursor as any).created_at),
+        search_score:
+          Number.isFinite(Number((cursor as any).search_score))
+            ? Number((cursor as any).search_score)
+            : undefined,
+      }
+    : null;
 
   const cursorId: string | null =
     cursorObj?.id ?? (typeof cursor === "string" ? cursor.trim() || null : null);
 
-  // ✅ CỰC KỲ QUAN TRỌNG:
-  // Không dùng new Date(string).toISOString() cho cursor timestamp từ Postgres,
-  // vì JavaScript sẽ làm mất microseconds:
-  // "2026-06-07T17:47:30.366639+00:00"
-  // -> "2026-06-07T17:47:30.366Z"
-  // Làm keyset pagination bị nhảy sai / mất dữ liệu.
-  const toTimestampOrNull = (v: unknown): string | null => {
-    if (!v) return null;
+// ✅ CỰC KỲ QUAN TRỌNG:
+// Không dùng new Date(string).toISOString() cho cursor timestamp từ Postgres,
+// vì JavaScript sẽ làm mất microseconds:
+// "2026-06-07T17:47:30.366639+00:00"
+// -> "2026-06-07T17:47:30.366Z"
+// Làm keyset pagination bị nhảy sai / mất dữ liệu.
+const toTimestampOrNull = (v: unknown): string | null => {
+  if (!v) return null;
 
-    if (v instanceof Date) {
-      return v.toISOString();
-    }
+  if (v instanceof Date) {
+    return v.toISOString();
+  }
 
-    if (typeof v === "string") {
-      const s = v.trim();
-      if (!s) return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
 
-      // Giữ nguyên string từ Supabase/Postgres để không mất microseconds.
-      return s;
-    }
+    // Giữ nguyên string từ Supabase/Postgres để không mất microseconds.
+    return s;
+  }
 
-    return null;
-  };
+  return null;
+};
 
-  const cursorUpdatedAt: string | null = toTimestampOrNull(cursorObj?.updated_at);
-  const cursorCreatedAt: string | null = toTimestampOrNull(
-    (cursorObj as any)?.created_at
-  );
+const cursorUpdatedAt: string | null = toTimestampOrNull(cursorObj?.updated_at);
+const cursorCreatedAt: string | null = toTimestampOrNull((cursorObj as any)?.created_at);
 
-  // RPC expects: 'elevator' | 'stairs' | null
-  const pMove =
-    move === "elevator"
-      ? "elevator"
-      : move === "stairs"
-        ? "stairs"
-        : null;
+// RPC expects: 'elevator' | 'stairs' | null
+const pMove =
+  move === "elevator" ? "elevator" :
+  move === "stairs"   ? "stairs"   :
+  null;
 
-  const pPetPolicies =
-    Array.isArray(petPolicies) && petPolicies.length
-      ? Array.from(
-          new Set(
-            petPolicies.filter(
-              (x): x is "cat" | "dog" | "nopet" =>
-                x === "cat" || x === "dog" || x === "nopet"
-            )
+const pPetPolicies =
+  Array.isArray(petPolicies) && petPolicies.length
+    ? Array.from(
+        new Set(
+          petPolicies.filter(
+            (x): x is "cat" | "dog" | "nopet" =>
+              x === "cat" || x === "dog" || x === "nopet"
           )
         )
-      : null;
+      )
+    : null;
 
-  const pContractTerms =
-    Array.isArray(contractTerms) && contractTerms.length
-      ? Array.from(
-          new Set(
-            contractTerms.filter(
-              (x): x is "short" | "long" =>
-                x === "short" || x === "long"
-            )
+const pContractTerms =
+  Array.isArray(contractTerms) && contractTerms.length
+    ? Array.from(
+        new Set(
+          contractTerms.filter(
+            (x): x is "short" | "long" =>
+              x === "short" || x === "long"
           )
         )
-      : null;
+      )
+    : null;
+const anonSessionId = await getAnonSessionId(adminLevel);
+const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
+  // 1) bắt buộc
+  p_role: role,
+  p_limit: Number(limit) || 20,
 
-  const anonSessionId = await getAnonSessionId(adminLevel);
+  // 2) cursor (uuid) — dùng cho sort giá + fallback
+  p_cursor: cursorId ? String(cursorId) : null,
 
-  const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
-    // 1) bắt buộc
-    p_role: role,
-    p_limit: Number(limit) || 20,
+  // 3) filter/search
+  p_search: normalizedSearch ? normalizedSearch : null,
+  p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
+  p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
+  p_districts: expandDistrictLegacyValues(districts) ?? null,
+  p_room_types: expandRoomTypeLegacyValues(roomTypes) ?? null,
+  p_move: pMove,
+  p_pet_policies: pPetPolicies,
+  p_contract_terms: pContractTerms,
 
-    // 2) cursor (uuid) — dùng cho sort giá + fallback
-    p_cursor: cursorId ? String(cursorId) : null,
+  // 4) statuses
+  p_statuses: status ? [String(status)] : null,
 
-    // 3) filter/search
-    p_search: normalizedSearch ? normalizedSearch : null,
-    p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
-    p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
-    p_districts: expandDistrictLegacyValues(districts) ?? null,
-    p_room_types: expandRoomTypeLegacyValues(effectiveRoomTypes) ?? null,
-    p_move: pMove,
-    p_pet_policies: pPetPolicies,
-    p_contract_terms: pContractTerms,
+  // 5) sort + keyset cursor (updated_desc cần 2 khóa)
+ p_sort: (sortMode ?? "updated_desc") as any,
+p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
+p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
+p_cursor_id: cursorId ? String(cursorId) : null, 
+p_anon_session_id: anonSessionId,
 
-    // 4) statuses
-    p_statuses: status ? [String(status)] : null,
-
-    // 5) sort + keyset cursor (updated_desc cần 2 khóa)
-    p_sort: (sortMode ?? "updated_desc") as any,
-    p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
-    p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
-    p_cursor_id: cursorId ? String(cursorId) : null,
-    p_anon_session_id: anonSessionId,
-  });
+});
 
   if (error) {
     console.error(error);
@@ -388,31 +380,31 @@ export async function fetchRooms(
   const rows = ((data as any)?.data ?? []) as any[];
 
   // ✅ Quyền xem link_zalo / zalo_phone:
-  // - Admin L1: xem tất cả
-  // - Admin L2: chỉ xem phòng của chính mình
-  // - Public/Anon: không xem
-  const projected = rows.map((row) => {
-    const rowOwnerId = String((row as any)?.owner_id ?? "").trim();
-    const userId = String(currentUserId ?? "").trim();
+// - Admin L1: xem tất cả
+// - Admin L2: chỉ xem phòng của chính mình
+// - Public/Anon: không xem
+const projected = rows.map((row) => {
+  const rowOwnerId = String((row as any)?.owner_id ?? "").trim();
+  const userId = String(currentUserId ?? "").trim();
 
-    const canSeePrivateFields =
-      role === 1 ||
-      (
-        role === 2 &&
-        Boolean(userId) &&
-        rowOwnerId === userId
-      );
+  const canSeePrivateFields =
+    role === 1 ||
+    (
+      role === 2 &&
+      Boolean(userId) &&
+      rowOwnerId === userId
+    );
 
-    if (canSeePrivateFields) {
-      return row;
-    }
+  if (canSeePrivateFields) {
+    return row;
+  }
 
-    return {
-      ...row,
-      link_zalo: null,
-      zalo_phone: null,
-    };
-  });
+  return {
+    ...row,
+    link_zalo: null,
+    zalo_phone: null,
+  };
+});
 
   // ✅ nextCursor phải lấy đúng từ RPC:
   // - updated_desc => object {updated_at,id}
@@ -431,19 +423,17 @@ export async function fetchRooms(
               : undefined,
         }
       : typeof rawNext === "string"
-        ? rawNext
-        : null;
+      ? rawNext
+      : null;
 
   // ✅ total_count từ RPC (nếu có)
   const rawTotal = (data as any)?.total_count;
   const total =
     typeof rawTotal === "number"
       ? rawTotal
-      : typeof rawTotal === "string" &&
-          rawTotal.trim() !== "" &&
-          Number.isFinite(Number(rawTotal))
-        ? Number(rawTotal)
-        : undefined;
+      : typeof rawTotal === "string" && rawTotal.trim() !== "" && Number.isFinite(Number(rawTotal))
+      ? Number(rawTotal)
+      : undefined;
 
   return { data: projected, nextCursor, total };
 }
