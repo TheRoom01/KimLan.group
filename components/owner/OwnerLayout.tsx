@@ -1,6 +1,5 @@
-"use client";
+import type { ReactNode } from "react";
 
-import { ReactNode } from "react";
 import OwnerSidebar from "./OwnerSidebar";
 
 export default function OwnerLayout({
