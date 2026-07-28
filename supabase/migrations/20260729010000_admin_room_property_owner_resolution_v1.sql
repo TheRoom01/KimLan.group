@@ -359,11 +359,52 @@ end;
 $function$;
 
 /*
+ * When an existing property is approved and active, publish any active
+ * draft rooms that were waiting for the property lifecycle decision.
+ */
+create or replace function public.sync_property_room_publish_visibility_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+begin
+  if new.approval_status = 'approved'
+    and new.lifecycle_status = 'active'
+    and (
+      old.approval_status is distinct from new.approval_status
+      or old.lifecycle_status is distinct from new.lifecycle_status
+    )
+  then
+    update public.rooms
+    set
+      publish_status = 'published',
+      updated_at = now()
+    where property_id = new.id
+      and lifecycle_status = 'active'
+      and publish_status = 'draft';
+  end if;
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists trg_sync_property_room_publish_visibility
+on public.properties;
+
+create trigger trg_sync_property_room_publish_visibility
+after update of approval_status, lifecycle_status
+on public.properties
+for each row
+execute function public.sync_property_room_publish_visibility_v1();
+
+/*
  * Replace the admin upsert while preserving its existing signature and
  * return shape.  Existing rooms keep their property_id on update.  New
  * rooms can pass property_id after the duplicate chooser; otherwise the
  * resolver selects one matching property or creates an approved admin
- * property when there is no match.
+ * property when there is no match.  A new room is published only when its
+ * property is already approved and active.
  */
 create or replace function public.admin_upsert_room_v1(
   p_room_id uuid,
@@ -651,6 +692,7 @@ begin
       chinh_sach,
       owner_id,
       property_id,
+      publish_status,
       created_at,
       updated_at
     )
@@ -674,6 +716,17 @@ begin
       nullif(p_payload->>'chinh_sach', ''),
       coalesce(nullif(p_payload->>'owner_id', '')::uuid, v_uid),
       v_property_id,
+      case
+        when exists (
+          select 1
+          from public.properties p
+          where p.id = v_property_id
+            and p.approval_status = 'approved'
+            and p.lifecycle_status = 'active'
+        )
+          then 'published'
+        else 'draft'
+      end,
       now(),
       now()
     )
@@ -703,6 +756,10 @@ from public, anon;
 revoke all
 on function public.claim_admin_properties_by_phone_v1()
 from public, anon;
+
+revoke all
+on function public.sync_property_room_publish_visibility_v1()
+from public, anon, authenticated;
 
 revoke all
 on function public.admin_upsert_room_v1(uuid, jsonb)
