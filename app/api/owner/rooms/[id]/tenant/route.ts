@@ -52,7 +52,46 @@ export async function POST(
     );
 
     if (error) return mapDatabaseError(error);
-    return apiSuccess(data, 201);
+
+    const { data: latestContract, error: latestContractError } = await supabase
+      .from("rental_contracts")
+      .select(
+        "id, contract_tenants(tenant_id, role)",
+      )
+      .eq("room_id", roomId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestContractError) return mapDatabaseError(latestContractError);
+
+    const tenantRelation =
+      latestContract?.contract_tenants?.find(
+        (relation) => relation.role === "Chủ hợp đồng",
+      ) ?? latestContract?.contract_tenants?.[0];
+
+    const tenantId =
+      tenantRelation?.tenant_id ??
+      (data &&
+      typeof data === "object" &&
+      "tenant_id" in data
+        ? (data as { tenant_id?: unknown }).tenant_id
+        : null);
+
+    return apiSuccess(
+      {
+        result: data,
+        contract_id:
+          latestContract?.id ??
+          (data &&
+          typeof data === "object" &&
+          "contract_id" in data
+            ? (data as { contract_id?: unknown }).contract_id
+            : null),
+        tenant_id: tenantId ?? null,
+      },
+      201,
+    );
   } catch (error) {
     return mapUnknownError(error);
   }
