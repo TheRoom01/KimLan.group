@@ -6,6 +6,7 @@ import {
   isActiveContractStatus,
   normalizeContractStatus,
 } from "@/lib/owner/types";
+import TenantRosterCard from "@/components/owner/TenantRosterCard";
 
 function formatDate(value?: string | null) {
   return value
@@ -46,41 +47,33 @@ export default async function ContractDetailPage({
   const canEnd = isActiveContractStatus(contract.status);
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Chi tiết hợp đồng</h1>
-          <p className="text-gray-500">Hợp đồng thuê phòng</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">
+            Quản lý hợp đồng
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-[#432918] sm:text-3xl">Chi tiết hợp đồng</h1>
+          <p className="text-sm text-[#80634a]">Hợp đồng thuê phòng</p>
         </div>
 
         <Link
           href="/owner/contracts"
-          className="rounded-lg border px-4 py-2"
+          className="rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#684324]"
         >
           ← Danh sách hợp đồng
         </Link>
       </div>
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold">Khách thuê</h2>
-        <div className="space-y-2">
-          <p>
-            <strong>Họ tên:</strong>{" "}
-            {contract.tenant?.full_name ?? "-"}
-          </p>
-          <p>
-            <strong>SĐT:</strong>{" "}
-            {contract.tenant?.phone ?? "-"}
-          </p>
-          <p>
-            <strong>CCCD:</strong>{" "}
-            {contract.tenant?.cccd ?? "-"}
-          </p>
-        </div>
-      </div>
+      <TenantRosterCard
+        tenants={contract.tenants ?? (contract.tenant ? [contract.tenant] : [])}
+        roomId={contract.room?.id ?? ""}
+        canManage={false}
+        isArchived={false}
+      />
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold">Phòng</h2>
+      <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Phòng</h2>
         <div className="space-y-2">
           <p>
             <strong>Tòa nhà:</strong> {propertyName || "-"}
@@ -92,8 +85,8 @@ export default async function ContractDetailPage({
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold">
+      <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-[#4f321e]">
           Thông tin hợp đồng
         </h2>
 
