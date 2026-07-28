@@ -107,7 +107,9 @@ export async function getRoomDetail(roomId: string) {
             id,
             full_name,
             phone,
-            cccd
+            cccd,
+            cccd_front_path,
+            cccd_back_path
           )
         )
       )
@@ -118,12 +120,12 @@ export async function getRoomDetail(roomId: string) {
   if (error) throw error;
 
   const media = [...(data.room_media ?? [])].sort(
-    (left: any, right: any) =>
+    (left, right) =>
       Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0),
   );
 
   const contracts = [...(data.rental_contracts ?? [])].sort(
-    (left: any, right: any) => {
+    (left, right) => {
       const statusDifference =
         contractPriority(normalizeContractStatus(left.status)) -
         contractPriority(normalizeContractStatus(right.status));
@@ -137,7 +139,7 @@ export async function getRoomDetail(roomId: string) {
   );
 
   const contract =
-    contracts.find((candidate: any) => {
+    contracts.find((candidate) => {
       const status = normalizeContractStatus(candidate.status);
       return status === "Đang hiệu lực" || status === "Chờ nhận phòng";
     }) ?? null;
@@ -158,14 +160,36 @@ export async function getRoomDetail(roomId: string) {
     displayStatus = "Đã thuê";
   }
 
-  const tenantRelation =
-    contract?.contract_tenants?.find(
-      (item: any) => item.role === "Chủ hợp đồng",
-    ) ?? contract?.contract_tenants?.[0];
+  const tenants = (contract?.contract_tenants ?? [])
+    .map((relation) => {
+      const tenant = Array.isArray(relation.tenants)
+        ? relation.tenants[0]
+        : relation.tenants;
 
-  const tenant = Array.isArray(tenantRelation?.tenants)
-    ? tenantRelation.tenants[0]
-    : tenantRelation?.tenants ?? null;
+      return tenant
+        ? {
+            ...tenant,
+            role: relation.role ?? null,
+            cccd_front_url: tenant.cccd_front_path
+              ? `/api/owner/tenants/${tenant.id}/identity-image?side=front`
+              : null,
+            cccd_back_url: tenant.cccd_back_path
+              ? `/api/owner/tenants/${tenant.id}/identity-image?side=back`
+              : null,
+            cccd_front_path: undefined,
+            cccd_back_path: undefined,
+          }
+        : null;
+    })
+    .filter(
+      (candidate): candidate is NonNullable<typeof candidate> =>
+        candidate !== null,
+    );
+
+  const tenant =
+    tenants.find((candidate) => candidate?.role === "Chủ hợp đồng") ??
+    tenants[0] ??
+    null;
   const detailsRelation = data.room_details;
   const details = Array.isArray(detailsRelation)
     ? detailsRelation[0] ?? null
@@ -181,5 +205,6 @@ export async function getRoomDetail(roomId: string) {
     contracts,
     contract,
     tenant,
+    tenants,
   };
 }
