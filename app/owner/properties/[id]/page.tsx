@@ -58,11 +58,11 @@ export default async function PropertyDetailPage({
       .join(", ");
 
   return (
-    <div className="space-y-8">
+    <div className="min-w-0 space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold">{displayName}</h1>
+            <h1 className="text-2xl font-bold text-[#432918] sm:text-3xl">{displayName}</h1>
             <PropertyStatusBadge
               approvalStatus={property.approval_status}
               lifecycleStatus={property.lifecycle_status}
@@ -73,9 +73,9 @@ export default async function PropertyDetailPage({
               </span>
             ) : null}
           </div>
-          <p className="mt-2 text-gray-500">{fullAddress || "Chưa có địa chỉ"}</p>
+          <p className="mt-2 text-sm text-[#80634a]">{fullAddress || "Chưa có địa chỉ"}</p>
           {property.code ? (
-            <p className="mt-1 text-sm text-gray-400">Mã tòa nhà: {property.code}</p>
+            <p className="mt-1 text-sm text-[#9a7758]">Mã tòa nhà: {property.code}</p>
           ) : null}
         </div>
 
@@ -84,13 +84,13 @@ export default async function PropertyDetailPage({
             <>
               <Link
                 href={`/owner/properties/${property.id}/edit`}
-                className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                className="rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#684324] hover:bg-[#f3e1c9]"
               >
                 Chỉnh sửa tòa nhà
               </Link>
               <Link
                 href={`/owner/rooms/create?property_id=${property.id}`}
-                className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                className="rounded-xl bg-[#744722] px-4 py-2 text-sm font-semibold text-[#fff8eb] hover:bg-[#623817]"
               >
                 + Tạo phòng
               </Link>
@@ -98,7 +98,7 @@ export default async function PropertyDetailPage({
           ) : null}
           <Link
             href="/owner/properties"
-            className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            className="rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#684324] hover:bg-[#f3e1c9]"
           >
             ← Danh sách tòa nhà
           </Link>
@@ -111,13 +111,13 @@ export default async function PropertyDetailPage({
         <StatCard
           title="Đã thuê"
           value={summary.rented_rooms}
-          color="text-green-600"
+          color="text-[#2d6a3d]"
         />
         <StatCard title="Đang trống" value={summary.empty_rooms} />
         <StatCard
           title="Sắp trống"
           value={summary.upcoming_rooms}
-          color="text-orange-600"
+          color="text-[#8a5b1f]"
         />
       </div>
 
@@ -128,12 +128,12 @@ export default async function PropertyDetailPage({
         </div>
 
         {rooms.length === 0 ? (
-          <div className="rounded-xl border border-dashed bg-white p-6 text-gray-500">
+          <div className="rounded-[22px] border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-6 text-[#80634a]">
             <p>Chưa có phòng trong tòa nhà này.</p>
             {canManage && property.lifecycle_status !== "archived" ? (
               <Link
                 href={`/owner/rooms/create?property_id=${property.id}`}
-                className="mt-4 inline-block rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
+                className="mt-4 inline-block rounded-xl bg-[#744722] px-4 py-2 text-sm font-semibold text-[#fff8eb]"
               >
                 Tạo phòng đầu tiên
               </Link>
@@ -141,7 +141,7 @@ export default async function PropertyDetailPage({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {rooms.map((room: any) => (
+            {rooms.map((room) => (
               <RoomCard key={room.id} room={room} />
             ))}
           </div>
@@ -163,15 +163,15 @@ export default async function PropertyDetailPage({
 function StatCard({
   title,
   value,
-  color = "text-gray-900",
+  color = "text-[#4d3422]",
 }: {
   title: string;
   value: number;
   color?: string;
 }) {
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm">
-      <p className="text-sm text-gray-500">{title}</p>
+    <div className="rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
+      <p className="text-sm text-[#80634a]">{title}</p>
       <p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
     </div>
   );
