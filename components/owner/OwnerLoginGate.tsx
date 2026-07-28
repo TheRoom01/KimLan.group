@@ -8,6 +8,7 @@ import {
   Loader2,
   Mail,
   MonitorSmartphone,
+  Phone,
   ShieldCheck,
 } from "lucide-react";
 import { FormEvent, useMemo, useRef, useState } from "react";
@@ -39,6 +40,20 @@ type DeviceRevokeResponse = {
   error?: string;
   devices?: DeviceSession[];
 };
+
+function normalizeVietnamAuthPhone(value: string) {
+  let digits = value.replace(/\D/g, "");
+
+  if (!digits) return "";
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("0")) return `+84${digits.slice(1)}`;
+  if (digits.startsWith("84")) {
+    const national = digits.slice(2).replace(/^0+/, "");
+    return `+84${national}`;
+  }
+
+  return `+${digits}`;
+}
 
 function getDeviceLabel(device: DeviceSession) {
   const raw = [
@@ -79,7 +94,7 @@ export default function OwnerLoginGate() {
 
   const [authView, setAuthView] = useState<AuthView>("login");
 
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [forgotEmail, setForgotEmail] = useState("");
 
@@ -91,8 +106,9 @@ export default function OwnerLoginGate() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const canLogin = useMemo(() => {
-    return email.trim().includes("@") && password.length >= 6;
-  }, [email, password]);
+    const normalizedPhone = normalizeVietnamAuthPhone(phone);
+    return /^\+84\d{8,10}$/.test(normalizedPhone) && password.length >= 6;
+  }, [phone, password]);
 
   async function registerCurrentDevice(): Promise<boolean> {
     const response = await fetch("/api/device/register", {
@@ -148,7 +164,7 @@ export default function OwnerLoginGate() {
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        phone: normalizeVietnamAuthPhone(phone),
         password,
       });
 
@@ -272,7 +288,7 @@ export default function OwnerLoginGate() {
   }
 
   function openForgotPassword() {
-    setForgotEmail(email);
+    setForgotEmail("");
     setAuthMessage("");
     setAuthView("forgot");
   }
@@ -374,27 +390,27 @@ export default function OwnerLoginGate() {
                   >
                     <div>
                       <label
-                        htmlFor="owner-login-email"
+                        htmlFor="owner-login-phone"
                         className="mb-2 block text-sm font-semibold text-[#503521]"
                       >
-                        Email
+                        Số điện thoại
                       </label>
 
                       <div className="flex h-12 overflow-hidden rounded-xl border border-[#b99472]/35 bg-[#fffdf8] transition focus-within:border-[#744722] focus-within:ring-4 focus-within:ring-[#744722]/10">
                         <span className="grid w-12 shrink-0 place-items-center border-r border-[#b99472]/20 bg-[#f5e5cf] text-[#8a6547]">
-                            <Mail size={18} />
+                            <Phone size={18} />
                         </span>
 
                         <input
-                            id="owner-login-email"
-                            type="email"
-                            autoComplete="email"
-                            value={email}
+                            id="owner-login-phone"
+                            type="tel"
+                            autoComplete="tel"
+                            value={phone}
                             onChange={(event) =>
-                            setEmail(event.target.value)
+                            setPhone(event.target.value)
                             }
                             disabled={authLoading}
-                            placeholder="owner@example.com"
+                            placeholder="090 123 4567"
                             className="min-w-0 flex-1 border-0 bg-transparent px-4 text-sm text-[#432918] outline-none placeholder:text-[#aa927c] disabled:opacity-60"
                             required
                         />
@@ -504,7 +520,7 @@ export default function OwnerLoginGate() {
 
                     <p className="mt-2 text-sm leading-6 text-[#7b604a]">
                       Hệ thống sẽ gửi đường dẫn đặt lại mật khẩu
-                      đến email của bạn.
+                      đến email khôi phục của bạn.
                     </p>
                   </div>
 
@@ -517,7 +533,7 @@ export default function OwnerLoginGate() {
                         htmlFor="owner-forgot-email"
                         className="mb-2 block text-sm font-semibold text-[#503521]"
                       >
-                        Email tài khoản
+                        Email khôi phục
                       </label>
 
                       <div className="flex h-12 overflow-hidden rounded-xl border border-[#b99472]/35 bg-[#fffdf8] transition focus-within:border-[#744722] focus-within:ring-4 focus-within:ring-[#744722]/10">
