@@ -1,447 +1,188 @@
 import Link from "next/link";
+import { CalendarDays, CreditCard, Phone, UserRound } from "lucide-react";
+import { getTenantDetail } from "@/lib/owner/getTenantDetail";
 
-
-import {
-  getTenantDetail
-} from "@/lib/owner/getTenantDetail";
-
-
+type TenantContractHistory = {
+  id: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  deposit_amount?: number | null;
+  status?: string | null;
+  room?: { room_code?: string | null } | null;
+  property?: { name?: string | null } | null;
+};
 
 export default async function TenantDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const data = await getTenantDetail(id);
+  const tenant = data?.tenant;
 
-params
+  if (!tenant) {
+    return (
+      <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-6 text-[#80634a]">
+        Không tìm thấy thông tin khách thuê.
+      </div>
+    );
+  }
 
-}:{
-
-params:Promise<{
- id:string
-}>
-
-}){
-
-
-const {
- id
-}=await params;
-
-
-
-const data =
-await getTenantDetail(id);
-
-
-
-if(!data){
-
-
-return (
-
-<div
-className="
-rounded-xl
-border
-bg-white
-p-6
-"
->
-
-Không tìm thấy khách thuê.
-
-</div>
-
-);
-
-
-}
-
-
-const tenant =
-data.tenant;
-if (!tenant) {
+  const activeContract = data.activeContract;
+  const room = activeContract?.room;
+  const contracts = (data.contracts ?? []) as TenantContractHistory[];
 
   return (
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">
+            Hồ sơ khách thuê
+          </p>
+          <h1 className="mt-1 text-2xl font-bold text-[#432918] sm:text-3xl">
+            {tenant.full_name}
+          </h1>
+          <p className="mt-1 text-sm text-[#80634a]">
+            Thông tin cá nhân và lịch sử hợp đồng
+          </p>
+        </div>
+        <Link
+          href="/owner/tenants"
+          className="inline-flex h-10 items-center justify-center rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 text-sm font-semibold text-[#684324]"
+        >
+          ← Danh sách khách thuê
+        </Link>
+      </div>
 
-    <div
-      className="
-        rounded-xl
-        border
-        bg-white
-        p-6
-      "
-    >
+      <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <div className="flex items-center gap-2">
+          <UserRound size={20} className="text-[#744722]" />
+          <h2 className="text-lg font-bold text-[#4f321e]">Thông tin cá nhân</h2>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Info label="Họ tên" value={tenant.full_name} />
+          <Info label="Số điện thoại" value={tenant.phone || "-"} />
+          <Info label="Số CCCD" value={tenant.cccd || "-"} />
+          <Info label="Ngày sinh" value={tenant.date_of_birth || "-"} />
+          <Info label="Địa chỉ" value={tenant.address || "-"} />
+        </div>
 
-      Không tìm thấy thông tin khách thuê.
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <IdentityImage label="CCCD mặt trước" url={tenant.cccd_front_url} />
+          <IdentityImage label="CCCD mặt sau" url={tenant.cccd_back_url} />
+        </div>
+      </section>
 
+      <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <div className="flex items-center gap-2">
+          <Phone size={20} className="text-[#744722]" />
+          <h2 className="text-lg font-bold text-[#4f321e]">Đang thuê</h2>
+        </div>
+        {activeContract ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Info
+              label="Tòa nhà"
+              value={
+                activeContract.property?.name ||
+                activeContract.property?.address ||
+                "-"
+              }
+            />
+            <Info label="Phòng" value={room?.room_code || "-"} />
+            <Info
+              label="Giá thuê"
+              value={
+                activeContract.monthly_price
+                  ? `${Number(activeContract.monthly_price).toLocaleString("vi-VN")}đ`
+                  : "-"
+              }
+            />
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[#80634a]">
+            Hiện chưa có hợp đồng đang hiệu lực.
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <CalendarDays size={20} className="text-[#744722]" />
+            <h2 className="text-lg font-bold text-[#4f321e]">Lịch sử hợp đồng</h2>
+          </div>
+          <span className="rounded-full bg-[#ead3b3] px-2.5 py-1 text-xs font-semibold text-[#684324]">
+            {contracts.length}
+          </span>
+        </div>
+
+        {contracts.length === 0 ? (
+          <p className="mt-4 text-sm text-[#80634a]">Chưa có hợp đồng.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {contracts.map((contract) => (
+              <div
+                key={contract.id}
+                className="rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7] p-4"
+              >
+                <div className="grid gap-2 text-sm sm:grid-cols-2">
+                  <Info label="Bắt đầu" value={formatDate(contract.start_date)} />
+                  <Info label="Kết thúc" value={formatDate(contract.end_date)} />
+                  <Info
+                    label="Tiền cọc"
+                    value={
+                      contract.deposit_amount
+                        ? `${Number(contract.deposit_amount).toLocaleString("vi-VN")}đ`
+                        : "-"
+                    }
+                  />
+                  <Info label="Trạng thái" value={contract.status || "-"} />
+                  <Info label="Phòng" value={contract.room?.room_code || "-"} />
+                  <Info label="Tòa nhà" value={contract.property?.name || "-"} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
-
   );
-
 }
 
-const activeContract =
-  data.activeContract;
-
-
-const room =
-  activeContract?.room;
-
-
-const property =
-  activeContract?.property;
-
-
-const contracts =
-  data.contracts ?? [];
-
-
-return (
-
-<div
-className="
-space-y-8
-"
->
-
-
-<div
-className="
-flex
-items-center
-justify-between
-"
->
-
-
-<div>
-
-<h1
-className="
-text-3xl
-font-bold
-"
->
-
-{tenant.full_name}
-
-</h1>
-
-
-<p
-className="
-text-gray-500
-"
->
-
-Khách thuê
-
-</p>
-
-</div>
-
-
-
-<Link
-
-href="/owner/tenants"
-
-className="
-rounded-lg
-border
-px-4
-py-2
-"
-
->
-
-← Danh sách khách thuê
-
-</Link>
-
-
-</div>
-
-
-
-
-
-<div
-className="
-rounded-xl
-border
-bg-white
-p-6
-"
->
-
-
-<h2
-className="
-mb-4
-text-xl
-font-semibold
-"
->
-
-Thông tin cá nhân
-
-</h2>
-
-
-<div
-className="
-space-y-2
-"
->
-
-<p>
-<strong>Họ tên:</strong>{" "}
-{tenant.full_name}
-</p>
-
-<p>
-<strong>SĐT:</strong>{" "}
-{tenant.phone}
-</p>
-
-
-<p>
-<strong>CCCD:</strong>{" "}
-{tenant.cccd ?? "-"}
-</p>
-
-
-<p>
-<strong>Ngày sinh:</strong>{" "}
-{
-tenant.date_of_birth ?? "-"
-}
-</p>
-
-
-<p>
-<strong>Địa chỉ:</strong>{" "}
-{
-tenant.address ?? "-"
-}
-</p>
-
-</div>
-
-
-</div>
-
-
-
-<div
-className="
-rounded-xl
-border
-bg-white
-p-6
-"
->
-
-
-<h2
-className="
-mb-4
-text-xl
-font-semibold
-"
->
-
-Đang thuê
-
-</h2>
-
-
-{
-activeContract ? (
-
-<>
-
-<p>
-<strong>Tòa nhà:</strong>{" "}
-{
-  activeContract?.property?.name
-  ??
-  activeContract?.property?.address
-  ??
-  "-"
-}
-</p>
-
-
-<p>
-<strong>Phòng:</strong>{" "}
-{room?.room_code ?? "-"}
-</p>
-
-
-<p>
-<strong>Giá thuê:</strong>{" "}
-{
-activeContract.monthly_price
-?.toLocaleString(
-"vi-VN"
-)
-}
-đ
-</p>
-
-</>
-
-) : (
-
-<p>
-Hiện chưa có hợp đồng đang hiệu lực.
-</p>
-
-)
-
+function IdentityImage({ label, url }: { label: string; url?: string | null }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7]">
+      <div className="flex items-center gap-2 border-b border-[#aa825d]/20 px-4 py-3">
+        <CreditCard size={16} className="text-[#744722]" />
+        <span className="text-sm font-bold text-[#5a3b25]">{label}</span>
+      </div>
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer">
+          <img src={url} alt={label} className="h-52 w-full object-contain p-3" />
+        </a>
+      ) : (
+        <div className="grid h-40 place-items-center text-sm text-[#80634a]">
+          Chưa có ảnh
+        </div>
+      )}
+    </div>
+  );
 }
 
-
-</div>
-
-
-
-<div
-className="
-rounded-xl
-border
-bg-white
-p-6
-"
->
-
-
-<h2
-className="
-mb-4
-text-xl
-font-semibold
-"
->
-
-Lịch sử hợp đồng
-
-</h2>
-
-
-{
-contracts.length === 0 ? (
-
-<p>
-Chưa có hợp đồng.
-</p>
-
-) : (
-
-<div
-className="
-space-y-4
-"
->
-
-{
-contracts.map(
-(contract:any)=> (
-
-<div
-key={contract.id}
-className="
-rounded-lg
-border
-p-4
-"
->
-
-
-<p>
-<strong>Bắt đầu:</strong>{" "}
-{
-contract.start_date
-?
-new Date(
-contract.start_date
-)
-.toLocaleDateString(
-"vi-VN"
-)
-:
-"-"
-}
-</p>
-
-
-<p>
-<strong>Kết thúc:</strong>{" "}
-{
-contract.end_date
-?
-new Date(
-contract.end_date
-)
-.toLocaleDateString(
-"vi-VN"
-)
-:
-"-"
-}
-</p>
-
-
-<p>
-<strong>Tiền cọc:</strong>{" "}
-{
-contract.deposit_amount
-?.toLocaleString(
-"vi-VN"
-)
-}
-đ
-</p>
-
-
-<p>
-<strong>Trạng thái:</strong>{" "}
-{contract.status}
-</p>
-
-
-<p>
-<strong>Phòng:</strong>{" "}
-{contract.room?.room_code ?? "-"}
-</p>
-
-
-<p>
-<strong>Tòa nhà:</strong>{" "}
-{contract.property?.name ?? "-"}
-</p>
-
-
-</div>
-
-)
-
-)
-
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="min-w-0">
+      <span className="block text-xs text-[#8a6b50]">{label}</span>
+      <strong className="mt-0.5 block break-words text-sm text-[#4d3422]">
+        {value}
+      </strong>
+    </p>
+  );
 }
 
-</div>
-
-)
-
-}
-
-
-</div>
-
-
-</div>
-
-);
-
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString("vi-VN");
 }
