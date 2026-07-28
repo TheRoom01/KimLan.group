@@ -65,6 +65,10 @@ export async function getProperties() {
         approval_status,
         lifecycle_status,
         created_at,
+        property_members!property_members_property_id_fkey (
+          id,
+          status
+        ),
         rooms!rooms_property_id_fkey (
           id,
           status,
@@ -90,7 +94,7 @@ export async function getProperties() {
   today.setHours(0, 0, 0, 0);
 
   return (data ?? [])
-    .map((membership: any) => {
+    .map((membership) => {
       const property = Array.isArray(membership.properties)
         ? membership.properties[0]
         : membership.properties;
@@ -101,7 +105,7 @@ export async function getProperties() {
       let emptyRooms = 0;
       let upcomingRooms = 0;
       const activeRooms = (property.rooms ?? []).filter(
-        (room: any) => (room.lifecycle_status ?? "active") === "active",
+        (room) => (room.lifecycle_status ?? "active") === "active",
       );
 
       for (const room of activeRooms) {
@@ -171,7 +175,9 @@ export async function getProperties() {
 
 
         member_count:
-          property.property_members?.length ?? 1,
+          property.property_members?.filter(
+            (member) => member.status === "active",
+          ).length ?? 1,
 
 
         total_rooms:
@@ -192,13 +198,16 @@ export async function getProperties() {
 
     })
     
-    .filter(Boolean)
-    .sort((left: any, right: any) => {
+    .filter(
+      (property): property is NonNullable<typeof property> =>
+        property !== null,
+    )
+    .sort((left, right) => {
       const leftName =
       String(
-        left.fullAddress ??
-        left.address ??
         left.name ??
+        left.code ??
+        left.address ??
         "",
       );
       const rightName = String(right.name ?? right.code ?? right.address ?? "");
