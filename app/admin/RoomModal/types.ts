@@ -11,6 +11,7 @@ export type MediaItem = {
 
 
 export type RoomForm = {
+  property_id?: string
   room_code: string
   room_type: string
   house_number: string
