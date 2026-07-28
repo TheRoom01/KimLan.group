@@ -24,5 +24,18 @@ export default async function Layout({
     return <OwnerLoginGate />;
   }
 
+  /*
+   * A room created by Admin may have been waiting for this owner's phone
+   * account to exist. Claim those properties before loading the dashboard so
+   * getProperties()/getOwnerRooms() can see them on the first refresh.
+   */
+  const { error: claimError } = await supabase.rpc(
+    "claim_admin_properties_by_phone_v1",
+  );
+
+  if (claimError) {
+    console.warn("[Owner] property phone claim failed", claimError);
+  }
+
   return <OwnerLayout>{children}</OwnerLayout>;
 }
