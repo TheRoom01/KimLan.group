@@ -10,13 +10,14 @@ import {
   MonitorSmartphone,
   Phone,
   ShieldCheck,
+  UserPlus,
 } from "lucide-react";
 import { FormEvent, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabase";
 
-type AuthView = "login" | "forgot" | "sent";
+type AuthView = "login" | "register" | "verify-phone" | "forgot" | "sent";
 
 type DeviceSession = {
   id?: string;
@@ -53,6 +54,25 @@ function normalizeVietnamAuthPhone(value: string) {
   }
 
   return `+${digits}`;
+}
+
+function getOwnerAuthError(error: unknown, fallback: string) {
+  const message =
+    error instanceof Error ? error.message : String(error ?? "");
+
+  if (/phone logins are disabled/i.test(message)) {
+    return "Supabase chưa bật đăng nhập bằng số điện thoại. Hãy bật Phone Provider trong Authentication trước khi đăng ký hoặc đăng nhập Owner.";
+  }
+
+  if (/user already registered/i.test(message)) {
+    return "Số điện thoại này đã có tài khoản. Hãy đăng nhập hoặc dùng chức năng Quên mật khẩu.";
+  }
+
+  if (/invalid login credentials/i.test(message)) {
+    return "Số điện thoại hoặc mật khẩu không đúng.";
+  }
+
+  return message || fallback;
 }
 
 function getDeviceLabel(device: DeviceSession) {
@@ -96,6 +116,11 @@ export default function OwnerLoginGate() {
 
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [registerName, setRegisterName] = useState("");
+  const [registerPhone, setRegisterPhone] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState("");
+  const [phoneOtp, setPhoneOtp] = useState("");
   const [forgotEmail, setForgotEmail] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
@@ -109,6 +134,22 @@ export default function OwnerLoginGate() {
     const normalizedPhone = normalizeVietnamAuthPhone(phone);
     return /^\+84\d{8,10}$/.test(normalizedPhone) && password.length >= 6;
   }, [phone, password]);
+
+  const canRegister = useMemo(() => {
+    const normalizedPhone = normalizeVietnamAuthPhone(registerPhone);
+
+    return (
+      registerName.trim().length >= 2 &&
+      /^\+84\d{8,10}$/.test(normalizedPhone) &&
+      registerPassword.length >= 6 &&
+      registerPassword === registerPasswordConfirm
+    );
+  }, [
+    registerName,
+    registerPhone,
+    registerPassword,
+    registerPasswordConfirm,
+  ]);
 
   async function registerCurrentDevice(): Promise<boolean> {
     const response = await fetch("/api/device/register", {
@@ -186,14 +227,159 @@ export default function OwnerLoginGate() {
     } catch (error) {
       await supabase.auth.signOut().catch(() => undefined);
 
-      setAuthMessage(
-        error instanceof Error
-          ? error.message
-          : "Không thể đăng nhập Owner Portal",
-      );
+      setAuthMessage(getOwnerAuthError(error, "Không thể đăng nhập Owner Portal"));
     } finally {
       setAuthLoading(false);
       loginLockRef.current = false;
+    }
+  }
+
+  async function finishOwnerSession() {
+    const deviceRegistered = await registerCurrentDevice();
+
+    if (deviceRegistered) {
+      router.refresh();
+    }
+  }
+
+  async function handleRegister(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const normalizedPhone = normalizeVietnamAuthPhone(registerPhone);
+
+    if (registerName.trim().length < 2) {
+      setAuthMessage("Vui lòng nhập họ tên.");
+      return;
+    }
+
+    if (!/^\+84\d{8,10}$/.test(normalizedPhone)) {
+      setAuthMessage("Vui lòng nhập số điện thoại Việt Nam hợp lệ.");
+      return;
+    }
+
+    if (registerPassword.length < 6) {
+      setAuthMessage("Mật khẩu phải có ít nhất 6 ký tự.");
+      return;
+    }
+
+    if (registerPassword !== registerPasswordConfirm) {
+      setAuthMessage("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthMessage("");
+    setDevices([]);
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        phone: normalizedPhone,
+        password: registerPassword,
+        options: {
+          data: {
+            full_name: registerName.trim(),
+            account_type: "owner",
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setPhone(registerPhone);
+      setPassword(registerPassword);
+
+      if (data.session) {
+        await finishOwnerSession();
+      } else {
+        setPhoneOtp("");
+        setAuthView("verify-phone");
+        setAuthMessage(
+          "Mã xác minh đã được gửi đến số điện thoại. Nhập mã để hoàn tất đăng ký.",
+        );
+      }
+    } catch (error) {
+      setAuthMessage(
+        getOwnerAuthError(error, "Không thể tạo tài khoản Owner"),
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleVerifyPhone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const normalizedPhone = normalizeVietnamAuthPhone(registerPhone);
+    const token = phoneOtp.replace(/\D/g, "").slice(0, 6);
+
+    if (!/^\+84\d{8,10}$/.test(normalizedPhone)) {
+      setAuthMessage("Số điện thoại đăng ký không hợp lệ.");
+      return;
+    }
+
+    if (token.length !== 6) {
+      setAuthMessage("Vui lòng nhập đủ mã xác minh 6 số.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthMessage("");
+
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: normalizedPhone,
+        token,
+        type: "sms",
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.session) {
+        throw new Error("Xác minh thành công nhưng chưa tạo được phiên đăng nhập.");
+      }
+
+      await finishOwnerSession();
+    } catch (error) {
+      setAuthMessage(
+        getOwnerAuthError(error, "Mã xác minh không đúng hoặc đã hết hạn."),
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function resendPhoneOtp() {
+    const normalizedPhone = normalizeVietnamAuthPhone(registerPhone);
+
+    if (!/^\+84\d{8,10}$/.test(normalizedPhone)) {
+      setAuthMessage("Số điện thoại đăng ký không hợp lệ.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthMessage("");
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "sms",
+        phone: normalizedPhone,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setAuthMessage("Đã gửi lại mã xác minh.");
+    } catch (error) {
+      setAuthMessage(
+        getOwnerAuthError(error, "Không thể gửi lại mã xác minh."),
+      );
+    } finally {
+      setAuthLoading(false);
     }
   }
 
@@ -230,9 +416,7 @@ export default function OwnerLoginGate() {
       setAuthView("sent");
     } catch (error) {
       setAuthMessage(
-        error instanceof Error
-          ? error.message
-          : "Không thể gửi email đặt lại mật khẩu",
+        getOwnerAuthError(error, "Không thể gửi email đặt lại mật khẩu"),
       );
     } finally {
       setAuthLoading(false);
@@ -291,6 +475,16 @@ export default function OwnerLoginGate() {
     setForgotEmail("");
     setAuthMessage("");
     setAuthView("forgot");
+  }
+
+  function openRegister() {
+    setAuthMessage("");
+    setRegisterName("");
+    setRegisterPhone("");
+    setRegisterPassword("");
+    setRegisterPasswordConfirm("");
+    setPhoneOtp("");
+    setAuthView("register");
   }
 
   function backToLogin() {
@@ -502,6 +696,258 @@ export default function OwnerLoginGate() {
                       ) : (
                         "Đăng nhập Owner Portal"
                       )}
+                    </button>
+
+                    <div className="flex items-center gap-3 pt-1 text-sm text-[#8b6b50]">
+                      <span className="h-px flex-1 bg-[#b99472]/25" />
+                      <span>hoặc</span>
+                      <span className="h-px flex-1 bg-[#b99472]/25" />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={openRegister}
+                      disabled={authLoading}
+                      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#744722]/30 bg-[#fffaf2] px-5 text-sm font-bold text-[#744722] transition hover:bg-[#f5e6d1] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <UserPlus size={17} />
+                      Đăng ký Owner mới
+                    </button>
+                  </form>
+                </>
+              ) : null}
+
+              {authView === "register" ? (
+                <>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7554]">
+                      Tạo tài khoản
+                    </p>
+
+                    <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#432918]">
+                      Đăng ký Owner mới
+                    </h2>
+
+                    <p className="mt-2 text-sm leading-6 text-[#7b604a]">
+                      Dùng số điện thoại để đăng nhập và quản lý tòa nhà của bạn.
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={handleRegister}
+                    className="mt-7 space-y-4"
+                  >
+                    <div>
+                      <label
+                        htmlFor="owner-register-name"
+                        className="mb-2 block text-sm font-semibold text-[#503521]"
+                      >
+                        Họ và tên
+                      </label>
+                      <input
+                        id="owner-register-name"
+                        type="text"
+                        autoComplete="name"
+                        value={registerName}
+                        onChange={(event) => setRegisterName(event.target.value)}
+                        disabled={authLoading}
+                        placeholder="Nguyễn Văn A"
+                        className="h-12 w-full rounded-xl border border-[#b99472]/35 bg-[#fffdf8] px-4 text-sm text-[#432918] outline-none transition placeholder:text-[#aa927c] focus:border-[#744722] focus:ring-4 focus:ring-[#744722]/10 disabled:opacity-60"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="owner-register-phone"
+                        className="mb-2 block text-sm font-semibold text-[#503521]"
+                      >
+                        Số điện thoại
+                      </label>
+                      <div className="flex h-12 overflow-hidden rounded-xl border border-[#b99472]/35 bg-[#fffdf8] transition focus-within:border-[#744722] focus-within:ring-4 focus-within:ring-[#744722]/10">
+                        <span className="grid w-12 shrink-0 place-items-center border-r border-[#b99472]/20 bg-[#f5e5cf] text-[#8a6547]">
+                          <Phone size={18} />
+                        </span>
+                        <input
+                          id="owner-register-phone"
+                          type="tel"
+                          autoComplete="tel"
+                          value={registerPhone}
+                          onChange={(event) => setRegisterPhone(event.target.value)}
+                          disabled={authLoading}
+                          placeholder="090 123 4567"
+                          className="min-w-0 flex-1 border-0 bg-transparent px-4 text-sm text-[#432918] outline-none placeholder:text-[#aa927c] disabled:opacity-60"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="owner-register-password"
+                        className="mb-2 block text-sm font-semibold text-[#503521]"
+                      >
+                        Mật khẩu
+                      </label>
+                      <input
+                        id="owner-register-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={registerPassword}
+                        onChange={(event) => setRegisterPassword(event.target.value)}
+                        disabled={authLoading}
+                        placeholder="Ít nhất 6 ký tự"
+                        className="h-12 w-full rounded-xl border border-[#b99472]/35 bg-[#fffdf8] px-4 text-sm text-[#432918] outline-none transition placeholder:text-[#aa927c] focus:border-[#744722] focus:ring-4 focus:ring-[#744722]/10 disabled:opacity-60"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="owner-register-password-confirm"
+                        className="mb-2 block text-sm font-semibold text-[#503521]"
+                      >
+                        Nhập lại mật khẩu
+                      </label>
+                      <input
+                        id="owner-register-password-confirm"
+                        type="password"
+                        autoComplete="new-password"
+                        value={registerPasswordConfirm}
+                        onChange={(event) =>
+                          setRegisterPasswordConfirm(event.target.value)
+                        }
+                        disabled={authLoading}
+                        placeholder="Nhập lại mật khẩu"
+                        className="h-12 w-full rounded-xl border border-[#b99472]/35 bg-[#fffdf8] px-4 text-sm text-[#432918] outline-none transition placeholder:text-[#aa927c] focus:border-[#744722] focus:ring-4 focus:ring-[#744722]/10 disabled:opacity-60"
+                        required
+                      />
+                    </div>
+
+                    {authMessage ? (
+                      <div
+                        role="alert"
+                        className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700"
+                      >
+                        {authMessage}
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="submit"
+                      disabled={!canRegister || authLoading}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-5 text-sm font-bold text-[#fff7e9] shadow-[0_12px_25px_rgba(91,54,24,0.22)] transition hover:bg-[#623817] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {authLoading ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          Đang tạo tài khoản...
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus size={17} />
+                          Tạo tài khoản Owner
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={backToLogin}
+                      disabled={authLoading}
+                      className="h-11 w-full rounded-xl border border-[#a9825f]/30 bg-[#fffaf2] text-sm font-semibold text-[#744722] transition hover:bg-[#f5e6d1] disabled:opacity-50"
+                    >
+                      Quay lại đăng nhập
+                    </button>
+                  </form>
+                </>
+              ) : null}
+
+              {authView === "verify-phone" ? (
+                <>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#9a7554]">
+                      Xác minh số điện thoại
+                    </p>
+
+                    <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#432918]">
+                      Nhập mã xác minh
+                    </h2>
+
+                    <p className="mt-2 text-sm leading-6 text-[#7b604a]">
+                      Mã SMS đã được gửi đến{" "}
+                      <strong>{registerPhone}</strong>.
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={handleVerifyPhone}
+                    className="mt-8 space-y-5"
+                  >
+                    <div>
+                      <label
+                        htmlFor="owner-phone-otp"
+                        className="mb-2 block text-sm font-semibold text-[#503521]"
+                      >
+                        Mã xác minh 6 số
+                      </label>
+                      <input
+                        id="owner-phone-otp"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        value={phoneOtp}
+                        onChange={(event) =>
+                          setPhoneOtp(event.target.value.replace(/\D/g, "").slice(0, 6))
+                        }
+                        disabled={authLoading}
+                        placeholder="123456"
+                        className="h-12 w-full rounded-xl border border-[#b99472]/35 bg-[#fffdf8] px-4 text-center text-lg tracking-[0.35em] text-[#432918] outline-none transition placeholder:text-[#aa927c] focus:border-[#744722] focus:ring-4 focus:ring-[#744722]/10 disabled:opacity-60"
+                        required
+                      />
+                    </div>
+
+                    {authMessage ? (
+                      <div
+                        role="alert"
+                        className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700"
+                      >
+                        {authMessage}
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="submit"
+                      disabled={phoneOtp.length !== 6 || authLoading}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-5 text-sm font-bold text-[#fff7e9] shadow-[0_12px_25px_rgba(91,54,24,0.22)] transition hover:bg-[#623817] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {authLoading ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          Đang xác minh...
+                        </>
+                      ) : (
+                        "Xác minh và vào Owner Portal"
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void resendPhoneOtp()}
+                      disabled={authLoading}
+                      className="h-11 w-full rounded-xl border border-[#a9825f]/30 bg-[#fffaf2] text-sm font-semibold text-[#744722] transition hover:bg-[#f5e6d1] disabled:opacity-50"
+                    >
+                      Gửi lại mã
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={openRegister}
+                      disabled={authLoading}
+                      className="w-full text-sm font-semibold text-[#744722] transition hover:underline disabled:opacity-50"
+                    >
+                      Đổi số điện thoại đăng ký
                     </button>
                   </form>
                 </>
