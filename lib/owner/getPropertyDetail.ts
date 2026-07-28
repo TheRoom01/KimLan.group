@@ -1,6 +1,7 @@
 import {
   createSupabaseServerClient
 } from "../supabase/server";
+import { getOwnerRooms } from "@/lib/owner/getOwnerRooms";
 
 
 export async function getPropertyDetail(
@@ -11,16 +12,21 @@ export async function getPropertyDetail(
     await createSupabaseServerClient();
 
 
-  const {
-    data,
-    error
-  } =
-  await supabase.rpc(
-    "get_owner_property_detail_v1",
+  const [
     {
-      p_property_id: propertyId
-    }
-  );
+      data,
+      error,
+    },
+    ownerRooms,
+  ] = await Promise.all([
+    supabase.rpc(
+      "get_owner_property_detail_v1",
+      {
+        p_property_id: propertyId,
+      },
+    ),
+    getOwnerRooms(),
+  ]);
 
 
   if(error){
@@ -58,7 +64,10 @@ export async function getPropertyDetail(
 
 
     rooms:
-      data?.rooms ?? [],
+      ownerRooms.filter(
+        (room) =>
+          String(room.property?.id ?? room.property_id ?? "") === propertyId,
+      ),
 
 
     contracts:
