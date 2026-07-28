@@ -122,6 +122,9 @@ export type OwnerTenantReference = {
   full_name: string;
   phone?: string | null;
   cccd?: string | null;
+  cccd_front_url?: string | null;
+  cccd_back_url?: string | null;
+  role?: string | null;
 };
 
 export type OwnerContractSummary = {
