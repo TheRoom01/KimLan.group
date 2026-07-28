@@ -53,7 +53,7 @@ export async function getOwnerRooms() {
   const propertyIds = [
     ...new Set(
       (memberships ?? [])
-        .map((membership: any) => String(membership.property_id ?? "").trim())
+        .map((membership) => String(membership.property_id ?? "").trim())
         .filter(Boolean),
     ),
   ];
@@ -76,8 +76,18 @@ export async function getOwnerRooms() {
         name,
         house_number,
         address,
+        ward,
         district,
-        city
+        city,
+        cover_image
+      ),
+      room_media (
+        id,
+        type,
+        url,
+        path,
+        is_cover,
+        sort_order
       ),
       rental_contracts (
         id,
@@ -93,7 +103,9 @@ export async function getOwnerRooms() {
             id,
             full_name,
             phone,
-            cccd
+            cccd,
+            cccd_front_path,
+            cccd_back_path
           )
         )
       )
@@ -104,13 +116,13 @@ export async function getOwnerRooms() {
 
   if (error) throw error;
 
-  return (data ?? []).map((room: any) => {
+  return (data ?? []).map((room) => {
     const contracts = [...(room.rental_contracts ?? [])]
-      .filter((candidate: any) => {
+      .filter((candidate) => {
         const status = normalizeContractStatus(candidate.status);
         return status === "Đang hiệu lực" || status === "Chờ nhận phòng";
       })
-      .sort((left: any, right: any) => {
+      .sort((left, right) => {
         const priorityDifference =
           contractPriority(normalizeContractStatus(left.status)) -
           contractPriority(normalizeContractStatus(right.status));
@@ -140,18 +152,47 @@ export async function getOwnerRooms() {
       displayStatus = "Đã thuê";
     }
 
-    const tenantRelation =
-      contract?.contract_tenants?.find(
-        (item: any) => item.role === "Chủ hợp đồng",
-      ) ?? contract?.contract_tenants?.[0];
+    const tenants = (contract?.contract_tenants ?? [])
+      .map((relation) => {
+        const tenant = Array.isArray(relation.tenants)
+          ? relation.tenants[0]
+          : relation.tenants;
 
-    const tenant = Array.isArray(tenantRelation?.tenants)
-      ? tenantRelation.tenants[0]
-      : tenantRelation?.tenants ?? null;
+        return tenant
+          ? {
+              ...tenant,
+              role: relation.role ?? null,
+              cccd_front_url: tenant.cccd_front_path
+                ? `/api/owner/tenants/${tenant.id}/identity-image?side=front`
+                : null,
+              cccd_back_url: tenant.cccd_back_path
+                ? `/api/owner/tenants/${tenant.id}/identity-image?side=back`
+                : null,
+              cccd_front_path: undefined,
+              cccd_back_path: undefined,
+            }
+          : null;
+      })
+      .filter(
+        (candidate): candidate is NonNullable<typeof candidate> =>
+          candidate !== null,
+      );
+
+    const tenant = tenants.find(
+      (candidate) => candidate?.role === "Chủ hợp đồng",
+    ) ?? tenants[0] ?? null;
 
     const property = Array.isArray(room.properties)
       ? room.properties[0]
       : room.properties;
+    const media = [...(room.room_media ?? [])].sort(
+      (left, right) =>
+        Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0),
+    );
+    const coverImage =
+      media.find((item) => item.type === "image" && item.is_cover)?.url ??
+      media.find((item) => item.type === "image")?.url ??
+      null;
 
     return {
       ...room,
@@ -160,6 +201,9 @@ export async function getOwnerRooms() {
       daysRemaining,
       contract,
       tenant: tenant ? [tenant] : [],
+      tenants,
+      media,
+      coverImage,
       property,
     };
   });
