@@ -45,6 +45,8 @@ export async function POST(request: Request) {
       | null;
 
     const roomId = String(body?.room_id || "").trim();
+    const tenantId = String(body?.tenant_id || "").trim();
+    const tenantSide = String(body?.tenant_side || "").trim();
     const fixedName = String(body?.fixed_name || "").trim();
     const fileName = String(body?.file_name || "").trim();
     const contentType = String(body?.content_type || "").trim();
@@ -82,6 +84,38 @@ export async function POST(request: Request) {
       );
     }
 
+    if (tenantId) {
+      if (!isImage || (tenantSide !== "front" && tenantSide !== "back")) {
+        return NextResponse.json(
+          { error: "Ảnh CCCD phải là image/* và có mặt front hoặc back" },
+          { status: 400 },
+        );
+      }
+
+      const { data: relation, error: relationError } =
+        await authorization.supabase.rpc(
+          "owner_tenant_belongs_to_room_v1",
+          {
+            p_room_id: roomId,
+            p_tenant_id: tenantId,
+          },
+        );
+
+      if (relationError) {
+        return NextResponse.json(
+          { error: "Không thể xác minh khách thuê" },
+          { status: 500 },
+        );
+      }
+
+      if (relation !== true) {
+        return NextResponse.json(
+          { error: "Khách thuê không thuộc phòng này" },
+          { status: 403 },
+        );
+      }
+    }
+
     if (isVideo) {
       const maxVideoBytes = 50 * 1024 * 1024;
 
@@ -104,7 +138,9 @@ export async function POST(request: Request) {
 
     const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
     const folder = isVideo ? "video" : "images";
-    const key = allowFixedThumb
+    const key = tenantId
+      ? `rooms/${roomId}/tenants/${tenantId}/cccd-${tenantSide}-${crypto.randomUUID()}.${extension}`
+      : allowFixedThumb
       ? `rooms/${roomId}/${folder}/thumb.webp`
       : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${extension}`;
 
