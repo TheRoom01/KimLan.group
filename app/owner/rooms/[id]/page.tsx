@@ -4,6 +4,7 @@ import ArchiveRoomButton from "@/components/owner/ArchiveRoomButton";
 import RoomMediaGallery from "@/components/owner/RoomMediaGallery";
 import RoomStatusControl from "@/components/owner/RoomStatusControl";
 import RoomStatusHistory from "@/components/owner/RoomStatusHistory";
+import TenantRosterCard from "@/components/owner/TenantRosterCard";
 import { getRoomDetail } from "@/lib/owner/getRoomDetail";
 import { getRoomStatusLogs } from "@/lib/owner/getRoomStatusLogs";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -28,25 +29,30 @@ export default async function RoomDetailPage({
   ]);
 
   const contract = room.contract;
-  const tenant = room.tenant;
+  const tenants = room.tenants ?? (room.tenant ? [room.tenant] : []);
   const isArchived = room.lifecycle_status === "archived";
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">
+            Quản lý phòng
+          </p>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold">Phòng {room.room_code}</h1>
+            <h1 className="mt-1 text-2xl font-bold text-[#432918] sm:text-3xl">
+              Phòng {room.room_code}
+            </h1>
             <PublishBadge
               lifecycleStatus={room.lifecycle_status}
               publishStatus={room.publish_status}
             />
           </div>
-          <p className="mt-2 text-gray-500">
+          <p className="mt-2 text-sm text-[#80634a]">
             {[room.house_number, room.address].filter(Boolean).join(" ") ||
               "Chưa có địa chỉ"}
           </p>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-[#9a7758]">
             {[room.ward, room.district].filter(Boolean).join(" • ")}
           </p>
         </div>
@@ -54,7 +60,7 @@ export default async function RoomDetailPage({
         <div className="flex flex-wrap items-start gap-3">
           <Link
             href={`/owner/properties/${room.property_id}`}
-            className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-100"
+            className="rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#684324] hover:bg-[#f3e1c9]"
           >
             ← Quay lại
           </Link>
@@ -62,7 +68,7 @@ export default async function RoomDetailPage({
           {canManage === true && !isArchived ? (
             <Link
               href={`/owner/rooms/${room.id}/edit`}
-              className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-100"
+              className="rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#684324] hover:bg-[#f3e1c9]"
             >
               Chỉnh sửa phòng
             </Link>
@@ -80,8 +86,8 @@ export default async function RoomDetailPage({
         </div>
       ) : null}
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold">Thông tin phòng</h2>
+      <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Thông tin phòng</h2>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <InfoItem label="Giá" value={formatMoney(room.price)} />
@@ -112,7 +118,7 @@ export default async function RoomDetailPage({
         {room.description ? (
           <div className="mt-6 border-t pt-5">
             <p className="text-sm text-gray-500">Mô tả</p>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+            <p className="mt-1 whitespace-pre-wrap text-sm text-[#5f4631]">
               {room.description}
             </p>
           </div>
@@ -127,38 +133,15 @@ export default async function RoomDetailPage({
 
       <RoomDetailsSummary details={room.details} policy={room.chinh_sach} />
 
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold">Khách thuê</h2>
+      <TenantRosterCard
+        tenants={tenants}
+        roomId={room.id}
+        canManage={canManage === true}
+        isArchived={isArchived}
+      />
 
-        {tenant ? (
-          <div className="space-y-2">
-            <p>
-              <strong>Họ tên:</strong> {tenant.full_name}
-            </p>
-            <p>
-              <strong>SĐT:</strong> {tenant.phone ?? "-"}
-            </p>
-            <p>
-              <strong>CCCD:</strong> {tenant.cccd ?? "-"}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-gray-500">Chưa có khách thuê hiện tại.</p>
-            {canManage === true && !isArchived ? (
-              <Link
-                href={`/owner/rooms/${room.id}/tenant/new`}
-                className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                + Thêm khách thuê
-              </Link>
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-xl border bg-white p-6">
-        <h2 className="mb-4 text-xl font-semibold">Hợp đồng hiện tại</h2>
+      <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Hợp đồng hiện tại</h2>
 
         {contract ? (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -226,7 +209,7 @@ function RoomDetailsSummary({
   details,
   policy,
 }: {
-  details: any;
+  details: Awaited<ReturnType<typeof getRoomDetail>>["details"];
   policy?: string | null;
 }) {
   const feeItems = [
@@ -257,8 +240,8 @@ function RoomDetailsSummary({
   if (!details && !policy) return null;
 
   return (
-    <section className="rounded-xl border bg-white p-6">
-      <h2 className="mb-4 text-xl font-semibold">Chi phí và tiện nghi</h2>
+    <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+      <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Chi phí và tiện nghi</h2>
 
       {feeItems.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -271,7 +254,7 @@ function RoomDetailsSummary({
           ))}
         </div>
       ) : (
-        <p className="text-sm text-gray-500">Chưa khai báo chi phí dịch vụ.</p>
+        <p className="text-sm text-[#80634a]">Chưa khai báo chi phí dịch vụ.</p>
       )}
 
       {amenities.length > 0 ? (
@@ -279,7 +262,7 @@ function RoomDetailsSummary({
           {amenities.map((amenity) => (
             <span
               key={amenity}
-              className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700"
+              className="rounded-full bg-[#eadbc8] px-3 py-1 text-xs font-medium text-[#684324]"
             >
               {amenity}
             </span>
@@ -288,13 +271,13 @@ function RoomDetailsSummary({
       ) : null}
 
       {details?.other_amenities ? (
-        <p className="mt-5 whitespace-pre-wrap text-sm text-gray-700">
+        <p className="mt-5 whitespace-pre-wrap text-sm text-[#5f4631]">
           <strong>Tiện nghi khác:</strong> {details.other_amenities}
         </p>
       ) : null}
 
       {policy ? (
-        <p className="mt-5 whitespace-pre-wrap border-t pt-4 text-sm text-gray-700">
+        <p className="mt-5 whitespace-pre-wrap border-t border-[#b58f69]/20 pt-4 text-sm text-[#5f4631]">
           <strong>Chính sách:</strong> {policy}
         </p>
       ) : null}
@@ -305,8 +288,8 @@ function RoomDetailsSummary({
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="font-semibold">{value}</p>
+      <p className="text-sm text-[#80634a]">{label}</p>
+      <p className="font-semibold text-[#4d3422]">{value}</p>
     </div>
   );
 }
