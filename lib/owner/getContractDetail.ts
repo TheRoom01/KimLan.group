@@ -78,7 +78,11 @@ export async function getContractDetail(
 
           phone,
 
-          cccd
+          cccd,
+
+          cccd_front_path,
+
+          cccd_back_path
 
         )
 
@@ -108,24 +112,36 @@ export async function getContractDetail(
 
 
 
-  const tenantRelation =
-    data.contract_tenants?.find(
-      (x:any)=>
-        x.role==="Chủ hợp đồng"
-    )
-    ??
-    data.contract_tenants?.[0];
+  const tenants = (data.contract_tenants ?? [])
+    .map((relation) => {
+      const tenant = Array.isArray(relation.tenants)
+        ? relation.tenants[0]
+        : relation.tenants;
 
-
+      return tenant
+        ? {
+            ...tenant,
+            role: relation.role ?? null,
+            cccd_front_url: tenant.cccd_front_path
+              ? `/api/owner/tenants/${tenant.id}/identity-image?side=front`
+              : null,
+            cccd_back_url: tenant.cccd_back_path
+              ? `/api/owner/tenants/${tenant.id}/identity-image?side=back`
+              : null,
+            cccd_front_path: undefined,
+            cccd_back_path: undefined,
+          }
+        : null;
+    })
+    .filter(
+      (candidate): candidate is NonNullable<typeof candidate> =>
+        candidate !== null,
+    );
 
   const tenant =
-    Array.isArray(
-      tenantRelation?.tenants
-    )
-    ?
-    tenantRelation.tenants[0]
-    :
-    tenantRelation?.tenants;
+    tenants.find((candidate) => candidate?.role === "Chủ hợp đồng") ??
+    tenants[0] ??
+    null;
 
 
 
@@ -154,6 +170,7 @@ export async function getContractDetail(
     ...data,
 
     tenant,
+    tenants,
 
     room,
 
