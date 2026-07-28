@@ -22,6 +22,35 @@ type MediaRow = {
   sort_order: number;
 };
 
+function parseMediaOrder(body: Record<string, unknown>) {
+  if (!Array.isArray(body.items) || body.items.length === 0) {
+    throw new RequestValidationError("Danh sách thứ tự media không được để trống", {
+      field: "items",
+    });
+  }
+
+  return body.items.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new RequestValidationError(`Media thứ ${index + 1} không hợp lệ`, {
+        field: `items.${index}`,
+      });
+    }
+
+    const source = item as Record<string, unknown>;
+    const id = parseUuid(String(source.id ?? ""), `items.${index}.id`);
+    const sortOrder = Number(source.sort_order);
+
+    if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) {
+      throw new RequestValidationError(
+        `Thứ tự media thứ ${index + 1} không hợp lệ`,
+        { field: `items.${index}.sort_order` },
+      );
+    }
+
+    return { id, sort_order: sortOrder };
+  });
+}
+
 function parseMediaRows(body: Record<string, unknown>, roomId: string): MediaRow[] {
   const items = body.items;
 
@@ -135,6 +164,96 @@ export async function POST(
 
     if (error) return mapDatabaseError(error);
     return apiSuccess(data ?? [], 201);
+  } catch (error) {
+    return mapUnknownError(error);
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string }>;
+  },
+) {
+  try {
+    const { id: rawId } = await params;
+    const roomId = parseUuid(rawId, "room_id");
+    const authorization = await authorizeRoomMutation(roomId);
+
+    if (!authorization.allowed) {
+      return apiError(
+        authorization.error,
+        authorization.error === "UNAUTHENTICATED"
+          ? "Bạn cần đăng nhập để thực hiện thao tác này"
+          : "Bạn không có quyền sắp xếp media của phòng này",
+        authorization.status,
+      );
+    }
+
+    const body = await readJsonObject(request);
+    const updates = parseMediaOrder(body);
+    const ids = updates.map((item) => item.id);
+    const coverId =
+      body.cover_id === null || body.cover_id === undefined
+        ? null
+        : parseUuid(String(body.cover_id), "cover_id");
+
+    const { data: existing, error: existingError } =
+      await authorization.supabase
+        .from("room_media")
+        .select("id")
+        .eq("room_id", roomId)
+        .in("id", ids);
+
+    if (existingError) return mapDatabaseError(existingError);
+    if ((existing ?? []).length !== ids.length) {
+      return apiError(
+        "INVALID_INPUT",
+        "Danh sách media chứa ảnh không thuộc phòng này",
+        400,
+      );
+    }
+
+    for (const update of updates) {
+      const { error } = await authorization.supabase
+        .from("room_media")
+        .update({ sort_order: update.sort_order })
+        .eq("id", update.id)
+        .eq("room_id", roomId);
+
+      if (error) return mapDatabaseError(error);
+    }
+
+    if (coverId) {
+      const { error: clearCoverError } = await authorization.supabase
+        .from("room_media")
+        .update({ is_cover: false })
+        .eq("room_id", roomId)
+        .eq("type", "image");
+
+      if (clearCoverError) return mapDatabaseError(clearCoverError);
+
+      const { error: coverError } = await authorization.supabase
+        .from("room_media")
+        .update({ is_cover: true })
+        .eq("id", coverId)
+        .eq("room_id", roomId)
+        .eq("type", "image");
+
+      if (coverError) return mapDatabaseError(coverError);
+    }
+
+    const { data, error } = await authorization.supabase
+      .from("room_media")
+      .select("id, room_id, type, provider, url, path, is_cover, sort_order, created_at")
+      .eq("room_id", roomId)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (error) return mapDatabaseError(error);
+    return apiSuccess(data ?? []);
   } catch (error) {
     return mapUnknownError(error);
   }
