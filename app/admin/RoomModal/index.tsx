@@ -90,7 +90,22 @@ type Props = {
 
   // ✅ onSaved nhận room mới để trang admin cập nhật ngay
   onSaved: (updatedRoom: Room, opts?: { isNew?: boolean }) => void | Promise<void>
-  
+
+}
+
+type PropertyCandidate = {
+  id: string
+  code?: string | null
+  name?: string | null
+  house_number?: string | null
+  address?: string | null
+  ward?: string | null
+  district?: string | null
+  city?: string | null
+  approval_status?: string | null
+  lifecycle_status?: string | null
+  owner_count?: number
+  room_count?: number
 }
 
 function normalizeStatus(v?: RoomStatus | string | null): RoomStatus {
@@ -164,6 +179,7 @@ export default function RoomModal({
 
 const [saving, setSaving] = useState(false)
 const [errorMsg, setErrorMsg] = useState<string | null>(null)
+const [propertyCandidates, setPropertyCandidates] = useState<PropertyCandidate[]>([])
 const [uploading, setUploading] = useState(false)
 const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 const [showAutoRead, setShowAutoRead] = useState(false)
@@ -898,8 +914,11 @@ const detailSample =
         sampleOwnerId === currentUserId
       );
 
+    setPropertyCandidates([])
+    setErrorMsg(null)
     setRoomForm((prev) => ({
       ...prev,
+      property_id: undefined,
 
       ward: (roomSample as any).ward ?? "",
       district: (roomSample as any).district ?? "",
@@ -929,6 +948,7 @@ const detailSample =
 
   useEffect(() => {
   setErrorMsg(null)
+  setPropertyCandidates([])
   setShowCloseConfirm(false)
   setShowAutoRead(false)
 
@@ -962,6 +982,7 @@ const detailSample =
       .filter((media: any) => media.url)
 
     setRoomForm({
+      property_id: pendingRoomPayload?.property_id ?? '',
       room_code: pendingRoomPayload?.room_code ?? '',
       room_type: pendingRoomPayload?.room_type ?? '',
       house_number: pendingRoomPayload?.house_number ?? '',
@@ -1008,6 +1029,7 @@ const detailSample =
     initialCoverUrlRef.current = ""
 
     setRoomForm({
+      property_id: base.property_id ?? "",
       room_code: isCloneMode ? "" : "",
       room_type: isCloneMode ? "" : "",
 
@@ -1086,6 +1108,7 @@ const detailSample =
 
       setRoomForm((prev) => ({
         ...prev,
+        property_id: room.property_id ?? prev.property_id,
         room_code: room.room_code ?? prev.room_code,
         room_type: room.room_type ?? prev.room_type,
 
@@ -1218,6 +1241,8 @@ const applyAutoReadCandidate = (
   const nextRoom = { ...shared.room, ...candidate.room }
   const nextDetail = { ...shared.detail, ...candidate.detail }
 
+  setPropertyCandidates([])
+  setErrorMsg(null)
   setRoomForm((prev) => {
     const patch = Object.fromEntries(
       Object.entries(nextRoom).filter(([, value]) => {
@@ -1234,6 +1259,7 @@ const applyAutoReadCandidate = (
     return {
       ...prev,
       ...patch,
+      property_id: undefined,
       // Auto read không được thay đổi media hiện tại.
       media: prev.media,
     }
@@ -1270,7 +1296,13 @@ const applyAutoReadCandidate = (
   /* ===== VALIDATE ===== */
   function validate(): string | null {
     if (!roomForm.room_code.trim()) return 'Vui lòng nhập mã phòng.'
-    if (!roomForm.address.trim() && !roomForm.house_number.trim()) return 'Nhập ít nhất Số nhà hoặc Địa chỉ.'
+    if (
+      !isPending &&
+      !isEdit &&
+      (!roomForm.house_number.trim() || !roomForm.address.trim())
+    ) {
+      return 'Phòng mới cần đủ Số nhà và tên đường để xác định tòa nhà.'
+    }
     if (roomForm.price < 0) return 'Giá không hợp lệ.'
     return null
   }
@@ -1369,6 +1401,18 @@ const applyAutoReadCandidate = (
     }
   }
   /* ===== SUBMIT ===== */
+  function selectPropertyCandidate(candidate: PropertyCandidate) {
+    setRoomForm((prev) => ({
+      ...prev,
+      property_id: candidate.id,
+    }))
+    setPropertyCandidates([])
+    setErrorMsg(null)
+    onNotify?.(
+      `Đã chọn tòa nhà ${candidate.code || candidate.name || candidate.id}. Bấm Lưu để tiếp tục.`,
+    )
+  }
+
   async function handleSubmit() {
   const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
   const v = validate()
@@ -1551,6 +1595,9 @@ const {
 } = await supabase.auth.getUser();
 
 const payload = {
+  ...(roomForm.property_id?.trim()
+    ? { property_id: roomForm.property_id.trim() }
+    : {}),
   room_code: roomForm.room_code,
   room_type: roomForm.room_type,
   house_number: roomForm.house_number,
@@ -1567,6 +1614,49 @@ const payload = {
   // chỉ gắn người tạo khi thêm mới, edit thì giữ owner_id cũ
   ...(isNew ? { owner_id: user?.id ?? null } : {}),
 }
+
+    /*
+     * Resolve a duplicate address before calling the upsert.  The database
+     * repeats this validation inside the transaction, so this only controls
+     * the chooser UX and cannot bypass the server-side guard.
+     */
+    if (isNew && !roomForm.property_id?.trim()) {
+      const resolution = await supabase.rpc(
+        "admin_resolve_property_for_room_v1",
+        { p_payload: payload },
+      )
+
+      if (resolution.error) {
+        throw resolution.error
+      }
+
+      const resolved = (resolution.data ?? {}) as {
+        match_status?: string
+        property_id?: string | null
+        candidates?: PropertyCandidate[]
+      }
+
+      if (resolved.match_status === "ambiguous") {
+        const candidates = Array.isArray(resolved.candidates)
+          ? resolved.candidates.filter((candidate) => candidate?.id)
+          : []
+
+        setPropertyCandidates(candidates)
+        setErrorMsg(
+          "Có nhiều tòa nhà trùng địa chỉ. Hãy chọn tòa nhà để gán phòng.",
+        )
+        setSaving(false)
+        return
+      }
+
+      if (resolved.match_status === "matched" && resolved.property_id) {
+        payload.property_id = resolved.property_id
+        setRoomForm((prev) => ({
+          ...prev,
+          property_id: resolved.property_id || "",
+        }))
+      }
+    }
 
 // ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media
 const desiredId =
@@ -1716,6 +1806,24 @@ void (async () => {
 })()
 
   } catch (e: any) {
+    if (e?.message === "PROPERTY_MATCH_REQUIRED" && e?.details) {
+      try {
+        const candidates = JSON.parse(e.details) as PropertyCandidate[]
+
+        if (Array.isArray(candidates) && candidates.length > 0) {
+          setPropertyCandidates(
+            candidates.filter((candidate) => candidate?.id),
+          )
+          setErrorMsg(
+            "Địa chỉ vừa phát sinh nhiều tòa nhà trùng nhau. Hãy chọn tòa nhà để gán phòng.",
+          )
+          return
+        }
+      } catch {
+        // Fall through to the database error below.
+      }
+    }
+
     setErrorMsg(e?.message ?? 'Lưu thất bại')
   } finally {
     setSaving((s) => (s ? false : s))
@@ -1776,6 +1884,85 @@ const stopBackdropEvents = (e: any) => {
 
           {errorMsg && <div style={errorBox}>Lỗi: {errorMsg}</div>}
 
+          {propertyCandidates.length > 0 && (
+            <div
+              style={{
+                marginBottom: 14,
+                border: "1px solid #e4c99f",
+                borderRadius: 12,
+                background: "#fff9ed",
+                padding: 12,
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: 8,
+                  color: "#5c3b20",
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                Chọn tòa nhà để gán phòng
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {propertyCandidates.map((candidate) => {
+                  const location = [
+                    candidate.house_number,
+                    candidate.address,
+                    candidate.ward,
+                    candidate.district,
+                    candidate.city,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")
+
+                  return (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      onClick={() => selectPropertyCandidate(candidate)}
+                      disabled={saving}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        border: "1px solid #d8b98c",
+                        borderRadius: 10,
+                        background: "#fff",
+                        padding: "10px 12px",
+                        textAlign: "left",
+                        color: "#4d301d",
+                        cursor: saving ? "not-allowed" : "pointer",
+                        opacity: saving ? 0.65 : 1,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>
+                        {candidate.code || candidate.name || candidate.id}
+                      </div>
+                      {candidate.name && candidate.code ? (
+                        <div style={{ marginTop: 2, fontSize: 13 }}>
+                          {candidate.name}
+                        </div>
+                      ) : null}
+                      <div
+                        style={{
+                          marginTop: 3,
+                          color: "#7c644d",
+                          fontSize: 12,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {location || "Chưa có địa chỉ hiển thị"} ·{" "}
+                        {candidate.room_count ?? 0} phòng ·{" "}
+                        {candidate.owner_count ?? 0} owner
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div style={tabs}>
             <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')}>
               Thông tin
@@ -1792,7 +1979,20 @@ const stopBackdropEvents = (e: any) => {
           {activeTab === 'info' && (
             <RoomInfoTab
               value={roomForm}
-              onChange={setRoomForm}
+              onChange={(next) => {
+                const addressChanged =
+                  next.house_number !== roomForm.house_number ||
+                  next.address !== roomForm.address ||
+                  next.ward !== roomForm.ward ||
+                  next.district !== roomForm.district
+
+                if (addressChanged) {
+                  setPropertyCandidates([])
+                  setErrorMsg(null)
+                }
+
+                setRoomForm(next)
+              }}
               updatedAt={editingRoom?.updated_at ?? null}
               uploading={uploading}
               onUploadFiles={handleUploadFiles}
