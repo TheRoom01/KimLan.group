@@ -206,11 +206,19 @@ useEffect(() => {
         <Input
           label="Số nhà"
           value={value.house_number}
-          onChange={v => onChange({ ...value, house_number: v })}
+          onChange={v => onChange({
+            ...value,
+            property_id: undefined,
+            house_number: v,
+          })}
           onBlur={() => {
             const normalizedAddress = toTitleCaseStreet(value.address);
             if (normalizedAddress !== value.address) {
-              onChange({ ...value, address: normalizedAddress });
+              onChange({
+                ...value,
+                property_id: undefined,
+                address: normalizedAddress,
+              });
             }
             onAutofillByAddress?.(value.house_number, normalizedAddress);
           }}
@@ -218,21 +226,37 @@ useEffect(() => {
         <Input
           label="Tên đường"
           value={value.address}
-          onChange={v => onChange({ ...value, address: v })}
+          onChange={v => onChange({
+            ...value,
+            property_id: undefined,
+            address: v,
+          })}
           onBlur={() => {
         const normalizedAddress = toTitleCaseStreet(value.address);
-        onChange({ ...value, address: normalizedAddress });
+        onChange({
+          ...value,
+          property_id: undefined,
+          address: normalizedAddress,
+        });
         onAutofillByAddress?.(value.house_number, normalizedAddress);
       }}
         />
         <Input
           label="Phường"
           value={value.ward}
-          onChange={v => onChange({ ...value, ward: v })}
+          onChange={v => onChange({
+            ...value,
+            property_id: undefined,
+            ward: v,
+          })}
           onBlur={() => {
             const normalizedWard = toTitleCaseWard(value.ward);
             if (normalizedWard !== value.ward) {
-              onChange({ ...value, ward: normalizedWard });
+              onChange({
+                ...value,
+                property_id: undefined,
+                ward: normalizedWard,
+              });
             }
           }}
         />
@@ -240,7 +264,11 @@ useEffect(() => {
           label="Quận"
           value={value.district}
           options={ensureOption(DISTRICT_OPTIONS, value.district)}
-          onChange={(v) => onChange({ ...value, district: v })}
+          onChange={(v) => onChange({
+            ...value,
+            property_id: undefined,
+            district: v,
+          })}
         />
 
       </div>
