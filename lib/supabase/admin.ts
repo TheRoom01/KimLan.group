@@ -8,6 +8,10 @@ export function createSupabaseAdminClient() {
   if (!serviceRole) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
 
   return createClient(url, serviceRole, {
-    auth: { persistSession: false },
-  });
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+  },
+});
 }

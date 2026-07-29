@@ -8,7 +8,6 @@ import {
   ImageIcon,
   Loader2,
   Mail,
-  Pencil,
   Phone,
   Save,
   ShieldCheck,
@@ -40,22 +39,36 @@ type AccountProperty = {
   status?: string;
 };
 
+type ContactPhone = {
+  id?: string;
+  phone: string;
+  label?: string | null;
+  is_primary?: boolean;
+  is_verified?: boolean;
+};
+
+
 type CurrentAccount = {
   user_id: string;
   full_name?: string | null;
   login_email?: string | null;
   contact_email?: string | null;
-  contact_phone?: string | null;
+
+  phones?: ContactPhone[];
+
   avatar_url?: string | null;
   note?: string | null;
 };
+
 
 type AccountMember = {
   user_id: string;
   display_name?: string | null;
   avatar_url?: string | null;
   contact_email?: string | null;
-  contact_phone?: string | null;
+
+  phones?: ContactPhone[];
+
   note?: string | null;
   roles?: string[];
   properties?: AccountProperty[];
@@ -73,16 +86,11 @@ type AccountPanelData = {
 type ProfileDraft = {
   full_name: string;
   contact_email: string;
-  contact_phone: string;
+  phones: ContactPhone[];
   note: string;
 };
 
-type MemberDraft = {
-  display_name: string;
-  contact_email: string;
-  contact_phone: string;
-  note: string;
-};
+
 
 type AvatarPresignResult = {
   key: string;
@@ -151,9 +159,7 @@ function createProfileDraft(
       account?.contact_email,
     ),
 
-    contact_phone: textValue(
-      account?.contact_phone,
-    ),
+    phones: account?.phones ?? [],
 
     note: textValue(
       account?.note,
@@ -161,14 +167,7 @@ function createProfileDraft(
   };
 }
 
-function createMemberDraft(member: AccountMember): MemberDraft {
-  return {
-    display_name: textValue(member.display_name),
-    contact_email: textValue(member.contact_email),
-    contact_phone: textValue(member.contact_phone),
-    note: textValue(member.note),
-  };
-}
+
 
 export default function OwnerAccountPanel() {
   const [open, setOpen] = useState(false);
@@ -209,16 +208,7 @@ const [
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const [editingMemberId, setEditingMemberId] =
-    useState<string | null>(null);
-
-  const [memberDraft, setMemberDraft] =
-    useState<MemberDraft | null>(null);
-
-  const [savingMemberId, setSavingMemberId] =
-    useState<string | null>(null);
-
-  const [errorMessage, setErrorMessage] =
+   const [errorMessage, setErrorMessage] =
     useState<string | null>(null);
 
   const loadPanel = useCallback(async () => {
@@ -306,6 +296,7 @@ const [
   async function saveProfile(
     event: FormEvent<HTMLFormElement>,
   ) {
+     console.log("SAVE PROFILE CLICKED", profileDraft);
     event.preventDefault();
 
     setSavingProfile(true);
@@ -317,7 +308,18 @@ const [
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(profileDraft),
+        body: JSON.stringify({
+  ...profileDraft,
+
+  phones:
+    profileDraft.phones.map(
+      (phone,index)=>({
+        ...phone,
+        is_primary:
+          index === 0
+      })
+    ),
+})
       });
 
       await readApiResponse(response);
@@ -332,61 +334,9 @@ const [
       setSavingProfile(false);
     }
   }
-
-  function beginEditMember(member: AccountMember) {
-    setEditingMemberId(member.user_id);
-    setMemberDraft(createMemberDraft(member));
-    setErrorMessage(null);
-  }
-
-  function cancelEditMember() {
-    setEditingMemberId(null);
-    setMemberDraft(null);
-  }
-
   
 
-  async function saveMember(
-    event: FormEvent<HTMLFormElement>,
-    memberUserId: string,
-  ) {
-    event.preventDefault();
-
-    if (!memberDraft) return;
-
-    setSavingMemberId(memberUserId);
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch(
-        `/api/owner/members/${memberUserId}/contact`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(memberDraft),
-        },
-      );
-
-      await readApiResponse(response);
-
-      setEditingMemberId(null);
-      setMemberDraft(null);
-
-      await loadPanel();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Không thể cập nhật thành viên",
-      );
-    } finally {
-      setSavingMemberId(null);
-    }
-  }
-
-  function openAvatarFilePicker() {
+   function openAvatarFilePicker() {
   setAvatarMenuOpen(false);
 
   avatarInputRef.current?.click();
@@ -525,7 +475,22 @@ async function deleteAvatar() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden min-w-0 items-center gap-2 rounded-xl border border-[#f3d9b4]/20 bg-white/5 px-3 py-2 text-left transition hover:bg-white/10 xl:flex"
+        className="
+          hidden
+          min-w-0
+          items-center
+          gap-2
+          rounded-xl
+          border
+          border-[#f3d9b4]/20
+          bg-white/5
+          px-3
+          py-2
+          text-left
+          transition
+          hover:bg-white/10
+          xl:flex
+        "
       >
         <AccountAvatar
           name={accountName}
@@ -550,18 +515,44 @@ async function deleteAvatar() {
         />
       </button>
 
-      {/* Nút mobile và màn hình desktop hẹp */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Mở thông tin tài khoản"
-        title={accountName}
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#f3d9b4]/20 bg-white/5 transition hover:bg-white/10 xl:hidden"
+
+    {/* Nút mobile và desktop hẹp */}
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      aria-label="Mở thông tin tài khoản"
+      title={accountName}
+      className="
+        grid
+        h-10
+        w-10
+        shrink-0
+        place-items-center
+        rounded-xl
+        border
+        border-[#f3d9b4]/20
+        bg-white/5
+        transition
+        hover:bg-white/10
+        xl:hidden
+      "
+    >
+      <span
+        className="
+          grid
+          h-7
+          w-7
+          place-items-center
+          rounded-full
+          bg-[#f2d9b6]
+          text-[10px]
+          font-bold
+          text-[#633b20]
+        "
       >
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-[#f2d9b6] text-[10px] font-bold text-[#633b20]">
-          {accountInitials}
-        </span>
-      </button>
+        {accountInitials}
+      </span>
+    </button>
 
       {open ? (
         <>
@@ -569,10 +560,32 @@ async function deleteAvatar() {
             type="button"
             aria-label="Đóng bảng tài khoản"
             onClick={() => setOpen(false)}
-            className="fixed inset-0 z-[100] cursor-default bg-black/35 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[200] cursor-default bg-black/35 backdrop-blur-[2px]"
           />
 
-          <aside className="fixed inset-y-0 right-0 z-[110] flex w-full flex-col overflow-hidden border-l border-[#8b5a32]/25 bg-[#f8ecda] shadow-[-30px_0_80px_rgba(69,40,19,0.28)] sm:max-w-[460px]">
+        <aside
+          className="
+            fixed
+            inset-x-0
+            top-0
+            bottom-0
+            z-[200]
+            flex
+            w-full
+            flex-col
+            overflow-hidden
+            border-l
+            border-[#8b5a32]/25
+            bg-[#f8ecda]
+            shadow-[-30px_0_80px_rgba(69,40,19,0.28)]
+
+            sm:inset-y-0
+            sm:left-auto
+            sm:right-0
+            sm:bottom-0
+            sm:max-w-[460px]
+          "
+        >
             <header className="shrink-0 bg-gradient-to-br from-[#79502d] to-[#593219] px-5 pb-5 pt-5 text-[#fff8eb]">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-3">
@@ -620,7 +633,18 @@ async function deleteAvatar() {
               </div>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+            <div
+              className="
+                min-h-0
+                flex-1
+                overflow-y-auto
+                px-4
+                py-4
+                pb-[96px]
+                sm:px-5
+                sm:pb-4
+              "
+            >
               {loading ? (
                 <div className="flex min-h-60 items-center justify-center">
                   <Loader2
@@ -662,9 +686,8 @@ async function deleteAvatar() {
                     </div>
 
                     <p className="mt-1 text-xs leading-5 text-[#80634a]">
-                      Email và số điện thoại bên dưới chỉ dùng làm
-                      thông tin liên hệ, không thay đổi tài khoản
-                      đăng nhập.
+                      Email và số điện thoại bên dưới chỉ dùng làm thông tin liên hệ,
+                      không thay đổi tài khoản đăng nhập.
                     </p>
 
                     <form
@@ -717,29 +740,87 @@ async function deleteAvatar() {
                         </div>
                       </Field>
 
-                      <Field label="Số điện thoại liên hệ">
-                        <div className="flex h-11 overflow-hidden rounded-xl border border-[#aa825d]/30 bg-[#fffdf8] transition focus-within:border-[#744722] focus-within:ring-4 focus-within:ring-[#744722]/10">
-                            <span className="grid w-11 shrink-0 place-items-center border-r border-[#aa825d]/20 bg-[#f5e5cf] text-[#8a6547]">
-                            <Phone size={17} />
-                            </span>
+                     <Field label="Số điện thoại liên hệ">
 
-                            <input
-                            type="tel"
-                            inputMode="tel"
-                            value={profileDraft.contact_phone}
-                            onChange={(event) =>
-                                setProfileDraft((current) => ({
-                                ...current,
-                                contact_phone: event.target.value,
-                                }))
-                            }
-                            maxLength={50}
-                            disabled={savingProfile}
-                            className="min-w-0 flex-1 border-0 bg-transparent px-3.5 text-sm text-[#4d3422] outline-none placeholder:text-[#a58a73] disabled:opacity-60"
-                            placeholder="090..."
-                            />
-                        </div>
-                      </Field>
+<div className="space-y-2">
+
+{profileDraft.phones.map(
+  (phone, index) => (
+    <div
+      key={phone.id ?? index}
+      className="flex gap-2"
+    >
+
+<input
+value={phone.phone}
+onChange={(event)=>
+ setProfileDraft((current)=>({
+  ...current,
+
+  phones:
+   current.phones.map(
+    (item,i)=>
+      i===index
+      ? {
+          ...item,
+          phone:event.target.value
+        }
+      : item
+   )
+ }))
+}
+className={INPUT_CLASS}
+/>
+
+
+<button
+type="button"
+onClick={() =>
+ setProfileDraft((current)=>({
+  ...current,
+
+  phones:
+   current.phones.filter(
+    (_,i)=>i!==index
+   )
+ }))
+}
+className="grid h-11 w-11 place-items-center rounded-xl border"
+>
+<X size={16}/>
+</button>
+
+
+</div>
+ )
+)}
+
+
+<button
+type="button"
+onClick={() =>
+setProfileDraft((current)=>({
+ ...current,
+
+ phones:[
+  ...current.phones,
+  {
+    phone:"",
+    is_primary:
+      current.phones.length === 0
+  }
+]
+}))
+}
+className="text-sm font-semibold text-[#744722]"
+>
++ Thêm số điện thoại
+</button>
+
+
+</div>
+
+</Field>
 
                      
                       <Field label="Ghi chú">
@@ -830,18 +911,11 @@ async function deleteAvatar() {
                         </div>
 
                         <p className="mt-1 text-xs leading-5 text-[#80634a]">
-                          {data.can_edit_members
-                            ? "Bạn có thể chỉnh sửa thông tin liên hệ của thành viên thuộc tòa nhà mình sở hữu."
-                            : "Chỉ tài khoản Chủ nhà mới được chỉnh sửa thông tin thành viên."}
+                          Danh sách thành viên quản lý chung. 
+                          Thông tin liên hệ chỉ được hiển thị, không cho phép chỉnh sửa.
                         </p>
                       </div>
 
-                      {data.can_edit_members ? (
-                        <ShieldCheck
-                          size={20}
-                          className="shrink-0 text-[#744722]"
-                        />
-                      ) : null}
                     </div>
 
                     {data.members.length === 0 ? (
@@ -851,12 +925,7 @@ async function deleteAvatar() {
                     ) : (
                       <div className="mt-4 space-y-3">
                         {data.members.map((member) => {
-                          const editing =
-                            editingMemberId === member.user_id;
-
-                          const saving =
-                            savingMemberId === member.user_id;
-
+                         
                           return (
                             <article
                               key={member.user_id}
@@ -895,154 +964,9 @@ async function deleteAvatar() {
                                   </div>
                                 </div>
 
-                                {member.can_edit && !editing ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      beginEditMember(member)
-                                    }
-                                    className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-[#9d744f]/25 bg-[#fff9ef] text-[#744722] transition hover:bg-[#f0ddc4]"
-                                    aria-label="Chỉnh sửa thành viên"
-                                  >
-                                    <Pencil size={16} />
-                                  </button>
-                                ) : null}
                               </div>
 
-                              {editing && memberDraft ? (
-                                <form
-                                  onSubmit={(event) =>
-                                    void saveMember(
-                                      event,
-                                      member.user_id,
-                                    )
-                                  }
-                                  className="mt-4 space-y-3 border-t border-[#aa825d]/20 pt-4"
-                                >
-                                  <Field label="Tên hiển thị">
-                                    <input
-                                      value={
-                                        memberDraft.display_name
-                                      }
-                                      onChange={(event) =>
-                                        setMemberDraft(
-                                          (current) =>
-                                            current
-                                              ? {
-                                                  ...current,
-                                                  display_name:
-                                                    event.target
-                                                      .value,
-                                                }
-                                              : current,
-                                        )
-                                      }
-                                      maxLength={200}
-                                      disabled={saving}
-                                      className={INPUT_CLASS}
-                                    />
-                                  </Field>
-
-                                  <Field label="Email liên hệ">
-                                    <input
-                                      type="email"
-                                      value={
-                                        memberDraft.contact_email
-                                      }
-                                      onChange={(event) =>
-                                        setMemberDraft(
-                                          (current) =>
-                                            current
-                                              ? {
-                                                  ...current,
-                                                  contact_email:
-                                                    event.target
-                                                      .value,
-                                                }
-                                              : current,
-                                        )
-                                      }
-                                      maxLength={320}
-                                      disabled={saving}
-                                      className={INPUT_CLASS}
-                                    />
-                                  </Field>
-
-                                  <Field label="Số điện thoại">
-                                    <input
-                                      value={
-                                        memberDraft.contact_phone
-                                      }
-                                      onChange={(event) =>
-                                        setMemberDraft(
-                                          (current) =>
-                                            current
-                                              ? {
-                                                  ...current,
-                                                  contact_phone:
-                                                    event.target
-                                                      .value,
-                                                }
-                                              : current,
-                                        )
-                                      }
-                                      maxLength={50}
-                                      disabled={saving}
-                                      className={INPUT_CLASS}
-                                    />
-                                  </Field>
-
-                                  <Field label="Ghi chú">
-                                    <textarea
-                                      value={memberDraft.note}
-                                      onChange={(event) =>
-                                        setMemberDraft(
-                                          (current) =>
-                                            current
-                                              ? {
-                                                  ...current,
-                                                  note: event.target
-                                                    .value,
-                                                }
-                                              : current,
-                                        )
-                                      }
-                                      maxLength={2000}
-                                      disabled={saving}
-                                      className={TEXTAREA_CLASS}
-                                    />
-                                  </Field>
-
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={cancelEditMember}
-                                      disabled={saving}
-                                      className="h-10 rounded-xl border border-[#9d744f]/30 bg-[#fff9ef] text-sm font-semibold text-[#684324] disabled:opacity-50"
-                                    >
-                                      Hủy
-                                    </button>
-
-                                    <button
-                                      type="submit"
-                                      disabled={saving}
-                                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#744722] text-sm font-bold text-[#fff7e9] disabled:opacity-50"
-                                    >
-                                      {saving ? (
-                                        <Loader2
-                                          size={16}
-                                          className="animate-spin"
-                                        />
-                                      ) : (
-                                        <Save size={16} />
-                                      )}
-
-                                      Lưu
-                                    </button>
-                                  </div>
-                                </form>
-                              ) : (
-                                <>
+                              <>
                                   <div className="mt-3 space-y-1.5 text-xs text-[#765941]">
                                     <p className="flex items-center gap-2">
                                       <Mail
@@ -1055,16 +979,31 @@ async function deleteAvatar() {
                                       </span>
                                     </p>
 
-                                    <p className="flex items-center gap-2">
-                                      <Phone
-                                        size={14}
-                                        className="shrink-0"
-                                      />
-                                      <span className="truncate">
-                                        {member.contact_phone ||
-                                          "Chưa có số điện thoại"}
-                                      </span>
-                                    </p>
+                                    <div className="flex items-start gap-2 text-xs text-[#765941]">
+  <Phone
+    size={14}
+    className="mt-1 shrink-0"
+  />
+
+  <div className="flex flex-wrap gap-1.5">
+    {member.phones?.length ? (
+      member.phones.map((phone) => (
+        <span
+          key={phone.id ?? phone.phone}
+          className="rounded-lg bg-[#fff9ef] px-2 py-1 text-[11px] font-semibold text-[#684324]"
+        >
+          {phone.phone}
+
+          {phone.is_primary ? " ★" : ""}
+        </span>
+      ))
+    ) : (
+      <span>
+        Chưa có số điện thoại
+      </span>
+    )}
+  </div>
+</div>
                                   </div>
 
                                   {(member.properties ?? []).length >
@@ -1083,7 +1022,7 @@ async function deleteAvatar() {
                                     </div>
                                   ) : null}
                                 </>
-                              )}
+                              
                             </article>
                           );
                         })}
@@ -1098,7 +1037,7 @@ async function deleteAvatar() {
       ) : null}
 
       {avatarMenuOpen ? (
-  <div className="fixed inset-0 z-[140]">
+  <div className="fixed inset-0 z-[400]">
     <button
       type="button"
       aria-label="Đóng menu ảnh đại diện"
@@ -1191,7 +1130,7 @@ async function deleteAvatar() {
 
 {avatarViewerOpen &&
 data?.current_user?.avatar_url ? (
-  <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/85 px-4 py-6">
+  <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 px-4 py-6">
     <button
       type="button"
       aria-label="Đóng ảnh đại diện"
@@ -1226,7 +1165,7 @@ data?.current_user?.avatar_url ? (
 ) : null}
 
     {avatarDeleteConfirmOpen ? (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
         <section className="w-full max-w-sm rounded-[22px] border border-[#a9825f]/25 bg-[#fff9ef] p-5 shadow-[0_30px_100px_rgba(50,28,12,0.35)]">
         <span className="grid h-12 w-12 place-items-center rounded-2xl bg-red-100 text-red-700">
             <Trash2 size={21} />
