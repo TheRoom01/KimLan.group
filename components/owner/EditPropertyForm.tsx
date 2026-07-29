@@ -26,7 +26,7 @@ type EditableProperty = {
 };
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-600 focus:ring-2 focus:ring-gray-200";
+  "w-full rounded-xl border border-[#aa825d]/35 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#744722] focus:ring-2 focus:ring-[#aa825d]/20";
 
 export default function EditPropertyForm({
   property,
@@ -122,15 +122,12 @@ export default function EditPropertyForm({
 
     try {
       const payload = {
-          code: property.code,
-          name: form.get("name"),
+          code: form.get("code"),
           house_number: form.get("house_number"),
           address: form.get("address"),
           ward: form.get("ward"),
           district: form.get("district"),
           city: form.get("city"),
-          latitude: form.get("latitude"),
-          longitude: form.get("longitude"),
           cover_image: gallery[0] ?? null,
           gallery_images: gallery,
           google_maps_url: form.get("google_maps_url"),
@@ -185,22 +182,13 @@ export default function EditPropertyForm({
       </div>
 
       <div className={`${activeTab === "info" ? "grid" : "hidden"} gap-5 md:grid-cols-2`}>
-        <Field label="Tên tòa nhà" htmlFor="name">
-          <input
-            id="name"
-            name="name"
-            className={INPUT_CLASS}
-            maxLength={200}
-            defaultValue={property.name ?? ""}
-          />
-        </Field>
-
-        <Field label="Mã tòa nhà" htmlFor="code" hint="Mã hệ thống không được sửa tại Owner Portal">
+        <Field label="Mã tòa nhà" htmlFor="code" hint="Có thể dùng mã nội bộ để tìm và quản lý tòa nhà.">
           <input
             id="code"
-            className={`${INPUT_CLASS} bg-gray-100 text-gray-500`}
-            value={property.code ?? ""}
-            readOnly
+            name="code"
+            className={INPUT_CLASS}
+            maxLength={50}
+            defaultValue={property.code ?? ""}
           />
         </Field>
 
@@ -269,39 +257,12 @@ export default function EditPropertyForm({
             defaultValue={property.google_maps_url ?? ""}
           />
         </Field>
-        <Field label="Loại phòng mặc định" htmlFor="room_type"><input id="room_type" name="room_type" className={INPUT_CLASS} defaultValue={defaults.room_type ?? ""} /></Field>
-        <Field label="Giá phòng mặc định" htmlFor="price"><input id="price" name="price" type="number" className={INPUT_CLASS} defaultValue={defaults.price ?? ""} /></Field>
         <Field label="Trạng thái mặc định" htmlFor="room_status"><select id="room_status" name="room_status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
         <Field label="Số điện thoại Zalo" htmlFor="zalo_phone"><textarea id="zalo_phone" name="zalo_phone" className={INPUT_CLASS} defaultValue={defaults.zalo_phone ?? ""} /></Field>
         <Field label="Link Zalo" htmlFor="link_zalo"><input id="link_zalo" name="link_zalo" className={INPUT_CLASS} defaultValue={defaults.link_zalo ?? ""} /></Field>
         <Field label="Mô tả mặc định" htmlFor="description"><textarea id="description" name="description" className={INPUT_CLASS} defaultValue={defaults.description ?? ""} /></Field>
         <Field label="Chính sách mặc định" htmlFor="chinh_sach"><textarea id="chinh_sach" name="chinh_sach" className={INPUT_CLASS} defaultValue={defaults.chinh_sach ?? ""} /></Field>
 
-        <Field label="Vĩ độ" htmlFor="latitude">
-          <input
-            id="latitude"
-            name="latitude"
-            type="number"
-            step="any"
-            min={-90}
-            max={90}
-            className={INPUT_CLASS}
-            defaultValue={property.latitude ?? ""}
-          />
-        </Field>
-
-        <Field label="Kinh độ" htmlFor="longitude">
-          <input
-            id="longitude"
-            name="longitude"
-            type="number"
-            step="any"
-            min={-180}
-            max={180}
-            className={INPUT_CLASS}
-            defaultValue={property.longitude ?? ""}
-          />
-        </Field>
       </div>
 
       <div className={activeTab === "amenities" ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" : "hidden"}>
@@ -310,7 +271,7 @@ export default function EditPropertyForm({
       </div>
 
       <div className={activeTab === "fees" ? "grid gap-4 sm:grid-cols-2" : "hidden"}>
-        {FEES.map(([name, label]) => <div key={name} className="grid grid-cols-[1fr_120px] gap-2"><Field label={label} htmlFor={`${name}_value`}><input id={`${name}_value`} name={`${name}_value`} type="number" className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_value`] ?? ""} /></Field><Field label="Đơn vị" htmlFor={`${name}_unit`}><input id={`${name}_unit`} name={`${name}_unit`} className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_unit`] ?? ""} /></Field></div>)}
+        {FEES.map(([name, label, defaultUnit]) => <div key={name} className="grid grid-cols-[minmax(0,1fr)_minmax(110px,140px)] gap-2"><Field label={label} htmlFor={`${name}_value`}><input id={`${name}_value`} name={`${name}_value`} type="number" className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_value`] ?? ""} /></Field><Field label="Đơn vị" htmlFor={`${name}_unit`}><input id={`${name}_unit`} name={`${name}_unit`} className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_unit`] || defaultUnit} /></Field></div>)}
         <Field label="Phí khác" htmlFor="other_fee_value"><input id="other_fee_value" name="other_fee_value" type="number" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_fee_value ?? ""} /></Field>
         <Field label="Ghi chú phí khác" htmlFor="other_fee_note"><input id="other_fee_note" name="other_fee_note" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_fee_note ?? ""} /></Field>
       </div>
@@ -386,7 +347,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 rounded-xl border border-[#aa825d]/25 bg-[#fff9ef] p-3">
       <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-800">
         {label}
         {required ? <span className="text-red-600"> *</span> : null}
@@ -407,7 +368,12 @@ const AMENITIES = [
   ["no_pet", "Không thú cưng"], ["short_term", "Thuê ngắn hạn"], ["long_term", "Thuê dài hạn"],
 ] as const;
 
-const FEES = [["electric_fee", "Tiền điện"], ["water_fee", "Tiền nước"], ["service_fee", "Phí dịch vụ"], ["parking_fee", "Phí gửi xe"]] as const;
+const FEES = [
+  ["electric_fee", "Tiền điện", "kWh"],
+  ["water_fee", "Tiền nước", "người/tháng"],
+  ["service_fee", "Phí dịch vụ", "phòng/tháng"],
+  ["parking_fee", "Phí gửi xe", "chiếc/tháng"],
+] as const;
 
 function buildDefaultRoomData(form: FormData) {
   const roomDetails: Record<string, unknown> = {};
@@ -420,8 +386,6 @@ function buildDefaultRoomData(form: FormData) {
   roomDetails.other_fee_note = form.get("other_fee_note") || null;
   roomDetails.other_amenities = form.get("other_amenities") || null;
   return {
-    room_type: form.get("room_type") || null,
-    price: form.get("price") || null,
     status: form.get("room_status") || "Đang trống",
     description: form.get("description") || null,
     chinh_sach: form.get("chinh_sach") || null,

@@ -93,14 +93,12 @@ export async function PATCH(
     const { data, error } = await supabase
       .from("properties")
       .update({
-        name: input.name,
+        code: input.code,
         house_number: input.house_number,
         address: input.address,
         ward: input.ward,
         district: input.district,
         city: input.city,
-        latitude: input.latitude,
-        longitude: input.longitude,
         cover_image: input.cover_image,
         gallery_images: input.gallery_images,
         google_maps_url: input.google_maps_url,
