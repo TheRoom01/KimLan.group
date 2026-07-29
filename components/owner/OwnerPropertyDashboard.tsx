@@ -225,9 +225,6 @@ export default function OwnerPropertyDashboard({
                         {item.name}
                       </p>
 
-                      <p className="mt-1 line-clamp-2 min-h-7 break-words text-[10px] leading-3.5 text-[#8b6d54]">
-                        {item.fullAddress || "Chưa có địa chỉ"}
-                      </p>
                     </div>
                   </Link>
                 );
@@ -318,9 +315,6 @@ export default function OwnerPropertyDashboard({
                               {item.name}
                             </span>
 
-                            <span className="mt-1 line-clamp-1 block text-xs font-normal text-[#8a6b50]">
-                              {item.fullAddress || "Chưa có địa chỉ"}
-                            </span>
                           </Link>
                         </td>
 
@@ -379,10 +373,6 @@ export default function OwnerPropertyDashboard({
                     <div className="min-w-0">
                       <p className="break-words font-bold text-[#4d3422]">
                         {item.name}
-                      </p>
-
-                      <p className="mt-1 break-words text-xs leading-5 text-[#80634a]">
-                        {item.fullAddress || "Chưa có địa chỉ"}
                       </p>
 
                       <p className="mt-2 text-xs text-[#80634a]">
