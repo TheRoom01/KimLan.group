@@ -7,6 +7,23 @@ create table if not exists public.room_revenue_cycles (
  created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(property_id,month,year)
 );
 
+create table if not exists public.room_monthly_revenues (
+ id uuid primary key default gen_random_uuid(), cycle_id uuid references public.room_revenue_cycles(id),
+ property_id uuid not null references public.properties(id), room_id uuid not null references public.rooms(id),
+ contract_id uuid not null references public.rental_contracts(id), revenue_month date, room_code text, tenant_name text,
+ deposit_amount numeric not null default 0, rent_amount numeric not null default 0,
+ electricity_start numeric not null default 0, electricity_end numeric not null default 0,
+ electricity_unit_price numeric not null default 0,
+ electricity_amount numeric generated always as ((electricity_end-electricity_start)*electricity_unit_price) stored,
+ parking_fee numeric not null default 0, service_fee numeric not null default 0,
+ water_fee numeric not null default 0, other_fee numeric not null default 0,
+ total_amount numeric generated always as (rent_amount+((electricity_end-electricity_start)*electricity_unit_price)+parking_fee+service_fee+water_fee+other_fee) stored,
+ status text default 'draft', payment_status text not null default 'pending', paid_amount numeric not null default 0,
+ paid_at timestamptz, payment_method text, note text, created_by uuid references auth.users(id),
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+ constraint room_monthly_revenues_contract_cycle_key unique(contract_id,cycle_id)
+);
+
 alter table public.room_monthly_revenues
  drop constraint if exists room_monthly_revenues_contract_month_key,
  alter column revenue_month drop not null,
@@ -21,8 +38,11 @@ alter table public.room_monthly_revenues drop column if exists total_revenue;
 alter table public.room_monthly_revenues add column if not exists electricity_amount numeric generated always as ((electricity_end-electricity_start)*electricity_unit_price) stored;
 alter table public.room_monthly_revenues add column if not exists total_amount numeric generated always as (rent_amount+((electricity_end-electricity_start)*electricity_unit_price)+parking_fee+service_fee+water_fee+other_fee) stored;
 alter table public.room_monthly_revenues drop constraint if exists room_monthly_revenues_status_check;
+alter table public.room_monthly_revenues drop constraint if exists room_monthly_revenues_payment_status_check;
 alter table public.room_monthly_revenues add constraint room_monthly_revenues_payment_status_check check(payment_status in('pending','partial','paid'));
+alter table public.room_monthly_revenues drop constraint if exists room_monthly_revenues_payment_method_check;
 alter table public.room_monthly_revenues add constraint room_monthly_revenues_payment_method_check check(payment_method is null or payment_method in('cash','bank_transfer','other'));
+alter table public.room_monthly_revenues drop constraint if exists room_monthly_revenues_contract_cycle_key;
 alter table public.room_monthly_revenues add constraint room_monthly_revenues_contract_cycle_key unique(contract_id,cycle_id);
 
 create table if not exists public.room_payment_transactions (
@@ -32,9 +52,16 @@ create table if not exists public.room_payment_transactions (
 );
 
 alter table public.room_revenue_cycles enable row level security;
+alter table public.room_monthly_revenues enable row level security;
 alter table public.room_payment_transactions enable row level security;
+drop policy if exists monthly_revenues_owner_all on public.room_monthly_revenues;
+create policy monthly_revenues_owner_all on public.room_monthly_revenues for all to authenticated
+ using(public.can_archive_property(property_id)) with check(public.can_archive_property(property_id) and (created_by is null or created_by=auth.uid()));
+drop policy if exists revenue_cycles_owner_all on public.room_revenue_cycles;
 create policy revenue_cycles_owner_all on public.room_revenue_cycles for all to authenticated using(public.can_archive_property(property_id)) with check(public.can_archive_property(property_id) and created_by=auth.uid());
+drop policy if exists payment_transactions_owner_select on public.room_payment_transactions;
 create policy payment_transactions_owner_select on public.room_payment_transactions for select to authenticated using(exists(select 1 from public.room_monthly_revenues r where r.id=revenue_id and public.can_archive_property(r.property_id)));
+drop policy if exists payment_transactions_owner_insert on public.room_payment_transactions;
 create policy payment_transactions_owner_insert on public.room_payment_transactions for insert to authenticated with check(created_by=auth.uid() and exists(select 1 from public.room_monthly_revenues r where r.id=revenue_id and public.can_archive_property(r.property_id)));
 
 create or replace function public.record_room_payment_v1(p_revenue_id uuid,p_amount numeric,p_method text,p_paid_at timestamptz default now(),p_note text default null)
@@ -54,7 +81,7 @@ begin
  return jsonb_build_object('transaction',to_jsonb(v_tx),'paid_amount',v_paid);
 end;$function$;
 
-grant select,insert,update,delete on public.room_revenue_cycles,public.room_payment_transactions to authenticated,service_role;
+grant select,insert,update,delete on public.room_revenue_cycles,public.room_monthly_revenues,public.room_payment_transactions to authenticated,service_role;
 revoke all on function public.record_room_payment_v1(uuid,numeric,text,timestamptz,text) from public,anon;
 grant execute on function public.record_room_payment_v1(uuid,numeric,text,timestamptz,text) to authenticated,service_role;
 commit;
