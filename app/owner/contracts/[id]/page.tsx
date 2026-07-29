@@ -7,7 +7,7 @@ import {
   normalizeContractStatus,
 } from "@/lib/owner/types";
 import TenantRosterCard from "@/components/owner/TenantRosterCard";
-import ContractRevenueTable from "@/components/owner/ContractRevenueTable";
+import ContractRevenueManager from "@/components/owner/ContractRevenueManager";
 
 function formatDate(value?: string | null) {
   return value
@@ -127,7 +127,7 @@ export default async function ContractDetailPage({
         </div>
       </div>
 
-      <ContractRevenueTable contract={contract} />
+      <ContractRevenueManager contract={contract} />
     </div>
   );
 }
