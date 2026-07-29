@@ -147,7 +147,7 @@ export async function POST(request: Request) {
     const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
     const folder = isVideo ? "video" : "images";
     const key = propertyId
-      ? `properties/${propertyId}/images/${crypto.randomUUID()}.${extension}`
+      ? `properties/${propertyId}/${folder}/${crypto.randomUUID()}.${extension}`
       : tenantId
       ? `rooms/${roomId}/tenants/${tenantId}/cccd-${tenantSide}-${crypto.randomUUID()}.${extension}`
       : allowFixedThumb

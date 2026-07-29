@@ -259,6 +259,7 @@ export type CreateOwnerPropertyInput = {
   cover_image: string | null;
   gallery_images: string[];
   google_maps_url: string | null;
+  default_room_data: JsonObject;
   note: string | null;
 };
 
@@ -293,6 +294,10 @@ export function parseCreateOwnerPropertyInput(
     cover_image: parseOptionalString(body.cover_image, "Ảnh đại diện", 2000),
     gallery_images: galleryImages,
     google_maps_url: parseOptionalString(body.google_maps_url, "Link Google Maps", 2000),
+    default_room_data:
+      body.default_room_data && typeof body.default_room_data === "object" && !Array.isArray(body.default_room_data)
+        ? (body.default_room_data as JsonObject)
+        : {},
     note: parseOptionalString(body.note, "Ghi chú", 5000),
   };
 }
@@ -378,6 +383,7 @@ function parseRoomDetails(value: unknown): JsonObject | null {
 }
 
 export type CreateOwnerRoomInput = {
+  status: RoomStatus;
 
   room_code: string;
 
@@ -405,6 +411,7 @@ export function parseCreateOwnerRoomInput(
 ): CreateOwnerRoomInput {
 
   return {
+    status: isRoomStatus(String(body.status ?? "")) ? (String(body.status) as RoomStatus) : "Đang trống",
 
     room_code:
       parseRequiredString(

@@ -104,15 +104,21 @@ export async function PATCH(
         cover_image: input.cover_image,
         gallery_images: input.gallery_images,
         google_maps_url: input.google_maps_url,
+        default_room_data: input.default_room_data,
         note: input.note,
       })
       .eq("id", propertyId)
       .select(
-        "id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, note, approval_status, lifecycle_status, updated_at",
+        "id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, default_room_data, note, approval_status, lifecycle_status, updated_at",
       )
       .single();
 
     if (error) return mapDatabaseError(error);
+    const { error: mediaError } = await supabase.rpc("sync_owner_property_media_v1", {
+      p_property_id: propertyId,
+      p_media: input.gallery_images,
+    });
+    if (mediaError) return mapDatabaseError(mediaError);
     return apiSuccess(data);
   } catch (error) {
     return mapUnknownError(error);

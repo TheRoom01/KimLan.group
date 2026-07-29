@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import CreateRoomForm from "@/components/owner/CreateRoomForm";
 import { getPropertyDetail } from "@/lib/owner/getPropertyDetail";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,6 +33,8 @@ export default async function CreateRoomPage({
 
   const detail = await getPropertyDetail(propertyId);
   const property = detail.property;
+  const supabase = await createSupabaseServerClient();
+  const { data: propertyDefaults } = await supabase.from("properties").select("default_room_data").eq("id", propertyId).single();
 
   if (!property) {
     return (
@@ -62,6 +65,7 @@ export default async function CreateRoomPage({
       <CreateRoomForm
         propertyId={propertyId}
         propertyName={property.name ?? property.full_address}
+        defaults={(propertyDefaults?.default_room_data as Record<string, any>) ?? {}}
       />
     </div>
   );

@@ -43,10 +43,13 @@ const MAX_FILES = 20;
 export default function CreateRoomForm({
   propertyId,
   propertyName,
+  defaults = {},
 }: {
   propertyId: string;
   propertyName?: string | null;
+  defaults?: Record<string, any>;
 }) {
+  const detailDefaults = defaults.room_details ?? {};
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -143,6 +146,7 @@ export default function CreateRoomForm({
 
     const payload = {
       room_code: form.get("room_code"),
+      status: defaults.status ?? "Đang trống",
       room_type: form.get("room_type"),
       price: form.get("price"),
       description: form.get("description"),
@@ -281,6 +285,7 @@ export default function CreateRoomForm({
               className={INPUT_CLASS}
               maxLength={120}
               placeholder="Studio, 1PN, phòng gác..."
+              defaultValue={defaults.room_type ?? ""}
             />
           </Field>
 
@@ -293,6 +298,7 @@ export default function CreateRoomForm({
               step={1}
               className={INPUT_CLASS}
               placeholder="4500000"
+              defaultValue={defaults.price ?? ""}
             />
           </Field>
 
@@ -302,6 +308,7 @@ export default function CreateRoomForm({
               name="zalo_phone"
               className={INPUT_CLASS}
               maxLength={30}
+              defaultValue={defaults.zalo_phone ?? ""}
             />
           </Field>
 
@@ -314,6 +321,7 @@ export default function CreateRoomForm({
                 className={INPUT_CLASS}
                 maxLength={2000}
                 placeholder="https://zalo.me/..."
+                defaultValue={defaults.link_zalo ?? ""}
               />
             </Field>
           </div>
@@ -325,6 +333,7 @@ export default function CreateRoomForm({
                 name="description"
                 className={`${INPUT_CLASS} min-h-28 resize-y`}
                 maxLength={5000}
+                defaultValue={defaults.description ?? ""}
               />
             </Field>
           </div>
@@ -336,6 +345,7 @@ export default function CreateRoomForm({
                 name="chinh_sach"
                 className={`${INPUT_CLASS} min-h-24 resize-y`}
                 maxLength={5000}
+                defaultValue={defaults.chinh_sach ?? ""}
               />
             </Field>
           </div>
@@ -349,60 +359,70 @@ export default function CreateRoomForm({
             valueName="electric_fee_value"
             unitName="electric_fee_unit"
             defaultUnit="đ/kWh"
+            defaultValue={detailDefaults.electric_fee_value}
+            defaultUnitValue={detailDefaults.electric_fee_unit}
           />
           <FeeField
             label="Tiền nước"
             valueName="water_fee_value"
             unitName="water_fee_unit"
             defaultUnit="đ/người/tháng"
+            defaultValue={detailDefaults.water_fee_value}
+            defaultUnitValue={detailDefaults.water_fee_unit}
           />
           <FeeField
             label="Phí dịch vụ"
             valueName="service_fee_value"
             unitName="service_fee_unit"
             defaultUnit="đ/phòng/tháng"
+            defaultValue={detailDefaults.service_fee_value}
+            defaultUnitValue={detailDefaults.service_fee_unit}
           />
           <FeeField
             label="Phí giữ xe"
             valueName="parking_fee_value"
             unitName="parking_fee_unit"
             defaultUnit="đ/xe/tháng"
+            defaultValue={detailDefaults.parking_fee_value}
+            defaultUnitValue={detailDefaults.parking_fee_unit}
           />
           <FeeField
             label="Phí khác"
             valueName="other_fee_value"
             unitName="other_fee_note"
             defaultUnit="Ghi chú khoản phí"
+            defaultValue={detailDefaults.other_fee_value}
+            defaultUnitValue={detailDefaults.other_fee_note}
           />
         </div>
       </Section>
 
       <Section title="Tiện nghi và chính sách">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Checkbox name="has_elevator" label="Thang máy" />
-          <Checkbox name="has_stairs" label="Cầu thang bộ" />
-          <Checkbox name="has_parking" label="Chỗ để xe" />
-          <Checkbox name="has_basement" label="Hầm xe" />
-          <Checkbox name="fingerprint_lock" label="Khóa vân tay" />
-          <Checkbox name="shared_washer" label="Máy giặt chung" />
-          <Checkbox name="private_washer" label="Máy giặt riêng" />
-          <Checkbox name="shared_dryer" label="Máy sấy chung" />
-          <Checkbox name="private_dryer" label="Máy sấy riêng" />
-          <Checkbox name="short_term" label="Cho thuê ngắn hạn" />
-          <Checkbox name="long_term" label="Cho thuê dài hạn" defaultChecked />
+          <Checkbox name="has_elevator" label="Thang máy" defaultChecked={Boolean(detailDefaults.has_elevator)} />
+          <Checkbox name="has_stairs" label="Cầu thang bộ" defaultChecked={Boolean(detailDefaults.has_stairs)} />
+          <Checkbox name="has_parking" label="Chỗ để xe" defaultChecked={Boolean(detailDefaults.has_parking)} />
+          <Checkbox name="has_basement" label="Hầm xe" defaultChecked={Boolean(detailDefaults.has_basement)} />
+          <Checkbox name="fingerprint_lock" label="Khóa vân tay" defaultChecked={Boolean(detailDefaults.fingerprint_lock)} />
+          <Checkbox name="shared_washer" label="Máy giặt chung" defaultChecked={Boolean(detailDefaults.shared_washer)} />
+          <Checkbox name="private_washer" label="Máy giặt riêng" defaultChecked={Boolean(detailDefaults.private_washer)} />
+          <Checkbox name="shared_dryer" label="Máy sấy chung" defaultChecked={Boolean(detailDefaults.shared_dryer)} />
+          <Checkbox name="private_dryer" label="Máy sấy riêng" defaultChecked={Boolean(detailDefaults.private_dryer)} />
+          <Checkbox name="short_term" label="Cho thuê ngắn hạn" defaultChecked={Boolean(detailDefaults.short_term)} />
+          <Checkbox name="long_term" label="Cho thuê dài hạn" defaultChecked={detailDefaults.long_term !== false} />
         </div>
 
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           <Field label="Chính sách thú cưng" htmlFor="pet_policy">
-            <select id="pet_policy" name="pet_policy" className={INPUT_CLASS}>
+            <select id="pet_policy" name="pet_policy" className={INPUT_CLASS} defaultValue={detailDefaults.allow_pet ? "allowed" : "no_pet"}>
               <option value="no_pet">Không nhận thú cưng</option>
               <option value="allowed">Cho phép thú cưng</option>
             </select>
           </Field>
 
           <div className="flex items-end gap-4 pb-2">
-            <Checkbox name="allow_cat" label="Cho phép mèo" />
-            <Checkbox name="allow_dog" label="Cho phép chó" />
+            <Checkbox name="allow_cat" label="Cho phép mèo" defaultChecked={Boolean(detailDefaults.allow_cat)} />
+            <Checkbox name="allow_dog" label="Cho phép chó" defaultChecked={Boolean(detailDefaults.allow_dog)} />
           </div>
 
           <div className="md:col-span-2">
@@ -413,6 +433,7 @@ export default function CreateRoomForm({
                 className={`${INPUT_CLASS} min-h-20 resize-y`}
                 maxLength={2000}
                 placeholder="Ban công, cửa sổ, máy lạnh..."
+                defaultValue={detailDefaults.other_amenities ?? ""}
               />
             </Field>
           </div>
@@ -603,11 +624,15 @@ function FeeField({
   valueName,
   unitName,
   defaultUnit,
+  defaultValue,
+  defaultUnitValue,
 }: {
   label: string;
   valueName: string;
   unitName: string;
   defaultUnit: string;
+  defaultValue?: unknown;
+  defaultUnitValue?: unknown;
 }) {
   return (
     <div className="space-y-1.5">
@@ -623,12 +648,14 @@ function FeeField({
           step="any"
           className={INPUT_CLASS}
           placeholder="Số tiền"
+          defaultValue={String(defaultValue ?? "")}
         />
         <input
           name={unitName}
           className={INPUT_CLASS}
           maxLength={2000}
           placeholder={defaultUnit}
+          defaultValue={String(defaultUnitValue ?? "")}
         />
       </div>
     </div>
