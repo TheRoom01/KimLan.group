@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { CalendarDays, CreditCard, Phone, UserRound } from "lucide-react";
+import { CalendarDays, Phone, UserRound } from "lucide-react";
 import { getTenantDetail } from "@/lib/owner/getTenantDetail";
+import TenantProfileEditor from "@/components/owner/TenantProfileEditor";
 
 type TenantContractHistory = {
   id: string;
@@ -8,7 +9,7 @@ type TenantContractHistory = {
   end_date?: string | null;
   deposit_amount?: number | null;
   status?: string | null;
-  room?: { room_code?: string | null } | null;
+  room?: { id?: string | null; room_code?: string | null } | null;
   property?: { name?: string | null } | null;
 };
 
@@ -60,18 +61,7 @@ export default async function TenantDetailPage({
           <UserRound size={20} className="text-[#744722]" />
           <h2 className="text-lg font-bold text-[#4f321e]">Thông tin cá nhân</h2>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Info label="Họ tên" value={tenant.full_name} />
-          <Info label="Số điện thoại" value={tenant.phone || "-"} />
-          <Info label="Số CCCD" value={tenant.cccd || "-"} />
-          <Info label="Ngày sinh" value={tenant.date_of_birth || "-"} />
-          <Info label="Địa chỉ" value={tenant.address || "-"} />
-        </div>
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <IdentityImage label="CCCD mặt trước" url={tenant.cccd_front_url} />
-          <IdentityImage label="CCCD mặt sau" url={tenant.cccd_back_url} />
-        </div>
+        <TenantProfileEditor tenant={tenant} roomId={room?.id} />
       </section>
 
       <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
@@ -146,26 +136,6 @@ export default async function TenantDetailPage({
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-function IdentityImage({ label, url }: { label: string; url?: string | null }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7]">
-      <div className="flex items-center gap-2 border-b border-[#aa825d]/20 px-4 py-3">
-        <CreditCard size={16} className="text-[#744722]" />
-        <span className="text-sm font-bold text-[#5a3b25]">{label}</span>
-      </div>
-      {url ? (
-        <a href={url} target="_blank" rel="noreferrer">
-          <img src={url} alt={label} className="h-52 w-full object-contain p-3" />
-        </a>
-      ) : (
-        <div className="grid h-40 place-items-center text-sm text-[#80634a]">
-          Chưa có ảnh
-        </div>
-      )}
     </div>
   );
 }

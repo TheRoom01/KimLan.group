@@ -222,14 +222,14 @@ export default function RoomMediaGallery({
                 src={item.url}
                 controls
                 preload="metadata"
-                className="h-48 w-full bg-[#2b1a10] object-contain"
+                className="h-36 w-full bg-[#2b1a10] object-contain sm:h-48"
               />
             ) : (
               <img
                 src={item.url}
                 alt={`Ảnh phòng ${index + 1}`}
                 loading="lazy"
-                className="h-48 w-full object-cover"
+                className="h-36 w-full object-cover sm:h-48"
               />
             )}
 

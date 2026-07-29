@@ -6,7 +6,6 @@ import { ChangeEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
 import type { OwnerTenantReference } from "@/lib/owner/types";
-import TenantIdentityModal from "@/components/owner/TenantIdentityModal";
 
 const MAX_IDENTITY_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -29,8 +28,6 @@ export default function TenantRosterCard({
   isArchived: boolean;
 }) {
   const router = useRouter();
-  const [selectedTenant, setSelectedTenant] =
-    useState<OwnerTenantReference | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [savingOccupant, setSavingOccupant] = useState(false);
   const [occupantError, setOccupantError] = useState<string | null>(null);
@@ -320,10 +317,9 @@ export default function TenantRosterCard({
                 tenant.role === "Chủ hợp đồng";
 
               return (
-                <button
+                <Link
                   key={tenant.id}
-                  type="button"
-                  onClick={() => setSelectedTenant(tenant)}
+                  href={`/owner/tenants/${tenant.id}`}
                   className="flex w-full min-w-0 items-center justify-between gap-3 p-4 text-left transition hover:bg-[#f2dfc4]"
                 >
                   <span className="flex min-w-0 items-center gap-3">
@@ -352,19 +348,13 @@ export default function TenantRosterCard({
                     </span>
                   </span>
                   <ArrowRight size={16} className="shrink-0 text-[#9b7655]" />
-                </button>
+                </Link>
               );
             })}
           </div>
         )}
       </section>
 
-      {selectedTenant ? (
-        <TenantIdentityModal
-          tenant={selectedTenant}
-          onClose={() => setSelectedTenant(null)}
-        />
-      ) : null}
     </>
   );
 }

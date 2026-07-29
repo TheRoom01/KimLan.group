@@ -31,11 +31,25 @@ export default async function PropertyDetailPage({
       data: { user },
     },
     { data: canManageResult },
+    { data: accountPanel },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase.rpc("can_manage_property", { p_property_id: property.id }),
+    supabase.rpc("get_owner_account_panel_v1"),
   ]);
-  const members = (data.members ?? []) as PropertyMemberItem[];
+  const accountMembers = (Array.isArray(accountPanel?.members) ? accountPanel.members : []) as Array<{
+    user_id?: string;
+    display_name?: string | null;
+    contact_email?: string | null;
+  }>;
+  const memberNames = new Map<string | undefined, (typeof accountMembers)[number]>(
+    accountMembers.map((member) => [member.user_id, member]),
+  );
+  const members = ((data.members ?? []) as PropertyMemberItem[]).map((member) => ({
+    ...member,
+    display_name: memberNames.get(member.user_id)?.display_name ?? null,
+    email: memberNames.get(member.user_id)?.contact_email ?? null,
+  }));
   const currentMembership = members.find(
     (member) => member.user_id === user?.id && member.status === "active",
   );

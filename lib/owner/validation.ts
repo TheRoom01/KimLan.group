@@ -257,12 +257,21 @@ export type CreateOwnerPropertyInput = {
   latitude: number | null;
   longitude: number | null;
   cover_image: string | null;
+  gallery_images: string[];
+  google_maps_url: string | null;
   note: string | null;
 };
 
 export function parseCreateOwnerPropertyInput(
   body: JsonObject,
 ): CreateOwnerPropertyInput {
+  const galleryImages = Array.isArray(body.gallery_images)
+    ? body.gallery_images
+        .map((value) => parseOptionalString(value, "Ảnh tòa nhà", 2000))
+        .filter((value): value is string => Boolean(value))
+        .slice(0, 20)
+    : [];
+
   return {
     code: parseOptionalString(body.code, "Mã tòa nhà", 50),
     name: parseOptionalString(body.name, "Tên tòa nhà", 200),
@@ -282,6 +291,8 @@ export function parseCreateOwnerPropertyInput(
       max: 180,
     }),
     cover_image: parseOptionalString(body.cover_image, "Ảnh đại diện", 2000),
+    gallery_images: galleryImages,
+    google_maps_url: parseOptionalString(body.google_maps_url, "Link Google Maps", 2000),
     note: parseOptionalString(body.note, "Ghi chú", 5000),
   };
 }

@@ -10,6 +10,8 @@ export type PropertyMemberItem = {
   user_id?: string;
   role?: string;
   status?: string;
+  display_name?: string | null;
+  email?: string | null;
 };
 
 type MemberMutationResult = {
@@ -43,7 +45,7 @@ export default function PropertyMembersPanel({
 
   function memberLabel(member: PropertyMemberItem) {
     if (member.user_id === currentUserId) return "Tài khoản của bạn";
-    return member.user_id || "Thành viên";
+    return member.display_name || member.email || "Thành viên";
   }
 
   async function updateRole(member: PropertyMemberItem) {
@@ -225,7 +227,7 @@ export default function PropertyMembersPanel({
               <div key={memberKey} className="p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
-                    <p className="break-all font-medium">{memberLabel(member)}</p>
+                    <p className="truncate font-medium">{memberLabel(member)}</p>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
                       <RoleBadge role={member.role} />
                       <StatusBadge status={member.status} />

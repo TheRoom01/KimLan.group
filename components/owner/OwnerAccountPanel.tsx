@@ -7,6 +7,7 @@ import {
   Eye,
   ImageIcon,
   Loader2,
+  LogOut,
   Mail,
   Phone,
   Save,
@@ -27,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 import { readApiResponse } from "@/lib/api/client";
 
@@ -460,6 +462,12 @@ async function deleteAvatar() {
     setAvatarSaving(false);
   }
 }
+
+  async function logout() {
+    await fetch("/api/device/logout", { method: "POST" }).catch(() => null);
+    await supabaseBrowser().auth.signOut();
+    window.location.assign("/owner");
+  }
 
   return (
     <>
@@ -1031,6 +1039,12 @@ className="text-sm font-semibold text-[#744722]"
                   </section>
                 </div>
               ) : null}
+            </div>
+            <div className="shrink-0 border-t border-[#aa825d]/20 bg-[#fff9ef] p-4">
+              <button type="button" onClick={() => void logout()}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 text-sm font-bold text-red-700 transition hover:bg-red-100">
+                <LogOut size={17} /> Đăng xuất
+              </button>
             </div>
           </aside>
         </>

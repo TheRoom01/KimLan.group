@@ -86,6 +86,12 @@ export default async function RoomDetailPage({
         </div>
       ) : null}
 
+      <RoomMediaGallery
+        media={room.media}
+        roomId={room.id}
+        canManage={canManage === true && !isArchived}
+      />
+
       <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
         <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Thông tin phòng</h2>
 
@@ -93,8 +99,6 @@ export default async function RoomDetailPage({
           <InfoItem label="Giá" value={formatMoney(room.price)} />
           <div>
             <p className="text-sm text-gray-500">Trạng thái vận hành</p>
-            <p className="font-semibold">{room.displayStatus}</p>
-
             {canManage === true && !isArchived ? (
               <div className="mt-3">
                 <RoomStatusControl
@@ -102,7 +106,9 @@ export default async function RoomDetailPage({
                   currentStatus={room.status}
                 />
               </div>
-            ) : null}
+            ) : (
+              <p className="mt-1 font-semibold text-[#4d3422]">{room.displayStatus}</p>
+            )}
 
             {room.displayStatus === "Sắp trống" &&
             room.daysRemaining !== null ? (
@@ -124,12 +130,6 @@ export default async function RoomDetailPage({
           </div>
         ) : null}
       </div>
-
-      <RoomMediaGallery
-        media={room.media}
-        roomId={room.id}
-        canManage={canManage === true && !isArchived}
-      />
 
       <RoomDetailsSummary details={room.details} policy={room.chinh_sach} />
 

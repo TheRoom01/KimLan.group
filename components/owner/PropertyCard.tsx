@@ -96,11 +96,8 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
       <div className="space-y-4 p-4 sm:p-5">
         <div className="min-w-0">
           <h2 className="line-clamp-2 text-lg font-bold text-[#432918]">
-            {displayName}
+            {fullAddress || displayName}
           </h2>
-          <p className="mt-1 line-clamp-2 text-sm leading-5 text-[#80634a]">
-            {fullAddress || "Chưa có địa chỉ"}
-          </p>
         </div>
 
         <div>

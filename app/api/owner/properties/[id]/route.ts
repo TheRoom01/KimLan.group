@@ -102,11 +102,13 @@ export async function PATCH(
         latitude: input.latitude,
         longitude: input.longitude,
         cover_image: input.cover_image,
+        gallery_images: input.gallery_images,
+        google_maps_url: input.google_maps_url,
         note: input.note,
       })
       .eq("id", propertyId)
       .select(
-        "id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, note, approval_status, lifecycle_status, updated_at",
+        "id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, note, approval_status, lifecycle_status, updated_at",
       )
       .single();
 

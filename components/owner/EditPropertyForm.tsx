@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useState } from "react";
+import { GripVertical, ImagePlus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { readApiResponse } from "@/lib/api/client";
@@ -17,6 +18,8 @@ type EditableProperty = {
   latitude?: number | null;
   longitude?: number | null;
   cover_image?: string | null;
+  gallery_images?: string[] | null;
+  google_maps_url?: string | null;
   note?: string | null;
   approval_status?: string | null;
 };
@@ -32,6 +35,57 @@ export default function EditPropertyForm({
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gallery, setGallery] = useState<string[]>(
+    property.gallery_images?.length
+      ? property.gallery_images
+      : property.cover_image
+        ? [property.cover_image]
+        : [],
+  );
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  async function uploadImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const uploaded: string[] = [];
+      for (const file of files) {
+        if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+          throw new Error("Mỗi ảnh phải là file hình ảnh không quá 10 MB.");
+        }
+        const presign = await readApiResponse<{ uploadUrl: string; publicUrl: string; requiredHeaders?: Record<string, string> }>(
+          await fetch("/api/upload/r2-presign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ property_id: property.id, file_name: file.name, content_type: file.type, size: file.size }),
+          }),
+        );
+        const response = await fetch(presign.uploadUrl, { method: "PUT", headers: presign.requiredHeaders, body: file });
+        if (!response.ok) throw new Error(`Upload ${file.name} thất bại.`);
+        uploaded.push(presign.publicUrl);
+      }
+      setGallery((current) => [...current, ...uploaded].slice(0, 20));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Không thể upload ảnh tòa nhà");
+    } finally {
+      setSubmitting(false);
+      event.target.value = "";
+    }
+  }
+
+  function dropImage(event: DragEvent, targetIndex: number) {
+    event.preventDefault();
+    if (draggedIndex === null || draggedIndex === targetIndex) return;
+    setGallery((current) => {
+      const next = [...current];
+      const [moved] = next.splice(draggedIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+    setDraggedIndex(null);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,7 +110,9 @@ export default function EditPropertyForm({
           city: form.get("city"),
           latitude: form.get("latitude"),
           longitude: form.get("longitude"),
-          cover_image: form.get("cover_image"),
+          cover_image: gallery[0] ?? null,
+          gallery_images: gallery,
+          google_maps_url: form.get("google_maps_url"),
           note: form.get("note"),
         }),
       });
@@ -154,14 +210,15 @@ export default function EditPropertyForm({
           />
         </Field>
 
-        <Field label="URL ảnh đại diện" htmlFor="cover_image">
+        <Field label="Link Google Maps" htmlFor="google_maps_url">
           <input
-            id="cover_image"
-            name="cover_image"
+            id="google_maps_url"
+            name="google_maps_url"
             type="url"
             className={INPUT_CLASS}
             maxLength={2000}
-            defaultValue={property.cover_image ?? ""}
+            placeholder="https://maps.google.com/..."
+            defaultValue={property.google_maps_url ?? ""}
           />
         </Field>
 
@@ -191,6 +248,22 @@ export default function EditPropertyForm({
           />
         </Field>
       </div>
+
+      <section className="space-y-3 rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="font-bold text-[#4d3422]">Hình ảnh tòa nhà</h2><p className="text-xs text-[#80634a]">Ảnh đầu tiên là ảnh đại diện. Kéo thả để đổi thứ tự.</p></div>
+          <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-[#744722] px-4 text-sm font-bold text-white">
+            <ImagePlus size={17} /> Thêm ảnh
+            <input type="file" multiple accept="image/*" className="hidden" onChange={uploadImages} />
+          </label>
+        </div>
+        {gallery.length ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {gallery.map((url, index) => <article key={`${url}-${index}`} draggable onDragStart={() => setDraggedIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropImage(event, index)} className="overflow-hidden rounded-xl border bg-white">
+            <img src={url} alt={`Ảnh tòa nhà ${index + 1}`} className="h-40 w-full object-cover" />
+            <div className="flex items-center justify-between px-3 py-2"><span className="flex items-center gap-1 text-xs font-semibold"><GripVertical size={15} />{index === 0 ? "Ảnh đại diện" : `Ảnh ${index + 1}`}</span><button type="button" onClick={() => setGallery((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="text-red-700" aria-label="Xóa ảnh"><Trash2 size={16} /></button></div>
+          </article>)}
+        </div> : <div className="rounded-xl border border-dashed p-8 text-center text-sm text-[#80634a]">Chưa có ảnh tòa nhà.</div>}
+      </section>
 
       <Field label="Ghi chú" htmlFor="note">
         <textarea

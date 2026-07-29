@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
       | null;
 
     const roomId = String(body?.room_id || "").trim();
+    const propertyId = String(body?.property_id || "").trim();
     const tenantId = String(body?.tenant_id || "").trim();
     const tenantSide = String(body?.tenant_side || "").trim();
     const fixedName = String(body?.fixed_name || "").trim();
@@ -53,25 +55,28 @@ export async function POST(request: Request) {
     const size = Number(body?.size || 0);
 
     if (
-      !roomId ||
+      (!roomId && !propertyId) ||
       !fileName ||
       !contentType ||
       !Number.isFinite(size) ||
       size <= 0
     ) {
       return NextResponse.json(
-        { error: "Missing room_id/file_name/content_type/size" },
+        { error: "Missing room_id or property_id/file_name/content_type/size" },
         { status: 400 },
       );
     }
 
-    const authorization = await authorizeRoomMutation(roomId);
-
-    if (!authorization.allowed) {
-      return NextResponse.json(
-        { error: authorization.error },
-        { status: authorization.status },
-      );
+    const authorization = roomId ? await authorizeRoomMutation(roomId) : null;
+    if (authorization && !authorization.allowed) {
+      return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+    }
+    if (propertyId) {
+      const supabase = await createSupabaseServerClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
+      const { data: canManage } = await supabase.rpc("can_manage_property", { p_property_id: propertyId });
+      if (canManage !== true) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     }
 
     const isVideo = contentType.startsWith("video/");
@@ -85,6 +90,9 @@ export async function POST(request: Request) {
     }
 
     if (tenantId) {
+      if (!authorization || !authorization.allowed) {
+        return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+      }
       if (!isImage || (tenantSide !== "front" && tenantSide !== "back")) {
         return NextResponse.json(
           { error: "Ảnh CCCD phải là image/* và có mặt front hoặc back" },
@@ -138,7 +146,9 @@ export async function POST(request: Request) {
 
     const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
     const folder = isVideo ? "video" : "images";
-    const key = tenantId
+    const key = propertyId
+      ? `properties/${propertyId}/images/${crypto.randomUUID()}.${extension}`
+      : tenantId
       ? `rooms/${roomId}/tenants/${tenantId}/cccd-${tenantSide}-${crypto.randomUUID()}.${extension}`
       : allowFixedThumb
       ? `rooms/${roomId}/${folder}/thumb.webp`

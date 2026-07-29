@@ -54,14 +54,14 @@ export default function RoomStatusControl({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
           value={status}
           onChange={(event) =>
             setStatus(event.target.value as RoomStatus)
           }
           disabled={loading}
-          className="rounded-lg border px-3 py-2"
+          className="h-10 min-w-0 rounded-xl border border-[#aa825d]/30 bg-white px-3 text-sm font-semibold text-[#4d3422]"
         >
           {ROOM_STATUSES.map((item) => (
             <option key={item} value={item}>
@@ -74,7 +74,7 @@ export default function RoomStatusControl({
           type="button"
           onClick={updateStatus}
           disabled={loading || status === initialStatus}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
+          className="h-10 rounded-xl bg-[#744722] px-3 text-sm font-bold text-white disabled:opacity-50"
         >
           {loading ? "Lưu..." : "Đổi trạng thái"}
         </button>

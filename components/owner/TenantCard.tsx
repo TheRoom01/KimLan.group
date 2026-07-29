@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ImageIcon, Phone, UserRound } from "lucide-react";
+import { ArrowRight, ImageIcon, Phone, Trash2, UserRound } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import TenantIdentityModal from "@/components/owner/TenantIdentityModal";
+import { readApiResponse } from "@/lib/api/client";
 
 export type TenantCardData = {
   tenant: {
@@ -31,6 +33,8 @@ export type TenantCardData = {
 
 export default function TenantCard({ item }: { item: TenantCardData }) {
   const [identityOpen, setIdentityOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
   const tenant = item.tenant;
   const contract = item.active_contract;
   const cover = contract?.room?.cover_image;
@@ -38,9 +42,26 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
     contract?.tenant_role === "Chủ hợp đồng" ||
     contract?.tenant_role === "representative";
 
+  async function deleteTenant() {
+    if (!window.confirm(`Xóa khách thuê ${tenant.full_name}? Thao tác này sẽ gỡ khách khỏi hợp đồng.`)) return;
+    setDeleting(true);
+    try {
+      await readApiResponse(await fetch(`/api/owner/tenants/${tenant.id}`, { method: "DELETE" }));
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Không thể xóa khách thuê");
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
-      <article className="overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)]">
+      <article className="relative overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)]">
+        <button type="button" onClick={() => void deleteTenant()} disabled={deleting}
+          aria-label={`Xóa ${tenant.full_name}`}
+          className="absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/95 text-red-700 shadow-md backdrop-blur hover:bg-red-50 disabled:opacity-50">
+          <Trash2 size={16} />
+        </button>
         <div className="flex min-w-0 flex-col sm:flex-row">
           <button
             type="button"

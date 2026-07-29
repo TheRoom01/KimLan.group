@@ -40,6 +40,7 @@ export default function PropertyInvitationsPanel({
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const loadInvitations = useCallback(async () => {
     setLoading(true);
@@ -101,6 +102,7 @@ export default function PropertyInvitationsPanel({
       }
 
       formElement.reset();
+      setInviteOpen(false);
       await loadInvitations();
       setNotice("Đã tạo lời mời manager. Sao chép link bên dưới để gửi cho người nhận.");
     } catch (submitError) {
@@ -152,18 +154,22 @@ export default function PropertyInvitationsPanel({
 
   return (
     <section className="rounded-2xl border bg-white p-6 shadow-sm">
-      <div>
-        <h2 className="text-xl font-semibold">Quản lý manager</h2>
+      <div className="flex items-start justify-between gap-3">
+        <div><h2 className="text-xl font-semibold">Quản lý manager</h2>
         <p className="mt-1 text-sm text-gray-500">
           Email không cần có tài khoản Kim Lân tại thời điểm gửi. Người nhận phải
           đăng nhập bằng đúng email hoặc số điện thoại được mời để chấp nhận.
-        </p>
+        </p></div>
+        <button type="button" onClick={() => setInviteOpen(true)} className="shrink-0 rounded-xl bg-[#744722] px-3 py-2 text-sm font-bold text-white">+ Mời thành viên</button>
       </div>
 
+      {inviteOpen ? <div className="fixed inset-0 z-[500] grid place-items-center bg-black/45 p-3 backdrop-blur-sm" onMouseDown={() => setInviteOpen(false)}>
       <form
         onSubmit={handleInvite}
-        className="mt-5 grid gap-4 rounded-xl border bg-gray-50 p-4 md:grid-cols-2"
+        onMouseDown={(event) => event.stopPropagation()}
+        className="grid max-h-[90dvh] w-full max-w-xl gap-4 overflow-y-auto rounded-2xl border bg-[#fff9ef] p-4 shadow-2xl md:grid-cols-2"
       >
+        <div className="mb-4 flex items-center justify-between md:col-span-2"><h3 className="text-lg font-bold">Tạo lời mời manager</h3><button type="button" onClick={() => setInviteOpen(false)} className="rounded-lg px-3 py-1 text-sm">Đóng</button></div>
         <Field label="Tên người được mời" htmlFor="invitee_name">
           <input
             id="invitee_name"
@@ -222,6 +228,7 @@ export default function PropertyInvitationsPanel({
           </button>
         </div>
       </form>
+      </div> : null}
 
       {error ? (
         <div
