@@ -1584,6 +1584,7 @@ const applyAutoReadCandidate = (
     return
   }
 
+  let backgroundNewSave = false
   try {
     setSaving(true)
     setErrorMsg(null)
@@ -1659,6 +1660,12 @@ const payload = {
           property_id: resolved.property_id || "",
         }))
       }
+    }
+
+    if (isNew) {
+      backgroundNewSave = true
+      onClose()
+      onNotify?.('Đang lưu phòng mới trong nền...')
     }
 
 // ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media
@@ -1809,7 +1816,7 @@ void (async () => {
 })()
 
   } catch (e: any) {
-    if (e?.message === "PROPERTY_MATCH_REQUIRED" && e?.details) {
+    if (!backgroundNewSave && e?.message === "PROPERTY_MATCH_REQUIRED" && e?.details) {
       try {
         const candidates = JSON.parse(e.details) as PropertyCandidate[]
 
@@ -1827,7 +1834,11 @@ void (async () => {
       }
     }
 
-    setErrorMsg(e?.message ?? 'Lưu thất bại')
+    if (backgroundNewSave) {
+      onNotify?.(`Lưu phòng mới thất bại: ${e?.message ?? 'Không rõ lỗi'}`)
+    } else {
+      setErrorMsg(e?.message ?? 'Lưu thất bại')
+    }
   } finally {
     setSaving((s) => (s ? false : s))
   }

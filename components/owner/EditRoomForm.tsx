@@ -563,7 +563,7 @@ function FeeField({
   unit: unknown;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 rounded-xl border border-[#aa825d]/25 bg-white p-3">
       <label htmlFor={valueName} className="block text-sm font-medium text-gray-800">
         {label}
       </label>

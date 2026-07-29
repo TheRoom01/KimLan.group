@@ -185,7 +185,7 @@ export default function EditPropertyForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-6 rounded-2xl border bg-white p-6 shadow-sm"
+      className="space-y-6 rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-6 shadow-sm"
     >
       <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1">
         {([['info', 'Thông tin'], ['amenities', 'Tiện nghi'], ['fees', 'Chi phí']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setActiveTab(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold ${activeTab === key ? 'bg-[#744722] text-white' : 'text-[#684324]'}`}>{label}</button>)}
