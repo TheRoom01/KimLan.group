@@ -55,9 +55,37 @@ export async function POST(
 
     }
 
+    const result = data as { room_id?: string; room?: { id?: string } } | null;
+    const roomId = result?.room_id ?? result?.room?.id;
+    if (roomId) {
+      const { error: locationError } = await supabase
+        .from("rooms")
+        .update(roomLocationPatch(body))
+        .eq("id", roomId)
+        .eq("property_id", propertyId);
+      if (locationError) return mapDatabaseError(locationError);
+    }
+
 
     return apiSuccess(data,201);
   } catch (error) {
     return mapUnknownError(error);
   }
+}
+
+function roomLocationPatch(body: Record<string, unknown>) {
+  const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max) || null;
+  const coordinate = (value: unknown) => {
+    if (value === null || value === undefined || String(value).trim() === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+  return {
+    house_number: text(body.house_number, 100),
+    address: text(body.address, 500),
+    ward: text(body.ward, 120),
+    district: text(body.district, 120),
+    lat: coordinate(body.lat),
+    lng: coordinate(body.lng),
+  };
 }

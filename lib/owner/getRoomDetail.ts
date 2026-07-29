@@ -48,6 +48,8 @@ export async function getRoomDetail(roomId: string) {
       house_number,
       district,
       ward,
+      lat,
+      lng,
       property_id,
       lifecycle_status,
       publish_status,

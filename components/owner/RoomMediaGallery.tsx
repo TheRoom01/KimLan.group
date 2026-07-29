@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, GripVertical, ImageIcon, Save, Trash2 } from "lucide-react";
+import { GripVertical, ImageIcon, Save, Trash2 } from "lucide-react";
 import { readApiResponse } from "@/lib/api/client";
 
 type RoomMedia = {
@@ -37,9 +37,11 @@ export default function RoomMediaGallery({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(media?.[0]?.id ?? null);
 
   useEffect(() => {
     setItems(media ?? []);
+    setActiveId(media?.[0]?.id ?? null);
     setOrderDirty(false);
   }, [media]);
 
@@ -63,13 +65,6 @@ export default function RoomMediaGallery({
     event.preventDefault();
     if (draggedId) moveItem(draggedId, targetId);
     setDraggedId(null);
-  }
-
-  function moveByIndex(index: number, direction: -1 | 1) {
-    const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= items.length) return;
-
-    moveItem(items[index].id, items[targetIndex].id);
   }
 
   async function saveOrder() {
@@ -136,6 +131,9 @@ export default function RoomMediaGallery({
                   : mediaItem.is_cover,
           })),
       );
+      if (activeId === item.id) {
+        setActiveId(items.find((candidate) => candidate.id !== item.id)?.id ?? null);
+      }
       setOrderDirty(false);
 
       if (result.warning) {
@@ -161,6 +159,8 @@ export default function RoomMediaGallery({
       </div>
     );
   }
+
+  const activeItem = items.find((item) => item.id === activeId) ?? items[0];
 
   return (
     <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
@@ -203,7 +203,15 @@ export default function RoomMediaGallery({
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#2b1a10]">
+        {activeItem.type === "video" ? (
+          <video src={activeItem.url} controls preload="metadata" className="aspect-[4/3] max-h-[360px] w-full object-contain" />
+        ) : (
+          <img src={activeItem.url} alt="Media phòng đang xem" className="aspect-[4/3] max-h-[360px] w-full object-contain" />
+        )}
+      </div>
+
+      <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-2 touch-pan-x">
         {items.map((item, index) => (
           <article
             key={item.id}
@@ -211,10 +219,11 @@ export default function RoomMediaGallery({
             onDragStart={() => canManage && setDraggedId(item.id)}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => canManage && handleDrop(event, item.id)}
-            className={`overflow-hidden rounded-2xl border bg-[#f8ead7] transition ${
+            onClick={() => setActiveId(item.id)}
+            className={`relative w-24 shrink-0 snap-start overflow-hidden rounded-xl border-2 bg-[#f8ead7] transition ${
               draggedId === item.id
                 ? "border-[#744722] opacity-60"
-                : "border-[#aa825d]/20"
+                : activeItem.id === item.id ? "border-[#744722]" : "border-transparent"
             }`}
           >
             {item.type === "video" ? (
@@ -222,18 +231,18 @@ export default function RoomMediaGallery({
                 src={item.url}
                 controls
                 preload="metadata"
-                className="h-36 w-full bg-[#2b1a10] object-contain sm:h-48"
+                className="h-20 w-full bg-[#2b1a10] object-cover"
               />
             ) : (
               <img
                 src={item.url}
                 alt={`Ảnh phòng ${index + 1}`}
                 loading="lazy"
-                className="h-36 w-full object-cover sm:h-48"
+                className="h-20 w-full object-cover"
               />
             )}
 
-            <div className="flex items-center justify-between gap-2 px-3 py-3">
+            <div className="flex items-center justify-between gap-1 px-1.5 py-1.5">
               <div className="flex min-w-0 items-center gap-2">
                 {canManage ? (
                   <span
@@ -257,27 +266,9 @@ export default function RoomMediaGallery({
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => moveByIndex(index, -1)}
-                    disabled={index === 0}
-                    className="grid h-7 w-7 place-items-center rounded-md text-[#76573e] hover:bg-[#eadbc8] disabled:opacity-30"
-                    aria-label="Đưa ảnh lên"
-                  >
-                    <ArrowUp size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveByIndex(index, 1)}
-                    disabled={index === items.length - 1}
-                    className="grid h-7 w-7 place-items-center rounded-md text-[#76573e] hover:bg-[#eadbc8] disabled:opacity-30"
-                    aria-label="Đưa ảnh xuống"
-                  >
-                    <ArrowDown size={14} />
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => void deleteMedia(item)}
                     disabled={deletingId === item.id}
-                    className="grid h-7 w-7 place-items-center rounded-md text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    className="grid h-6 w-6 place-items-center rounded-md text-red-700 hover:bg-red-50 disabled:opacity-50"
                     aria-label="Xóa media"
                   >
                     <Trash2 size={14} />

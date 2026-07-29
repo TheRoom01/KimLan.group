@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 
 import { readApiResponse } from "@/lib/api/client";
 
@@ -35,7 +36,7 @@ type UploadStatus = {
 };
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-600 focus:ring-2 focus:ring-gray-200";
+  "w-full rounded-xl border border-[#aa825d]/35 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#744722] focus:ring-2 focus:ring-[#aa825d]/20";
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_FILES = 20;
@@ -56,6 +57,7 @@ export default function CreateRoomForm({
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus | null>(null);
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"info" | "amenities" | "fees">("info");
 
   const fileSummary = useMemo(() => {
     const images = files.filter((file) => file.type.startsWith("image/")).length;
@@ -146,13 +148,19 @@ export default function CreateRoomForm({
 
     const payload = {
       room_code: form.get("room_code"),
-      status: defaults.status ?? "Đang trống",
+      status: form.get("status"),
       room_type: form.get("room_type"),
       price: form.get("price"),
       description: form.get("description"),
       chinh_sach: form.get("chinh_sach"),
       link_zalo: form.get("link_zalo"),
       zalo_phone: form.get("zalo_phone"),
+      house_number: form.get("house_number"),
+      address: form.get("address"),
+      ward: form.get("ward"),
+      district: form.get("district"),
+      lat: form.get("lat"),
+      lng: form.get("lng"),
       room_details: roomDetails,
     };
 
@@ -195,6 +203,12 @@ export default function CreateRoomForm({
       }
 
       setCreatedRoomId(roomId);
+
+      await readApiResponse(await fetch(`/api/owner/rooms/${roomId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: payload.status }),
+      }));
 
       let firstImageAssigned = false;
 
@@ -265,7 +279,8 @@ export default function CreateRoomForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Section title="Thông tin phòng">
+      <RoomTabs activeTab={activeTab} onChange={setActiveTab} />
+      <Section title="Thông tin phòng" active={activeTab === "info"}>
         <div className="grid gap-5 md:grid-cols-2">
           <Field label="Mã phòng" htmlFor="room_code" required>
             <input
@@ -301,6 +316,14 @@ export default function CreateRoomForm({
               defaultValue={defaults.price ?? ""}
             />
           </Field>
+
+          <Field label="Trạng thái vận hành" htmlFor="status"><select id="status" name="status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
+          <Field label="Số nhà" htmlFor="house_number"><input id="house_number" name="house_number" className={INPUT_CLASS} defaultValue={defaults.house_number ?? ""} /></Field>
+          <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} defaultValue={defaults.address ?? ""} /></Field>
+          <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} defaultValue={defaults.ward ?? ""} /></Field>
+          <Field label="Quận / khu vực" htmlFor="district"><input id="district" name="district" className={INPUT_CLASS} defaultValue={defaults.district ?? ""} /></Field>
+          <Field label="Vĩ độ phòng" htmlFor="lat"><input id="lat" name="lat" type="number" step="any" className={INPUT_CLASS} defaultValue={defaults.lat ?? ""} /></Field>
+          <Field label="Kinh độ phòng" htmlFor="lng"><input id="lng" name="lng" type="number" step="any" className={INPUT_CLASS} defaultValue={defaults.lng ?? ""} /></Field>
 
           <Field label="Số điện thoại Zalo" htmlFor="zalo_phone">
             <input
@@ -352,7 +375,7 @@ export default function CreateRoomForm({
         </div>
       </Section>
 
-      <Section title="Chi phí dịch vụ">
+      <Section title="Chi phí dịch vụ" active={activeTab === "fees"}>
         <div className="grid gap-5 md:grid-cols-2">
           <FeeField
             label="Tiền điện"
@@ -397,7 +420,7 @@ export default function CreateRoomForm({
         </div>
       </Section>
 
-      <Section title="Tiện nghi và chính sách">
+      <Section title="Tiện nghi và chính sách" active={activeTab === "amenities"}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Checkbox name="has_elevator" label="Thang máy" defaultChecked={Boolean(detailDefaults.has_elevator)} />
           <Checkbox name="has_stairs" label="Cầu thang bộ" defaultChecked={Boolean(detailDefaults.has_stairs)} />
@@ -440,7 +463,7 @@ export default function CreateRoomForm({
         </div>
       </Section>
 
-      <Section title="Ảnh và video">
+      <Section title="Ảnh và video" active={activeTab === "info"}>
         <Field
           label="Chọn media"
           htmlFor="media_files"
@@ -462,8 +485,9 @@ export default function CreateRoomForm({
             <p className="font-medium">Đã chọn: {fileSummary}</p>
             <ul className="mt-2 max-h-36 space-y-1 overflow-auto text-gray-600">
               {files.map((file) => (
-                <li key={`${file.name}-${file.lastModified}`}>
-                  {file.name} — {formatBytes(file.size)}
+                <li key={`${file.name}-${file.lastModified}`} className="flex items-center justify-between gap-3 rounded-lg border border-[#aa825d]/20 bg-white px-3 py-2">
+                  <span className="min-w-0 truncate">{file.name} — {formatBytes(file.size)}</span>
+                  <button type="button" onClick={() => setFiles((current) => current.filter((candidate) => candidate !== file))} className="shrink-0 text-red-700" aria-label={`Xóa ${file.name}`}><Trash2 size={16} /></button>
                 </li>
               ))}
             </ul>
@@ -582,16 +606,22 @@ async function uploadToR2(file: File, presign: PresignResult) {
 function Section({
   title,
   children,
+  active = true,
 }: {
   title: string;
   children: React.ReactNode;
+  active?: boolean;
 }) {
   return (
-    <section className="rounded-2xl border bg-white p-6 shadow-sm">
+    <section className={`${active ? "block" : "hidden"} rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4 shadow-sm sm:p-6`}>
       <h2 className="mb-5 text-lg font-semibold">{title}</h2>
       {children}
     </section>
   );
+}
+
+function RoomTabs({ activeTab, onChange }: { activeTab: "info" | "amenities" | "fees"; onChange: (tab: "info" | "amenities" | "fees") => void }) {
+  return <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1">{([['info', 'Thông tin'], ['amenities', 'Tiện nghi'], ['fees', 'Chi phí']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold ${activeTab === key ? 'bg-[#744722] text-white' : 'text-[#684324]'}`}>{label}</button>)}</div>;
 }
 
 function Field({
@@ -608,7 +638,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 rounded-xl border border-[#aa825d]/25 bg-white p-3">
       <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-800">
         {label}
         {required ? <span className="text-red-600"> *</span> : null}

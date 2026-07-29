@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/response";
 import { parseUuid, readJsonObject } from "@/lib/api/validation";
 import { parseCreateOwnerPropertyInput } from "@/lib/owner/validation";
+import { generatePropertyCode } from "@/lib/owner/propertyCode";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function getContext(rawPropertyId: string) {
@@ -93,7 +94,11 @@ export async function PATCH(
     const { data, error } = await supabase
       .from("properties")
       .update({
-        code: input.code,
+        code: generatePropertyCode({
+          houseNumber: input.house_number,
+          address: input.address,
+          district: input.district,
+        }),
         house_number: input.house_number,
         address: input.address,
         ward: input.ward,

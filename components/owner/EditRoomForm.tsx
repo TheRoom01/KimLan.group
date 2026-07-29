@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 
 import { readApiResponse } from "@/lib/api/client";
 import {
@@ -27,22 +28,30 @@ type EditableRoom = {
   link_zalo?: string | null;
   zalo_phone?: string | null;
   publish_status?: string | null;
+  status?: string | null;
+  house_number?: string | null;
+  address?: string | null;
+  ward?: string | null;
+  district?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   details?: Record<string, any> | null;
   media?: RoomMedia[];
 };
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-600 focus:ring-2 focus:ring-gray-200";
+  "w-full rounded-xl border border-[#aa825d]/35 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#744722] focus:ring-2 focus:ring-[#aa825d]/20";
 
 export default function EditRoomForm({ room }: { room: EditableRoom }) {
   const router = useRouter();
   const details = room.details ?? {};
-  const currentMedia = room.media ?? [];
+  const [currentMedia, setCurrentMedia] = useState<RoomMedia[]>(room.media ?? []);
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] =
     useState<RoomMediaUploadProgress | null>(null);
+  const [activeTab, setActiveTab] = useState<"info" | "amenities" | "fees">("info");
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files ?? []);
@@ -57,6 +66,20 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
       setErrorMessage(
         error instanceof Error ? error.message : "Danh sách media không hợp lệ",
       );
+    }
+  }
+
+  async function deleteExistingMedia(media: RoomMedia) {
+    if (!media.id || !window.confirm("Xóa ảnh/video này khỏi phòng?")) return;
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/media/${media.id}`, { method: "DELETE" }));
+      setCurrentMedia((items) => items.filter((item) => item.id !== media.id));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Không thể xóa media");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -79,6 +102,13 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
       link_zalo: form.get("link_zalo"),
       zalo_phone: form.get("zalo_phone"),
       publish_status: form.get("publish_status"),
+      status: form.get("status"),
+      house_number: form.get("house_number"),
+      address: form.get("address"),
+      ward: form.get("ward"),
+      district: form.get("district"),
+      lat: form.get("lat"),
+      lng: form.get("lng"),
       room_details: {
         electric_fee_value: form.get("electric_fee_value"),
         electric_fee_unit: form.get("electric_fee_unit"),
@@ -124,6 +154,12 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
 
       await readApiResponse<unknown>(response);
 
+      await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: payload.status }),
+      }));
+
       if (files.length > 0) {
         await uploadRoomMediaFiles({
           roomId: room.id,
@@ -150,7 +186,8 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
 
   return (
     <form onSubmit={submit} className="space-y-6">
-      <Section title="Thông tin phòng">
+      <RoomTabs activeTab={activeTab} onChange={setActiveTab} />
+      <Section title="Thông tin phòng" active={activeTab === "info"}>
         <div className="grid gap-5 md:grid-cols-2">
           <Field label="Mã phòng" htmlFor="room_code" required>
             <input
@@ -202,6 +239,14 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
               </select>
           </Field>
 
+          <Field label="Trạng thái vận hành" htmlFor="status"><select id="status" name="status" className={INPUT_CLASS} defaultValue={room.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
+          <Field label="Số nhà" htmlFor="house_number"><input id="house_number" name="house_number" className={INPUT_CLASS} defaultValue={room.house_number ?? ""} /></Field>
+          <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} defaultValue={room.address ?? ""} /></Field>
+          <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} defaultValue={room.ward ?? ""} /></Field>
+          <Field label="Quận / khu vực" htmlFor="district"><input id="district" name="district" className={INPUT_CLASS} defaultValue={room.district ?? ""} /></Field>
+          <Field label="Vĩ độ phòng" htmlFor="lat"><input id="lat" name="lat" type="number" step="any" className={INPUT_CLASS} defaultValue={room.lat ?? ""} /></Field>
+          <Field label="Kinh độ phòng" htmlFor="lng"><input id="lng" name="lng" type="number" step="any" className={INPUT_CLASS} defaultValue={room.lng ?? ""} /></Field>
+
           <Field label="Số điện thoại Zalo" htmlFor="zalo_phone">
             <input
               id="zalo_phone"
@@ -249,7 +294,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         </div>
       </Section>
 
-      <Section title="Chi phí dịch vụ">
+      <Section title="Chi phí dịch vụ" active={activeTab === "fees"}>
         <div className="grid gap-5 md:grid-cols-2">
           <FeeField
             label="Tiền điện"
@@ -289,7 +334,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         </div>
       </Section>
 
-      <Section title="Tiện nghi và chính sách thuê">
+      <Section title="Tiện nghi và chính sách thuê" active={activeTab === "amenities"}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Checkbox name="has_elevator" label="Thang máy" checked={details.has_elevator} />
           <Checkbox name="has_stairs" label="Cầu thang bộ" checked={details.has_stairs} />
@@ -364,14 +409,15 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         </div>
       </Section>
 
-      <Section title="Media">
+      <Section title="Media" active={activeTab === "info"}>
         {currentMedia.length > 0 ? (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {currentMedia.map((media, index) => (
               <div
                 key={media.id ?? `${media.url}-${index}`}
-                className="overflow-hidden rounded-lg border bg-gray-50"
+                className="relative overflow-hidden rounded-lg border bg-gray-50"
               >
+                {media.id ? <button type="button" onClick={() => void deleteExistingMedia(media)} disabled={loading} className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-red-700 shadow" aria-label="Xóa media"><Trash2 size={15} /></button> : null}
                 {media.type === "video" ? (
                   <video
                     src={media.url}
@@ -413,7 +459,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         </Field>
 
         {files.length > 0 ? (
-          <p className="mt-3 text-sm text-gray-600">Đã chọn {files.length} file mới.</p>
+          <ul className="mt-3 space-y-2 text-sm text-gray-600">{files.map((file) => <li key={`${file.name}-${file.lastModified}`} className="flex items-center justify-between rounded-lg border bg-white px-3 py-2"><span className="min-w-0 truncate">{file.name}</span><button type="button" onClick={() => setFiles((items) => items.filter((item) => item !== file))} className="text-red-700" aria-label={`Xóa ${file.name}`}><Trash2 size={16} /></button></li>)}</ul>
         ) : null}
       </Section>
 
@@ -456,16 +502,22 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
 function Section({
   title,
   children,
+  active = true,
 }: {
   title: string;
   children: React.ReactNode;
+  active?: boolean;
 }) {
   return (
-    <section className="rounded-2xl border bg-white p-6 shadow-sm">
+    <section className={`${active ? "block" : "hidden"} rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4 shadow-sm sm:p-6`}>
       <h2 className="mb-5 text-lg font-semibold">{title}</h2>
       {children}
     </section>
   );
+}
+
+function RoomTabs({ activeTab, onChange }: { activeTab: "info" | "amenities" | "fees"; onChange: (tab: "info" | "amenities" | "fees") => void }) {
+  return <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1">{([['info', 'Thông tin'], ['amenities', 'Tiện nghi'], ['fees', 'Chi phí']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold ${activeTab === key ? 'bg-[#744722] text-white' : 'text-[#684324]'}`}>{label}</button>)}</div>;
 }
 
 function Field({
@@ -482,7 +534,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 rounded-xl border border-[#aa825d]/25 bg-white p-3">
       <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-800">
         {label}
         {required ? <span className="text-red-600"> *</span> : null}

@@ -86,13 +86,14 @@ export default async function RoomDetailPage({
         </div>
       ) : null}
 
-      <RoomMediaGallery
-        media={room.media}
-        roomId={room.id}
-        canManage={canManage === true && !isArchived}
-      />
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <RoomMediaGallery
+          media={room.media}
+          roomId={room.id}
+          canManage={canManage === true && !isArchived}
+        />
 
-      <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
+        <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
         <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Thông tin phòng</h2>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -129,6 +130,7 @@ export default async function RoomDetailPage({
             </p>
           </div>
         ) : null}
+        </div>
       </div>
 
       <RoomDetailsSummary details={room.details} policy={room.chinh_sach} />

@@ -65,7 +65,13 @@ export default async function CreateRoomPage({
       <CreateRoomForm
         propertyId={propertyId}
         propertyName={property.name ?? property.full_address}
-        defaults={(propertyDefaults?.default_room_data as Record<string, any>) ?? {}}
+        defaults={{
+          ...((propertyDefaults?.default_room_data as Record<string, any>) ?? {}),
+          house_number: property.house_number ?? "",
+          address: property.address ?? "",
+          ward: property.ward ?? "",
+          district: property.district ?? "",
+        }}
       />
     </div>
   );

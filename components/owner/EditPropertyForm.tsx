@@ -5,6 +5,7 @@ import { GripVertical, ImagePlus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { readApiResponse } from "@/lib/api/client";
+import { generatePropertyCode } from "@/lib/owner/propertyCode";
 
 type EditableProperty = {
   id: string;
@@ -122,7 +123,11 @@ export default function EditPropertyForm({
 
     try {
       const payload = {
-          code: form.get("code"),
+          code: generatePropertyCode({
+            houseNumber: form.get("house_number"),
+            address: form.get("address"),
+            district: form.get("district"),
+          }),
           house_number: form.get("house_number"),
           address: form.get("address"),
           ward: form.get("ward"),
@@ -182,16 +187,6 @@ export default function EditPropertyForm({
       </div>
 
       <div className={`${activeTab === "info" ? "grid" : "hidden"} gap-5 md:grid-cols-2`}>
-        <Field label="Mã tòa nhà" htmlFor="code" hint="Có thể dùng mã nội bộ để tìm và quản lý tòa nhà.">
-          <input
-            id="code"
-            name="code"
-            className={INPUT_CLASS}
-            maxLength={50}
-            defaultValue={property.code ?? ""}
-          />
-        </Field>
-
         <Field label="Số nhà" htmlFor="house_number" required>
           <input
             id="house_number"
