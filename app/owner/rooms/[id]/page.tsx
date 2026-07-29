@@ -100,7 +100,7 @@ export default async function RoomDetailPage({
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <InfoItem label="Giá" value={formatMoney(room.price)} />
           <div>
-            <p className="text-sm text-gray-500">Trạng thái vận hành</p>
+            <p className="text-sm text-gray-500">Trạng thái phòng</p>
             {canManage === true && !isArchived ? (
               <div className="mt-3">
                 <RoomStatusControl

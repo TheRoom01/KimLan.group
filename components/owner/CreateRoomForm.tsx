@@ -315,7 +315,7 @@ export default function CreateRoomForm({
             />
           </Field>
 
-          <Field label="Trạng thái vận hành" htmlFor="status"><select id="status" name="status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
+          <Field label="Trạng thái phòng" htmlFor="status"><select id="status" name="status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
           <Field label="Số nhà" htmlFor="house_number"><input id="house_number" name="house_number" className={INPUT_CLASS} defaultValue={defaults.house_number ?? ""} /></Field>
           <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} defaultValue={defaults.address ?? ""} /></Field>
           <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} defaultValue={defaults.ward ?? ""} /></Field>
