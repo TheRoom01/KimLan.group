@@ -5,6 +5,7 @@ import {
   normalizeContractStatus,
   type OwnerContractSummary,
 } from "@/lib/owner/types";
+import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 export default async function ContractsPage() {
   const contracts = (await getOwnerContracts()) as OwnerContractSummary[];
@@ -58,7 +59,7 @@ export default async function ContractsPage() {
                     <Home size={15} className="mt-0.5 shrink-0 text-[#744722]" />
                     <span>
                       <strong className="text-[#4d3422]">
-                        {contract.property?.name || "Tòa nhà"}
+                        {propertyDisplayAddress(contract.property)}
                       </strong>
                       <span className="block text-xs text-[#80634a]">
                         Phòng {contract.room?.room_code || "-"}

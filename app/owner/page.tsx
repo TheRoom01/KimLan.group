@@ -505,11 +505,7 @@ export default async function OwnerPage() {
                 {expiringContracts.slice(0, 4).map((item, index) => {
                   const remaining = daysUntil(item.end_date);
                   const contractId = relationId(item.id);
-                  const propertyName = relationLabel(
-                    item.property,
-                    "Tòa nhà",
-                    ["name", "address", "code"],
-                  );
+                  const propertyName = propertyDisplayName(item.property);
                   const roomName = relationLabel(item.room, "Phòng", [
                     "room_code",
                     "name",
@@ -611,11 +607,7 @@ export default async function OwnerPage() {
                 "full_name",
                 "name",
               ]);
-              const propertyName = relationLabel(item.property, "Tòa nhà", [
-                "name",
-                "address",
-                "code",
-              ]);
+              const propertyName = propertyDisplayName(item.property);
               const roomName = relationLabel(item.room, "Phòng", [
                 "room_code",
                 "name",

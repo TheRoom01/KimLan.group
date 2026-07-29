@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/response";
 import { readJsonObject } from "@/lib/api/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 export async function GET() {
   try {
@@ -113,6 +114,22 @@ export async function GET() {
           ).members
         : [];
 
+    const panelProperties = Array.isArray((panel as { properties?: unknown[] }).properties)
+      ? (panel as { properties: Array<Record<string, unknown>> }).properties
+      : [];
+    const propertyIds = panelProperties.map((property) => String(property.id ?? "")).filter(Boolean);
+    const { data: propertyAddresses, error: propertyAddressError } = propertyIds.length
+      ? await supabase.from("properties").select("id, code, name, house_number, address, ward, district, city").in("id", propertyIds)
+      : { data: [], error: null };
+    if (propertyAddressError) return mapDatabaseError(propertyAddressError);
+    const propertyById = new Map((propertyAddresses ?? []).map((property) => [property.id, property]));
+    const enrichProperty = (candidate: unknown) => {
+      if (!candidate || typeof candidate !== "object") return candidate;
+      const property = candidate as Record<string, unknown>;
+      const address = propertyById.get(String(property.id ?? ""));
+      return address ? { ...property, ...address, name: propertyDisplayAddress(address) } : property;
+    };
+
     const members =
       panelMembers.map((candidate) => {
         if (
@@ -136,6 +153,7 @@ export async function GET() {
 
         return {
           ...member,
+          properties: Array.isArray(member.properties) ? member.properties.map(enrichProperty) : [],
 
           avatar_url:
             avatarByUserId.get(
@@ -146,6 +164,7 @@ export async function GET() {
 
     return apiSuccess({
       ...panel,
+      properties: panelProperties.map(enrichProperty),
       members,
     });
 

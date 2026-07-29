@@ -8,6 +8,7 @@ import {
 } from "@/lib/owner/types";
 import TenantRosterCard from "@/components/owner/TenantRosterCard";
 import ContractRevenueManager from "@/components/owner/ContractRevenueManager";
+import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 function formatDate(value?: string | null) {
   return value
@@ -31,16 +32,7 @@ export default async function ContractDetailPage({
   const normalizedStatus =
     normalizeContractStatus(contract.status) ?? contract.status;
 
-  const propertyName =
-    contract.property?.name ??
-    [
-      contract.property?.house_number,
-      contract.property?.address,
-      contract.property?.district,
-    ]
-      .filter(Boolean)
-      .join(" ") ??
-    "-";
+  const propertyName = propertyDisplayAddress(contract.property);
 
   const canRenew =
     normalizedStatus !== "Đã hủy" &&

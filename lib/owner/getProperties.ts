@@ -203,14 +203,8 @@ export async function getProperties() {
         property !== null && property.lifecycle_status !== "archived",
     )
     .sort((left, right) => {
-      const leftName =
-      String(
-        left.name ??
-        left.code ??
-        left.address ??
-        "",
-      );
-      const rightName = String(right.name ?? right.code ?? right.address ?? "");
+      const leftName = String([left.house_number,left.address,left.ward,left.district,left.city].filter(Boolean).join(", ") || left.code || "");
+      const rightName = String([right.house_number,right.address,right.ward,right.district,right.city].filter(Boolean).join(", ") || right.code || "");
       return leftName.localeCompare(rightName, "vi");
     });
 }

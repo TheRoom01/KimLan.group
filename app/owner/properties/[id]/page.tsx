@@ -7,6 +7,7 @@ import PropertyMembersPanel, {
 import RoomCard from "@/components/owner/RoomCard";
 import { getPropertyDetail } from "@/lib/owner/getPropertyDetail";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 export default async function PropertyDetailPage({
   params,
@@ -57,19 +58,7 @@ export default async function PropertyDetailPage({
   const isOwner = currentMembership?.role === "owner";
   const rooms = data.rooms ?? [];
   const summary = data.summary;
-  const displayName =
-    property.name || property.full_address || property.code || "Tòa nhà";
-  const fullAddress =
-    property.full_address ||
-    [
-      property.house_number,
-      property.address,
-      property.ward,
-      property.district,
-      property.city,
-    ]
-      .filter(Boolean)
-      .join(", ");
+  const displayName = propertyDisplayAddress(property);
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
@@ -87,7 +76,6 @@ export default async function PropertyDetailPage({
               </span>
             ) : null}
           </div>
-          <p className="mt-2 text-sm text-[#80634a]">{fullAddress || "Chưa có địa chỉ"}</p>
           {property.code ? (
             <p className="mt-1 text-sm text-[#9a7758]">Mã tòa nhà: {property.code}</p>
           ) : null}

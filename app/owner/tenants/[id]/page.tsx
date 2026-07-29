@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarDays, Phone, UserRound } from "lucide-react";
 import { getTenantDetail } from "@/lib/owner/getTenantDetail";
 import TenantProfileEditor from "@/components/owner/TenantProfileEditor";
+import { propertyDisplayAddress, type PropertyAddressLike } from "@/lib/owner/propertyDisplayAddress";
 
 type TenantContractHistory = {
   id: string;
@@ -10,7 +11,7 @@ type TenantContractHistory = {
   deposit_amount?: number | null;
   status?: string | null;
   room?: { id?: string | null; room_code?: string | null } | null;
-  property?: { name?: string | null } | null;
+  property?: PropertyAddressLike | null;
 };
 
 export default async function TenantDetailPage({
@@ -74,9 +75,7 @@ export default async function TenantDetailPage({
             <Info
               label="Tòa nhà"
               value={
-                activeContract.property?.name ||
-                activeContract.property?.address ||
-                "-"
+                propertyDisplayAddress(activeContract.property)
               }
             />
             <Info label="Phòng" value={room?.room_code || "-"} />
@@ -129,7 +128,7 @@ export default async function TenantDetailPage({
                   />
                   <Info label="Trạng thái" value={contract.status || "-"} />
                   <Info label="Phòng" value={contract.room?.room_code || "-"} />
-                  <Info label="Tòa nhà" value={contract.property?.name || "-"} />
+                  <Info label="Tòa nhà" value={propertyDisplayAddress(contract.property)} />
                 </div>
               </div>
             ))}

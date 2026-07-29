@@ -10,6 +10,7 @@ import {
 } from "@/lib/owner/types";
 import TenantIdentityModal from "@/components/owner/TenantIdentityModal";
 import DeleteRoomCardButton from "@/components/owner/DeleteRoomCardButton";
+import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 type RoomMediaReference = {
   id?: string;
@@ -37,13 +38,7 @@ type RoomCardData = {
 function propertyLabel(property?: OwnerPropertyReference | null) {
   if (!property) return null;
 
-  return (
-    property.name ||
-    [property.house_number, property.address, property.district]
-      .filter(Boolean)
-      .join(" ") ||
-    null
-  );
+  return propertyDisplayAddress(property);
 }
 
 function coverUrl(room: RoomCardData) {

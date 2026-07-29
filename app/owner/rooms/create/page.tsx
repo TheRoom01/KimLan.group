@@ -4,6 +4,7 @@ import CreateRoomForm from "@/components/owner/CreateRoomForm";
 import RoomDefaultsSyncButton from "@/components/owner/RoomDefaultsSyncButton";
 import { getPropertyDetail } from "@/lib/owner/getPropertyDetail";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -51,7 +52,7 @@ export default async function CreateRoomPage({
         <div>
           <h1 className="text-3xl font-bold">Tạo phòng</h1>
           <p className="mt-1 text-gray-500">
-            Tòa nhà: {property.name ?? property.full_address ?? property.code}
+            Tòa nhà: {propertyDisplayAddress(property)}
           </p>
         </div>
 
@@ -66,7 +67,6 @@ export default async function CreateRoomPage({
 
       <CreateRoomForm
         propertyId={propertyId}
-        propertyName={property.name ?? property.full_address}
         defaults={{
           ...((propertyDefaults?.default_room_data as Record<string, any>) ?? {}),
           house_number: property.house_number ?? "",

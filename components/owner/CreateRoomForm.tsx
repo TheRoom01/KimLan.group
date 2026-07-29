@@ -45,11 +45,9 @@ const MAX_FILES = 20;
 
 export default function CreateRoomForm({
   propertyId,
-  propertyName,
   defaults = {},
 }: {
   propertyId: string;
-  propertyName?: string | null;
   defaults?: Record<string, any>;
 }) {
   const detailDefaults = defaults.room_details ?? {};

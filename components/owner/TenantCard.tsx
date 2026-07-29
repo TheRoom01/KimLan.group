@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import TenantIdentityModal from "@/components/owner/TenantIdentityModal";
 import { readApiResponse } from "@/lib/api/client";
+import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 export type TenantCardData = {
   tenant: {
@@ -25,7 +26,12 @@ export type TenantCardData = {
     } | null;
     property?: {
       name?: string | null;
+      house_number?: string | null;
       address?: string | null;
+      ward?: string | null;
+      district?: string | null;
+      city?: string | null;
+      full_address?: string | null;
     } | null;
   } | null;
   contracts_count?: number;
@@ -116,7 +122,7 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
                 <p>
                   <span className="text-xs text-[#8a6b50]">Tòa nhà</span>
                   <strong className="mt-0.5 block text-[#4d3422]">
-                    {contract.property?.name ?? contract.property?.address ?? "-"}
+                    {propertyDisplayAddress(contract.property)}
                   </strong>
                 </p>
                 <p>
