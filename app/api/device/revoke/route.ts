@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const sessionId = body?.sessionId;
+  const sessionId = String(body?.sessionId ?? "").trim();
 
   if (!sessionId) {
     return NextResponse.json(
@@ -38,7 +38,10 @@ export async function POST(req: Request) {
   }
 
   // 🔥 QUAN TRỌNG: trả luôn list devices mới
-  const { data: devices } = await supabase.rpc("list_device_sessions");
+  const { data: devices, error: listError } = await supabase.rpc("list_device_sessions");
+  if (listError) {
+    return NextResponse.json({ ok: false, error: listError.message }, { status: 500 });
+  }
 
   return NextResponse.json({
     ok: true,

@@ -302,11 +302,11 @@ const handleLogin = async () => {
       }
     }
 
-    await fetchDevices().catch(() => {});
-
     setAuthLoading(false);
+    setShowDeviceManager(false);
     closeAuth();
     loginLockRef.current = false;
+    window.location.assign("/");
   } catch {
     await supabase.auth.signOut();
     setAuthLoading(false);
@@ -615,7 +615,7 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                             headers: {
                               "Content-Type": "application/json",
                             },
-                            body: JSON.stringify({ token_hash: d.token_hash }),
+                            body: JSON.stringify({ sessionId: d.id }),
                           });
 
                           await fetchDevices();
@@ -906,9 +906,15 @@ const controls = (
                   headers: {
                     "Content-Type": "application/json",
                   },
-                  body: JSON.stringify({ token_hash: d.token_hash }),
+                  body: JSON.stringify({ sessionId: d.id }),
                 });
-
+                const registered = await fetch("/api/device/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ forceEvict: false }) });
+                if (registered.ok) {
+                  setShowDeviceManager(false);
+                  closeAuth();
+                  window.location.assign("/");
+                  return;
+                }
                 await fetchDevices();
               }}
             >

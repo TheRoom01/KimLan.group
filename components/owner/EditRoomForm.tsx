@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import PendingRoomMediaPreview from "@/components/owner/PendingRoomMediaPreview";
 
 import { readApiResponse } from "@/lib/api/client";
+import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
 import {
   uploadRoomMediaFiles,
   validateRoomMediaFiles,
@@ -259,12 +260,12 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
           <Field label="Quận / khu vực" htmlFor="district"><input id="district" name="district" className={INPUT_CLASS} defaultValue={room.district ?? ""} /></Field>
 
           <Field label="Số điện thoại Zalo" htmlFor="zalo_phone">
-            <input
+            <textarea
               id="zalo_phone"
               name="zalo_phone"
-              className={INPUT_CLASS}
-              maxLength={30}
-              defaultValue={room.zalo_phone ?? ""}
+              className={`${INPUT_CLASS} min-h-24 resize-y`}
+              maxLength={300}
+              defaultValue={formatZaloPhones(room.zalo_phone)}
             />
           </Field>
 

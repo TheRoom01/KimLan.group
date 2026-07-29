@@ -541,7 +541,8 @@ async function withImageConvertLock<T>(fn: () => Promise<T>): Promise<T> {
   return run
 }
 
-for (const file of okFiles) {
+const uploadedMedia: any[] = new Array(okFiles.length)
+await runPool(okFiles.map((file, index) => ({ file, index })), CONCURRENCY, async ({ file, index }) => {
   const isVideo = file.type.startsWith('video/')
   const isImage = file.type.startsWith('image/')
 
@@ -736,10 +737,7 @@ try {
   } as const
 
   // ✅ upload tuần tự => append đúng thứ tự user chọn
-  setRoomForm((prev: any) => {
-    const prevMedia = Array.isArray(prev.media) ? prev.media : []
-    return { ...prev, media: [...prevMedia, mediaItem] }
-  })
+  uploadedMedia[index] = mediaItem
 
   // ✅ thumb.webp: chỉ 1 lần, và đúng “ảnh đầu tiên của phòng”
   if (shouldMakeThumb && isImage && file === firstImageFileInBatch && !thumbStarted) {
@@ -756,7 +754,12 @@ try {
       console.warn('Upload thumb.webp failed', e)
     }
   }
-}
+})
+
+setRoomForm((prev: any) => {
+  const prevMedia = Array.isArray(prev.media) ? prev.media : []
+  return { ...prev, media: [...prevMedia, ...uploadedMedia.filter(Boolean)] }
+})
 
   } catch (e: any) {
     console.error('Upload failed:', e)
