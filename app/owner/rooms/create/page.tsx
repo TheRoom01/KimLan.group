@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import CreateRoomForm from "@/components/owner/CreateRoomForm";
+import RoomDefaultsSyncButton from "@/components/owner/RoomDefaultsSyncButton";
 import { getPropertyDetail } from "@/lib/owner/getPropertyDetail";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -46,7 +47,7 @@ export default async function CreateRoomPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
         <div>
           <h1 className="text-3xl font-bold">Tạo phòng</h1>
           <p className="mt-1 text-gray-500">
@@ -54,9 +55,10 @@ export default async function CreateRoomPage({
           </p>
         </div>
 
+        <RoomDefaultsSyncButton propertyId={propertyId} formId="create-room-form" />
         <Link
           href={`/owner/properties/${propertyId}`}
-          className="text-sm font-medium text-gray-600 hover:text-black"
+          className="text-sm font-medium text-gray-600 hover:text-black sm:justify-self-end"
         >
           ← Chi tiết tòa nhà
         </Link>

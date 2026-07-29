@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
+import PendingRoomMediaPreview from "@/components/owner/PendingRoomMediaPreview";
 
 import { readApiResponse } from "@/lib/api/client";
 
@@ -276,7 +277,7 @@ export default function CreateRoomForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form id="create-room-form" onSubmit={handleSubmit} className="space-y-6">
       <RoomTabs activeTab={activeTab} onChange={setActiveTab} />
       <Section title="Thông tin phòng" active={activeTab === "info"}>
         <div className="grid gap-5 md:grid-cols-2">
@@ -469,7 +470,7 @@ export default function CreateRoomForm({
         </Field>
 
         {files.length > 0 ? (
-          <div className="mt-4 rounded-lg bg-gray-50 p-4 text-sm">
+          <div className="hidden">
             <p className="font-medium">Đã chọn: {fileSummary}</p>
             <ul className="mt-2 max-h-36 space-y-1 overflow-auto text-gray-600">
               {files.map((file) => (
@@ -481,6 +482,7 @@ export default function CreateRoomForm({
             </ul>
           </div>
         ) : null}
+        <PendingRoomMediaPreview files={files} setFiles={setFiles} disabled={submitting} />
       </Section>
 
       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">

@@ -48,7 +48,16 @@ export async function GET(
     );
 
     if (error) return mapDatabaseError(error);
-    return apiSuccess(data);
+    const { data: defaults, error: defaultsError } = await supabase
+      .from("properties")
+      .select("house_number, address, ward, district, default_room_data")
+      .eq("id", propertyId)
+      .single();
+    if (defaultsError) return mapDatabaseError(defaultsError);
+    return apiSuccess({
+      ...(data ?? {}),
+      property: { ...(data?.property ?? {}), ...(defaults ?? {}) },
+    });
   } catch (error) {
     return mapUnknownError(error);
   }

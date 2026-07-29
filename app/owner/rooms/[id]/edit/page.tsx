@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import EditRoomForm from "@/components/owner/EditRoomForm";
+import RoomDefaultsSyncButton from "@/components/owner/RoomDefaultsSyncButton";
 import { getRoomDetail } from "@/lib/owner/getRoomDetail";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -50,7 +51,7 @@ export default async function EditRoomPage({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
         <div>
           <h1 className="text-3xl font-bold">
             Chỉnh sửa phòng {room.room_code}
@@ -60,9 +61,10 @@ export default async function EditRoomPage({
           </p>
         </div>
 
+        {room.property_id ? <RoomDefaultsSyncButton propertyId={room.property_id} formId="edit-room-form" /> : <span />}
         <Link
           href={`/owner/rooms/${room.id}`}
-          className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-100"
+          className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-100 sm:justify-self-end"
         >
           ← Quay lại
         </Link>

@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
+import PendingRoomMediaPreview from "@/components/owner/PendingRoomMediaPreview";
 
 import { readApiResponse } from "@/lib/api/client";
 import {
@@ -16,6 +17,7 @@ type RoomMedia = {
   type?: "image" | "video";
   url?: string;
   is_cover?: boolean;
+  sort_order?: number;
 };
 
 type EditableRoom = {
@@ -33,6 +35,7 @@ type EditableRoom = {
   address?: string | null;
   ward?: string | null;
   district?: string | null;
+  property_id?: string | null;
   lat?: number | null;
   lng?: number | null;
   details?: Record<string, any> | null;
@@ -46,6 +49,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
   const router = useRouter();
   const details = room.details ?? {};
   const [currentMedia, setCurrentMedia] = useState<RoomMedia[]>(room.media ?? []);
+  const [draggedMediaIndex, setDraggedMediaIndex] = useState<number | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -81,6 +85,12 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function reorderExistingMedia(targetIndex:number){
+    if(draggedMediaIndex===null||draggedMediaIndex===targetIndex)return;
+    setCurrentMedia(items=>{const next=[...items];const[moved]=next.splice(draggedMediaIndex,1);next.splice(targetIndex,0,moved);return next});
+    setDraggedMediaIndex(null);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -152,6 +162,11 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
 
       await readApiResponse<unknown>(response);
 
+      const orderedMedia=currentMedia.filter((media):media is RoomMedia&{id:string}=>Boolean(media.id));
+      if(orderedMedia.length>0){
+        await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/media`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:orderedMedia.map((media,index)=>({id:media.id,sort_order:index})),cover_id:orderedMedia.find(media=>media.type==="image")?.id??null})}));
+      }
+
       await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -183,7 +198,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-6">
+    <form id="edit-room-form" onSubmit={submit} className="space-y-6">
       <RoomTabs activeTab={activeTab} onChange={setActiveTab} />
       <Section title="Thông tin phòng" active={activeTab === "info"}>
         <div className="grid gap-5 md:grid-cols-2">
@@ -398,7 +413,11 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
             {currentMedia.map((media, index) => (
               <div
                 key={media.id ?? `${media.url}-${index}`}
-                className="relative overflow-hidden rounded-lg border bg-gray-50"
+                draggable={!loading}
+                onDragStart={()=>setDraggedMediaIndex(index)}
+                onDragOver={event=>event.preventDefault()}
+                onDrop={()=>reorderExistingMedia(index)}
+                className="relative cursor-grab overflow-hidden rounded-lg border bg-gray-50"
               >
                 {media.id ? <button type="button" onClick={() => void deleteExistingMedia(media)} disabled={loading} className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-red-700 shadow" aria-label="Xóa media"><Trash2 size={15} /></button> : null}
                 {media.type === "video" ? (
@@ -442,8 +461,9 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         </Field>
 
         {files.length > 0 ? (
-          <ul className="mt-3 space-y-2 text-sm text-gray-600">{files.map((file) => <li key={`${file.name}-${file.lastModified}`} className="flex items-center justify-between rounded-lg border bg-white px-3 py-2"><span className="min-w-0 truncate">{file.name}</span><button type="button" onClick={() => setFiles((items) => items.filter((item) => item !== file))} className="text-red-700" aria-label={`Xóa ${file.name}`}><Trash2 size={16} /></button></li>)}</ul>
+          <ul className="hidden">{files.map((file) => <li key={`${file.name}-${file.lastModified}`}>{file.name}</li>)}</ul>
         ) : null}
+        <PendingRoomMediaPreview files={files} setFiles={setFiles} disabled={loading} />
       </Section>
 
       {uploadStatus ? (
