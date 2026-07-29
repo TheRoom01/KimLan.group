@@ -840,18 +840,20 @@ useEffect(() => {
   selectedVideos.length <= MAX_NATIVE_SHARE_VIDEOS &&
   navigator?.share
 ) {
-  const imageFiles = selected
-    .map((url: string) => preparedFiles[url])
-    .filter(Boolean) as File[];
+  // Preloading makes the modal feel faster, but it must not be a prerequisite
+  // for sharing. A failed/slow preload used to leave the UI permanently saying
+  // "Ảnh đang chuẩn bị". Fetch missing files as part of this user action so a
+  // transient proxy/network failure can recover without reopening the modal.
+  const imageFiles = await Promise.all(
+    selected.map((url: string, index: number) =>
+      preparedFiles[url] ??
+      r2ImageUrlToFile(url, index, room.room_code || room.id)
+    )
+  );
 
   const videoFiles = selectedVideos
     .map((url: string) => preparedVideoFiles[url])
     .filter(Boolean) as File[];
-
-   if (imageFiles.length !== selected.length) {
-        showToast("Ảnh đang chuẩn bị, thử lại sau vài giây");
-        return;
-      }
 
       if (videoFiles.length !== selectedVideos.length) {
         showToast("Video đang chuẩn bị, thử lại sau vài giây");

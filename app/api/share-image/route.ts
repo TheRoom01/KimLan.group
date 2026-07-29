@@ -5,8 +5,18 @@ export const runtime = "nodejs";
 function isAllowedR2Url(url: URL) {
   const host = url.hostname.toLowerCase();
 
-  // Chỉ cho phép R2 public URL của bạn
+  let configuredHost = "";
+  try {
+    configuredHost = new URL(process.env.R2_PUBLIC_BASE_URL ?? "").hostname.toLowerCase();
+  } catch {
+    // An invalid/missing public base URL must not broaden the proxy allowlist.
+  }
+
+  // Allow Cloudflare's public R2 host and the exact custom domain configured
+  // for this deployment. Keeping an explicit allowlist prevents this route
+  // from becoming an open proxy.
   return (
+    (configuredHost !== "" && host === configuredHost) ||
     host.endsWith(".r2.dev") ||
     host === "r2.dev"
   );
