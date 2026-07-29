@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Building2, Plus, Users } from "lucide-react";
+import DeletePropertyCardButton from "@/components/owner/DeletePropertyCardButton";
 
 type PropertyCardData = {
   id: string;
@@ -71,6 +72,7 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
   return (
     <article className="group overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(92,61,34,0.14)]">
       <div className="relative aspect-[16/9] overflow-hidden bg-[#eadbc8]">
+        {property.membership_role === "owner" && property.lifecycle_status !== "archived" ? <DeletePropertyCardButton propertyId={property.id} /> : null}
         {property.cover_image ? (
           <img
             src={property.cover_image}

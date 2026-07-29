@@ -200,7 +200,7 @@ export async function getProperties() {
     
     .filter(
       (property): property is NonNullable<typeof property> =>
-        property !== null,
+        property !== null && property.lifecycle_status !== "archived",
     )
     .sort((left, right) => {
       const leftName =

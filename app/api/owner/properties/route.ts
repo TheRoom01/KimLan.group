@@ -80,6 +80,15 @@ export async function POST(request: Request) {
       return mapDatabaseError(error);
     }
 
+    if (data && typeof data === "object" && data.mode === "join_request_created" && data.property_id) {
+      const { data: resolution, error: resolutionError } = await supabase.rpc(
+        "resolve_duplicate_property_owner_v1",
+        { p_property_id: data.property_id },
+      );
+      if (resolutionError) return mapDatabaseError(resolutionError);
+      return apiSuccess(resolution, 200);
+    }
+
 
     return apiSuccess(
       data,

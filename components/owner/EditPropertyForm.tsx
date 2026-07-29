@@ -143,11 +143,16 @@ export default function EditPropertyForm({
         const created = await readApiResponse<{ mode: string; property_id?: string }>(await fetch("/api/owner/properties", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
         }));
-        if (created.mode !== "created" || !created.property_id) {
-          router.push("/owner/properties");
+        if (created.mode === "owner_recovered" && created.property_id) {
+          router.push(`/owner/properties/${created.property_id}/edit`);
           router.refresh();
           return;
         }
+        if (created.mode === "verification_pending") {
+          setError("Tòa nhà đã tồn tại và SĐT chưa khớp chủ hiện tại. Yêu cầu xác minh đã được tạo cho chủ cũ và Admin L1.");
+          return;
+        }
+        if (created.mode !== "created" || !created.property_id) throw new Error("Không thể xác định kết quả tạo tòa nhà.");
         const uploaded = await Promise.all(pendingFiles.map((file) => uploadFile(file, created.property_id!)));
         const finalPayload = { ...payload, gallery_images: uploaded, cover_image: uploaded[0] ?? null };
         await readApiResponse(await fetch(`/api/owner/properties/${created.property_id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(finalPayload) }));

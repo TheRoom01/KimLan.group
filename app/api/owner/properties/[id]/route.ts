@@ -127,3 +127,36 @@ export async function PATCH(
     return mapUnknownError(error);
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params;
+    const { propertyId, supabase, user } = await getContext(id);
+    if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập để xóa tòa nhà", 401);
+
+    const { data: canArchive, error: permissionError } = await supabase.rpc("can_archive_property", { p_property_id: propertyId });
+    if (permissionError) return mapDatabaseError(permissionError);
+    if (canArchive !== true) return apiError("FORBIDDEN", "Chỉ chủ sở hữu được xóa tòa nhà", 403);
+
+    const { data, error } = await supabase
+      .from("properties")
+      .update({ lifecycle_status: "archived", archived_at: new Date().toISOString(), archived_by: user.id })
+      .eq("id", propertyId)
+      .select("id, lifecycle_status, archived_at")
+      .single();
+    if (error) return mapDatabaseError(error);
+
+    const { error: roomsError } = await supabase
+      .from("rooms")
+      .update({ lifecycle_status: "archived", publish_status: "hidden", is_hidden: true })
+      .eq("property_id", propertyId)
+      .eq("lifecycle_status", "active");
+    if (roomsError) return mapDatabaseError(roomsError);
+    return apiSuccess(data);
+  } catch (error) {
+    return mapUnknownError(error);
+  }
+}
