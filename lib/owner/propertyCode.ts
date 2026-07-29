@@ -9,27 +9,15 @@ function compactPart(value: unknown) {
     .toUpperCase();
 }
 
-function streetInitials(value: unknown) {
-  const words = String(value ?? "")
-    .trim()
-    .split(/\s+/)
-    .filter((word) => !/^(đường|duong|street)$/i.test(word));
-
-  return words
-    .slice(0, 2)
-    .map((word) => {
-      const first = word.charAt(0);
-      if (/đ/i.test(first)) return "Đ";
-      return first.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-    })
-    .join("");
+function streetCode(value: unknown) {
+  return compactPart(String(value ?? "").replace(/^\s*(đường|duong|street)\s+/i, ""));
 }
 
 function districtCode(value: unknown) {
   const raw = String(value ?? "").trim();
   const number = raw.match(/\d+/)?.[0];
   if (number) return `Q${number}`;
-  return streetInitials(raw) || compactPart(raw).slice(0, 4);
+  return compactPart(raw).slice(0, 12);
 }
 
 export function generatePropertyCode(input: {
@@ -39,7 +27,7 @@ export function generatePropertyCode(input: {
 }) {
   const parts = [
     compactPart(input.houseNumber),
-    streetInitials(input.address),
+    streetCode(input.address),
     districtCode(input.district),
   ].filter(Boolean);
 

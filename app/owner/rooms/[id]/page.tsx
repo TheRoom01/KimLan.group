@@ -90,9 +90,10 @@ export default async function RoomDetailPage({
         <RoomMediaGallery
           media={room.media}
           roomId={room.id}
-          canManage={canManage === true && !isArchived}
+          canManage={false}
         />
 
+        <div className="space-y-5">
         <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
         <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Thông tin phòng</h2>
 
@@ -131,9 +132,9 @@ export default async function RoomDetailPage({
           </div>
         ) : null}
         </div>
+        <RoomDetailsSummary details={room.details} policy={room.chinh_sach} />
+        </div>
       </div>
-
-      <RoomDetailsSummary details={room.details} policy={room.chinh_sach} />
 
       <TenantRosterCard
         tenants={tenants}

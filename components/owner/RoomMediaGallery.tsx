@@ -171,7 +171,7 @@ export default function RoomMediaGallery({
             <h2 className="text-lg font-bold text-[#4f321e]">Hình ảnh / Video phòng</h2>
           </div>
           <p className="mt-1 text-sm leading-6 text-[#846951]">
-            Kéo thả để đổi thứ tự. Ảnh đầu tiên sẽ được ưu tiên làm ảnh nhận diện trong card.
+            Vuốt hoặc kéo danh sách ảnh nhỏ để xem lần lượt từng ảnh/video.
           </p>
         </div>
         <div className="flex items-center gap-2">

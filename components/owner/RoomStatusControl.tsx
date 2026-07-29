@@ -22,7 +22,7 @@ export default function RoomStatusControl({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  async function updateStatus() {
+  async function updateStatus(nextStatus: RoomStatus) {
     try {
       setLoading(true);
       setErrorMessage(null);
@@ -34,7 +34,7 @@ export default function RoomStatusControl({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({ status: nextStatus }),
         },
       );
 
@@ -54,14 +54,16 @@ export default function RoomStatusControl({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="inline-flex items-center">
         <select
           value={status}
-          onChange={(event) =>
-            setStatus(event.target.value as RoomStatus)
-          }
+          onChange={(event) => {
+            const nextStatus = event.target.value as RoomStatus;
+            setStatus(nextStatus);
+            void updateStatus(nextStatus);
+          }}
           disabled={loading}
-          className="h-10 min-w-0 rounded-xl border border-[#aa825d]/30 bg-white px-3 text-sm font-semibold text-[#4d3422]"
+          className="h-8 min-w-0 rounded-lg border border-[#aa825d]/30 bg-white px-2 text-xs font-semibold text-[#4d3422] disabled:opacity-60"
         >
           {ROOM_STATUSES.map((item) => (
             <option key={item} value={item}>
@@ -70,14 +72,6 @@ export default function RoomStatusControl({
           ))}
         </select>
 
-        <button
-          type="button"
-          onClick={updateStatus}
-          disabled={loading || status === initialStatus}
-          className="h-10 rounded-xl bg-[#744722] px-3 text-sm font-bold text-white disabled:opacity-50"
-        >
-          {loading ? "Lưu..." : "Đổi trạng thái"}
-        </button>
       </div>
 
       {errorMessage && (

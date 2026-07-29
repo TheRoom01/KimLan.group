@@ -113,8 +113,8 @@ export default function CreateRoomForm({
     setUploadStatus(null);
 
     const form = new FormData(event.currentTarget);
-    const petPolicy = String(form.get("pet_policy") ?? "no_pet");
-    const allowPet = petPolicy === "allowed";
+    const noPet = form.get("no_pet") === "on";
+    const allowPet = form.get("allow_pet") === "on" && !noPet;
 
     const roomDetails = {
       electric_fee_value: form.get("electric_fee_value"),
@@ -159,8 +159,6 @@ export default function CreateRoomForm({
       address: form.get("address"),
       ward: form.get("ward"),
       district: form.get("district"),
-      lat: form.get("lat"),
-      lng: form.get("lng"),
       room_details: roomDetails,
     };
 
@@ -300,7 +298,7 @@ export default function CreateRoomForm({
               className={INPUT_CLASS}
               maxLength={120}
               placeholder="Studio, 1PN, phòng gác..."
-              defaultValue={defaults.room_type ?? ""}
+              defaultValue=""
             />
           </Field>
 
@@ -313,7 +311,7 @@ export default function CreateRoomForm({
               step={1}
               className={INPUT_CLASS}
               placeholder="4500000"
-              defaultValue={defaults.price ?? ""}
+              defaultValue=""
             />
           </Field>
 
@@ -322,8 +320,6 @@ export default function CreateRoomForm({
           <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} defaultValue={defaults.address ?? ""} /></Field>
           <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} defaultValue={defaults.ward ?? ""} /></Field>
           <Field label="Quận / khu vực" htmlFor="district"><input id="district" name="district" className={INPUT_CLASS} defaultValue={defaults.district ?? ""} /></Field>
-          <Field label="Vĩ độ phòng" htmlFor="lat"><input id="lat" name="lat" type="number" step="any" className={INPUT_CLASS} defaultValue={defaults.lat ?? ""} /></Field>
-          <Field label="Kinh độ phòng" htmlFor="lng"><input id="lng" name="lng" type="number" step="any" className={INPUT_CLASS} defaultValue={defaults.lng ?? ""} /></Field>
 
           <Field label="Số điện thoại Zalo" htmlFor="zalo_phone">
             <input
@@ -356,7 +352,7 @@ export default function CreateRoomForm({
                 name="description"
                 className={`${INPUT_CLASS} min-h-28 resize-y`}
                 maxLength={5000}
-                defaultValue={defaults.description ?? ""}
+                defaultValue=""
               />
             </Field>
           </div>
@@ -433,21 +429,13 @@ export default function CreateRoomForm({
           <Checkbox name="private_dryer" label="Máy sấy riêng" defaultChecked={Boolean(detailDefaults.private_dryer)} />
           <Checkbox name="short_term" label="Cho thuê ngắn hạn" defaultChecked={Boolean(detailDefaults.short_term)} />
           <Checkbox name="long_term" label="Cho thuê dài hạn" defaultChecked={detailDefaults.long_term !== false} />
+          <Checkbox name="allow_pet" label="Cho phép thú cưng" defaultChecked={Boolean(detailDefaults.allow_pet)} />
+          <Checkbox name="no_pet" label="Không nhận thú cưng" defaultChecked={Boolean(detailDefaults.no_pet)} />
+          <Checkbox name="allow_cat" label="Cho phép mèo" defaultChecked={Boolean(detailDefaults.allow_cat)} />
+          <Checkbox name="allow_dog" label="Cho phép chó" defaultChecked={Boolean(detailDefaults.allow_dog)} />
         </div>
 
-        <div className="mt-5 grid gap-5 md:grid-cols-2">
-          <Field label="Chính sách thú cưng" htmlFor="pet_policy">
-            <select id="pet_policy" name="pet_policy" className={INPUT_CLASS} defaultValue={detailDefaults.allow_pet ? "allowed" : "no_pet"}>
-              <option value="no_pet">Không nhận thú cưng</option>
-              <option value="allowed">Cho phép thú cưng</option>
-            </select>
-          </Field>
-
-          <div className="flex items-end gap-4 pb-2">
-            <Checkbox name="allow_cat" label="Cho phép mèo" defaultChecked={Boolean(detailDefaults.allow_cat)} />
-            <Checkbox name="allow_dog" label="Cho phép chó" defaultChecked={Boolean(detailDefaults.allow_dog)} />
-          </div>
-
+        <div className="mt-5 grid gap-5">
           <div className="md:col-span-2">
             <Field label="Tiện nghi khác" htmlFor="other_amenities">
               <textarea

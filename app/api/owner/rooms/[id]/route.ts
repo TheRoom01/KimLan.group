@@ -72,18 +72,11 @@ export async function PATCH(
 
 function roomLocationPatch(body: Record<string, unknown>) {
   const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max) || null;
-  const coordinate = (value: unknown) => {
-    if (value === null || value === undefined || String(value).trim() === "") return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  };
   return {
     house_number: text(body.house_number, 100),
     address: text(body.address, 500),
     ward: text(body.ward, 120),
     district: text(body.district, 120),
-    lat: coordinate(body.lat),
-    lng: coordinate(body.lng),
   };
 }
 
