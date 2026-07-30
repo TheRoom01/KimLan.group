@@ -1,5 +1,13 @@
 begin;
 
+-- Một số database cũ chưa có khóa chuẩn hóa trên rooms/properties. Khởi tạo
+-- trước khi tạo trigger và backfill để migration chạy được trên cả schema cũ.
+alter table public.rooms
+  add column if not exists normalized_property_key text;
+
+alter table public.properties
+  add column if not exists normalized_property_key text;
+
 create or replace function public.property_address_key_v2(
   p_house_number text,
   p_address text,
