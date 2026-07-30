@@ -202,12 +202,6 @@ export default function CreateRoomForm({
 
       setCreatedRoomId(roomId);
 
-      await readApiResponse(await fetch(`/api/owner/rooms/${roomId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: payload.status }),
-      }));
-
       let firstImageAssigned = false;
 
       for (const [index, file] of files.entries()) {
@@ -256,6 +250,8 @@ export default function CreateRoomForm({
         `/api/owner/rooms/${roomId}/publish`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: payload.status }),
         },
       );
 
