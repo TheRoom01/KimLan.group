@@ -996,14 +996,16 @@ className="text-sm font-semibold text-[#744722]"
   <div className="flex flex-wrap gap-1.5">
     {member.phones?.length ? (
       member.phones.map((phone) => (
-        <span
+        <a
           key={phone.id ?? phone.phone}
+          href={`tel:${phone.phone.replace(/[^\d+]/g, "")}`}
           className="rounded-lg bg-[#fff9ef] px-2 py-1 text-[11px] font-semibold text-[#684324]"
+          aria-label={`Gọi ${phone.phone}`}
         >
           {phone.phone}
 
           {phone.is_primary ? " ★" : ""}
-        </span>
+        </a>
       ))
     ) : (
       <span>

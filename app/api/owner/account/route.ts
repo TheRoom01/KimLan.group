@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/response";
 import { readJsonObject } from "@/lib/api/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
 export async function GET() {
@@ -160,16 +161,37 @@ export async function GET() {
 
     const membershipsByUser = new Map<string, typeof sharedMemberships>();
     for (const membership of sharedMemberships ?? []) {
+      if (membership.user_id === user.id) continue;
       const current = membershipsByUser.get(membership.user_id) ?? [];
       current.push(membership);
       membershipsByUser.set(membership.user_id, current);
     }
+
+    const sharedMemberIds = [...membershipsByUser.keys()];
+    const admin = createSupabaseAdminClient();
+    const { data: memberPhones, error: memberPhonesError } = sharedMemberIds.length
+      ? await admin
+          .from("member_contact_phones")
+          .select("id, user_id, phone, is_primary, is_verified")
+          .in("user_id", sharedMemberIds)
+          .order("is_primary", { ascending: false })
+      : { data: [], error: null };
+    if (memberPhonesError) return mapDatabaseError(memberPhonesError);
+
+    const phonesByUserId = new Map<string, typeof memberPhones>();
+    for (const phone of memberPhones ?? []) {
+      const current = phonesByUserId.get(phone.user_id) ?? [];
+      current.push(phone);
+      phonesByUserId.set(phone.user_id, current);
+    }
+
     const members = [...membershipsByUser.entries()].map(([userId, memberships]) => {
       const profile = profileByUserId.get(userId) ?? {};
       return {
         ...profile,
         user_id: userId,
         avatar_url: avatarByUserId.get(userId) ?? null,
+        phones: phonesByUserId.get(userId) ?? [],
         roles: Array.from(new Set(memberships.map((membership) => membership.role))),
         properties: memberships
           .map((membership) => toPanelProperty(membership.property_id, membership.role))
