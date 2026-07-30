@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 
 import OwnerLayout from "@/components/owner/OwnerLayout";
 import OwnerLoginGate from "@/components/owner/OwnerLoginGate";
+import OwnerPlaceholderHints from "@/components/owner/OwnerPlaceholderHints";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function Layout({
@@ -21,20 +22,7 @@ export default async function Layout({
    * khi modal đăng nhập xuất hiện.
    */
   if (!user) {
-    return <OwnerLoginGate />;
-  }
-
-  /*
-   * A room created by Admin may have been waiting for this owner's phone
-   * account to exist. Claim those properties before loading the dashboard so
-   * getProperties()/getOwnerRooms() can see them on the first refresh.
-   */
-  const { error: claimError } = await supabase.rpc(
-    "claim_admin_properties_by_phone_v1",
-  );
-
-  if (claimError) {
-    console.warn("[Owner] property phone claim failed", claimError);
+    return <><OwnerPlaceholderHints /><OwnerLoginGate /></>;
   }
 
   return <OwnerLayout>{children}</OwnerLayout>;

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import OwnerSidebar from "./OwnerSidebar";
+import OwnerPlaceholderHints from "./OwnerPlaceholderHints";
 
 export default function OwnerLayout({
   children,
@@ -16,6 +17,7 @@ export default function OwnerLayout({
         text-[#3f2a1b]
       "
     >
+      <OwnerPlaceholderHints />
       <OwnerSidebar />
 
       <main

@@ -18,6 +18,7 @@ import {
 
 import PropertyImageCarousel from "@/components/owner/PropertyImageCarousel";
 import PropertyInvitationsPanel from "@/components/owner/PropertyInvitationsPanel";
+import PropertyRoomCandidates from "@/components/owner/PropertyRoomCandidates";
 import PropertyMembersPanel, {
   type PropertyMemberItem,
 } from "@/components/owner/PropertyMembersPanel";
@@ -213,6 +214,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
         ) : <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 p-6 text-sm text-[#80634a]">Chưa có phòng trong tòa nhà này.</div>}
       </section>
 
+      <PropertyRoomCandidates propertyId={property.id} isOwner={isOwner} />
       <PropertyMembersPanel propertyId={property.id} currentUserId={user?.id} initialMembers={members} isOwner={isOwner} />
       {canManage ? <PropertyInvitationsPanel propertyId={property.id} /> : null}
     </div>

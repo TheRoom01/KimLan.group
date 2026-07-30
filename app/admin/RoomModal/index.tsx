@@ -1676,7 +1676,7 @@ const payload = {
      */
     if (isNew && !roomForm.property_id?.trim()) {
       const resolution = await supabase.rpc(
-        "admin_resolve_property_for_room_v1",
+        "admin_resolve_property_for_room_v2",
         { p_payload: payload },
       )
 
@@ -1729,7 +1729,7 @@ const up = wasHiddenAtOpen && adminLevel === 1
       p_payload: payload,
       p_visibility_action: hiddenAction,
     })
-  : await supabase.rpc('admin_upsert_room_v1', {
+  : await supabase.rpc('admin_upsert_room_v2', {
       p_room_id: desiredId,
       p_payload: payload,
     })
