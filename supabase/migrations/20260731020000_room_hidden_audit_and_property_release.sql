@@ -213,7 +213,12 @@ begin
 end;
 $function$;
 
-create or replace function public.admin_l1_delete_room(p_room_id uuid)
+-- PostgreSQL không cho CREATE OR REPLACE đổi kiểu trả về của RPC đã tồn tại.
+-- Bản cũ của admin_l1_delete_room trả về kiểu khác, nên cần drop theo đúng
+-- signature trước khi tạo lại phiên bản soft-hide trả về jsonb.
+drop function if exists public.admin_l1_delete_room(uuid);
+
+create function public.admin_l1_delete_room(p_room_id uuid)
 returns jsonb
 language plpgsql
 security definer
