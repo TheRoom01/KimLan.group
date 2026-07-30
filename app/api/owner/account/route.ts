@@ -114,57 +114,78 @@ export async function GET() {
           ).members
         : [];
 
-    const panelProperties = Array.isArray((panel as { properties?: unknown[] }).properties)
-      ? (panel as { properties: Array<Record<string, unknown>> }).properties
-      : [];
-    const propertyIds = panelProperties.map((property) => String(property.id ?? "")).filter(Boolean);
-    const { data: propertyAddresses, error: propertyAddressError } = propertyIds.length
-      ? await supabase.from("properties").select("id, code, name, house_number, address, ward, district, city").in("id", propertyIds)
+    const { data: myMemberships, error: myMembershipError } = await supabase
+      .from("property_members")
+      .select("property_id, role, status")
+      .eq("user_id", user.id)
+      .eq("status", "active");
+    if (myMembershipError) return mapDatabaseError(myMembershipError);
+
+    const joinedPropertyIds = Array.from(new Set((myMemberships ?? []).map((membership) => membership.property_id).filter(Boolean)));
+    const { data: liveProperties, error: livePropertyError } = joinedPropertyIds.length
+      ? await supabase
+          .from("properties")
+          .select("id, code, name, house_number, address, ward, district, city, lifecycle_status")
+          .in("id", joinedPropertyIds)
+          .or("lifecycle_status.is.null,lifecycle_status.neq.archived")
       : { data: [], error: null };
-    if (propertyAddressError) return mapDatabaseError(propertyAddressError);
-    const propertyById = new Map((propertyAddresses ?? []).map((property) => [property.id, property]));
-    const enrichProperty = (candidate: unknown) => {
-      if (!candidate || typeof candidate !== "object") return candidate;
-      const property = candidate as Record<string, unknown>;
-      const address = propertyById.get(String(property.id ?? ""));
-      return address ? { ...property, ...address, name: propertyDisplayAddress(address) } : property;
+    if (livePropertyError) return mapDatabaseError(livePropertyError);
+
+    const propertyById = new Map((liveProperties ?? []).map((property) => [property.id, property]));
+    const livePropertyIds = [...propertyById.keys()];
+    const { data: sharedMemberships, error: sharedMembershipError } = livePropertyIds.length
+      ? await supabase
+          .from("property_members")
+          .select("property_id, user_id, role, status")
+          .in("property_id", livePropertyIds)
+          .eq("status", "active")
+      : { data: [], error: null };
+    if (sharedMembershipError) return mapDatabaseError(sharedMembershipError);
+
+    const profileByUserId = new Map<string, Record<string, unknown>>();
+    for (const candidate of panelMembers) {
+      if (!candidate || typeof candidate !== "object") continue;
+      const member = candidate as Record<string, unknown>;
+      if (typeof member.user_id === "string") profileByUserId.set(member.user_id, member);
+    }
+
+    const toPanelProperty = (propertyId: string, role: string) => {
+      const property = propertyById.get(propertyId);
+      if (!property) return null;
+      return { ...property, name: propertyDisplayAddress(property), role, status: "active" };
     };
+    const properties = (myMemberships ?? [])
+      .map((membership) => toPanelProperty(membership.property_id, membership.role))
+      .filter(Boolean);
 
-    const members =
-      panelMembers.map((candidate) => {
-        if (
-          !candidate ||
-          typeof candidate !== "object"
-        ) {
-          return candidate;
-        }
-
-        const member =
-          candidate as Record<
-            string,
-            unknown
-          >;
-
-        const userId =
-          typeof member.user_id ===
-          "string"
-            ? member.user_id
-            : "";
-
-        return {
-          ...member,
-          properties: Array.isArray(member.properties) ? member.properties.map(enrichProperty) : [],
-
-          avatar_url:
-            avatarByUserId.get(
-              userId,
-            ) ?? null,
-        };
-      });
+    const membershipsByUser = new Map<string, typeof sharedMemberships>();
+    for (const membership of sharedMemberships ?? []) {
+      const current = membershipsByUser.get(membership.user_id) ?? [];
+      current.push(membership);
+      membershipsByUser.set(membership.user_id, current);
+    }
+    const members = [...membershipsByUser.entries()].map(([userId, memberships]) => {
+      const profile = profileByUserId.get(userId) ?? {};
+      return {
+        ...profile,
+        user_id: userId,
+        avatar_url: avatarByUserId.get(userId) ?? null,
+        roles: Array.from(new Set(memberships.map((membership) => membership.role))),
+        properties: memberships
+          .map((membership) => toPanelProperty(membership.property_id, membership.role))
+          .filter(Boolean),
+      };
+    });
+    const myRoles = (myMemberships ?? [])
+      .filter((membership) => propertyById.has(membership.property_id))
+      .map((membership) => membership.role);
+    const workspaceRole = myRoles.includes("owner") ? "owner" : myRoles.includes("manager") ? "manager" : myRoles.includes("viewer") ? "viewer" : "member";
 
     return apiSuccess({
       ...panel,
-      properties: panelProperties.map(enrichProperty),
+      workspace_role: workspaceRole,
+      can_edit_members: myRoles.includes("owner"),
+      properties,
       members,
     });
 

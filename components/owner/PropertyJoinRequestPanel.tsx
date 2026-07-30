@@ -45,6 +45,8 @@ export default function PropertyJoinRequestPanel() {
     setProcessingId,
   ] = useState<string | null>(null);
 
+  const [targetRequestId, setTargetRequestId] = useState<string | null>(null);
+
 
 
   async function loadRequests() {
@@ -94,6 +96,17 @@ export default function PropertyJoinRequestPanel() {
     void loadRequests();
 
   }, []);
+
+  useEffect(() => {
+    if (loading || requests.length === 0) return;
+    const requestId = new URLSearchParams(window.location.search).get("request");
+    if (!requestId) return;
+    setTargetRequestId(requestId);
+    document.getElementById(`property-join-request-${requestId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [loading, requests]);
 
 
 
@@ -225,13 +238,16 @@ export default function PropertyJoinRequestPanel() {
 
           <article
             key={request.id}
-            className="
+            id={`property-join-request-${request.id}`}
+            className={`
             rounded-xl
             border
             border-[#aa825d]/20
             bg-[#f8ead7]
             p-4
-            "
+            scroll-mt-24
+            ${targetRequestId === request.id ? "ring-2 ring-[#744722]" : ""}
+            `}
           >
 
 

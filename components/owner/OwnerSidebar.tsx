@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell,
   Building2,
   FileText,
   Home,
@@ -13,6 +12,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import OwnerAccountPanel from "@/components/owner/OwnerAccountPanel";
+import OwnerNotificationCenter from "@/components/owner/OwnerNotificationCenter";
 
 const menus = [
   {
@@ -149,23 +149,11 @@ export default function OwnerSidebar() {
               </span>
             </Link>
 
-            <Link
-              href="/owner/contracts"
-              aria-label="Xem hợp đồng sắp hết hạn"
-              className="grid h-10 w-10 place-items-center rounded-xl border border-[#f3d9b4]/20 bg-white/5 transition hover:bg-white/10"
-            >
-              <Bell size={18} />
-            </Link>
+            <OwnerNotificationCenter />
           </div>
 
 
-          <Link
-            href="/owner/contracts"
-            aria-label="Xem hợp đồng"
-            className="ml-auto grid h-10 w-10 place-items-center rounded-xl border border-[#f3d9b4]/20 bg-white/5 md:hidden"
-          >
-            <Bell size={18} />
-          </Link>
+          <div className="ml-auto lg:hidden"><OwnerNotificationCenter /></div>
 
 
           {/* Giữ nguyên vị trí để có nút mở panel */}
