@@ -43,6 +43,15 @@ export async function POST(
     );
 
     if (error) return mapDatabaseError(error);
+    const result = data as { room_id?: string; room?: { id?: string } } | null;
+    const roomId = result?.room_id ?? result?.room?.id;
+    if (roomId) {
+      const { error: mapsError } = await supabase.rpc(
+        "set_owner_room_google_maps_v1",
+        { p_room_id: roomId, p_google_maps_url: payload.google_maps_url },
+      );
+      if (mapsError) return mapDatabaseError(mapsError);
+    }
 
     if (
       data &&
@@ -55,8 +64,6 @@ export async function POST(
 
     }
 
-    const result = data as { room_id?: string; room?: { id?: string } } | null;
-    const roomId = result?.room_id ?? result?.room?.id;
     if (roomId) {
       const { error: locationError } = await supabase
         .from("rooms")

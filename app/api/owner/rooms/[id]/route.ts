@@ -59,6 +59,11 @@ export async function PATCH(
     );
 
     if (error) return mapDatabaseError(error);
+    const { error: mapsError } = await supabase.rpc(
+      "set_owner_room_google_maps_v1",
+      { p_room_id: roomId, p_google_maps_url: input.google_maps_url },
+    );
+    if (mapsError) return mapDatabaseError(mapsError);
     const { error: locationError } = await supabase
       .from("rooms")
       .update(roomLocationPatch(body))

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { BarChart3 } from "lucide-react";
+import { useMemo } from "react";
 
 export type OwnerPropertyDashboardItem = {
   id: string;
@@ -66,10 +66,12 @@ function getEmptyBarHeight(
 
 export default function OwnerPropertyDashboard({
   items,
+  initialSearch = "",
 }: {
   items: OwnerPropertyDashboardItem[];
+  initialSearch?: string;
 }) {
-  const [searchTerm, setSearchTerm] = useState("");
+  const searchTerm = initialSearch;
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = normalizeSearchValue(searchTerm);
@@ -125,33 +127,6 @@ export default function OwnerPropertyDashboard({
               <span className="h-3 w-3 rounded-sm bg-[#75451f]" />
               Phòng đang trống
             </div>
-          </div>
-
-          <div className="relative max-w-xl">
-            <Search
-              size={18}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9a7758]"
-            />
-
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Tìm số nhà, tên đường, phường, quận..."
-              aria-label="Tìm kiếm tòa nhà theo địa chỉ"
-              className="h-11 w-full rounded-xl border border-[#aa825d]/30 bg-[#fffdf8] pl-11 pr-11 text-sm text-[#4d3422] outline-none transition placeholder:text-[#a58a73] focus:border-[#744722] focus:ring-4 focus:ring-[#744722]/10"
-            />
-
-            {hasSearchTerm ? (
-              <button
-                type="button"
-                onClick={() => setSearchTerm("")}
-                aria-label="Xóa từ khóa tìm kiếm"
-                className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-[#8a6a4e] transition hover:bg-[#f1dfc8] hover:text-[#5b371f]"
-              >
-                <X size={16} />
-              </button>
-            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#846951]">

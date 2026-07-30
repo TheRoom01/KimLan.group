@@ -7,12 +7,12 @@ import {
   FileText,
   Home,
   KeyRound,
-  Search,
   Users,
   Warehouse,
 } from "lucide-react";
 import OwnerAccountPanel from "@/components/owner/OwnerAccountPanel";
 import OwnerNotificationCenter from "@/components/owner/OwnerNotificationCenter";
+import OwnerBuildingSearch from "@/components/owner/OwnerBuildingSearch";
 
 const menus = [
   {
@@ -138,16 +138,7 @@ export default function OwnerSidebar() {
 
 
           <div className="ml-auto hidden items-center gap-2 lg:flex">
-            <Link
-              href="/owner/rooms"
-              className="flex min-w-[180px] items-center gap-2 rounded-xl border border-[#f3d9b4]/25 bg-[#5d361c]/45 px-3 py-2 text-sm text-[#f8e8d2] transition hover:bg-[#5d361c]/70 lg:min-w-[220px]"
-            >
-              <Search size={17} />
-
-              <span className="truncate">
-                Tìm phòng, tòa nhà...
-              </span>
-            </Link>
+            <OwnerBuildingSearch />
 
             <OwnerNotificationCenter />
           </div>

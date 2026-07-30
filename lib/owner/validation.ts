@@ -401,6 +401,8 @@ export type CreateOwnerRoomInput = {
 
   zalo_phone: string | null;
 
+  google_maps_url: string | null;
+
 
   room_details: JsonObject | null;
 
@@ -469,6 +471,12 @@ export function parseCreateOwnerRoomInput(
         "Số Zalo",
         30,
       ),
+
+    google_maps_url: parseOptionalString(
+      body.google_maps_url,
+      "Link Google Maps",
+      2000,
+    ),
 
 
     room_details:

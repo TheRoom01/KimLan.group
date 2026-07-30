@@ -303,7 +303,8 @@ function normalizeContracts(value: unknown): DashboardContract[] {
   );
 }
 
-export default async function OwnerPage() {
+export default async function OwnerPage({ searchParams }: { searchParams: Promise<{ building_search?: string }> }) {
+  const { building_search: buildingSearch = "" } = await searchParams;
   const [dashboardData, roomData, propertyData] = await Promise.all([
   getOwnerDashboard(),
   getOwnerRooms(),
@@ -342,7 +343,7 @@ export default async function OwnerPage() {
   const kpis = [
     {
       label: "Tổng số BĐS",
-      value: toNumber(summary.total_properties),
+      value: properties.length,
       suffix: "Tòa nhà",
       icon: Building2,
       href: null,
@@ -396,21 +397,21 @@ export default async function OwnerPage() {
           </Link>
         </div>
 
-        <div className="grid min-w-0 grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:gap-4 sm:p-5 xl:grid-cols-4 xl:p-6">
+        <div className="grid min-w-0 grid-cols-2 gap-2 p-3 sm:gap-3 sm:p-4 xl:grid-cols-4">
           {kpis.map((item) => {
             const Icon = item.icon;
             const content = (
               <>
                 <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#f4d9b5]/10 transition group-hover:scale-110" />
-                <div className="relative flex h-full min-w-0 flex-col justify-between gap-5">
+                <div className="relative flex h-full min-w-0 flex-col justify-between gap-2 sm:gap-3">
                   <div className="flex min-w-0 items-start justify-between gap-3">
                     <p className="min-w-0 text-xs font-semibold uppercase tracking-[0.07em] text-[#f1d7b5] sm:text-sm">
                       {item.label}
                     </p>
-                    <Icon className="shrink-0 text-[#f1d2a8]" size={22} />
+                    <Icon className="shrink-0 text-[#f1d2a8]" size={18} />
                   </div>
                   <div className="min-w-0">
-                    <p className="break-words text-2xl font-bold leading-tight sm:text-3xl">
+                    <p className="break-words text-xl font-bold leading-tight sm:text-2xl">
                       {item.value}
                     </p>
                     <p className="mt-2 break-words text-[11px] leading-4 text-[#ead0ad] sm:text-xs">
@@ -422,7 +423,7 @@ export default async function OwnerPage() {
             );
 
             const className =
-              "group relative min-h-[138px] min-w-0 overflow-hidden rounded-[18px] bg-gradient-to-br from-[#84532d] to-[#68401f] p-4 text-[#fff7e9] shadow-[0_14px_28px_rgba(91,54,24,0.18)] transition sm:min-h-[155px] sm:p-5";
+              "group relative min-h-[108px] min-w-0 overflow-hidden rounded-2xl bg-gradient-to-br from-[#84532d] to-[#68401f] p-3 text-[#fff7e9] shadow-[0_10px_22px_rgba(91,54,24,0.16)] transition sm:min-h-[120px] sm:p-4";
 
             return item.href ? (
               <Link
@@ -443,7 +444,7 @@ export default async function OwnerPage() {
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-12 xl:gap-5">
         <div className="min-w-0 space-y-4 xl:col-span-8 xl:space-y-5">
-          <OwnerPropertyDashboard items={propertyOverview} />
+          <OwnerPropertyDashboard items={propertyOverview} initialSearch={buildingSearch} />
           
         </div>
 

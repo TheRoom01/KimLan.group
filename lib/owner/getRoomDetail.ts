@@ -44,6 +44,7 @@ export async function getRoomDetail(roomId: string) {
       chinh_sach,
       link_zalo,
       zalo_phone,
+      google_maps_url,
       address,
       house_number,
       district,

@@ -155,6 +155,7 @@ export default function CreateRoomForm({
       chinh_sach: form.get("chinh_sach"),
       link_zalo: form.get("link_zalo"),
       zalo_phone: form.get("zalo_phone"),
+      google_maps_url: form.get("google_maps_url"),
       house_number: form.get("house_number"),
       address: form.get("address"),
       ward: form.get("ward"),
@@ -338,6 +339,12 @@ export default function CreateRoomForm({
                 placeholder="https://zalo.me/..."
                 defaultValue={defaults.link_zalo ?? ""}
               />
+            </Field>
+          </div>
+
+          <div className="md:col-span-2">
+            <Field label="Link Google Maps" htmlFor="google_maps_url">
+              <input id="google_maps_url" name="google_maps_url" type="url" className={INPUT_CLASS} maxLength={2000} placeholder="https://maps.google.com/..." defaultValue={defaults.google_maps_url ?? ""} />
             </Field>
           </div>
 
@@ -606,7 +613,8 @@ function Section({
 }
 
 function RoomTabs({ activeTab, onChange }: { activeTab: "info" | "amenities" | "fees"; onChange: (tab: "info" | "amenities" | "fees") => void }) {
-  return <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1">{([['info', 'Thông tin'], ['amenities', 'Tiện nghi'], ['fees', 'Chi phí']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold ${activeTab === key ? 'bg-[#744722] text-white' : 'text-[#684324]'}`}>{label}</button>)}</div>;
+  const options = [['info', 'Thông tin'], ['amenities', 'Tiện nghi'], ['fees', 'Chi phí']] as const;
+  return <><select aria-label="Chọn nhóm thông tin phòng" value={activeTab} onChange={(event) => onChange(event.target.value as typeof activeTab)} className="h-11 w-full rounded-xl border border-[#9d744f]/35 bg-[#744722] px-3 text-sm font-bold text-white outline-none sm:hidden">{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><div className="hidden grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1 sm:grid">{options.map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold transition ${activeTab === key ? 'bg-[#744722] text-white shadow-sm' : 'text-[#684324] hover:bg-[#ead2b2]'}`}>{label}</button>)}</div></>;
 }
 
 function Field({
