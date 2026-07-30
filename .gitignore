@@ -34,3 +34,5 @@ Thumbs.db
 .zalo-reader/
 tools/zalo-reader/state.json
 
+.vercel
+.env*
