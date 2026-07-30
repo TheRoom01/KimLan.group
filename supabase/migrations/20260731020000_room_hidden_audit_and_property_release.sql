@@ -339,25 +339,23 @@ begin
 
   select array_agg(distinct pm.role), jsonb_build_object(
     'active_memberships', count(*) filter (where pm.status = 'active'),
-    'legacy_owner_mapping', exists(select 1 from public.property_owners po where po.property_id = p_property_id and po.user_id = v_uid),
-    'room_owner_links', (select count(*) from public.rooms r where r.property_id = p_property_id and r.owner_id = v_uid)
+    'legacy_owner_mapping', exists(select 1 from public.property_owners po where po.property_id = p_property_id and po.user_id = v_uid)
   ) into v_roles, v_before
   from public.property_members pm
-  where pm.property_id = p_property_id and pm.user_id = v_uid and pm.status = 'active';
+  where pm.property_id = p_property_id and pm.user_id = v_uid
+    and pm.status = 'active' and pm.role in ('owner', 'manager');
 
   if coalesce(array_length(v_roles, 1), 0) = 0 then raise exception 'FORBIDDEN' using errcode = '42501'; end if;
   if not (v_roles && array['owner','manager']::text[]) then raise exception 'FORBIDDEN' using errcode = '42501'; end if;
 
   update public.property_members set status = 'revoked', updated_at = now()
-    where property_id = p_property_id and user_id = v_uid and status = 'active';
+    where property_id = p_property_id and user_id = v_uid
+      and status = 'active' and role in ('owner', 'manager');
   delete from public.property_owners where property_id = p_property_id and user_id = v_uid;
-  update public.rooms set owner_id = null, updated_at = now()
-    where property_id = p_property_id and owner_id = v_uid;
 
   v_after := jsonb_build_object(
-    'active_memberships', (select count(*) from public.property_members pm where pm.property_id = p_property_id and pm.user_id = v_uid and pm.status = 'active'),
-    'legacy_owner_mapping', exists(select 1 from public.property_owners po where po.property_id = p_property_id and po.user_id = v_uid),
-    'room_owner_links', (select count(*) from public.rooms r where r.property_id = p_property_id and r.owner_id = v_uid)
+    'active_memberships', (select count(*) from public.property_members pm where pm.property_id = p_property_id and pm.user_id = v_uid and pm.status = 'active' and pm.role in ('owner', 'manager')),
+    'legacy_owner_mapping', exists(select 1 from public.property_owners po where po.property_id = p_property_id and po.user_id = v_uid)
   );
 
   insert into public.property_ownership_audit (
