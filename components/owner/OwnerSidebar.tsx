@@ -103,7 +103,7 @@ export default function OwnerSidebar() {
               />
             </span>
 
-            <span className="text-lg lg:text-xl">
+            <span className="hidden text-lg xl:inline xl:text-xl">
               Landlord
             </span>
           </Link>
@@ -137,14 +137,11 @@ export default function OwnerSidebar() {
           </nav>
 
 
-          <div className="ml-auto hidden items-center gap-2 lg:flex">
+          <div className="ml-auto flex min-w-0 flex-1 items-center gap-1.5 lg:ml-0 lg:flex-none lg:gap-2">
             <OwnerBuildingSearch />
 
             <OwnerNotificationCenter />
           </div>
-
-
-          <div className="ml-auto lg:hidden"><OwnerNotificationCenter /></div>
 
 
           {/* Giữ nguyên vị trí để có nút mở panel */}

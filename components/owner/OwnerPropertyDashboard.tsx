@@ -32,6 +32,28 @@ function normalizeSearchValue(value: string) {
     .trim();
 }
 
+function propertySearchScore(item: OwnerPropertyDashboardItem, query: string) {
+  const address = normalizeSearchValue(item.fullAddress);
+  const code = normalizeSearchValue(item.code ?? "");
+  const tokens = query.split(/\s+/).filter(Boolean);
+  if (!tokens.every((token) => address.includes(token) || code.includes(token))) return null;
+
+  let score = 0;
+  if (address === query) score += 10_000;
+  if (address.startsWith(query)) score += 5_000;
+  const phraseIndex = address.indexOf(query);
+  if (phraseIndex >= 0) score += 3_000 - Math.min(phraseIndex, 1_000);
+
+  for (const token of tokens) {
+    if (address.split(" ").includes(token)) score += 300;
+    else if (address.includes(token)) score += 150;
+    if (code === token) score += 250;
+  }
+
+  score += Math.max(0, 500 - Math.abs(address.length - query.length));
+  return score;
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("vi-VN", {
     style: "currency",
@@ -80,20 +102,11 @@ export default function OwnerPropertyDashboard({
       return items;
     }
 
-    const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
-
-    return items.filter((item) => {
-      const haystack = normalizeSearchValue(
-        [
-        item.fullAddress,
-        item.code,
-        ]
-          .filter(Boolean)
-          .join(" "),
-      );
-
-      return queryTokens.every((token) => haystack.includes(token));
-    });
+    return items
+      .map((item) => ({ item, score: propertySearchScore(item, normalizedQuery) }))
+      .filter((candidate): candidate is { item: OwnerPropertyDashboardItem; score: number } => candidate.score !== null)
+      .sort((left, right) => right.score - left.score || left.item.name.localeCompare(right.item.name, "vi"))
+      .map((candidate) => candidate.item);
   }, [items, searchTerm]);
 
   const maxEmptyValue = Math.max(
