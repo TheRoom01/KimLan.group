@@ -214,7 +214,7 @@ begin
     ) or exists (
       select 1 from public.property_owners po
       where po.property_id = v_room.property_id
-        and po.owner_id = v_uid
+        and po.user_id = v_uid
     )
   into v_is_owner;
   perform set_config('app.room_audit_source',

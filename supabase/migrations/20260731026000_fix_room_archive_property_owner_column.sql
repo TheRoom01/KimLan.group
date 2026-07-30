@@ -28,8 +28,6 @@ begin
     return to_jsonb(v_room);
   end if;
 
-  -- Room mutations are available to active owners and managers. Property
-  -- ownership release remains owner-only and uses can_archive_property.
   if v_room.property_id is null or not public.can_manage_room(p_room_id) then
     raise exception 'FORBIDDEN' using errcode = '42501';
   end if;
