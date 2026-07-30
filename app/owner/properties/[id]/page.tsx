@@ -143,6 +143,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-bold sm:text-3xl">{displayName}</h1>
                 <PropertyStatusBadge approvalStatus={property.approval_status} lifecycleStatus={property.lifecycle_status} />
+                {currentMembership?.role ? <MembershipRoleBadge role={currentMembership.role} /> : null}
               </div>
               {extras.google_maps_url ? <a href={extras.google_maps_url} target="_blank" rel="noopener noreferrer" className="mt-3 flex items-start gap-2 text-sm font-semibold leading-6 text-[#744722] transition hover:text-[#4d2d16] hover:underline"><MapPin className="mt-0.5 shrink-0" size={17} /><span className="min-w-0 truncate">{extras.google_maps_url}</span><ExternalLink className="mt-0.5 shrink-0" size={14} /></a> : <p className="mt-3 flex items-center gap-2 text-sm text-[#9a7758]"><MapPin size={17} /> Chưa cập nhật link Google Maps</p>}
               {property.code ? <p className="mt-1 text-xs text-[#9a7758]">Mã tòa nhà: {property.code}</p> : null}
@@ -185,14 +186,11 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
           {amenities.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{amenities.map(([key, label, Icon]) => <div key={key} className="flex items-center gap-3 rounded-xl bg-[#f8ead7] px-3 py-3 text-sm font-semibold text-[#65472f]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff9ef] text-[#744722]"><Icon size={17} /></span>{label}</div>)}</div> : <p className="mt-3 text-sm text-[#80634a]">Chưa cập nhật tiện ích chung.</p>}
           {roomDetails.other_amenities ? <p className="mt-4 text-sm leading-6 text-[#80634a]">{roomDetails.other_amenities}</p> : null}
         </section>
-        <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
-          <h2 className="text-lg font-bold">Thông tin tòa nhà</h2>
-          <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
-            <InfoItem label="Loại hình" value="Tòa nhà cho thuê" />
-            <InfoItem label="Số phòng" value={`${summary.total_rooms} phòng`} />
-            <InfoItem label="Trạng thái" value={property.lifecycle_status === "archived" ? "Đã lưu trữ" : "Đang hoạt động"} />
-            <InfoItem label="Quyền của bạn" value={currentMembership?.role || "Thành viên"} />
-          </dl>
+        <section className="flex max-h-[275px] min-h-[180px] flex-col rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
+          <h2 className="shrink-0 text-lg font-bold">Chính sách</h2>
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain whitespace-pre-line pr-2 text-sm leading-7 text-[#6f5239] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
+            {defaults.chinh_sach || "Chưa cập nhật chính sách của tòa nhà."}
+          </div>
         </section>
       </div>
 
@@ -224,7 +222,6 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
 function ContactIcon({ children }: { children: React.ReactNode }) { return <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f8ead7] text-[#744722]">{children}</span>; }
 function ContactRow({ icon, text }: { icon: React.ReactNode; text: string }) { return <div className="flex items-center gap-3"><ContactIcon>{icon}</ContactIcon><span>{text}</span></div>; }
 function Legend({ color, label }: { color: string; label: string }) { return <span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${color}`} />{label}</span>; }
-function InfoItem({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs text-[#9a7758]">{label}</dt><dd className="mt-1 font-semibold text-[#4d3422]">{value}</dd></div>; }
 
 function StatCard({ title, value, color = "text-[#4d3422]" }: { title: string; value: number; color?: string }) {
   return <div className="rounded-2xl bg-[#f8ead7] p-3 text-center"><p className={`text-xl font-bold ${color}`}>{value}</p><p className="mt-1 text-xs text-[#80634a]">{title}</p></div>;
@@ -240,6 +237,11 @@ function PropertyStatusBadge({ approvalStatus, lifecycleStatus }: { approvalStat
   };
   const state = states[approvalStatus ?? "draft"] ?? states.draft;
   return <span className={`rounded-full px-3 py-1 text-xs font-medium ${state.className}`}><Check className="mr-1 inline" size={12} />{state.label}</span>;
+}
+
+function MembershipRoleBadge({ role }: { role: string }) {
+  const labels: Record<string, string> = { owner: "Chủ nhà", manager: "Quản lý", viewer: "Chỉ xem" };
+  return <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{labels[role] || "Thành viên"}</span>;
 }
 
 function roomStatusStyle(status: string) {

@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 function authorized(request: Request) {
   const expected = process.env.CRON_SECRET ?? "";
   const received = request.headers.get("x-cron-secret") ?? request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  if (!expected && process.env.NODE_ENV === "development") return true;
   return Boolean(expected && received === expected);
 }
 
@@ -19,9 +20,19 @@ async function run(request: Request) {
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.pro";
+  let processed = 0;
   let sent = 0;
   for (const row of rows ?? []) {
-    await supabase.from("owner_email_outbox").update({ status: "sending", attempts: Number(row.attempts || 0) + 1 }).eq("id", row.id);
+    const nextAttempts = Number(row.attempts || 0) + 1;
+    const { data: claimed, error: claimError } = await supabase
+      .from("owner_email_outbox")
+      .update({ status: "sending" })
+      .eq("id", row.id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (claimError || !claimed) continue;
+    processed += 1;
     try {
       const address = String(row.payload?.address || "tòa nhà");
       const response = await fetch("https://api.resend.com/emails", {
@@ -35,13 +46,14 @@ async function run(request: Request) {
         }),
       });
       if (!response.ok) throw new Error(`Resend ${response.status}: ${(await response.text()).slice(0, 500)}`);
-      await supabase.from("owner_email_outbox").update({ status: "sent", sent_at: new Date().toISOString(), last_error: null }).eq("id", row.id);
+      const { error: sentError } = await supabase.from("owner_email_outbox").update({ status: "sent", sent_at: new Date().toISOString(), attempts: nextAttempts, last_error: null }).eq("id", row.id);
+      if (sentError) throw sentError;
       sent += 1;
     } catch (sendError) {
-      await supabase.from("owner_email_outbox").update({ status: "failed", last_error: sendError instanceof Error ? sendError.message : String(sendError) }).eq("id", row.id);
+      await supabase.from("owner_email_outbox").update({ status: "failed", attempts: nextAttempts, last_error: sendError instanceof Error ? sendError.message : String(sendError) }).eq("id", row.id);
     }
   }
-  return NextResponse.json({ ok: true, processed: rows?.length ?? 0, sent });
+  return NextResponse.json({ ok: true, processed, sent });
 }
 
 function escapeHtml(value: string) {
