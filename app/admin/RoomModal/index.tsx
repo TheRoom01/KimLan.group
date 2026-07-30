@@ -108,6 +108,17 @@ type PropertyCandidate = {
   room_count?: number
 }
 
+type HiddenRoomAudit = {
+  is_hidden?: boolean
+  has_audit?: boolean
+  reason?: string | null
+  actor_role?: string | null
+  actor_display_name?: string | null
+  actor_phone?: string | null
+  source?: string | null
+  occurred_at?: string | null
+}
+
 function normalizeStatus(v?: RoomStatus | string | null): RoomStatus {
   const s = String(v ?? '').toLowerCase().trim()
 
@@ -183,6 +194,9 @@ const [propertyCandidates, setPropertyCandidates] = useState<PropertyCandidate[]
 const [uploading, setUploading] = useState(false)
 const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 const [showAutoRead, setShowAutoRead] = useState(false)
+const [showHiddenSaveConfirm, setShowHiddenSaveConfirm] = useState(false)
+const [hiddenAudit, setHiddenAudit] = useState<HiddenRoomAudit | null>(null)
+const [hiddenAuditLoading, setHiddenAuditLoading] = useState(false)
 
   // ✅ NEW: dùng để chọn RPC L1/L2 khi cần fallback (bypass RLS)
   const [adminLevel, setAdminLevel] = useState<number | null>(null)
@@ -216,6 +230,42 @@ const [showAutoRead, setShowAutoRead] = useState(false)
       alive = false;
     };
   }, []);
+
+  const wasHiddenAtOpen = Boolean(
+    isEdit &&
+      ((editingRoom as any)?.is_hidden ||
+        (editingRoom as any)?.lifecycle_status === 'archived' ||
+        (editingRoom as any)?.publish_status === 'hidden'),
+  )
+
+  useEffect(() => {
+    if (!open || adminLevel !== 1 || !wasHiddenAtOpen || !editingRoom?.id) {
+      setHiddenAudit(null)
+      setHiddenAuditLoading(false)
+      return
+    }
+
+    let alive = true
+    setHiddenAuditLoading(true)
+    void (async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_admin_l1_room_hidden_audit_v1', { p_room_id: editingRoom.id })
+        if (!alive) return
+        if (error) {
+          console.warn('get_admin_l1_room_hidden_audit_v1 failed', error)
+          setHiddenAudit(null)
+        } else {
+          setHiddenAudit((data ?? null) as HiddenRoomAudit | null)
+        }
+      } finally {
+        if (alive) setHiddenAuditLoading(false)
+      }
+    })()
+
+    return () => {
+      alive = false
+    }
+  }, [adminLevel, editingRoom?.id, open, wasHiddenAtOpen])
 
   // ✅ NEW: draft room id cho flow "thêm mới + upload ngay"
   const draftRoomIdRef = useRef<string>("");
@@ -1416,7 +1466,7 @@ const applyAutoReadCandidate = (
     )
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(hiddenAction?: 'keep_hidden' | 'restore') {
   const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
   const v = validate()
   if (v) {
@@ -1673,10 +1723,16 @@ const desiredId =
   (isEdit ? String(roomId || '') : String(draftRoomIdRef.current || '')).trim() || null
 
 // ✅ SAVE qua RPC (L1/L2 đều được). DB tự set updated_at = now()
-const up = await supabase.rpc('admin_upsert_room_v1', {
-  p_room_id: desiredId,
-  p_payload: payload,
-})
+const up = wasHiddenAtOpen && adminLevel === 1
+  ? await supabase.rpc('admin_l1_save_hidden_room_v1', {
+      p_room_id: desiredId,
+      p_payload: payload,
+      p_visibility_action: hiddenAction,
+    })
+  : await supabase.rpc('admin_upsert_room_v1', {
+      p_room_id: desiredId,
+      p_payload: payload,
+    })
 
 if (up.error) throw up.error
 
@@ -1898,6 +1954,28 @@ const stopBackdropEvents = (e: any) => {
 
           {errorMsg && <div style={errorBox}>Lỗi: {errorMsg}</div>}
 
+          {adminLevel === 1 && wasHiddenAtOpen ? (
+            <div style={hiddenAuditBox}>
+              <div style={{ fontWeight: 800, color: '#7f1d1d' }}>Phòng này đang bị ẩn.</div>
+              {hiddenAuditLoading ? (
+                <div style={{ marginTop: 6 }}>Đang tải thông tin lịch sử...</div>
+              ) : hiddenAudit?.has_audit ? (
+                <>
+                  <div style={{ marginTop: 6 }}>
+                    <strong>Lý do:</strong>{' '}
+                    {formatHiddenAuditReason(hiddenAudit)}
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <strong>Ngày, giờ ẩn:</strong>{' '}
+                    {formatAuditDateTime(hiddenAudit.occurred_at)}.
+                  </div>
+                </>
+              ) : (
+                <div style={{ marginTop: 6 }}>Phòng đang bị ẩn. Không có đầy đủ thông tin lịch sử.</div>
+              )}
+            </div>
+          ) : null}
+
           {propertyCandidates.length > 0 && (
             <div
               style={{
@@ -2073,7 +2151,13 @@ const stopBackdropEvents = (e: any) => {
 
   {/* RIGHT */}
   <div style={{ display: "flex", justifyContent: "flex-end" }}>
-    <button onClick={handleSubmit} style={btnSaveLight} disabled={saving} type="button">
+    <button onClick={() => {
+      if (adminLevel === 1 && wasHiddenAtOpen) {
+        setShowHiddenSaveConfirm(true)
+      } else {
+        void handleSubmit()
+      }
+    }} style={btnSaveLight} disabled={saving || (wasHiddenAtOpen && adminLevel === null)} type="button">
       {saving ? "Đang lưu..." : isPending ? "Lưu nháp" : "Lưu"}
     </button>
   </div>
@@ -2111,6 +2195,28 @@ const stopBackdropEvents = (e: any) => {
               >
                 Đóng modal
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHiddenSaveConfirm && (
+        <div style={confirmOverlay} onPointerDown={(e) => e.stopPropagation()}>
+          <div style={confirmBox} onPointerDown={(e) => e.stopPropagation()}>
+            <div style={confirmTitle}>Xác nhận trạng thái phòng</div>
+            <div style={confirmText}>
+              Phòng đang ở trạng thái Đã ẩn. Hãy chọn trạng thái sau khi lưu thay đổi.
+            </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <button type="button" style={confirmStayBtn} onClick={() => {
+                setShowHiddenSaveConfirm(false)
+                void handleSubmit('keep_hidden')
+              }}>Tiếp tục ẩn phòng</button>
+              <button type="button" style={{ ...confirmCloseBtn, background: '#15803d' }} onClick={() => {
+                setShowHiddenSaveConfirm(false)
+                void handleSubmit('restore')
+              }}>Công khai lại</button>
+              <button type="button" style={{ ...confirmStayBtn, background: '#fff' }} onClick={() => setShowHiddenSaveConfirm(false)}>Hủy</button>
             </div>
           </div>
         </div>
@@ -2171,6 +2277,49 @@ const errorBox: CSSProperties = {
   border: '1px solid #fecaca',
   background: '#fef2f2',
   color: '#991b1b',
+}
+
+const hiddenAuditBox: CSSProperties = {
+  marginBottom: 14,
+  padding: 12,
+  borderRadius: 10,
+  border: '1px solid #fca5a5',
+  background: '#fff1f2',
+  color: '#7f1d1d',
+  fontSize: 14,
+  lineHeight: 1.5,
+}
+
+function hiddenReasonFromSource(source?: string | null) {
+  const labels: Record<string, string> = {
+    room_archived_by_owner: 'Bị chủ nhà xóa.',
+    room_archived_by_manager: 'Bị người quản lý xóa.',
+    room_hidden_by_admin_l1: 'Bị Admin L1 ẩn.',
+    room_hidden_by_admin_l2: 'Bị Admin L2 ẩn.',
+    property_visibility_sync: 'Bị ẩn do trạng thái tòa nhà thay đổi.',
+  }
+  return labels[String(source ?? '')] || 'Phòng được chuyển sang trạng thái ẩn.'
+}
+
+function formatHiddenAuditReason(audit: HiddenRoomAudit) {
+  const actor = audit.actor_display_name || 'không rõ danh tính'
+  const phone = audit.actor_phone ? ` (SĐT: ${audit.actor_phone})` : ''
+  if (audit.source === 'room_archived_by_owner') return `Bị chủ nhà ${actor}${phone} xóa.`
+  if (audit.source === 'room_archived_by_manager') return `Bị người quản lý ${actor}${phone} xóa.`
+  if (audit.source === 'room_hidden_by_admin_l1') return `Bị Admin L1 ${actor}${phone} ẩn.`
+  if (audit.source === 'room_hidden_by_admin_l2') return `Bị Admin L2 ${actor}${phone} ẩn.`
+  const reason = audit.reason || hiddenReasonFromSource(audit.source)
+  return audit.actor_display_name ? `${reason} Người thực hiện: ${actor}${phone}.` : reason
+}
+
+function formatAuditDateTime(value?: string | null) {
+  if (!value) return 'Không rõ thời gian'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Không rõ thời gian'
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
 }
 
 const btnCancel: CSSProperties = {
