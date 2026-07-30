@@ -1,13 +1,5 @@
 begin;
 
--- Một số database cũ chưa có khóa chuẩn hóa trên rooms/properties. Khởi tạo
--- trước khi tạo trigger và backfill để migration chạy được trên cả schema cũ.
-alter table public.rooms
-  add column if not exists normalized_property_key text;
-
-alter table public.properties
-  add column if not exists normalized_property_key text;
-
 create or replace function public.property_address_key_v2(
   p_house_number text,
   p_address text,
@@ -25,46 +17,6 @@ as $function$
     public.admin_normalize_property_text_v1(p_district)
   );
 $function$;
-
-create or replace function public.sync_normalized_property_key_v2()
-returns trigger
-language plpgsql
-set search_path = public, pg_temp
-as $function$
-begin
-  new.normalized_property_key := public.property_address_key_v2(
-    new.house_number,
-    new.address,
-    new.district
-  );
-  return new;
-end;
-$function$;
-
-drop trigger if exists rooms_normalized_property_key_v2 on public.rooms;
-create trigger rooms_normalized_property_key_v2
-before insert or update of house_number, address, district
-on public.rooms
-for each row execute function public.sync_normalized_property_key_v2();
-
-drop trigger if exists properties_normalized_property_key_v2 on public.properties;
-create trigger properties_normalized_property_key_v2
-before insert or update of house_number, address, district
-on public.properties
-for each row execute function public.sync_normalized_property_key_v2();
-
-update public.rooms
-set normalized_property_key = public.property_address_key_v2(house_number, address, district)
-where normalized_property_key is distinct from public.property_address_key_v2(house_number, address, district);
-
-update public.properties
-set normalized_property_key = public.property_address_key_v2(house_number, address, district)
-where normalized_property_key is distinct from public.property_address_key_v2(house_number, address, district);
-
-create index if not exists rooms_normalized_property_key_idx
-  on public.rooms(normalized_property_key);
-create index if not exists properties_normalized_property_key_idx
-  on public.properties(normalized_property_key);
 
 create or replace function public.admin_resolve_property_for_room_v2(p_payload jsonb)
 returns jsonb
@@ -229,7 +181,7 @@ begin
   into v_candidates
   from public.rooms r
   where r.property_id is null
-    and r.normalized_property_key = v_key
+    and public.property_address_key_v2(r.house_number, r.address, r.district) = v_key
     and coalesce(r.lifecycle_status, 'active') = 'active';
 
   return jsonb_build_object('candidates', v_candidates);
@@ -255,7 +207,8 @@ begin
   select * into v_room from public.rooms where id = p_room_id for update;
   if v_room.id is null then raise exception 'ROOM_NOT_FOUND' using errcode = 'P0002'; end if;
   if v_room.property_id is not null then raise exception 'ROOM_ALREADY_ASSIGNED' using errcode = '23505'; end if;
-  if v_room.normalized_property_key is distinct from v_property.normalized_property_key then
+  if public.property_address_key_v2(v_room.house_number, v_room.address, v_room.district)
+    is distinct from v_property.normalized_property_key then
     raise exception 'PROPERTY_KEY_MISMATCH' using errcode = '22023';
   end if;
 
@@ -276,7 +229,10 @@ begin
   ) values (
     p_room_id, v_uid, 'owner', 'property_assigned',
     'Phòng được chủ nhà xác nhận thuộc tòa nhà.', 'room_property_assigned_by_owner',
-    jsonb_build_object('property_id', p_property_id, 'normalized_property_key', v_room.normalized_property_key)
+    jsonb_build_object(
+      'property_id', p_property_id,
+      'normalized_property_key', public.property_address_key_v2(v_room.house_number, v_room.address, v_room.district)
+    )
   );
 
   return jsonb_build_object('ok', true, 'room', to_jsonb(v_room));
@@ -374,7 +330,6 @@ end;
 $function$;
 
 revoke all on function public.property_address_key_v2(text, text, text) from public, anon;
-revoke all on function public.sync_normalized_property_key_v2() from public, anon, authenticated;
 revoke all on function public.admin_resolve_property_for_room_v2(jsonb) from public, anon;
 revoke all on function public.admin_upsert_room_v2(uuid, jsonb) from public, anon;
 revoke all on function public.get_owner_property_room_candidates_v1(uuid) from public, anon;
