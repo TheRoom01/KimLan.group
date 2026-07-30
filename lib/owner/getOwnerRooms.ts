@@ -41,7 +41,7 @@ export async function getOwnerRooms() {
 
   const { data: memberships, error: membershipError } = await supabase
     .from("property_members")
-    .select("property_id")
+    .select("property_id, role")
     .eq("user_id", user.id)
     .eq("status", "active");
 
@@ -57,6 +57,12 @@ export async function getOwnerRooms() {
         .filter(Boolean),
     ),
   ];
+  const membershipRoleByProperty = new Map(
+    (memberships ?? []).map((membership) => [
+      String(membership.property_id),
+      String(membership.role ?? "viewer"),
+    ]),
+  );
 
   if (propertyIds.length === 0) return [];
 
@@ -205,6 +211,10 @@ export async function getOwnerRooms() {
       media,
       coverImage,
       property,
+      membership_role: membershipRoleByProperty.get(String(room.property_id)) ?? "viewer",
+      can_manage: ["owner", "manager"].includes(
+        membershipRoleByProperty.get(String(room.property_id)) ?? "viewer",
+      ),
     };
   });
 }

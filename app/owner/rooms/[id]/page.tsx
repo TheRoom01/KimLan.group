@@ -19,14 +19,9 @@ export default async function RoomDetailPage({
   const statusLogs = await getRoomStatusLogs(id);
   const supabase = await createSupabaseServerClient();
 
-  const [{ data: canManage }, { data: canArchive }] = await Promise.all([
-    supabase.rpc("can_manage_room", { p_room_id: room.id }),
-    room.property_id
-      ? supabase.rpc("can_archive_property", {
-          p_property_id: room.property_id,
-        })
-      : Promise.resolve({ data: false, error: null }),
-  ]);
+  const { data: canManage } = await supabase.rpc("can_manage_room", {
+    p_room_id: room.id,
+  });
 
   const contract = room.contract;
   const tenants = room.tenants ?? (room.tenant ? [room.tenant] : []);
@@ -74,7 +69,7 @@ export default async function RoomDetailPage({
             </Link>
           ) : null}
 
-          {canArchive === true && !isArchived && room.property_id ? (
+          {canManage === true && !isArchived && room.property_id ? (
             <ArchiveRoomButton roomId={room.id} propertyId={room.property_id} />
           ) : null}
         </div>

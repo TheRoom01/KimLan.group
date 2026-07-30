@@ -33,6 +33,7 @@ type RoomCardData = {
   media?: RoomMediaReference[] | null;
   coverImage?: string | null;
   property?: OwnerPropertyReference | null;
+  can_manage?: boolean;
 };
 
 function propertyLabel(property?: OwnerPropertyReference | null) {
@@ -84,7 +85,7 @@ export default function RoomCard({ room }: { room: RoomCardData }) {
     <>
       <article className="group overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(92,61,34,0.14)]">
         <div className="relative aspect-[16/9] overflow-hidden bg-[#eadbc8]">
-          <DeleteRoomCardButton roomId={room.id} />
+          {room.can_manage ? <DeleteRoomCardButton roomId={room.id} /> : null}
           {imageUrl ? (
             <img
               src={imageUrl}
