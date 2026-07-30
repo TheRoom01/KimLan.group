@@ -176,16 +176,16 @@ export default function PropertyMembersPanel({
   }
 
   return (
-    <section className="rounded-2xl border bg-white p-6 shadow-sm">
+    <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 text-[#432918] shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Thành viên tòa nhà</h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <h2 className="text-xl font-bold">Thành viên tòa nhà</h2>
+          <p className="mt-1 text-sm text-[#80634a]">
             Owner có thể đổi role, thu hồi quyền hoặc chuyển quyền sở hữu cho một
             thành viên active khác.
           </p>
         </div>
-        <span className="text-sm text-gray-500">{members.length} thành viên</span>
+        <span className="rounded-full bg-[#f8ead7] px-3 py-1 text-xs font-bold text-[#684324]">{members.length} thành viên</span>
       </div>
 
       {error ? (
@@ -204,11 +204,11 @@ export default function PropertyMembersPanel({
       ) : null}
 
       {members.length === 0 ? (
-        <p className="mt-5 rounded-lg border border-dashed p-4 text-sm text-gray-500">
+        <p className="mt-4 rounded-xl border border-dashed border-[#a9825f]/35 p-4 text-sm text-[#80634a]">
           Chưa có membership.
         </p>
       ) : (
-        <div className="mt-5 divide-y rounded-xl border">
+        <div className="mt-4 grid gap-2">
           {members.map((member, index) => {
             const memberKey = member.id ?? `${member.user_id}-${index}`;
             const isActive = member.status === "active";
@@ -224,18 +224,18 @@ export default function PropertyMembersPanel({
               : member.role ?? "manager";
 
             return (
-              <div key={memberKey} className="p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div key={memberKey} className="rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7]/65 p-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{memberLabel(member)}</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    <p className="truncate text-sm font-bold text-[#4d3422]">{memberLabel(member)}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
                       <RoleBadge role={member.role} />
                       <StatusBadge status={member.status} />
                     </div>
                   </div>
 
                   {canMutate ? (
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="flex flex-wrap gap-1.5 sm:items-center">
                       <select
                         value={selectedRole}
                         onChange={(event) =>
@@ -248,7 +248,7 @@ export default function PropertyMembersPanel({
                         }
                         disabled={busyKey !== null}
                         aria-label={`Role của ${memberLabel(member)}`}
-                        className="rounded-lg border bg-white px-3 py-2 text-sm"
+                        className="h-9 rounded-lg border border-[#aa825d]/30 bg-[#fffdf8] px-2 text-xs"
                       >
                         <option value="manager">Manager</option>
                         <option value="viewer">Viewer</option>
@@ -258,7 +258,7 @@ export default function PropertyMembersPanel({
                         type="button"
                         onClick={() => void updateRole(member)}
                         disabled={busyKey !== null || selectedRole === member.role}
-                        className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-9 rounded-lg border border-[#aa825d]/30 bg-[#fffdf8] px-2.5 text-xs font-semibold hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {busyKey === `role:${member.id}` ? "Đang lưu..." : "Lưu role"}
                       </button>
@@ -267,7 +267,7 @@ export default function PropertyMembersPanel({
                         type="button"
                         onClick={() => void transferOwnership(member)}
                         disabled={busyKey !== null}
-                        className="rounded-lg border border-amber-300 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                        className="h-9 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                       >
                         {busyKey === `transfer:${member.id}`
                           ? "Đang chuyển..."
@@ -278,7 +278,7 @@ export default function PropertyMembersPanel({
                         type="button"
                         onClick={() => void revokeMember(member)}
                         disabled={busyKey !== null}
-                        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        className="h-9 rounded-lg border border-red-200 bg-red-50 px-2.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
                       >
                         {busyKey === `revoke:${member.id}`
                           ? "Đang thu hồi..."
@@ -304,7 +304,7 @@ function RoleBadge({ role }: { role?: string }) {
   };
 
   return (
-    <span className="rounded-full bg-blue-100 px-2.5 py-1 font-medium text-blue-700">
+    <span className="rounded-full bg-[#eadbc8] px-2.5 py-0.5 font-semibold text-[#684324]">
       {labels[role ?? ""] ?? role ?? "Không rõ role"}
     </span>
   );
@@ -327,7 +327,7 @@ function StatusBadge({ status }: { status?: string }) {
 
   return (
     <span
-      className={`rounded-full px-2.5 py-1 font-medium ${styles[value] ?? "bg-gray-100 text-gray-700"}`}
+      className={`rounded-full px-2.5 py-0.5 font-semibold ${styles[value] ?? "bg-gray-100 text-gray-700"}`}
     >
       {labels[value] ?? value}
     </span>

@@ -5,9 +5,7 @@ import {
   CalendarDays,
   Check,
   CircleParking,
-  Clock3,
   ExternalLink,
-  ImageIcon,
   KeyRound,
   Mail,
   MapPin,
@@ -15,10 +13,10 @@ import {
   Phone,
   ShieldCheck,
   Sparkles,
-  UserRound,
   WashingMachine,
 } from "lucide-react";
 
+import PropertyImageCarousel from "@/components/owner/PropertyImageCarousel";
 import PropertyInvitationsPanel from "@/components/owner/PropertyInvitationsPanel";
 import PropertyMembersPanel, {
   type PropertyMemberItem,
@@ -98,7 +96,8 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
   const currentMembership = members.find(
     (member) => member.user_id === user?.id && member.status === "active",
   );
-  const ownerMember = members.find((member) => member.role === "owner" && member.status === "active");
+  const ownerMembers = members.filter((member) => member.role === "owner" && member.status === "active");
+  const ownerMember = ownerMembers[0];
   const isOwner = currentMembership?.role === "owner";
   const rooms = data.rooms ?? [];
   const summary = data.summary;
@@ -136,17 +135,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
       </div>
 
       <section className="grid overflow-hidden rounded-[24px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)_310px]">
-        <div className="border-b border-[#956b45]/20 p-4 lg:border-b-0 lg:border-r">
-          <div className="relative aspect-[16/10] overflow-hidden rounded-2xl bg-[#eadbc8]">
-            {images[0] ? <img src={images[0]} alt={displayName} className="h-full w-full object-cover" /> : <EmptyImage />}
-            {images.length > 0 ? <span className="absolute right-3 top-3 rounded-full bg-[#2b1a10]/75 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur"><ImageIcon className="mr-1 inline" size={14} /> {images.length} ảnh</span> : null}
-          </div>
-          {images.length > 1 ? (
-            <div className="mt-3 grid grid-cols-5 gap-2">
-              {images.slice(0, 5).map((image, index) => <div key={image} className={`aspect-[4/3] overflow-hidden rounded-xl border-2 ${index === 0 ? "border-[#744722]" : "border-transparent"}`}><img src={image} alt={`Ảnh tòa nhà ${index + 1}`} className="h-full w-full object-cover" /></div>)}
-            </div>
-          ) : null}
-        </div>
+        <div className="border-b border-[#956b45]/20 p-4 lg:border-b-0 lg:border-r"><PropertyImageCarousel images={images} title={displayName} /></div>
 
         <div className="border-b border-[#956b45]/20 p-5 sm:p-6 lg:border-b-0 lg:border-r">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -155,7 +144,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
                 <h1 className="text-2xl font-bold sm:text-3xl">{displayName}</h1>
                 <PropertyStatusBadge approvalStatus={property.approval_status} lifecycleStatus={property.lifecycle_status} />
               </div>
-              <p className="mt-3 flex items-start gap-2 text-sm leading-6 text-[#80634a]"><MapPin className="mt-0.5 shrink-0" size={17} /> {property.full_address || displayName}</p>
+              {extras.google_maps_url ? <a href={extras.google_maps_url} target="_blank" rel="noopener noreferrer" className="mt-3 flex items-start gap-2 text-sm font-semibold leading-6 text-[#744722] transition hover:text-[#4d2d16] hover:underline"><MapPin className="mt-0.5 shrink-0" size={17} /><span className="min-w-0 truncate">{extras.google_maps_url}</span><ExternalLink className="mt-0.5 shrink-0" size={14} /></a> : <p className="mt-3 flex items-center gap-2 text-sm text-[#9a7758]"><MapPin size={17} /> Chưa cập nhật link Google Maps</p>}
               {property.code ? <p className="mt-1 text-xs text-[#9a7758]">Mã tòa nhà: {property.code}</p> : null}
             </div>
           </div>
@@ -179,16 +168,14 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
           ) : null}
         </div>
 
-        <aside className="p-5 sm:p-6">
+        <aside className="flex min-h-0 flex-col p-5 sm:p-6">
           <h2 className="text-lg font-bold">Thông tin liên hệ</h2>
-          <div className="mt-5 space-y-4 text-sm text-[#674b34]">
-            {phones.length ? phones.slice(0, 2).map((phone) => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-3 hover:text-[#744722]"><ContactIcon><Phone size={16} /></ContactIcon><span>{phone}</span></a>) : <ContactRow icon={<Phone size={16} />} text="Chưa cập nhật số điện thoại" />}
+          <div className="mt-4 max-h-[300px] space-y-2 overflow-y-auto overscroll-contain pr-2 text-sm text-[#674b34] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
+            {phones.length ? phones.map((phone) => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-3 rounded-xl px-1 py-1.5 transition hover:bg-[#f8ead7] hover:text-[#744722]"><ContactIcon><Phone size={16} /></ContactIcon><span>{phone}</span></a>) : <ContactRow icon={<Phone size={16} />} text="Chưa cập nhật số điện thoại" />}
             {accountUser.contact_email || ownerMember?.email ? <a href={`mailto:${accountUser.contact_email || ownerMember?.email}`} className="flex items-center gap-3 break-all hover:text-[#744722]"><ContactIcon><Mail size={16} /></ContactIcon><span>{accountUser.contact_email || ownerMember?.email}</span></a> : null}
-            <ContactRow icon={<UserRound size={16} />} text={ownerMember?.display_name || accountUser.display_name || "Chủ sở hữu tòa nhà"} />
-            <ContactRow icon={<Clock3 size={16} />} text="Hỗ trợ theo lịch hẹn" />
-            {extras.google_maps_url ? <a href={extras.google_maps_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 font-semibold text-[#744722]"><ContactIcon><ExternalLink size={16} /></ContactIcon><span>Mở Google Maps</span></a> : null}
+            {defaults.link_zalo ? <a href={normalizeExternalUrl(String(defaults.link_zalo))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl px-1 py-1.5 font-semibold text-[#744722] transition hover:bg-[#f8ead7]"><ContactIcon><ExternalLink size={16} /></ContactIcon><span className="break-all">Mở Zalo</span></a> : <ContactRow icon={<ExternalLink size={16} />} text="Chưa cập nhật link Zalo" />}
+            {ownerMembers.map((member, index) => <div key={member.id || index} className="rounded-xl bg-[#f8ead7]/60 px-3 py-2"><p className="text-xs text-[#9a7758]">Chủ sở hữu {ownerMembers.length > 1 ? index + 1 : ""}</p><p className="mt-0.5 font-semibold text-[#4d3422]">{member.display_name || member.email || accountUser.display_name || "Chưa cập nhật tên"}</p></div>)}
           </div>
-          {phones[0] ? <a href={`tel:${phones[0]}`} className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 text-sm font-bold text-white transition hover:bg-[#623817]"><Phone size={16} /> Liên hệ quản lý</a> : null}
         </aside>
       </section>
 
@@ -234,7 +221,6 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
   );
 }
 
-function EmptyImage() { return <div className="flex h-full flex-col items-center justify-center gap-2 text-[#98785b]"><Building2 size={32} /><span className="text-sm">Chưa có ảnh tòa nhà</span></div>; }
 function ContactIcon({ children }: { children: React.ReactNode }) { return <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f8ead7] text-[#744722]">{children}</span>; }
 function ContactRow({ icon, text }: { icon: React.ReactNode; text: string }) { return <div className="flex items-center gap-3"><ContactIcon>{icon}</ContactIcon><span>{text}</span></div>; }
 function Legend({ color, label }: { color: string; label: string }) { return <span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${color}`} />{label}</span>; }
@@ -263,3 +249,4 @@ function roomStatusStyle(status: string) {
 }
 
 function isVideoUrl(url: string) { return /\.(mp4|webm|mov|m4v)(?:$|\?)/i.test(url) || url.includes("/video/"); }
+function normalizeExternalUrl(url: string) { return /^https?:\/\//i.test(url) || /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`; }

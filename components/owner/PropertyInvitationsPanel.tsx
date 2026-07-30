@@ -153,10 +153,10 @@ export default function PropertyInvitationsPanel({
   }
 
   return (
-    <section className="rounded-2xl border bg-white p-6 shadow-sm">
+    <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 text-[#432918] shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
       <div className="flex items-start justify-between gap-3">
-        <div><h2 className="text-xl font-semibold">Quản lý manager</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <div><h2 className="text-xl font-bold">Quản lý manager</h2>
+        <p className="mt-1 text-sm text-[#80634a]">
           Email không cần có tài khoản Kim Lân tại thời điểm gửi. Người nhận phải
           đăng nhập bằng đúng email hoặc số điện thoại được mời để chấp nhận.
         </p></div>
@@ -245,14 +245,14 @@ export default function PropertyInvitationsPanel({
         </div>
       ) : null}
 
-      <div className="mt-6">
+      <div className="mt-4 rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7]/45 p-3">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-medium">Lịch sử lời mời</h3>
+          <h3 className="text-sm font-bold text-[#4d3422]">Lịch sử lời mời</h3>
           <button
             type="button"
             onClick={() => void loadInvitations()}
             disabled={loading}
-            className="text-sm font-medium text-gray-600 hover:text-black disabled:opacity-50"
+            className="text-xs font-semibold text-[#744722] hover:underline disabled:opacity-50"
           >
             Làm mới
           </button>
@@ -261,17 +261,17 @@ export default function PropertyInvitationsPanel({
         {loading ? (
           <p className="text-sm text-gray-500">Đang tải lời mời...</p>
         ) : invitations.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-4 text-sm text-gray-500">
+          <p className="rounded-xl border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-3 text-sm text-[#80634a]">
             Chưa có lời mời manager.
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {invitations.map((invitation) => {
               const relativeLink = `/owner/invitations/accept?token=${invitation.token}`;
               const link = origin ? `${origin}${relativeLink}` : relativeLink;
 
               return (
-                <div key={invitation.id} className="rounded-xl border p-4">
+                <div key={invitation.id} className="rounded-xl border border-[#aa825d]/20 bg-[#fff9ef] p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="font-medium">
