@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   const upstream = await fetch(url.toString(), {
     method: "GET",
-    cache: "no-store",
+    next: { revalidate: 300 },
   });
 
   if (!upstream.ok || !upstream.body) {

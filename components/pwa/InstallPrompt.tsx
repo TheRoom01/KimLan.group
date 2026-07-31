@@ -193,8 +193,8 @@ export default function InstallPrompt() {
 
   return (
     <aside
-      aria-label="Cài đặt ứng dụng The Room"
-      className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[100] mx-auto max-w-md rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 text-[#4d3422] shadow-[0_18px_55px_rgba(53,34,18,0.25)]"
+      aria-label="Cài đặt ứng dụng The Room"className="fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[100] mx-auto max-w-md rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] p-4 text-[#4d3422] shadow-[0_18px_55px_rgba(53,34,18,0.25)]"
+      
     >
 
       <button
@@ -216,7 +216,7 @@ export default function InstallPrompt() {
 
         <div>
           <h2 className="font-bold">
-            Cài đặt The Room
+            Cài đặt The Room SG
           </h2>
 
           <p className="mt-1 text-sm leading-5 text-[#80634a]">

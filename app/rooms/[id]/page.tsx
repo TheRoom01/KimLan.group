@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { getBrowserContext, openExternalBrowser } from "@/lib/browser";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
+import { createPortal } from "react-dom";
 
 /* ================= Utils ================= */
 
@@ -247,10 +248,50 @@ function detectLinkType(url: string) {
 }
 
 function getLinkButtonLabel(type: string) {
+  if (type === "zalo") return "Mở nhóm Zalo";
   if (type === "gsheet") return "Mở Google Sheet";
   if (type === "gdrive") return "Mở Google Drive";
   if (type === "gdoc") return "Mở Google Docs";
   return "Mở liên kết";
+}
+
+function getStoredLinkName(type: string) {
+  if (type === "zalo") return "Nhóm Zalo";
+  if (type === "gsheet") return "Google Sheet";
+  if (type === "gdrive") return "Google Drive";
+  if (type === "gdoc") return "Google Docs";
+  return "Liên kết";
+}
+
+function getStoredLinkBadge(type: string) {
+  if (type === "zalo") return "Z";
+  if (type === "gsheet") return "GS";
+  if (type === "gdrive") return "GD";
+  if (type === "gdoc") return "DOC";
+  return "↗";
+}
+
+function normalizeGoogleMapsUrl(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    const isGoogleMapsHost =
+      hostname === "maps.app.goo.gl" ||
+      hostname === "goo.gl" ||
+      hostname === "google.com" ||
+      hostname.endsWith(".google.com");
+
+    return isGoogleMapsHost ? url.toString() : "";
+  } catch {
+    return "";
+  }
 }
 
 function publicHouseNumber(value?: string | null) {
@@ -391,6 +432,7 @@ const canSeePrivateFields =
 
 
     const roomReqIdRef = useRef(0);
+  const privateFieldsFetchedKeyRef = useRef("");
   const [fetchStatus, setFetchStatus] = useState<"loading" | "done">("loading");
   
   const [downloadingImages, setDownloadingImages] = useState(false);
@@ -525,6 +567,157 @@ const [shareOpen, setShareOpen] = useState(false);
 const [toast, setToast] = useState<string | null>(null);
 const [showOpenBrowserBar, setShowOpenBrowserBar] = useState(false);
 const [goingHome, setGoingHome] = useState(false);
+
+const [zaloMenuOpen, setZaloMenuOpen] = useState(false);
+
+const zaloMenuRef = useRef<HTMLDivElement | null>(null);
+const zaloMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+const zaloMenuPanelRef = useRef<HTMLDivElement | null>(null);
+
+const [zaloMenuPosition, setZaloMenuPosition] = useState({
+  top: 0,
+  left: 0,
+});
+
+const updateZaloMenuPosition = useCallback(() => {
+  const button = zaloMenuButtonRef.current;
+
+  if (!button) return;
+
+  const rect = button.getBoundingClientRect();
+
+  const menuWidth = 230;
+  const viewportGap = 12;
+  const menuGap = 8;
+
+  const measuredMenuHeight =
+    zaloMenuPanelRef.current?.offsetHeight ?? 260;
+
+  const maxLeft = Math.max(
+    viewportGap,
+    window.innerWidth - menuWidth - viewportGap
+  );
+
+  const left = Math.min(
+    Math.max(viewportGap, rect.right - menuWidth),
+    maxLeft
+  );
+
+  let top = rect.bottom + menuGap;
+
+  // Nếu phía dưới không đủ chỗ thì mở dropdown lên phía trên nút.
+  if (
+    top + measuredMenuHeight >
+    window.innerHeight - viewportGap
+  ) {
+    top = Math.max(
+      viewportGap,
+      rect.top - measuredMenuHeight - menuGap
+    );
+  }
+
+  setZaloMenuPosition({
+    top,
+    left,
+  });
+}, []);
+
+useEffect(() => {
+  if (!zaloMenuOpen) return;
+
+  updateZaloMenuPosition();
+
+  const frameId = window.requestAnimationFrame(() => {
+    updateZaloMenuPosition();
+  });
+
+  const handleOutsideClick = (
+    event: MouseEvent | TouchEvent
+  ) => {
+    const target = event.target as Node | null;
+
+    if (!target) return;
+
+    const clickedButtonArea =
+      zaloMenuRef.current?.contains(target) ?? false;
+
+    const clickedMenuPanel =
+      zaloMenuPanelRef.current?.contains(target) ?? false;
+
+    if (!clickedButtonArea && !clickedMenuPanel) {
+      setZaloMenuOpen(false);
+    }
+  };
+
+  const handleEscape = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      setZaloMenuOpen(false);
+    }
+  };
+
+  document.addEventListener(
+    "mousedown",
+    handleOutsideClick
+  );
+
+  document.addEventListener(
+    "touchstart",
+    handleOutsideClick
+  );
+
+  window.addEventListener(
+    "keydown",
+    handleEscape
+  );
+
+  window.addEventListener(
+    "resize",
+    updateZaloMenuPosition
+  );
+
+  /*
+   * true: cập nhật vị trí khi bất kỳ container cha nào cuộn,
+   * bao gồm phần thông tin phòng overflow-y-auto.
+   */
+  window.addEventListener(
+    "scroll",
+    updateZaloMenuPosition,
+    true
+  );
+
+  return () => {
+    window.cancelAnimationFrame(frameId);
+
+    document.removeEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.removeEventListener(
+      "touchstart",
+      handleOutsideClick
+    );
+
+    window.removeEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    window.removeEventListener(
+      "resize",
+      updateZaloMenuPosition
+    );
+
+    window.removeEventListener(
+      "scroll",
+      updateZaloMenuPosition,
+      true
+    );
+  };
+}, [
+  zaloMenuOpen,
+  updateZaloMenuPosition,
+]);
 
 const roomShareUrl =
   typeof window !== "undefined" ? window.location.href : "";
@@ -723,9 +916,15 @@ useEffect(() => {
   if (!canSeePrivateFields) return;
   if (!room?.id) return;
 
+  const fetchKey = `${room.id}:${currentUserIdValue}:${adminLevel}`;
+  if (privateFieldsFetchedKeyRef.current === fetchKey) return;
+
   const hasAny =
-    String(room?.link_zalo ?? "").trim() || String(room?.zalo_phone ?? "").trim();
+    String(room?.link_zalo ?? "").trim() &&
+    String(room?.zalo_phone ?? "").trim() &&
+    String(room?.google_maps_url ?? "").trim();
   if (hasAny) return;
+  privateFieldsFetchedKeyRef.current = fetchKey;
 
   let cancelled = false;
 
@@ -733,7 +932,7 @@ useEffect(() => {
     try {
       const { data, error } = await supabase
         .from("rooms")
-        .select("link_zalo, zalo_phone, is_hidden")
+        .select("link_zalo, zalo_phone, google_maps_url, is_hidden")
         .eq("id", room.id)
         .maybeSingle();
 
@@ -743,14 +942,18 @@ useEffect(() => {
 
       const link_zalo = String((data as any)?.link_zalo ?? "").trim() || null;
       const zalo_phone = String((data as any)?.zalo_phone ?? "").trim() || null;
+      const google_maps_url =
+        String((data as any)?.google_maps_url ?? "").trim() || null;
 
-      if (link_zalo || zalo_phone) {
+      if (link_zalo || zalo_phone || google_maps_url) {
         setRoom((prev: any) =>
           prev
             ? {
                 ...prev,
                 link_zalo: prev?.link_zalo ?? link_zalo,
                 zalo_phone: prev?.zalo_phone ?? zalo_phone,
+                google_maps_url:
+                  prev?.google_maps_url ?? google_maps_url,
               }
             : prev
         );
@@ -763,7 +966,15 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [canSeePrivateFields, room?.id, room?.link_zalo, room?.zalo_phone]);
+}, [
+  canSeePrivateFields,
+  adminLevel,
+  currentUserIdValue,
+  room?.id,
+  room?.link_zalo,
+  room?.zalo_phone,
+  room?.google_maps_url,
+]);
 
  const imageUrls = useMemo<string[]>(() => {
   // ✅ Ưu tiên room.media từ view room_media_agg
@@ -892,7 +1103,7 @@ if (!id || fetchStatus === "loading") {
         "
       >
         <div className="p-3 space-y-3">
-          <div className="h-[300px] md:h-[330px] rounded-[18px] bg-white/10 animate-pulse" />
+          <div className="h-[clamp(300px,35dvh,350px)] md:h-[400px] rounded-[18px] bg-white/10 animate-pulse" />
 
           <div className="flex gap-2 overflow-hidden">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -1045,14 +1256,76 @@ if (
 }
 
   const isAdmin = adminLevel === 1 || adminLevel === 2;
+  const googleMapsUrl = normalizeGoogleMapsUrl(room?.google_maps_url);
 
   const visibleLinkZalo = canSeePrivateFields
-    ? String(room?.link_zalo ?? "").trim() || null
-    : null;
+  ? String(room?.link_zalo ?? "").trim() || null
+  : null;
 
-  const visibleZaloPhone = canSeePrivateFields
-    ? String(room?.zalo_phone ?? "").trim() || null
-    : null;
+const visibleZaloPhone = canSeePrivateFields
+  ? String(room?.zalo_phone ?? "").trim() || null
+  : null;
+
+/*
+ * Field link_zalo có thể chứa:
+ * - Link nhóm Zalo
+ * - Google Drive
+ * - Google Docs
+ * - Google Sheet
+ * - Các URL khác
+ *
+ * Hỗ trợ phân cách bằng:
+ * - Xuống dòng
+ * - Khoảng trắng
+ * - Dấu phẩy
+ * - Dấu chấm phẩy
+ */
+const rawStoredLinks = Array.from(
+  new Set(
+    String(visibleLinkZalo ?? "").match(/https?:\/\/[^\s,;]+/gi) ?? []
+  )
+);
+
+/*
+ * Đếm số link cùng loại để tự đánh số:
+ * Nhóm Zalo 1, Nhóm Zalo 2...
+ * Google Drive 1, Google Drive 2...
+ */
+const storedLinkTypeTotals = rawStoredLinks.reduce<Record<string, number>>(
+  (result, url) => {
+    const type = detectLinkType(url);
+    result[type] = (result[type] ?? 0) + 1;
+    return result;
+  },
+  {}
+);
+
+const storedLinkTypeSeen: Record<string, number> = {};
+
+const storedLinks = rawStoredLinks.map((url) => {
+  const type = detectLinkType(url);
+
+  storedLinkTypeSeen[type] =
+    (storedLinkTypeSeen[type] ?? 0) + 1;
+
+  const baseName = getStoredLinkName(type);
+  const sameTypeCount = storedLinkTypeTotals[type] ?? 0;
+  const currentTypeIndex = storedLinkTypeSeen[type];
+
+  return {
+    url,
+    type,
+    badge: getStoredLinkBadge(type),
+    label:
+      sameTypeCount > 1
+        ? `${baseName} ${currentTypeIndex}`
+        : baseName,
+  };
+});
+
+const onlyZaloLinks =
+  storedLinks.length > 0 &&
+  storedLinks.every((item) => item.type === "zalo");
 
   function renderCopyIcon(text: string, successMessage: string) {
   const value = String(text ?? "").trim();
@@ -1243,7 +1516,7 @@ return (
     {mediaItems.length > 0 ? (
       <>
         <div
-          className="relative w-full h-[250px] md:h-[360px] rounded-[18px] overflow-hidden bg-black cursor-grab active:cursor-grabbing select-none"
+          className="relative w-full h-[clamp(300px,35dvh,350px)] md:h-[400px] rounded-[18px] overflow-hidden bg-black cursor-grab active:cursor-grabbing select-none"
           tabIndex={0}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
@@ -1397,86 +1670,25 @@ return (
             </button>
           )}
 
-          {isAdmin && imageUrls.length > 0 && (
-            <>
-              {/* Nút tải ảnh: góc trái */}
-              <button
-                type="button"
-                disabled={downloadingImages}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (downloadingImages) return;
-
-                  try {
-                    setDownloadingImages(true);
-                    const url = `/api/rooms/${encodeURIComponent(id)}/download-images`;
-                    window.open(url, "_blank");
-                  } finally {
-                    setDownloadingImages(false);
-                  }
-                }}
+          {/* Ngày cập nhật: góc dưới bên phải ảnh chính */}
+            {updatedText && (
+              <div
                 className="
-                  absolute bottom-3 left-3 z-20
-                  inline-flex items-center gap-1
-                  rounded-full
-                  border border-white/20
-                  bg-black/35
-                  px-2 py-1
-                  text-[10px] font-medium text-white
-                  backdrop-blur-[10px]
-                  shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-                  hover:bg-black/80
-                  transition
-                  disabled:opacity-60 disabled:cursor-not-allowed
-                "
-                title={downloadingImages ? "Đang chuẩn bị file..." : "Tải ảnh"}
-              >
-                {downloadingImages ? "⏳" : "⬇️"}
-              </button>
-
-           {/* Nút chia sẻ: góc phải */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShareOpen(true);
-                }}
-                className="
+                  pointer-events-none
                   absolute bottom-3 right-3 z-20
-                  inline-flex items-center justify-center
-                  h-10 w-10
+                  max-w-[calc(100%-24px)]
                   rounded-full
                   border border-white/20
-                  bg-black/35
+                  bg-black/50
+                  px-2.5 py-1
+                  text-[11px] font-medium text-white/90
                   backdrop-blur-[10px]
-                  shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-                  hover:bg-black/80
-                  transition
+                  shadow-[0_6px_20px_rgba(0,0,0,0.35)]
                 "
-                title="Chia sẻ"
-                aria-label="Chia sẻ"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-5 w-5 shrink-0 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="18" cy="5" r="3" />
-                  <circle cx="6" cy="12" r="3" />
-                  <circle cx="18" cy="19" r="3" />
-                  <path d="M8.6 13.1 15.4 17" />
-                  <path d="M15.4 7 8.6 10.9" />
-                </svg>
-
-                
-              </button>
-            </>
-          )}
+                Đã cập nhật: {updatedText}
+              </div>
+            )}
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-0">
@@ -1615,10 +1827,373 @@ return (
         </div>
       )}
 
-      {/* ===== Ngày cập nhật ===== */}
-      <div className="flex items-center justify-end gap-1 mt-1 mb-0 text-sm text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.25)]">
-        {updatedText && <div>Đã cập nhật: {updatedText}</div>}
+      {/* ===== TOOLBAR CHỨC NĂNG ===== */}
+        {isAdmin && (
+          <div className="relative z-30 flex w-full min-w-0 items-center justify-start gap-2 overflow-x-auto overscroll-x-contain py-1 sm:justify-end">
+            {/* Tải toàn bộ ảnh */}
+            {imageUrls.length > 0 && (
+              <button
+                type="button"
+                disabled={downloadingImages}
+                onClick={() => {
+                  if (downloadingImages) return;
+
+                  try {
+                    setDownloadingImages(true);
+                    setZaloMenuOpen(false);
+
+                    const url = `/api/rooms/${encodeURIComponent(
+                      id
+                    )}/download-images`;
+
+                    window.open(url, "_blank");
+                  } finally {
+                    setDownloadingImages(false);
+                  }
+                }}
+                className="
+                  inline-flex h-9 shrink-0 items-center justify-center gap-1.5
+                  rounded-full
+                  border border-white/20
+                  bg-black/25
+                  px-3
+                  text-xs font-semibold text-white
+                  backdrop-blur-[14px]
+                  shadow-[0_8px_24px_rgba(0,0,0,0.25)]
+                  transition
+                  hover:bg-black/45
+                  active:scale-[0.97]
+                  disabled:cursor-not-allowed
+                  disabled:opacity-60
+                "
+                title={downloadingImages ? "Đang chuẩn bị file..." : "Tải ảnh"}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 3v12" />
+                  <path d="m7 10 5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+
+                <span>
+                  {downloadingImages ? "Đang tải..." : "Tải ảnh"}
+                </span>
+              </button>
+            )}
+
+            {/* Chia sẻ */}
+            <button
+              type="button"
+              onClick={() => {
+                setZaloMenuOpen(false);
+                setShareOpen(true);
+              }}
+              className="
+                inline-flex h-9 shrink-0 items-center justify-center gap-1.5
+                rounded-full
+                border border-white/20
+                bg-black/25
+                px-3
+                text-xs font-semibold text-white
+                backdrop-blur-[14px]
+                shadow-[0_8px_24px_rgba(0,0,0,0.25)]
+                transition
+                hover:bg-black/45
+                active:scale-[0.97]
+              "
+              title="Chia sẻ phòng"
+              aria-label="Chia sẻ phòng"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="M8.6 13.1 15.4 17" />
+                <path d="M15.4 7 8.6 10.9" />
+              </svg>
+
+              <span>Share</span>
+            </button>
+
+            {/* Google Maps */}
+            {googleMapsUrl && (
+              <a
+                href={googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setZaloMenuOpen(false)}
+                className="
+                  inline-flex h-9 shrink-0 items-center justify-center gap-1.5
+                  rounded-full
+                  border border-white/20
+                  bg-black/25
+                  px-3
+                  text-xs font-semibold text-white
+                  backdrop-blur-[14px]
+                  shadow-[0_8px_24px_rgba(0,0,0,0.25)]
+                  transition
+                  hover:bg-black/45
+                  active:scale-[0.97]
+                "
+                title="Mở vị trí trong Google Maps"
+                aria-label="Mở vị trí trong Google Maps"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+                <span>GG Maps</span>
+              </a>
+            )}
+
+            {storedLinks.length === 1 && (
+              <a
+                href={storedLinks[0].url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setZaloMenuOpen(false)}
+                className={[
+                  `
+                    inline-flex h-9 items-center justify-center gap-1.5
+                    rounded-full
+                    border
+                    px-3
+                    text-xs font-semibold text-white
+                    backdrop-blur-[14px]
+                    shadow-[0_8px_24px_rgba(0,0,0,0.25)]
+                    transition
+                    active:scale-[0.97]
+                  `,
+                  storedLinks[0].type === "zalo"
+                    ? "border-blue-300/30 bg-blue-500/20 hover:bg-blue-500/35"
+                    : "border-white/20 bg-white/10 hover:bg-white/20",
+                ].join(" ")}
+                title={getLinkButtonLabel(storedLinks[0].type)}
+              >
+                <span
+                  className={[
+                    `
+                      flex h-5 min-w-5 items-center justify-center
+                      rounded-full px-1
+                      text-[9px] font-bold
+                    `,
+                    storedLinks[0].type === "zalo"
+                      ? "bg-blue-500/40 text-white"
+                      : "bg-white/15 text-white/90",
+                  ].join(" ")}
+                >
+                  {storedLinks[0].badge}
+                </span>
+
+                <span>{storedLinks[0].label}</span>
+              </a>
+            )}
+
+            {/* Nhiều liên kết: nút mở dropdown */}
+{storedLinks.length > 1 && (
+  <div
+    ref={zaloMenuRef}
+    className="relative shrink-0"
+  >
+    <button
+      ref={zaloMenuButtonRef}
+      type="button"
+      onClick={() => {
+        if (!zaloMenuOpen) {
+          updateZaloMenuPosition();
+        }
+
+        setZaloMenuOpen((current) => !current);
+      }}
+      className={[
+        `
+          inline-flex h-9 shrink-0
+          items-center justify-center gap-1.5
+          whitespace-nowrap
+          rounded-full
+          border
+          px-3
+          text-xs font-semibold text-white
+          backdrop-blur-[14px]
+          shadow-[0_8px_24px_rgba(0,0,0,0.25)]
+          transition
+          active:scale-[0.97]
+        `,
+        onlyZaloLinks
+          ? "border-blue-300/30 bg-blue-500/20 hover:bg-blue-500/35"
+          : "border-white/20 bg-white/10 hover:bg-white/20",
+      ].join(" ")}
+      aria-haspopup="menu"
+      aria-expanded={zaloMenuOpen}
+      title={
+        onlyZaloLinks
+          ? "Chọn nhóm Zalo"
+          : "Chọn liên kết cần mở"
+      }
+    >
+      <span
+        className={[
+          `
+            flex h-5 min-w-5 shrink-0
+            items-center justify-center
+            rounded-full px-1
+            text-[9px] font-bold
+          `,
+          onlyZaloLinks
+            ? "bg-blue-500/40 text-white"
+            : "bg-white/15 text-white/90",
+        ].join(" ")}
+      >
+        {onlyZaloLinks ? "Z" : "🔗"}
+      </span>
+
+      <span className="whitespace-nowrap">
+        {onlyZaloLinks
+          ? "Nhóm Zalo"
+          : "Zalo & File"}
+      </span>
+
+      <svg
+        viewBox="0 0 24 24"
+        className={[
+          "h-3.5 w-3.5 shrink-0 transition-transform",
+          zaloMenuOpen ? "rotate-180" : "",
+        ].join(" ")}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+    </button>
+  </div>
+)}
+          </div>
+        )}
+
+        {/* Dropdown link được render ngoài toolbar để không bị overflow cắt */}
+{isAdmin &&
+  zaloMenuOpen &&
+  storedLinks.length > 1 &&
+  typeof document !== "undefined" &&
+  createPortal(
+    <div
+      ref={zaloMenuPanelRef}
+      role="menu"
+      style={{
+        position: "fixed",
+        top: zaloMenuPosition.top,
+        left: zaloMenuPosition.left,
+        width: 230,
+      }}
+      className="
+        z-[2147483646]
+        max-h-[min(320px,calc(100dvh-24px))]
+        overflow-y-auto
+        overscroll-contain
+        rounded-2xl
+        border border-white/25
+        bg-[linear-gradient(135deg,rgba(255,255,255,0.18),rgba(255,255,255,0.07)),rgba(86,57,36,0.42)]
+        p-1.5
+        text-white
+        backdrop-blur-[28px]
+        ring-1 ring-white/10
+        shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.22)]
+        [-webkit-overflow-scrolling:touch]
+      "
+    >
+      <div className="px-2 py-1.5 text-[11px] font-medium text-white/70">
+        Chọn liên kết cần mở
       </div>
+
+      {storedLinks.map((item, index) => (
+        <a
+          key={`${item.url}-${index}`}
+          href={item.url}
+          target="_blank"
+          rel="noreferrer"
+          role="menuitem"
+          onClick={() => {
+            setZaloMenuOpen(false);
+          }}
+          className="
+  flex items-center gap-2
+  rounded-xl
+  border border-transparent
+  px-2.5 py-2
+  text-xs font-medium text-white/90
+  transition
+  hover:border-white/15
+  hover:bg-white/12
+  active:bg-white/18
+"
+        >
+          <span
+            className={[
+              `
+                flex h-7 min-w-7 shrink-0
+                items-center justify-center
+                rounded-full px-1
+                text-[9px] font-bold
+              `,
+              item.type === "zalo"
+  ? "border border-blue-300/25 bg-blue-500/25 text-blue-100"
+  : "border border-white/15 bg-white/12 text-white/85"
+            ].join(" ")}
+          >
+            {item.badge}
+          </span>
+
+          <span className="min-w-0 flex-1 truncate">
+            {item.label}
+          </span>
+
+          <svg
+            viewBox="0 0 24 24"
+            className="h-3.5 w-3.5 shrink-0 text-white/55"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M14 3h7v7" />
+            <path d="M10 14 21 3" />
+            <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+          </svg>
+        </a>
+      ))}
+    </div>,
+    document.body
+  )}
 
       <div
         className="
@@ -1798,33 +2373,27 @@ return (
           </div>
 
           {canSeePrivateFields && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[#F4E7D6]">
-              <div className="min-w-0">
-                {visibleLinkZalo ? (
-                  renderSmartLinks(visibleLinkZalo)
-                ) : (
-                  <div className="text-gray-500">-</div>
-                )}
+            <div className="text-[#F4E7D6]">
+              <div className="font-medium mb-1">
+                SĐT chủ nhà
               </div>
 
-              <div>
-                <div className="font-medium mb-1"> SĐT chủ nhà </div>
-                {visibleZaloPhone ? (
-                  <button
-                    onClick={() => setPhoneModal(visibleZaloPhone)}
-                    className="
-                      text-left w-full break-all
-                      text-red-400 font-semibold
-                      hover:text-red-300 hover:underline
-                      transition-colors
-                    "
-                  >
-                    {visibleZaloPhone}
-                  </button>
-                ) : (
-                  <div className="text-gray-500">-</div>
-                )}
-              </div>
+              {visibleZaloPhone ? (
+                <button
+                  type="button"
+                  onClick={() => setPhoneModal(visibleZaloPhone)}
+                  className="
+                    text-left break-all
+                    text-red-400 font-semibold
+                    hover:text-red-300 hover:underline
+                    transition-colors
+                  "
+                >
+                  {visibleZaloPhone}
+                </button>
+              ) : (
+                <div className="text-gray-500">-</div>
+              )}
             </div>
           )}
         </div>

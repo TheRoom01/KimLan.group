@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type ShareKey =
@@ -191,7 +191,12 @@ function drawCoverImage(
   ctx.drawImage(image, sx, sy, sW, sH, dx, dy, dw, dh);
 }
 
-async function buildCollageFileFromUrls(urls: string[], roomCodeOrId: string) {
+async function buildCollageFileFromUrls(
+  urls: string[],
+  roomCodeOrId: string,
+  prepareFile: (url: string, index: number) => Promise<File> = (url, index) =>
+    r2ImageUrlToFile(url, index, roomCodeOrId)
+) {
   const uniqueUrls = Array.from(
     new Set(urls.map((u) => String(u ?? "").trim()).filter(Boolean))
   );
@@ -200,10 +205,9 @@ async function buildCollageFileFromUrls(urls: string[], roomCodeOrId: string) {
     throw new Error("Không có ảnh để tạo collage");
   }
 
-  const files: File[] = [];
-  for (let i = 0; i < uniqueUrls.length; i += 1) {
-    files.push(await r2ImageUrlToFile(uniqueUrls[i], i, roomCodeOrId));
-  }
+  const files = await Promise.all(
+    uniqueUrls.map((url, index) => prepareFile(url, index))
+  );
 
   const images = await Promise.all(files.map((f) => loadImageFromBlob(f)));
 
@@ -312,7 +316,7 @@ async function r2ImageUrlToFile(
 
   const res = await fetch(proxyUrl, {
     method: "GET",
-    cache: "no-store",
+    cache: "force-cache",
   });
 
   if (!res.ok) {
@@ -320,7 +324,10 @@ async function r2ImageUrlToFile(
   }
 
   const originalBlob = await res.blob();
-  const jpegBlob = await blobToJpegBlob(originalBlob, 0.9);
+  // Skip an expensive canvas decode/encode when the source is already JPEG.
+  const jpegBlob = originalBlob.type.toLowerCase().includes("jpeg")
+    ? originalBlob
+    : await blobToJpegBlob(originalBlob, 0.9);
 
   return new File([jpegBlob], `${safeFileBaseName(roomCodeOrId)}-${index + 1}.jpg`, {
     type: "image/jpeg",
@@ -339,7 +346,7 @@ async function r2VideoUrlToFile(
 
   const res = await fetch(proxyUrl, {
     method: "GET",
-    cache: "no-store",
+    cache: "force-cache",
   });
 
   if (!res.ok) {
@@ -379,6 +386,8 @@ const [preparingVideos, setPreparingVideos] = useState(false);
 
 const [preparedFiles, setPreparedFiles] = useState<Record<string, File>>({});
 const [preparedVideoFiles, setPreparedVideoFiles] = useState<Record<string, File>>({});
+const imagePreparationCache = useRef(new Map<string, Promise<File>>());
+const videoPreparationCache = useRef(new Map<string, Promise<File>>());
 
 const MAX_NATIVE_SHARE_FILES = 10;
 const MAX_NATIVE_SHARE_VIDEOS = 2;
@@ -398,6 +407,43 @@ const MAX_NATIVE_SHARE_VIDEOS = 2;
 
   const isAdmin = adminLevel === 1 || adminLevel === 2;
   const sourceDetail = detail ?? room ?? {};
+  const shareFileBaseName = room.room_code || room.id;
+
+  const prepareImageFile = useCallback(
+    (url: string, index: number) => {
+      const cacheKey = `${shareFileBaseName}:${url}`;
+      const cached = imagePreparationCache.current.get(cacheKey);
+      if (cached) return cached;
+
+      const pending = r2ImageUrlToFile(url, index, shareFileBaseName).catch(
+        (error) => {
+          imagePreparationCache.current.delete(cacheKey);
+          throw error;
+        }
+      );
+      imagePreparationCache.current.set(cacheKey, pending);
+      return pending;
+    },
+    [shareFileBaseName]
+  );
+
+  const prepareVideoFile = useCallback(
+    (url: string, index: number) => {
+      const cacheKey = `${shareFileBaseName}:${url}`;
+      const cached = videoPreparationCache.current.get(cacheKey);
+      if (cached) return cached;
+
+      const pending = r2VideoUrlToFile(url, index, shareFileBaseName).catch(
+        (error) => {
+          videoPreparationCache.current.delete(cacheKey);
+          throw error;
+        }
+      );
+      videoPreparationCache.current.set(cacheKey, pending);
+      return pending;
+    },
+    [shareFileBaseName]
+  );
 
   const selectedImageUrls = useMemo(() => {
     return Array.from(
@@ -449,21 +495,19 @@ useEffect(() => {
   async function prepareImages() {
     setPreparingImages(true);
 
-    const next: Record<string, File> = {};
-
-    for (let i = 0; i < selectedImageUrls.length; i += 1) {
-      const url = selectedImageUrls[i];
-
-      try {
-        next[url] = await r2ImageUrlToFile(
-          url,
-          i,
-          room.room_code || room.id
-        );
-      } catch (e) {
-        console.error("prepare image error:", e);
-      }
-    }
+    const entries = await Promise.all(
+      selectedImageUrls.map(async (url, index) => {
+        try {
+          return [url, await prepareImageFile(url, index)] as const;
+        } catch (e) {
+          console.error("prepare image error:", e);
+          return null;
+        }
+      })
+    );
+    const next = Object.fromEntries(
+      entries.filter(Boolean) as Array<readonly [string, File]>
+    );
 
     if (!cancelled) {
       setPreparedFiles(next);
@@ -476,7 +520,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [open, selectedImageUrls, room.room_code, room.id]);
+}, [open, selectedImageUrls, prepareImageFile]);
 
 useEffect(() => {
   if (!open || !includeVideos || shareVideoUrls.length === 0) return;
@@ -500,23 +544,19 @@ useEffect(() => {
   async function prepareVideos() {
     setPreparingVideos(true);
 
-    const next: Record<string, File> = { ...preparedVideoFiles };
-
-    for (let i = 0; i < selectedVideoUrls.length; i += 1) {
-      const url = selectedVideoUrls[i];
-
-      if (next[url]) continue;
-
-      try {
-        next[url] = await r2VideoUrlToFile(
-          url,
-          i,
-          room.room_code || room.id
-        );
-      } catch (e) {
-        console.error("prepare video error:", e);
-      }
-    }
+    const entries = await Promise.all(
+      selectedVideoUrls.map(async (url, index) => {
+        try {
+          return [url, await prepareVideoFile(url, index)] as const;
+        } catch (e) {
+          console.error("prepare video error:", e);
+          return null;
+        }
+      })
+    );
+    const next = Object.fromEntries(
+      entries.filter(Boolean) as Array<readonly [string, File]>
+    );
 
     if (!cancelled) {
       setPreparedVideoFiles(next);
@@ -534,8 +574,7 @@ useEffect(() => {
   includeVideos,
   shareVideoUrls,
   preparedVideoFiles,
-  room.room_code,
-  room.id,
+  prepareVideoFile,
 ]);
 
   useEffect(() => {
@@ -847,19 +886,15 @@ useEffect(() => {
   // transient proxy/network failure can recover without reopening the modal.
   const imageFiles = await Promise.all(
     selected.map((url: string, index: number) =>
-      preparedFiles[url] ??
-      r2ImageUrlToFile(url, index, room.room_code || room.id)
+      preparedFiles[url] ?? prepareImageFile(url, index)
     )
   );
 
-  const videoFiles = selectedVideos
-    .map((url: string) => preparedVideoFiles[url])
-    .filter(Boolean) as File[];
-
-      if (videoFiles.length !== selectedVideos.length) {
-        showToast("Video đang chuẩn bị, thử lại sau vài giây");
-        return;
-      }
+  const videoFiles = await Promise.all(
+    selectedVideos.map((url: string, index: number) =>
+      preparedVideoFiles[url] ?? prepareVideoFile(url, index)
+    )
+  );
 
       const files = [...imageFiles, ...videoFiles];
 
@@ -882,7 +917,9 @@ useEffect(() => {
 
       const collageFile = await buildCollageFileFromUrls(
         selected,
-        room.room_code || room.id
+        room.room_code || room.id,
+        (url, index) =>
+          Promise.resolve(preparedFiles[url] ?? prepareImageFile(url, index))
       );
 
       const canShareCollage =
