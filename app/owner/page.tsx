@@ -303,8 +303,7 @@ function normalizeContracts(value: unknown): DashboardContract[] {
   );
 }
 
-export default async function OwnerPage({ searchParams }: { searchParams: Promise<{ building_search?: string }> }) {
-  const { building_search: buildingSearch = "" } = await searchParams;
+export default async function OwnerPage() {
   const [dashboardData, roomData, propertyData] = await Promise.all([
   getOwnerDashboard(),
   getOwnerRooms(),
@@ -444,7 +443,7 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-12 xl:gap-5">
         <div className="min-w-0 space-y-4 xl:col-span-8 xl:space-y-5">
-          <OwnerPropertyDashboard items={propertyOverview} initialSearch={buildingSearch} />
+          <OwnerPropertyDashboard items={propertyOverview} />
           
         </div>
 

@@ -12,17 +12,17 @@ export default function OwnerBuildingSearch() {
   const [value, setValue] = useState(current);
 
   function submit() {
-    const params = new URLSearchParams(pathname === "/owner" ? searchParams : undefined);
+    const params = new URLSearchParams(pathname === "/owner/properties" ? searchParams : undefined);
     if (value.trim()) params.set("building_search", value.trim());
     else params.delete("building_search");
-    router.replace(`/owner${params.size ? `?${params.toString()}` : ""}`, { scroll: false });
+    router.replace(`/owner/properties${params.size ? `?${params.toString()}` : ""}`, { scroll: false });
   }
 
   function clearSearch() {
     const params = new URLSearchParams(searchParams);
     params.delete("building_search");
     setValue("");
-    router.replace(`/owner${params.size ? `?${params.toString()}` : ""}`, { scroll: false });
+    router.replace(`/owner/properties${params.size ? `?${params.toString()}` : ""}`, { scroll: false });
   }
 
   return <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="relative min-w-0 flex-1 lg:w-[280px] lg:flex-none">

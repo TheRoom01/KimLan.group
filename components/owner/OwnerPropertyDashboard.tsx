@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { BarChart3 } from "lucide-react";
-import { useMemo } from "react";
 
 export type OwnerPropertyDashboardItem = {
   id: string;
@@ -20,39 +19,6 @@ export type OwnerPropertyDashboardItem = {
   upcoming: number;
   monthlyRevenue: number;
 };
-
-function normalizeSearchValue(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function propertySearchScore(item: OwnerPropertyDashboardItem, query: string) {
-  const address = normalizeSearchValue(item.fullAddress);
-  const code = normalizeSearchValue(item.code ?? "");
-  const tokens = query.split(/\s+/).filter(Boolean);
-  if (!tokens.every((token) => address.includes(token) || code.includes(token))) return null;
-
-  let score = 0;
-  if (address === query) score += 10_000;
-  if (address.startsWith(query)) score += 5_000;
-  const phraseIndex = address.indexOf(query);
-  if (phraseIndex >= 0) score += 3_000 - Math.min(phraseIndex, 1_000);
-
-  for (const token of tokens) {
-    if (address.split(" ").includes(token)) score += 300;
-    else if (address.includes(token)) score += 150;
-    if (code === token) score += 250;
-  }
-
-  score += Math.max(0, 500 - Math.abs(address.length - query.length));
-  return score;
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("vi-VN", {
@@ -88,33 +54,13 @@ function getEmptyBarHeight(
 
 export default function OwnerPropertyDashboard({
   items,
-  initialSearch = "",
 }: {
   items: OwnerPropertyDashboardItem[];
-  initialSearch?: string;
 }) {
-  const searchTerm = initialSearch;
-
-  const filteredItems = useMemo(() => {
-    const normalizedQuery = normalizeSearchValue(searchTerm);
-
-    if (!normalizedQuery) {
-      return items;
-    }
-
-    return items
-      .map((item) => ({ item, score: propertySearchScore(item, normalizedQuery) }))
-      .filter((candidate): candidate is { item: OwnerPropertyDashboardItem; score: number } => candidate.score !== null)
-      .sort((left, right) => right.score - left.score || left.item.name.localeCompare(right.item.name, "vi"))
-      .map((candidate) => candidate.item);
-  }, [items, searchTerm]);
-
   const maxEmptyValue = Math.max(
     1,
-    ...filteredItems.map((item) => item.empty),
+    ...items.map((item) => item.empty),
   );
-
-  const hasSearchTerm = searchTerm.trim().length > 0;
 
   return (
     <>
@@ -146,30 +92,22 @@ export default function OwnerPropertyDashboard({
             <span>
               Hiển thị{" "}
               <strong className="text-[#5c3c26]">
-                {filteredItems.length}
+                {items.length}
               </strong>{" "}
               trên {items.length} tòa nhà
             </span>
 
-            {hasSearchTerm ? (
-              <span>
-                Từ khóa:{" "}
-                <strong className="text-[#5c3c26]">
-                  {searchTerm.trim()}
-                </strong>
-              </span>
-            ) : null}
           </div>
         </div>
 
-        {filteredItems.length === 0 ? (
+        {items.length === 0 ? (
           <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 bg-[#f8ead7] px-5 py-10 text-center text-sm text-[#7d624b]">
             Không tìm thấy tòa nhà phù hợp với địa chỉ đã nhập.
           </div>
         ) : (
           <div className="mt-5 overflow-x-auto pb-2">
             <div className="flex min-w-max items-stretch gap-3">
-              {filteredItems.map((item) => {
+              {items.map((item) => {
                 const barHeight = getEmptyBarHeight(
                   item.empty,
                   maxEmptyValue,
@@ -242,7 +180,7 @@ export default function OwnerPropertyDashboard({
           </Link>
         </div>
 
-        {filteredItems.length === 0 ? (
+        {items.length === 0 ? (
           <div className="border-t border-[#a77c55]/15 px-5 py-10 text-center text-sm text-[#80634a]">
             Không có tòa nhà phù hợp với tìm kiếm hiện tại.
           </div>
@@ -279,7 +217,7 @@ export default function OwnerPropertyDashboard({
                 </thead>
 
                 <tbody>
-                  {filteredItems.map((item, index) => {
+                  {items.map((item, index) => {
                     const rate =
                       item.total > 0
                         ? Math.round((item.rented / item.total) * 100)
@@ -346,7 +284,7 @@ export default function OwnerPropertyDashboard({
             </div>
 
             <div className="space-y-3 border-t border-[#a77c55]/15 p-3 lg:hidden">
-              {filteredItems.map((item) => {
+              {items.map((item) => {
                 const rate =
                   item.total > 0
                     ? Math.round((item.rented / item.total) * 100)
