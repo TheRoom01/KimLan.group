@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import PendingRoomMediaPreview from "@/components/owner/PendingRoomMediaPreview";
+import RoomTypePicker from "@/components/owner/RoomTypePicker";
 
 import { readApiResponse } from "@/lib/api/client";
 import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
@@ -296,14 +297,7 @@ export default function CreateRoomForm({
           </Field>
 
           <Field label="Loại phòng" htmlFor="room_type">
-            <input
-              id="room_type"
-              name="room_type"
-              className={INPUT_CLASS}
-              maxLength={120}
-              placeholder="Studio, 1PN, phòng gác..."
-              defaultValue=""
-            />
+            <RoomTypePicker />
           </Field>
 
           <Field label="Giá thuê tháng" htmlFor="price">

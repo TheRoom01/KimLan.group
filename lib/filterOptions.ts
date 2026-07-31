@@ -24,10 +24,10 @@ export const DISTRICT_OPTIONS = [
 
 export const ROOM_TYPE_OPTIONS = [
   "Studio",
-  "1 Phòng ngủ",
-  "2 Phòng ngủ",
   "Duplex",
   "Tách bếp",
+  "1 Phòng ngủ",
+  "2 Phòng ngủ",
   "3 Phòng ngủ",
   "4 Phòng ngủ",
 ] as const;
