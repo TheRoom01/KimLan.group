@@ -174,7 +174,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
 
         <aside className="flex min-h-0 flex-col p-5 sm:p-6">
           <h2 className="text-lg font-bold">Thông tin liên hệ</h2>
-          <div className="mt-4 max-h-[300px] space-y-2 overflow-y-auto overscroll-contain pr-2 text-sm text-[#674b34] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
+          <div className="mt-4 max-h-[300px] space-y-2 overflow-y-auto overscroll-y-auto touch-pan-y pr-2 text-sm text-[#674b34] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
             {phones.length ? phones.map((phone) => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-3 rounded-xl px-1 py-1.5 transition hover:bg-[#f8ead7] hover:text-[#744722]"><ContactIcon><Phone size={16} /></ContactIcon><span>{phone}</span></a>) : <ContactRow icon={<Phone size={16} />} text="Chưa cập nhật số điện thoại" />}
             {accountUser.contact_email || ownerMember?.email ? <a href={`mailto:${accountUser.contact_email || ownerMember?.email}`} className="flex items-center gap-3 break-all hover:text-[#744722]"><ContactIcon><Mail size={16} /></ContactIcon><span>{accountUser.contact_email || ownerMember?.email}</span></a> : null}
             {defaults.link_zalo ? <a href={normalizeExternalUrl(String(defaults.link_zalo))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl px-1 py-1.5 font-semibold text-[#744722] transition hover:bg-[#f8ead7]"><ContactIcon><ExternalLink size={16} /></ContactIcon><span className="break-all">Mở Zalo</span></a> : <ContactRow icon={<ExternalLink size={16} />} text="Chưa cập nhật link Zalo" />}
@@ -186,12 +186,12 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)]">
         <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
           <h2 className="text-lg font-bold">Tiện ích</h2>
-          {amenities.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{amenities.map(([key, label, Icon]) => <div key={key} className="flex items-center gap-3 rounded-xl bg-[#f8ead7] px-3 py-3 text-sm font-semibold text-[#65472f]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff9ef] text-[#744722]"><Icon size={17} /></span>{label}</div>)}</div> : <p className="mt-3 text-sm text-[#80634a]">Chưa cập nhật tiện ích chung.</p>}
+          {amenities.length ? <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-3">{amenities.map(([key, label, Icon]) => <div key={key} className="flex items-center gap-3 rounded-xl bg-[#f8ead7] px-3 py-3 text-sm font-semibold text-[#65472f]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff9ef] text-[#744722]"><Icon size={17} /></span>{label}</div>)}</div> : <p className="mt-3 text-sm text-[#80634a]">Chưa cập nhật tiện ích chung.</p>}
           {roomDetails.other_amenities ? <p className="mt-4 text-sm leading-6 text-[#80634a]">{roomDetails.other_amenities}</p> : null}
         </section>
         <section className="flex max-h-[275px] min-h-[180px] flex-col rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
           <h2 className="shrink-0 text-lg font-bold">Chính sách</h2>
-          <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain whitespace-pre-line pr-2 text-sm leading-7 text-[#6f5239] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
+          <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-y-auto touch-pan-y whitespace-pre-line pr-2 text-sm leading-7 text-[#6f5239] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
             {defaults.chinh_sach || "Chưa cập nhật chính sách của tòa nhà."}
           </div>
         </section>
