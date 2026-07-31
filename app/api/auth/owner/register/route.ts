@@ -313,7 +313,7 @@ export async function POST(
     return NextResponse.json({
       ok:true,
       message:
-        "Mã xác minh đã được gửi tới email",
+        "Kiểm tra hộp thư rác",
     });
 
 
