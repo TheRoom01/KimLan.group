@@ -76,7 +76,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
           </Link> : null}
         </div>
       ) : (
-        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {visibleProperties.map((property) => (
             <PropertyCard key={property.id} property={property} />
           ))}

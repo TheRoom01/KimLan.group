@@ -23,6 +23,7 @@ export type RoomForm = {
   description: string
   media?: MediaItem[];
   link_zalo: string
+  google_maps_url: string
   zalo_phone: string
   chinh_sach: string
   

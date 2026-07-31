@@ -35,7 +35,8 @@ type PropertyExtras = {
 };
 
 type AccountUser = {
-  display_name?: string | null;
+  full_name?: string | null;
+  login_email?: string | null;
   contact_email?: string | null;
   contact_phone?: string | null;
   phones?: Array<{ phone?: string | null }> | null;
@@ -93,8 +94,14 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
   const memberNames = new Map(accountMembers.map((member) => [member.user_id, member]));
   const members = ((data.members ?? []) as PropertyMemberItem[]).map((member) => ({
     ...member,
-    display_name: memberNames.get(member.user_id)?.display_name ?? null,
-    email: memberNames.get(member.user_id)?.contact_email ?? null,
+    display_name:
+      memberNames.get(member.user_id)?.display_name ??
+      (member.user_id === user?.id ? accountUser.full_name : null),
+    email:
+      memberNames.get(member.user_id)?.contact_email ??
+      (member.user_id === user?.id
+        ? accountUser.contact_email ?? accountUser.login_email
+        : null),
   }));
   const currentMembership = members.find(
     (member) => member.user_id === user?.id && member.status === "active",
@@ -137,14 +144,14 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
         </Link>
       </div>
 
-      <section className="grid overflow-hidden rounded-[24px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)_310px]">
-        <div className="border-b border-[#956b45]/20 p-4 lg:border-b-0 lg:border-r"><PropertyImageCarousel images={images} title={displayName} /></div>
+      <section className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] overflow-hidden rounded-[24px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)_310px]">
+        <div className="min-w-0 max-w-full border-b border-[#956b45]/20 p-4 lg:border-b-0 lg:border-r"><PropertyImageCarousel images={images} title={displayName} /></div>
 
-        <div className="border-b border-[#956b45]/20 p-5 sm:p-6 lg:border-b-0 lg:border-r">
+        <div className="min-w-0 max-w-full border-b border-[#956b45]/20 p-5 sm:p-6 lg:border-b-0 lg:border-r">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-bold sm:text-3xl">{displayName}</h1>
+                <h1 className="min-w-0 break-words text-2xl font-bold sm:text-3xl">{displayName}</h1>
                 <PropertyStatusBadge approvalStatus={property.approval_status} lifecycleStatus={property.lifecycle_status} />
                 {currentMembership?.role ? <MembershipRoleBadge role={currentMembership.role} /> : null}
               </div>
@@ -172,18 +179,18 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
           ) : null}
         </div>
 
-        <aside className="flex min-h-0 flex-col p-5 sm:p-6">
+        <aside className="flex min-h-0 min-w-0 max-w-full flex-col p-5 sm:p-6">
           <h2 className="text-lg font-bold">Thông tin liên hệ</h2>
           <div className="mt-4 max-h-[300px] space-y-2 overflow-y-auto overscroll-y-auto touch-pan-y pr-2 text-sm text-[#674b34] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
             {phones.length ? phones.map((phone) => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-3 rounded-xl px-1 py-1.5 transition hover:bg-[#f8ead7] hover:text-[#744722]"><ContactIcon><Phone size={16} /></ContactIcon><span>{phone}</span></a>) : <ContactRow icon={<Phone size={16} />} text="Chưa cập nhật số điện thoại" />}
             {accountUser.contact_email || ownerMember?.email ? <a href={`mailto:${accountUser.contact_email || ownerMember?.email}`} className="flex items-center gap-3 break-all hover:text-[#744722]"><ContactIcon><Mail size={16} /></ContactIcon><span>{accountUser.contact_email || ownerMember?.email}</span></a> : null}
-            {defaults.link_zalo ? <a href={normalizeExternalUrl(String(defaults.link_zalo))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl px-1 py-1.5 font-semibold text-[#744722] transition hover:bg-[#f8ead7]"><ContactIcon><ExternalLink size={16} /></ContactIcon><span className="break-all">Mở Zalo</span></a> : <ContactRow icon={<ExternalLink size={16} />} text="Chưa cập nhật link Zalo" />}
-            {ownerMembers.map((member, index) => <div key={member.id || index} className="rounded-xl bg-[#f8ead7]/60 px-3 py-2"><p className="text-xs text-[#9a7758]">Chủ tòa nhà {ownerMembers.length > 1 ? index + 1 : ""}</p><p className="mt-0.5 font-semibold text-[#4d3422]">{member.display_name || member.email || accountUser.display_name || "Chưa cập nhật tên"}</p></div>)}
+            {defaults.link_zalo ? <a href={normalizeExternalUrl(String(defaults.link_zalo))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl px-1 py-1.5 font-semibold text-[#744722] transition hover:bg-[#f8ead7]"><ContactIcon><ExternalLink size={16} /></ContactIcon><span className="break-all">Nhóm Zalo</span></a> : <ContactRow icon={<ExternalLink size={16} />} text="Chưa cập nhật link Zalo" />}
+            {ownerMembers.map((member, index) => <div key={member.id || index} className="rounded-xl bg-[#f8ead7]/60 px-3 py-2"><p className="text-xs text-[#9a7758]">Chủ tòa nhà {ownerMembers.length > 1 ? index + 1 : ""}</p><p className="mt-0.5 font-semibold text-[#4d3422]">{member.display_name || member.email || "Chưa cập nhật tên"}</p></div>)}
           </div>
         </aside>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)]">
+      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)]">
         <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
           <h2 className="text-lg font-bold">Tiện ích</h2>
           {amenities.length ? <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-3">{amenities.map(([key, label, Icon]) => <div key={key} className="flex items-center gap-3 rounded-xl bg-[#f8ead7] px-3 py-3 text-sm font-semibold text-[#65472f]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff9ef] text-[#744722]"><Icon size={17} /></span>{label}</div>)}</div> : <p className="mt-3 text-sm text-[#80634a]">Chưa cập nhật tiện ích chung.</p>}

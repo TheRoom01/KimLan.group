@@ -33,6 +33,7 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 import { readApiResponse } from "@/lib/api/client";
 
 import OwnerAvatarCropper from "@/components/owner/OwnerAvatarCropper";
+import { PanelLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 
 type AccountProperty = {
   id: string;
@@ -654,12 +655,7 @@ async function deleteAvatar() {
               "
             >
               {loading ? (
-                <div className="flex min-h-60 items-center justify-center">
-                  <Loader2
-                    size={26}
-                    className="animate-spin text-[#744722]"
-                  />
-                </div>
+                <PanelLoadingSkeleton />
               ) : null}
 
               {!loading && errorMessage ? (

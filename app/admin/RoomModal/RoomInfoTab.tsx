@@ -514,7 +514,7 @@ useEffect(() => {
 </div>
 
 {/* Link Zalo + SĐT (2 cột, lưu RIÊNG: link_zalo & zalo_phone) */}
-<div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
+<div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 220px", gap: 12 }}>
   <TextArea
     label="Link Zalo"
     value={zaloUrlDraft}
@@ -556,6 +556,12 @@ useEffect(() => {
   </div>
 </div>
 
+
+      <TextArea
+        label="Link Google Maps"
+        value={value.google_maps_url}
+        onChange={(v) => onChange({ ...value, google_maps_url: v })}
+      />
 
  {/* Mô tả */}
       <TextArea

@@ -56,9 +56,7 @@ export default async function EditRoomPage({
           <h1 className="text-3xl font-bold">
             Chỉnh sửa phòng {room.room_code}
           </h1>
-          <p className="mt-1 text-gray-500">
-            Cập nhật thông tin, phí, tiện nghi, trạng thái xuất bản và media.
-          </p>
+          
         </div>
 
         <Link href={`/owner/rooms/${room.id}`} className="shrink-0 text-sm font-medium text-gray-600 hover:text-black">

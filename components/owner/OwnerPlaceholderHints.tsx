@@ -34,28 +34,30 @@ function labelText(field: HTMLInputElement | HTMLTextAreaElement) {
   return clean ? `Nhập ${clean.toLocaleLowerCase("vi")}` : "Nhập thông tin";
 }
 
-function applyPlaceholders(root: ParentNode) {
-  root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea").forEach((field) => {
-    if (field instanceof HTMLInputElement && SKIPPED_TYPES.has(field.type)) return;
-    if (!field.hasAttribute("placeholder")) field.setAttribute("placeholder", labelText(field));
-  });
+function applyPlaceholder(field: HTMLInputElement | HTMLTextAreaElement) {
+  if (field instanceof HTMLInputElement && SKIPPED_TYPES.has(field.type)) return;
+  if (!field.hasAttribute("placeholder")) {
+    field.setAttribute("placeholder", labelText(field));
+  }
 }
 
 export default function OwnerPlaceholderHints() {
   useEffect(() => {
-    applyPlaceholders(document);
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLElement) {
-            if (node.matches("input, textarea")) applyPlaceholders(node.parentNode ?? document);
-            else applyPlaceholders(node);
-          }
-        });
+    const applyAfterInteraction = (event: Event) => {
+      const field = event.target;
+      if (
+        !(field instanceof HTMLInputElement) &&
+        !(field instanceof HTMLTextAreaElement)
+      ) {
+        return;
       }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+
+      // Avoid changing attributes while another client island is hydrating.
+      window.setTimeout(() => applyPlaceholder(field), 0);
+    };
+
+    document.addEventListener("focusin", applyAfterInteraction);
+    return () => document.removeEventListener("focusin", applyAfterInteraction);
   }, []);
   return null;
 }

@@ -15,6 +15,7 @@ export type Room = {
   status?: RoomStatus | null;
   created_at?: string | null;
   link_zalo?: string | null;
+  google_maps_url?: string | null;
   updated_at?: string | null;
   chinh_sach?: string | null;
   image_urls?: string[] | null;

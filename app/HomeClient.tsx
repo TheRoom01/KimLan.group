@@ -221,6 +221,15 @@ const HomeClient = ({
 
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    document.documentElement.dataset.homeHydrated = "true";
+    window.dispatchEvent(new Event("home:hydrated"));
+
+    return () => {
+      delete document.documentElement.dataset.homeHydrated;
+    };
+  }, []);
   
 
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
@@ -523,27 +532,25 @@ useEffect(() => {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("admin_users")
-        .select("phone, full_name")
-        .eq("user_id", currentUserId)
-        .maybeSingle();
+      const response = await fetch("/api/admin/me", {
+        cache: "no-store",
+      });
 
       if (cancelled) return;
 
-      if (error || !data) {
+      if (!response.ok) {
         setCurrentAdminPhone(null);
         setCurrentAdminName(null);
         return;
       }
 
-      setCurrentAdminPhone(
-        String(data.phone ?? "").trim() || null
-      );
+      const data = (await response.json()) as {
+        phone?: string | null;
+        full_name?: string | null;
+      };
 
-      setCurrentAdminName(
-        String(data.full_name ?? "").trim() || null
-      );
+      setCurrentAdminPhone(String(data.phone ?? "").trim() || null);
+      setCurrentAdminName(String(data.full_name ?? "").trim() || null);
     } catch {
       if (cancelled) return;
 

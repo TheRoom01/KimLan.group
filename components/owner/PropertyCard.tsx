@@ -70,7 +70,7 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
   const occupancy = total > 0 ? Math.round((rented / total) * 100) : 0;
 
   return (
-    <article className="group overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(92,61,34,0.14)]">
+    <article className="group min-w-0 max-w-full overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(92,61,34,0.14)]">
       <div className="relative aspect-[16/9] overflow-hidden bg-[#eadbc8]">
         {canManage && property.lifecycle_status !== "archived" ? <DeletePropertyCardButton propertyId={property.id} /> : null}
         {property.cover_image ? (

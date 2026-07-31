@@ -164,48 +164,23 @@ useEffect(() => {
 
   // ===== find #auth-anchor (portal target) =====
   useEffect(() => {
-    let raf = 0;
-    let obs: MutationObserver | null = null;
-    let stopped = false;
-
-    const tryFind = () => {
-      const el = document.getElementById("auth-anchor") as HTMLElement | null;
-      if (el) {
-        setAnchorEl(el);
-        return true;
+    const attachToHydratedHome = () => {
+      if (document.documentElement.dataset.homeHydrated !== "true") {
+        return;
       }
-      return false;
+      const el = document.getElementById("auth-anchor") as HTMLElement | null;
+      setAnchorEl(el);
     };
 
-    const cleanup = () => {
-      stopped = true;
-      if (obs) obs.disconnect();
-      if (raf) cancelAnimationFrame(raf);
-    };
-
-    if (tryFind()) return () => {};
-
-    setAnchorEl((prev) => {
-      if (!prev) return prev;
-      if ((prev as any).isConnected === false) return null;
-      if (!document.contains(prev)) return null;
-      return prev;
+    const frame = window.requestAnimationFrame(() => {
+      setAnchorEl(null);
+      attachToHydratedHome();
     });
-
-    obs = new MutationObserver(() => {
-      if (stopped) return;
-      if (tryFind()) cleanup();
-    });
-    obs.observe(document.body, { childList: true, subtree: true });
-
-    const tick = () => {
-      if (stopped) return;
-      if (!tryFind()) raf = requestAnimationFrame(tick);
-      else cleanup();
+    window.addEventListener("home:hydrated", attachToHydratedHome);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("home:hydrated", attachToHydratedHome);
     };
-    raf = requestAnimationFrame(tick);
-
-    return cleanup;
   }, [pathname]);
 
   // ===== open/close auth modal =====

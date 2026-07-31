@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { readApiResponse } from "@/lib/api/client";
+import { PanelLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 
 type NotificationItem = {
   id: string;
@@ -100,7 +101,7 @@ export default function OwnerNotificationCenter() {
           </div>
 
           <div className="max-h-[min(65vh,520px)] overflow-y-auto overscroll-contain [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
-            {loading ? <p className="p-6 text-center text-sm text-[#80634a]">Đang tải thông báo...</p> : <>
+            {loading ? <PanelLoadingSkeleton /> : <>
               {notifications.length === 0 ? <div className="p-6 text-center"><Bell className="mx-auto text-[#b39475]" size={26} /><p className="mt-2 text-sm font-semibold text-[#684324]">Bạn chưa có thông báo mới</p></div> : notifications.map((item) => <NotificationRow key={item.id} item={item} onOpen={openNotification} onDelete={deleteNotification} />)}
             </>}
           </div>

@@ -59,11 +59,17 @@ export async function PATCH(
     );
 
     if (error) return mapDatabaseError(error);
-    const { error: mapsError } = await supabase.rpc(
-      "set_owner_room_google_maps_v1",
-      { p_room_id: roomId, p_google_maps_url: input.google_maps_url },
+    const { error: syncError } = await supabase.rpc(
+      "sync_room_shared_property_fields_v1",
+      {
+        p_room_id: roomId,
+        p_link_zalo: input.link_zalo,
+        p_google_maps_url: input.google_maps_url,
+        p_chinh_sach: input.chinh_sach,
+        p_prefer_property_when_empty: false,
+      },
     );
-    if (mapsError) return mapDatabaseError(mapsError);
+    if (syncError) return mapDatabaseError(syncError);
     const { error: locationError } = await supabase
       .from("rooms")
       .update(roomLocationPatch(body))

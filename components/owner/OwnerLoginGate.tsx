@@ -557,10 +557,10 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
 
                   <div>
                     <p className="font-bold text-[#4d301d]">
-                      Kim Lân
+                      The Room SG
                     </p>
                     <p className="text-xs text-[#88694e]">
-                      Owner Portal
+                      Hệ thống quản lý BĐS dòng tiền
                     </p>
                   </div>
                 </div>
@@ -716,7 +716,7 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
                       className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#744722]/30 bg-[#fffaf2] px-5 text-sm font-bold text-[#744722] transition hover:bg-[#f5e6d1] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <UserPlus size={17} />
-                      Đăng ký Owner mới
+                      Đăng ký Chủ tòa nhà mới
                     </button>
                   </form>
                 </>
@@ -730,7 +730,7 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
                     </p>
 
                     <h2 className="mt-2 text-3xl font-bold tracking-tight text-[#432918]">
-                      Đăng ký Owner mới
+                      Đăng ký Chủ tòa nhà mới
                     </h2>
 
                     <p className="mt-2 text-sm leading-6 text-[#7b604a]">

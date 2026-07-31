@@ -48,6 +48,8 @@ export default function CreateRoomForm({
   defaults = {},
 }: {
   propertyId: string;
+  // Property defaults are stored in legacy JSON with mixed value types.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   defaults?: Record<string, any>;
 }) {
   const detailDefaults = defaults.room_details ?? {};
@@ -274,7 +276,11 @@ export default function CreateRoomForm({
   }
 
   return (
-    <form id="create-room-form" onSubmit={handleSubmit} className="space-y-6">
+    <form
+      id="create-room-form"
+      onSubmit={handleSubmit}
+      className="space-y-6 rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4 shadow-sm sm:p-6"
+    >
       <RoomTabs activeTab={activeTab} onChange={setActiveTab} />
       <Section title="Thông tin phòng" active={activeTab === "info"}>
         <div className="grid gap-5 md:grid-cols-2">
@@ -314,10 +320,10 @@ export default function CreateRoomForm({
           </Field>
 
           <Field label="Trạng thái phòng" htmlFor="status"><select id="status" name="status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
-          <Field label="Số nhà" htmlFor="house_number"><input id="house_number" name="house_number" className={INPUT_CLASS} defaultValue={defaults.house_number ?? ""} /></Field>
-          <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} defaultValue={defaults.address ?? ""} /></Field>
-          <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} defaultValue={defaults.ward ?? ""} /></Field>
-          <Field label="Quận / khu vực" htmlFor="district"><input id="district" name="district" className={INPUT_CLASS} defaultValue={defaults.district ?? ""} /></Field>
+          <Field label="Số nhà" htmlFor="house_number"><input id="house_number" name="house_number" className={INPUT_CLASS} placeholder="Ví dụ: 177/10/11" defaultValue={defaults.house_number ?? ""} /></Field>
+          <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} placeholder="Nhập tên đường hoặc địa chỉ" defaultValue={defaults.address ?? ""} /></Field>
+          <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} placeholder="Nhập phường / xã" defaultValue={defaults.ward ?? ""} /></Field>
+          <Field label="Quận / khu vực" htmlFor="district"><input id="district" name="district" className={INPUT_CLASS} placeholder="Nhập quận / huyện" defaultValue={defaults.district ?? ""} /></Field>
 
           <Field label="Số điện thoại Zalo" htmlFor="zalo_phone">
             <textarea
@@ -325,29 +331,26 @@ export default function CreateRoomForm({
               name="zalo_phone"
               className={`${INPUT_CLASS} min-h-24 resize-y`}
               maxLength={300}
+              placeholder="Nhập số điện thoại Zalo"
               defaultValue={formatZaloPhones(defaults.zalo_phone)}
             />
           </Field>
 
-          <div className="md:col-span-2">
-            <Field label="Link Zalo" htmlFor="link_zalo">
-              <input
-                id="link_zalo"
-                name="link_zalo"
-                type="url"
-                className={INPUT_CLASS}
-                maxLength={2000}
-                placeholder="https://zalo.me/..."
-                defaultValue={defaults.link_zalo ?? ""}
-              />
-            </Field>
-          </div>
+          <Field label="Link Zalo" htmlFor="link_zalo">
+            <input
+              id="link_zalo"
+              name="link_zalo"
+              type="url"
+              className={INPUT_CLASS}
+              maxLength={2000}
+              placeholder="https://zalo.me/..."
+              defaultValue={defaults.link_zalo ?? ""}
+            />
+          </Field>
 
-          <div className="md:col-span-2">
-            <Field label="Link Google Maps" htmlFor="google_maps_url">
-              <input id="google_maps_url" name="google_maps_url" type="url" className={INPUT_CLASS} maxLength={2000} placeholder="https://maps.google.com/..." defaultValue={defaults.google_maps_url ?? ""} />
-            </Field>
-          </div>
+          <Field label="Link Google Maps" htmlFor="google_maps_url">
+            <input id="google_maps_url" name="google_maps_url" type="url" className={INPUT_CLASS} maxLength={2000} placeholder="https://maps.google.com/..." defaultValue={defaults.google_maps_url ?? ""} />
+          </Field>
 
           <div className="md:col-span-2">
             <Field label="Mô tả" htmlFor="description">
@@ -356,6 +359,7 @@ export default function CreateRoomForm({
                 name="description"
                 className={`${INPUT_CLASS} min-h-28 resize-y`}
                 maxLength={5000}
+                placeholder="Nhập nội dung mô tả"
                 defaultValue=""
               />
             </Field>
@@ -368,6 +372,7 @@ export default function CreateRoomForm({
                 name="chinh_sach"
                 className={`${INPUT_CLASS} min-h-24 resize-y`}
                 maxLength={5000}
+                placeholder="Nhập chính sách áp dụng"
                 defaultValue={defaults.chinh_sach ?? ""}
               />
             </Field>
@@ -420,8 +425,8 @@ export default function CreateRoomForm({
         </div>
       </Section>
 
-      <Section title="Tiện nghi và chính sách" active={activeTab === "amenities"}>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <Section title="Tiện nghi và chính sách thuê" active={activeTab === "amenities"}>
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <Checkbox name="free_time" label="Giờ giấc tự do" defaultChecked={Boolean(detailDefaults.free_time)} />
           <Checkbox name="has_elevator" label="Thang máy" defaultChecked={Boolean(detailDefaults.has_elevator)} />
           <Checkbox name="has_stairs" label="Cầu thang bộ" defaultChecked={Boolean(detailDefaults.has_stairs)} />
@@ -441,7 +446,7 @@ export default function CreateRoomForm({
         </div>
 
         <div className="mt-5 grid gap-5">
-          <div className="md:col-span-2">
+          <div className="col-span-2 lg:col-span-4">
             <Field label="Tiện nghi khác" htmlFor="other_amenities">
               <textarea
                 id="other_amenities"
@@ -456,9 +461,9 @@ export default function CreateRoomForm({
         </div>
       </Section>
 
-      <Section title="Ảnh và video" active={activeTab === "info"}>
+      <Section title="Media" active={activeTab === "info"}>
         <Field
-          label="Chọn media"
+          label="Thêm ảnh/video"
           htmlFor="media_files"
           hint="Tối đa 20 file. Ảnh tối đa 15 MB; video tối đa 50 MB. Ảnh đầu tiên sẽ làm ảnh đại diện."
         >
@@ -469,7 +474,7 @@ export default function CreateRoomForm({
             multiple
             onChange={handleFiles}
             disabled={submitting}
-            className="block w-full rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-black file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+            className="block w-full rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-[#744722] file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
           />
         </Field>
 
@@ -489,12 +494,6 @@ export default function CreateRoomForm({
         <PendingRoomMediaPreview files={files} setFiles={setFiles} disabled={submitting} />
       </Section>
 
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">
-        Phòng sẽ được xuất bản công khai tự động sau khi thông tin và toàn bộ
-        ảnh/video được lưu thành công. Hãy kiểm tra giá thuê, mô tả và media
-        trước khi tạo phòng.
-      </div>
-
       {uploadStatus ? (
         <div className="rounded-lg border bg-white p-4 text-sm">
           Đang tải file {uploadStatus.current}/{uploadStatus.total}: {uploadStatus.fileName}
@@ -504,7 +503,7 @@ export default function CreateRoomForm({
       {error ? (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
           <p>{error}</p>
           {createdRoomId ? (
@@ -523,12 +522,12 @@ export default function CreateRoomForm({
         </div>
       ) : null}
 
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={() => router.back()}
           disabled={submitting}
-          className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-xl border border-[#9d744f]/30 bg-white px-4 py-2 text-sm font-medium text-[#684324] hover:bg-[#f8ead7] disabled:opacity-50"
         >
           Hủy
         </button>
@@ -536,7 +535,7 @@ export default function CreateRoomForm({
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-lg bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-[#744722] px-5 py-2 text-sm font-bold text-white hover:bg-[#633b1d] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? "Đang tạo và xuất bản..." : "Tạo và xuất bản phòng"}
         </button>
@@ -607,8 +606,8 @@ function Section({
   active?: boolean;
 }) {
   return (
-    <section className={`${active ? "block" : "hidden"} rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4 shadow-sm sm:p-6`}>
-      <h2 className="mb-5 text-lg font-semibold">{title}</h2>
+    <section className={active ? "block" : "hidden"}>
+      <h2 className="sr-only">{title}</h2>
       {children}
     </section>
   );
@@ -616,7 +615,7 @@ function Section({
 
 function RoomTabs({ activeTab, onChange }: { activeTab: "info" | "amenities" | "fees"; onChange: (tab: "info" | "amenities" | "fees") => void }) {
   const options = [['info', 'Thông tin'], ['amenities', 'Tiện nghi'], ['fees', 'Chi phí']] as const;
-  return <><select aria-label="Chọn nhóm thông tin phòng" value={activeTab} onChange={(event) => onChange(event.target.value as typeof activeTab)} className="h-11 w-full rounded-xl border border-[#9d744f]/35 bg-[#744722] px-3 text-sm font-bold text-white outline-none sm:hidden">{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><div className="hidden grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1 sm:grid">{options.map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold transition ${activeTab === key ? 'bg-[#744722] text-white shadow-sm' : 'text-[#684324] hover:bg-[#ead2b2]'}`}>{label}</button>)}</div></>;
+  return <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1">{options.map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold transition ${activeTab === key ? 'bg-[#744722] text-white shadow-sm' : 'text-[#684324] hover:bg-[#ead2b2]'}`}>{label}</button>)}</div>;
 }
 
 function Field({
@@ -697,12 +696,12 @@ function Checkbox({
   defaultChecked?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-gray-800">
+    <label className="flex items-center gap-2 rounded-xl border border-[#aa825d]/35 bg-[#fff9ef] px-3 py-2.5 text-sm font-semibold text-gray-800">
       <input
         type="checkbox"
         name={name}
         defaultChecked={defaultChecked}
-        className="h-4 w-4 rounded border-gray-300"
+        className="h-4 w-4 rounded border-gray-300 accent-[#744722]"
       />
       {label}
     </label>

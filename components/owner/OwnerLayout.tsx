@@ -23,8 +23,10 @@ export default function OwnerLayout({
       <main
         className="
           mx-auto
+          min-w-0
           w-full
           max-w-[1440px]
+          overflow-x-clip
           px-4
           pb-28
           pt-4

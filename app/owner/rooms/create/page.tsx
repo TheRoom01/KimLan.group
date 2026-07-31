@@ -36,7 +36,11 @@ export default async function CreateRoomPage({
   const detail = await getPropertyDetail(propertyId);
   const property = detail.property;
   const supabase = await createSupabaseServerClient();
-  const { data: propertyDefaults } = await supabase.from("properties").select("default_room_data").eq("id", propertyId).single();
+  const { data: propertyDefaults } = await supabase
+    .from("properties")
+    .select("default_room_data, google_maps_url")
+    .eq("id", propertyId)
+    .single();
 
   if (!property) {
     return (
@@ -47,28 +51,34 @@ export default async function CreateRoomPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-        <div>
+    <div className="mx-auto w-full max-w-4xl space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold">Tạo phòng</h1>
           <p className="mt-1 text-gray-500">
             Tòa nhà: {propertyDisplayAddress(property)}
           </p>
         </div>
 
-        <RoomDefaultsSyncButton propertyId={propertyId} formId="create-room-form" />
         <Link
           href={`/owner/properties/${propertyId}`}
-          className="text-sm font-medium text-gray-600 hover:text-black sm:justify-self-end"
+          className="shrink-0 text-sm font-medium text-gray-600 hover:text-black"
         >
           ← Chi tiết tòa nhà
         </Link>
       </div>
 
+      <div className="flex justify-end">
+        <RoomDefaultsSyncButton propertyId={propertyId} formId="create-room-form" />
+      </div>
+
       <CreateRoomForm
         propertyId={propertyId}
         defaults={{
+          // Database JSON contains mixed scalar and nested values.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...((propertyDefaults?.default_room_data as Record<string, any>) ?? {}),
+          google_maps_url: propertyDefaults?.google_maps_url ?? "",
           house_number: property.house_number ?? "",
           address: property.address ?? "",
           ward: property.ward ?? "",

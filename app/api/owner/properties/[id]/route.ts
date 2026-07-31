@@ -50,7 +50,7 @@ export async function GET(
     if (error) return mapDatabaseError(error);
     const { data: defaults, error: defaultsError } = await supabase
       .from("properties")
-      .select("house_number, address, ward, district, default_room_data")
+      .select("house_number, address, ward, district, google_maps_url, default_room_data")
       .eq("id", propertyId)
       .single();
     if (defaultsError) return mapDatabaseError(defaultsError);
@@ -126,6 +126,17 @@ export async function PATCH(
       .single();
 
     if (error) return mapDatabaseError(error);
+    const defaults = input.default_room_data as Record<string, unknown>;
+    const { error: syncError } = await supabase.rpc(
+      "sync_property_shared_room_fields_v1",
+      {
+        p_property_id: propertyId,
+        p_link_zalo: defaults.link_zalo ?? null,
+        p_google_maps_url: input.google_maps_url,
+        p_chinh_sach: defaults.chinh_sach ?? null,
+      },
+    );
+    if (syncError) return mapDatabaseError(syncError);
     const { error: mediaError } = await supabase.rpc("sync_owner_property_media_v1", {
       p_property_id: propertyId,
       p_media: input.gallery_images,

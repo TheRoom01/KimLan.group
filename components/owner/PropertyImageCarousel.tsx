@@ -57,7 +57,7 @@ export default function PropertyImageCarousel({ images, title }: { images: strin
   }
 
   return (
-    <div className="select-none">
+    <div className="min-w-0 max-w-full select-none">
       <div
         className="relative aspect-[16/10] touch-pan-y cursor-grab overflow-hidden rounded-2xl bg-[#eadbc8] active:cursor-grabbing"
         onPointerDown={startMain}
@@ -75,7 +75,7 @@ export default function PropertyImageCarousel({ images, title }: { images: strin
         <span className="absolute bottom-3 right-3 grid h-9 w-9 place-items-center rounded-full bg-[#2b1a10]/70 text-white"><Maximize2 size={17} /></span>
       </div>
       {images.length > 1 ? (
-        <div ref={thumbs} onPointerDown={startThumbDrag} onPointerMove={moveThumbDrag} onPointerUp={endThumbDrag} onPointerCancel={endThumbDrag} className="mt-3 flex touch-pan-y cursor-grab gap-2 overflow-x-auto pb-1 active:cursor-grabbing [scrollbar-width:thin]">
+        <div ref={thumbs} onPointerDown={startThumbDrag} onPointerMove={moveThumbDrag} onPointerUp={endThumbDrag} onPointerCancel={endThumbDrag} className="mt-3 flex w-full min-w-0 max-w-full touch-pan-y cursor-grab gap-2 overflow-x-auto pb-1 active:cursor-grabbing [scrollbar-width:thin]">
           {images.map((image, index) => <button key={image} type="button" onClick={() => { if (!dragged.current) show(index); }} className={`aspect-[4/3] w-[72px] shrink-0 overflow-hidden rounded-xl border-2 transition ${index === active ? "border-[#744722] shadow-sm" : "border-transparent opacity-80 hover:opacity-100"}`} aria-label={`Xem ảnh ${index + 1}`}><img src={image} alt="" draggable={false} className="pointer-events-none h-full w-full object-cover" /></button>)}
         </div>
       ) : null}

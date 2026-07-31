@@ -177,6 +177,7 @@ export default function RoomModal({
     status: 'Đang trống',
     description: '',
     link_zalo: '',
+    google_maps_url: '',
     zalo_phone: '',
     // media optional in RoomForm (tùy bạn đã khai báo chưa)
     media: [],
@@ -894,7 +895,7 @@ setRoomForm((prev: any) => {
  let q = supabase
   .from("rooms")
   .select(
-    "id, owner_id, ward, district, link_zalo, zalo_phone, chinh_sach, updated_at"
+    "id, owner_id, ward, district, link_zalo, google_maps_url, zalo_phone, chinh_sach, updated_at"
   )
   .eq("house_number", house_number)
   .eq("address", address)
@@ -980,6 +981,7 @@ const detailSample =
       link_zalo: canCopyPrivateFields
         ? (roomSample as any).link_zalo ?? ""
         : "",
+      google_maps_url: (roomSample as any).google_maps_url ?? "",
 
       zalo_phone: canCopyPrivateFields
         ? (roomSample as any).zalo_phone ?? ""
@@ -1047,6 +1049,7 @@ const detailSample =
       status: normalizeStatus(pendingRoomPayload?.status ?? 'Trống'),
       description: pendingRoomPayload?.description ?? '',
       link_zalo: pendingRoomPayload?.link_zalo ?? '',
+      google_maps_url: pendingRoomPayload?.google_maps_url ?? '',
       zalo_phone: pendingRoomPayload?.zalo_phone ?? '',
       media: [...pendingImageMedia, ...pendingVideoMedia],
       chinh_sach: pendingRoomPayload?.chinh_sach ?? '',
@@ -1097,6 +1100,7 @@ const detailSample =
       description: "",
 
       link_zalo: base.link_zalo ?? "",
+      google_maps_url: base.google_maps_url ?? "",
       zalo_phone: base.zalo_phone ?? "",
 
       media: isCloneMode ? (base.media ?? []) : [],
@@ -1127,13 +1131,20 @@ const detailSample =
 
   void (async () => {
     try {
-      const { data, error } = await supabase.rpc(
-        "fetch_room_detail_full_v1",
-        {
-          p_id: base.id,
-          p_role: 0,
-        }
-      )
+      const [roomResult, sharedFieldsResult] = await Promise.all([
+        supabase.rpc(
+          "fetch_room_detail_full_v1",
+          {
+            p_id: base.id,
+            p_role: 0,
+          }
+        ),
+        supabase.rpc("get_room_shared_property_fields_v1", {
+          p_room_id: base.id,
+        }),
+      ])
+
+      const { data, error } = roomResult
 
       if (error) {
         setErrorMsg(error.message)
@@ -1141,6 +1152,9 @@ const detailSample =
       }
 
       const room = (data ?? {}) as any
+      const sharedFields = sharedFieldsResult.error
+        ? null
+        : (sharedFieldsResult.data as Record<string, unknown> | null)
 
       const mediaFromRpc = Array.isArray(room?.media)
         ? room.media.map((m: any) => ({
@@ -1175,10 +1189,13 @@ const detailSample =
         status: normalizeStatus(room.status ?? prev.status),
 
         description: room.description ?? prev.description,
-        link_zalo: room.link_zalo ?? "",
+        link_zalo: sharedFields?.link_zalo ?? room.link_zalo ?? "",
+        google_maps_url:
+          sharedFields?.google_maps_url ?? room.google_maps_url ?? "",
         zalo_phone: room.zalo_phone ?? "",
 
-        chinh_sach: room.chinh_sach ?? prev.chinh_sach,
+        chinh_sach:
+          sharedFields?.chinh_sach ?? room.chinh_sach ?? prev.chinh_sach,
         media: nextMedia,
       }))
 
@@ -1492,6 +1509,7 @@ const applyAutoReadCandidate = (
       status: normalizeStatus(roomForm.status),
       description: roomForm.description,
       link_zalo: roomForm.link_zalo,
+      google_maps_url: roomForm.google_maps_url,
       zalo_phone: roomForm.zalo_phone,
       chinh_sach: roomForm.chinh_sach,
     }
@@ -1663,6 +1681,7 @@ const payload = {
   status: normalizeStatus(roomForm.status),
   description: roomForm.description,
   link_zalo: roomForm.link_zalo,
+  google_maps_url: roomForm.google_maps_url,
   zalo_phone: roomForm.zalo_phone,
   chinh_sach: roomForm.chinh_sach,
 
@@ -1741,6 +1760,16 @@ updatedRoom = up.data as Room
 roomId = String((updatedRoom as any)?.id || '').trim()
 
 if (!roomId || !updatedRoom) throw new Error('Không lấy được dữ liệu phòng sau khi lưu.')
+
+const sharedSync = await supabase.rpc('sync_room_shared_property_fields_v1', {
+  p_room_id: roomId,
+  p_link_zalo: roomForm.link_zalo,
+  p_google_maps_url: roomForm.google_maps_url,
+  p_chinh_sach: roomForm.chinh_sach,
+  p_prefer_property_when_empty: isNew,
+})
+
+if (sharedSync.error) throw sharedSync.error
 
     // =========================
     // ✅ SYNC room_media (B7.6–B7.7)

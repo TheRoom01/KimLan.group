@@ -25,7 +25,7 @@ export default function RoomDefaultsSyncButton({propertyId,formId}:{propertyId:s
       const defaults=property?.default_room_data??{};
       const values:Record<string,unknown>={
         status:defaults.status,zalo_phone:defaults.zalo_phone,link_zalo:defaults.link_zalo,
-        chinh_sach:defaults.chinh_sach,house_number:property?.house_number,address:property?.address,
+        google_maps_url:property?.google_maps_url,chinh_sach:defaults.chinh_sach,house_number:property?.house_number,address:property?.address,
         ward:property?.ward,district:property?.district,
       };
       const details=defaults.room_details??{};

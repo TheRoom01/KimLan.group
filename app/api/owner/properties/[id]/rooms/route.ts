@@ -46,11 +46,17 @@ export async function POST(
     const result = data as { room_id?: string; room?: { id?: string } } | null;
     const roomId = result?.room_id ?? result?.room?.id;
     if (roomId) {
-      const { error: mapsError } = await supabase.rpc(
-        "set_owner_room_google_maps_v1",
-        { p_room_id: roomId, p_google_maps_url: payload.google_maps_url },
+      const { error: syncError } = await supabase.rpc(
+        "sync_room_shared_property_fields_v1",
+        {
+          p_room_id: roomId,
+          p_link_zalo: payload.link_zalo,
+          p_google_maps_url: payload.google_maps_url,
+          p_chinh_sach: payload.chinh_sach,
+          p_prefer_property_when_empty: true,
+        },
       );
-      if (mapsError) return mapDatabaseError(mapsError);
+      if (syncError) return mapDatabaseError(syncError);
     }
 
     if (

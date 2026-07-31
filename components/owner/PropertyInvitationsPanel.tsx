@@ -157,8 +157,7 @@ export default function PropertyInvitationsPanel({
       <div className="flex items-start justify-between gap-3">
         <div><h2 className="text-xl font-bold">Quản lý manager</h2>
         <p className="mt-1 text-sm text-[#80634a]">
-          Email không cần có tài khoản Kim Lân tại thời điểm gửi. Người nhận phải
-          đăng nhập bằng đúng email hoặc số điện thoại được mời để chấp nhận.
+          Người nhận phải đăng nhập bằng đúng email hoặc số điện thoại được mời để chấp nhận.
         </p></div>
         <button type="button" onClick={() => setInviteOpen(true)} className="shrink-0 rounded-xl bg-[#744722] px-3 py-2 text-sm font-bold text-white">+ Mời thành viên</button>
       </div>
