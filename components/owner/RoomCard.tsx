@@ -146,7 +146,7 @@ export default function RoomCard({ room }: { room: RoomCardData }) {
               <div className="flex items-center gap-2">
                 <Users size={17} className="text-[#744722]" />
                 <p className="text-xs font-bold uppercase tracking-wide text-[#5a3b25]">
-                  Người ở cùng phòng
+                  Khách đang thuê phòng 
                 </p>
               </div>
               <span className="rounded-full bg-[#ead3b3] px-2 py-0.5 text-[10px] font-bold text-[#684324]">

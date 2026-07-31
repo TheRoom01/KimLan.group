@@ -198,9 +198,7 @@ export default function TenantRosterCard({
                 Khách thuê trong phòng
               </h2>
             </div>
-            <p className="mt-1 text-sm leading-6 text-[#846951]">
-              Người đứng tên hợp đồng được đánh dấu Đại diện; các hàng còn lại là người ở cùng.
-            </p>
+            
           </div>
           <div className="flex items-center gap-2">
             <span className="w-fit rounded-full bg-[#ead3b3] px-2.5 py-1 text-xs font-semibold text-[#684324]">
