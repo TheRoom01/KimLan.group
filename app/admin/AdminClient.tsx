@@ -267,27 +267,18 @@ useEffect(() => {
 
   (async () => {
     try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (authError || !authData.user) {
-        if (alive) setAdminLevel(null);
-        return;
-      }
-
-      const { data: adminUser, error: levelErr } = await supabase
-        .from("admin_users")
-        .select("level")
-        .eq("user_id", authData.user.id)
-        .maybeSingle();
+      const { data: levelData, error: levelErr } =
+        await supabase.rpc("get_my_admin_level");
 
       if (!alive) return;
 
       if (levelErr) {
-        console.warn("admin_users level lookup failed", levelErr);
+        console.warn("get_my_admin_level failed", levelErr);
         setAdminLevel(null);
         return;
       }
 
-      const lvl = Number(adminUser?.level ?? 0);
+      const lvl = Number(levelData ?? 0);
       setAdminLevel(Number.isFinite(lvl) ? lvl : null);
     } catch (e) {
       console.warn("get_my_admin_level exception", e);
