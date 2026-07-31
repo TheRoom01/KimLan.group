@@ -2205,6 +2205,7 @@ function ImportDetailModal({
               <Field label="Thang máy" value={detail.has_elevator ? "Có" : "Không"} field="has_elevator" source={source} inherited={inherited} />
               <Field label="Thang bộ" value={detail.has_stairs ? "Có" : "Không"} field="has_stairs" source={source} inherited={inherited} />
               <Field label="Khóa vân tay" value={detail.fingerprint_lock ? "Có" : "Không"} field="fingerprint_lock" source={source} inherited={inherited} />
+              <Field label="Giờ giấc tự do" value={detail.free_time ? "Có" : "Không"} field="free_time" source={source} inherited={inherited} />
               <Field label="Cho mèo" value={detail.allow_cat ? "Có" : "Không"} field="allow_cat" source={source} inherited={inherited} />
               <Field label="Cho chó" value={detail.allow_dog ? "Có" : "Không"} field="allow_dog" source={source} inherited={inherited} />
               <Field label="Không pet" value={detail.no_pet ? "Có" : "Không"} field="no_pet" source={source} inherited={inherited} />

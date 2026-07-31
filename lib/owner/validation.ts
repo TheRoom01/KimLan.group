@@ -312,6 +312,7 @@ const ROOM_DETAIL_BOOLEAN_FIELDS = [
   "has_parking",
   "has_basement",
   "fingerprint_lock",
+  "free_time",
   "allow_pet",
   "allow_cat",
   "allow_dog",

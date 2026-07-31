@@ -47,6 +47,7 @@ const defaultDetailForm: RoomDetail = {
     has_elevator: false,
   has_stairs: false,
   fingerprint_lock: false,
+  free_time: false,
   allow_pet: false,
   allow_cat: false,
   allow_dog: false,

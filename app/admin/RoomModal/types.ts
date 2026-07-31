@@ -51,6 +51,7 @@ export type RoomDetail = {
   has_elevator: boolean
   has_stairs: boolean
   fingerprint_lock: boolean
+  free_time: boolean
   allow_pet?: boolean
   allow_cat: boolean
   allow_dog: boolean

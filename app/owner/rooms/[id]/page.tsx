@@ -224,6 +224,7 @@ function RoomDetailsSummary({
     details?.has_parking && "Chỗ để xe",
     details?.has_basement && "Hầm xe",
     details?.fingerprint_lock && "Khóa vân tay",
+    details?.free_time && "Giờ giấc tự do",
     details?.shared_washer && "Máy giặt chung",
     details?.private_washer && "Máy giặt riêng",
     details?.shared_dryer && "Máy sấy chung",

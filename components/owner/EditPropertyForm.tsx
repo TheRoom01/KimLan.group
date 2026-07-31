@@ -363,7 +363,7 @@ const AMENITIES = [
   ["shared_washer", "Máy giặt chung"], ["private_washer", "Máy giặt riêng"],
   ["shared_dryer", "Máy sấy chung"], ["private_dryer", "Máy sấy riêng"],
   ["has_parking", "Chỗ để xe"], ["has_basement", "Hầm xe"],
-  ["fingerprint_lock", "Khóa vân tay"], ["allow_pet", "Cho nuôi thú cưng"],
+  ["fingerprint_lock", "Khóa vân tay"],["free_time", "Giờ giấc tự do"], ["allow_pet", "Cho nuôi thú cưng"],
   ["allow_cat", "Cho nuôi mèo"], ["allow_dog", "Cho nuôi chó"],
   ["no_pet", "Không thú cưng"], ["short_term", "Thuê ngắn hạn"], ["long_term", "Thuê dài hạn"],
 ] as const;

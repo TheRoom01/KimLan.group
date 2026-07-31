@@ -954,6 +954,7 @@ function parseAmenities(text: string): Partial<RoomDetail> {
     has_elevator: /\bthang may\b/.test(s),
     has_stairs: /\bthang bo\b|\bcau thang\b/.test(s),
     fingerprint_lock: /\bvan tay\b|\bkhoa van tay\b/.test(s),
+    free_time: /\bgio giac tu do\b|\bgio tu do\b|\bkhong gio gioi nghiem\b/.test(s),
 
     allow_pet: allowPet,
     allow_cat: allowCat,

@@ -140,6 +140,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         has_parking: form.get("has_parking") === "on",
         has_basement: form.get("has_basement") === "on",
         fingerprint_lock: form.get("fingerprint_lock") === "on",
+        free_time: form.get("free_time") === "on",
         allow_pet: allowPet,
         allow_cat: allowPet && form.get("allow_cat") === "on",
         allow_dog: allowPet && form.get("allow_dog") === "on",
@@ -354,6 +355,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
 
       <Section title="Tiện nghi và chính sách thuê" active={activeTab === "amenities"}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Checkbox name="free_time" label="Giờ giấc tự do" checked={details.free_time} />
           <Checkbox name="has_elevator" label="Thang máy" checked={details.has_elevator} />
           <Checkbox name="has_stairs" label="Cầu thang bộ" checked={details.has_stairs} />
           <Checkbox name="has_parking" label="Chỗ để xe" checked={details.has_parking} />

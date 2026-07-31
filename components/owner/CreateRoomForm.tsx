@@ -136,6 +136,7 @@ export default function CreateRoomForm({
       has_parking: form.get("has_parking") === "on",
       has_basement: form.get("has_basement") === "on",
       fingerprint_lock: form.get("fingerprint_lock") === "on",
+      free_time: form.get("free_time") === "on",
       allow_pet: allowPet,
       allow_cat: allowPet && form.get("allow_cat") === "on",
       allow_dog: allowPet && form.get("allow_dog") === "on",
@@ -421,6 +422,7 @@ export default function CreateRoomForm({
 
       <Section title="Tiện nghi và chính sách" active={activeTab === "amenities"}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Checkbox name="free_time" label="Giờ giấc tự do" defaultChecked={Boolean(detailDefaults.free_time)} />
           <Checkbox name="has_elevator" label="Thang máy" defaultChecked={Boolean(detailDefaults.has_elevator)} />
           <Checkbox name="has_stairs" label="Cầu thang bộ" defaultChecked={Boolean(detailDefaults.has_stairs)} />
           <Checkbox name="has_parking" label="Chỗ để xe" defaultChecked={Boolean(detailDefaults.has_parking)} />

@@ -731,6 +731,7 @@ useEffect(() => {
       if (sourceDetail?.has_parking) amen.push("Bãi xe");
       if (sourceDetail?.has_basement) amen.push("Hầm xe");
       if (sourceDetail?.fingerprint_lock) amen.push("Cửa vân tay");
+      if (sourceDetail?.free_time) amen.push("Giờ giấc tự do");
       if (sourceDetail?.allow_pet) amen.push("Nuôi thú cưng");
       if (sourceDetail?.allow_cat) amen.push("Nuôi mèo");
       if (sourceDetail?.allow_dog) amen.push("Nuôi chó");

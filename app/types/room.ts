@@ -27,4 +27,5 @@ export type Room = {
   private_dryer: boolean | null;
   has_parking: boolean | null;
   has_basement: boolean | null;
+  free_time: boolean | null;
 };

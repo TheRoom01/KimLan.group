@@ -3137,6 +3137,7 @@ function defaultDetailPayload(): Record<string, any> {
     has_parking: true,
     has_basement: false,
     fingerprint_lock: false,
+    free_time: false,
 
     allow_pet: false,
     allow_cat: false,
@@ -3460,6 +3461,10 @@ if (
   if (/vân tay|van tay|khóa vân tay|khoa van tay|fingerprint/i.test(textNoTone)) {
     detailPayload.fingerprint_lock = true;
     sourceFieldMap.fingerprint_lock = "Tin Zalo";
+  }
+  if (/\b(gio giac tu do|gio tu do|khong gio gioi nghiem)\b/i.test(textNoTone)) {
+    detailPayload.free_time = true;
+    sourceFieldMap.free_time = "Tin Zalo";
   }
 
   const parkingOutside =

@@ -1119,6 +1119,7 @@ const amenitiesList = [
   detail?.has_parking ? "Bãi xe" : "",
   detail?.has_basement ? "Hầm xe" : "",
   detail?.fingerprint_lock ? "Cửa vân tay" : "",
+  detail?.free_time ? "Giờ giấc tự do" : "",
   detail?.allow_pet ? "Nuôi thú cưng" : "",
   detail?.allow_cat ? "Nuôi mèo" : "",
   detail?.allow_dog ? "Nuôi chó" : "",
@@ -1749,6 +1750,7 @@ return (
           {detail?.has_parking && <li>✔️ Bãi xe</li>}
           {detail?.has_basement && <li>✔️ Hầm xe</li>}
           {detail?.fingerprint_lock && <li>✔️ Cửa vân tay</li>}
+          {detail?.free_time && <li>✔️ Giờ giấc tự do</li>}
           {detail?.allow_pet && <li>✔️ Nuôi thú cưng</li>}
           {detail?.allow_cat && <li>✔️ Nuôi mèo</li>}
           {detail?.allow_dog && <li>✔️ Nuôi chó</li>}

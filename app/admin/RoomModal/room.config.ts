@@ -18,6 +18,7 @@ type AmenityBooleanKey = {
 
 // ✅ cấu hình tiện ích (key chắc chắn không undefined)
 export const amenityConfig: Array<{ key: AmenityBooleanKey; label: string }> = [
+  { key: 'free_time', label: 'Giờ giấc tự do' },
   /* ===== CƠ BẢN ===== */
   { key: 'has_elevator', label: 'Thang máy' },
   { key: 'has_stairs', label: 'Thang bộ' },

@@ -220,6 +220,7 @@ function buildDetailInsertPayload(params: {
     fingerprint_lock: toBoolean(
       detail.fingerprint_lock
     ),
+    free_time: toBoolean(detail.free_time),
     has_elevator: toBoolean(
       detail.has_elevator
     ),
