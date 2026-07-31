@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Building2, FileText } from "lucide-react";
+import { Bell, Building2, FileText, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -20,6 +20,17 @@ type NotificationItem = {
 type NotificationResult = {
   notifications: NotificationItem[];
   unread_count: number;
+  property_suggestions: PropertySuggestion[];
+};
+
+type PropertySuggestion = {
+  id: string;
+  code?: string | null;
+  house_number?: string | null;
+  address?: string | null;
+  ward?: string | null;
+  district?: string | null;
+  city?: string | null;
 };
 
 export default function OwnerNotificationCenter() {
@@ -29,6 +40,7 @@ export default function OwnerNotificationCenter() {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [suggestions, setSuggestions] = useState<PropertySuggestion[]>([]);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -36,6 +48,7 @@ export default function OwnerNotificationCenter() {
       const result = await readApiResponse<NotificationResult>(response);
       setNotifications(result.notifications ?? []);
       setUnreadCount(result.unread_count ?? 0);
+      setSuggestions(result.property_suggestions ?? []);
     } catch (error) {
       console.error("[OwnerNotificationCenter]", error);
     } finally {
@@ -72,6 +85,19 @@ export default function OwnerNotificationCenter() {
     if (destination) router.push(destination);
   }
 
+  async function deleteNotification(item: NotificationItem) {
+    await readApiResponse(await fetch(`/api/owner/notifications/${item.id}`, { method: "DELETE" }));
+    setNotifications((current) => current.filter((candidate) => candidate.id !== item.id));
+    if (!item.is_read) setUnreadCount((current) => Math.max(0, current - 1));
+  }
+
+  async function deleteAllNotifications() {
+    if (notifications.length === 0 || !window.confirm("Xóa tất cả thông báo?")) return;
+    await readApiResponse(await fetch("/api/owner/notifications", { method: "DELETE" }));
+    setNotifications([]);
+    setUnreadCount(0);
+  }
+
   return (
     <div ref={rootRef} className="relative">
       <button type="button" onClick={() => { setOpen((current) => !current); if (!open) void loadNotifications(); }} aria-label={`Thông báo${unreadCount ? `, ${unreadCount} chưa đọc` : ""}`} className="relative grid h-10 w-10 place-items-center rounded-xl border border-[#f3d9b4]/20 bg-white/5 transition hover:bg-white/10">
@@ -83,22 +109,34 @@ export default function OwnerNotificationCenter() {
         <section className="fixed inset-x-3 top-[68px] z-[250] overflow-hidden rounded-2xl border border-[#956b45]/25 bg-[#fff9ef] text-[#432918] shadow-2xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-[390px]" aria-label="Trung tâm thông báo">
           <div className="flex items-center justify-between border-b border-[#aa825d]/20 px-4 py-3.5">
             <div><h2 className="font-bold">Thông báo</h2><p className="mt-0.5 text-xs text-[#80634a]">{unreadCount} thông báo chưa đọc</p></div>
-            <button type="button" onClick={() => void loadNotifications()} className="text-xs font-semibold text-[#744722] hover:underline">Làm mới</button>
+            <div className="flex items-center gap-3"><button type="button" onClick={() => void loadNotifications()} className="text-xs font-semibold text-[#744722] hover:underline">Làm mới</button>{notifications.length ? <button type="button" onClick={() => void deleteAllNotifications()} className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 hover:underline"><Trash2 size={13} /> Xóa tất cả</button> : null}</div>
           </div>
 
           <div className="max-h-[min(65vh,520px)] overflow-y-auto overscroll-contain [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
-            {loading ? <p className="p-6 text-center text-sm text-[#80634a]">Đang tải thông báo...</p> : notifications.length === 0 ? <div className="p-8 text-center"><Bell className="mx-auto text-[#b39475]" size={28} /><p className="mt-3 text-sm font-semibold text-[#684324]">Bạn chưa có thông báo mới</p></div> : notifications.map((item) => {
-              const Icon = item.reference_type === "property_join_request" ? Building2 : FileText;
-              return <button key={item.id} type="button" onClick={() => void openNotification(item)} className={`flex w-full items-start gap-3 border-b border-[#aa825d]/15 p-4 text-left transition last:border-b-0 hover:bg-[#f3e1c9]/65 ${item.is_read ? "bg-[#fff9ef]" : "bg-[#f8ead7]"}`}>
-                <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl ${item.is_read ? "bg-[#eadbc8] text-[#80634a]" : "bg-[#744722] text-white"}`}><Icon size={17} /></span>
-                <span className="min-w-0 flex-1"><span className="flex items-start gap-2"><span className="min-w-0 flex-1 text-sm font-bold text-[#4d3422]">{item.title}</span>{!item.is_read ? <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" /> : null}</span>{item.message ? <span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#80634a]">{item.message}</span> : null}<span className="mt-1.5 block text-[11px] font-medium text-[#9a7758]">{relativeTime(item.created_at)}</span></span>
-              </button>;
-            })}
+            {loading ? <p className="p-6 text-center text-sm text-[#80634a]">Đang tải thông báo...</p> : <>
+              {notifications.length === 0 ? <div className="p-6 text-center"><Bell className="mx-auto text-[#b39475]" size={26} /><p className="mt-2 text-sm font-semibold text-[#684324]">Bạn chưa có thông báo mới</p></div> : notifications.map((item) => <NotificationRow key={item.id} item={item} onOpen={openNotification} onDelete={deleteNotification} />)}
+              {suggestions.length ? <div className="border-t border-[#aa825d]/20 bg-[#f5e5cf]/65 p-3"><div className="mb-2 flex items-center gap-2 text-sm font-bold text-[#4d3422]"><Building2 size={16} /> Tòa nhà có thể liên quan đến số điện thoại của bạn</div><p className="mb-3 text-[11px] leading-4 text-[#80634a]">Số điện thoại chỉ dùng để gợi ý, không tự động cấp quyền.</p><div className="space-y-2">{suggestions.map((property) => <button key={property.id} type="button" onClick={() => { setOpen(false); router.push("/owner/properties/create"); }} className="w-full rounded-xl border border-[#aa825d]/20 bg-[#fff9ef] p-3 text-left transition hover:bg-white"><span className="block text-xs font-bold leading-5 text-[#503521]">{[property.house_number, property.address, property.ward, property.district, property.city].filter(Boolean).join(", ")}</span>{property.code ? <span className="mt-1 block text-[11px] text-[#80634a]">Mã tòa nhà: {property.code}</span> : null}<span className="mt-1.5 block text-[11px] font-bold text-[#744722]">Tạo yêu cầu xác minh quyền →</span></button>)}</div></div> : null}
+            </>}
           </div>
         </section>
       ) : null}
     </div>
   );
+}
+
+function NotificationRow({ item, onOpen, onDelete }: { item: NotificationItem; onOpen: (item: NotificationItem) => Promise<void>; onDelete: (item: NotificationItem) => Promise<void> }) {
+  const [offset, setOffset] = useState(0);
+  const startX = useRef<number | null>(null);
+  const dragged = useRef(false);
+  const Icon = item.reference_type === "property_join_request" ? Building2 : FileText;
+
+  return <div className="relative overflow-hidden border-b border-[#aa825d]/15 bg-red-700 text-white">
+    <div className="absolute inset-y-0 left-0 flex w-24 items-center justify-center gap-1 text-xs font-bold"><Trash2 size={16} /> Xóa</div>
+    <button type="button" onClick={() => { if (!dragged.current) void onOpen(item); dragged.current = false; }} onPointerDown={(event) => { startX.current = event.clientX; dragged.current = false; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (startX.current === null) return; const next = Math.max(0, Math.min(120, event.clientX - startX.current)); if (next > 5) dragged.current = true; setOffset(next); }} onPointerUp={() => { const shouldDelete = offset >= 85; startX.current = null; setOffset(0); if (shouldDelete) void onDelete(item); }} onPointerCancel={() => { startX.current = null; setOffset(0); }} style={{ transform: `translateX(${offset}px)`, touchAction: "pan-y" }} className={`flex w-full items-start gap-3 p-4 text-left transition-colors ${item.is_read ? "bg-[#fff9ef]" : "bg-[#f8ead7]"}`}>
+      <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl ${item.is_read ? "bg-[#eadbc8] text-[#80634a]" : "bg-[#744722] text-white"}`}><Icon size={17} /></span>
+      <span className="min-w-0 flex-1"><span className="flex items-start gap-2"><span className="min-w-0 flex-1 text-sm font-bold text-[#4d3422]">{item.title}</span>{!item.is_read ? <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" /> : null}</span>{item.message ? <span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#80634a]">{item.message}</span> : null}<span className="mt-1.5 block text-[11px] font-medium text-[#9a7758]">{relativeTime(item.created_at)}</span></span>
+    </button>
+  </div>;
 }
 
 function notificationHref(item: NotificationItem) {

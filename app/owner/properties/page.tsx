@@ -4,9 +4,6 @@ import PropertyCard from "@/components/owner/PropertyCard";
 import { getProperties } from "@/lib/owner/getProperties";
 import PropertyJoinRequestPanel from "@/components/owner/PropertyJoinRequestPanel";
 import { Building2, Plus } from "lucide-react";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-type PropertySuggestion = { id: string; code?: string | null; house_number?: string | null; address?: string | null; ward?: string | null; district?: string | null; city?: string | null };
 
 function normalizeSearchValue(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -33,9 +30,6 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   const { building_search: searchTerm = "" } = await searchParams;
   const normalizedQuery = normalizeSearchValue(searchTerm);
   const visibleProperties = normalizedQuery ? properties.map((property) => ({ property, score: propertySearchScore(property, normalizedQuery) })).filter((item): item is { property: (typeof properties)[number]; score: number } => item.score !== null).sort((left, right) => right.score - left.score).map((item) => item.property) : properties;
-  const supabase = await createSupabaseServerClient();
-  const { data: suggestionData } = await supabase.rpc("get_my_phone_property_suggestions_v1");
-  const suggestions = (Array.isArray(suggestionData?.suggestions) ? suggestionData.suggestions : []) as PropertySuggestion[];
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
@@ -63,12 +57,6 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       </div>
       
       <PropertyJoinRequestPanel />
-
-      {suggestions.length ? <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-sm">
-        <h2 className="font-bold text-[#4d3422]">Tòa nhà có thể liên quan đến số điện thoại của bạn</h2>
-        <p className="mt-1 text-sm text-[#80634a]">Số điện thoại chỉ được dùng để gợi ý. Hệ thống không tự cấp quyền sở hữu hoặc quản lý.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{suggestions.map((property) => <div key={property.id} className="rounded-xl border border-[#aa825d]/20 bg-[#f7ead7] p-4"><p className="font-semibold text-[#503521]">{[property.house_number, property.address, property.ward, property.district, property.city].filter(Boolean).join(", ")}</p>{property.code ? <p className="mt-1 text-xs text-[#80634a]">Mã tòa nhà: {property.code}</p> : null}<Link href="/owner/properties/create" className="mt-3 inline-flex text-sm font-bold text-[#744722] hover:underline">Tạo yêu cầu xác minh quyền</Link></div>)}</div>
-      </section> : null}
 
       {visibleProperties.length === 0 ? (
         <div className="rounded-[22px] border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-8 text-center">

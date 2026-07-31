@@ -8,7 +8,7 @@ export async function GET() {
     const user = await getAuthenticatedUser(supabase);
     if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập để xem thông báo", 401);
 
-    const [notificationsResult, unreadResult] = await Promise.all([
+    const [notificationsResult, unreadResult, suggestionsResult] = await Promise.all([
       supabase
         .from("notifications")
         .select("id, type, title, message, reference_id, reference_type, is_read, created_at")
@@ -20,15 +20,33 @@ export async function GET() {
         .select("id", { count: "exact", head: true })
         .eq("user_id", user.id)
         .eq("is_read", false),
+      supabase.rpc("get_my_phone_property_suggestions_v1"),
     ]);
 
     if (notificationsResult.error) return mapDatabaseError(notificationsResult.error);
     if (unreadResult.error) return mapDatabaseError(unreadResult.error);
+    if (suggestionsResult.error) return mapDatabaseError(suggestionsResult.error);
 
     return apiSuccess({
       notifications: notificationsResult.data ?? [],
       unread_count: unreadResult.count ?? 0,
+      property_suggestions: Array.isArray(suggestionsResult.data?.suggestions)
+        ? suggestionsResult.data.suggestions
+        : [],
     });
+  } catch (error) {
+    return mapUnknownError(error);
+  }
+}
+
+export async function DELETE() {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const user = await getAuthenticatedUser(supabase);
+    if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập để xóa thông báo", 401);
+    const { error } = await supabase.from("notifications").delete().eq("user_id", user.id);
+    if (error) return mapDatabaseError(error);
+    return apiSuccess({ deleted: true });
   } catch (error) {
     return mapUnknownError(error);
   }
