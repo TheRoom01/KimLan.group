@@ -13,8 +13,9 @@ import {
   ShieldCheck,
   UserPlus,
 } from "lucide-react";
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import OwnerRegistrationCaptcha from "@/components/owner/OwnerRegistrationCaptcha";
 
 async function postOwnerAuth(
   url: string,
@@ -144,6 +145,10 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState("");
   const [emailOtp, setEmailOtp] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaVersion, setCaptchaVersion] = useState(0);
   const [forgotPhone, setForgotPhone] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
@@ -158,27 +163,13 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
     return /^\+84\d{8,10}$/.test(normalizedPhone) && password.length >= 6;
   }, [phone, password]);
 
-  const canRegister = useMemo(() => {
-    const normalizedPhone =
-      normalizeVietnamAuthPhone(registerPhone);
-
-    return (
-      registerName.trim().length >= 2 &&
-      !!normalizedPhone &&
-      /^\+84\d{8,10}$/.test(normalizedPhone) &&
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-        registerEmail.trim(),
-      ) &&
-      registerPassword.length >= 8 &&
-      registerPassword === registerPasswordConfirm
-    );
-  }, [
-    registerName,
-    registerPhone,
-    registerEmail,
-    registerPassword,
-    registerPasswordConfirm,
-  ]);
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   async function registerCurrentDevice(): Promise<boolean> {
     const response = await fetch("/api/device/register", {
@@ -337,12 +328,18 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
       );
 
       if (!result.ok) {
+        if (result.retryAfter) {
+          setResendCooldown(Math.max(1, Number(result.retryAfter)));
+        }
         throw new Error(
           result.message || "Không thể tạo tài khoản Owner",
         );
       }
 
       setEmailOtp("");
+      setResendCooldown(60);
+      setCaptchaRequired(false);
+      setCaptchaToken("");
       setAuthView("verify-email");
       setAuthMessage(
         "Mã xác minh đã được gửi tới email đăng ký.",
@@ -352,6 +349,36 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
       setAuthMessage(
         getOwnerAuthError(error, "Không thể tạo tài khoản Owner"),
       );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleResendRegistrationCode() {
+    if (resendCooldown > 0) return;
+    setAuthLoading(true);
+    setAuthMessage("");
+
+    try {
+      const result = await postOwnerAuth("/api/auth/owner/register", {
+        fullName: registerName.trim(),
+        phone: registerPhone,
+        email: registerEmail,
+        password: registerPassword,
+      });
+
+      if (!result.ok) {
+        if (result.retryAfter) {
+          setResendCooldown(Math.max(1, Number(result.retryAfter)));
+        }
+        throw new Error(result.message || "Không thể gửi lại mã xác minh");
+      }
+
+      setEmailOtp("");
+      setResendCooldown(60);
+      setAuthMessage("Mã xác minh mới đã được gửi tới email đăng ký.");
+    } catch (error) {
+      setAuthMessage(getOwnerAuthError(error, "Không thể gửi lại mã xác minh"));
     } finally {
       setAuthLoading(false);
     }
@@ -376,10 +403,16 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
         {
           email: registerEmail,
           code: token,
+          captchaToken,
         },
       );
 
       if (!result.ok) {
+        if (result.captchaRequired || result.code === "CAPTCHA_REQUIRED") {
+          setCaptchaRequired(true);
+          setCaptchaToken("");
+          setCaptchaVersion((current) => current + 1);
+        }
         throw new Error(
           result.message || "Mã xác minh không đúng.",
         );
@@ -485,9 +518,14 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
     setAuthMessage("");
     setRegisterName("");
     setRegisterPhone("");
+    setRegisterEmail("");
     setRegisterPassword("");
     setRegisterPasswordConfirm("");
     setEmailOtp("");
+    setResendCooldown(0);
+    setCaptchaRequired(false);
+    setCaptchaToken("");
+    setCaptchaVersion(0);
     setAuthView("register");
   }
 
@@ -941,7 +979,7 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
 
                     <button
                       type="submit"
-                      disabled={!canRegister || authLoading}
+                      disabled={authLoading}
                       className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-5 text-sm font-bold text-[#fff7e9] shadow-[0_12px_25px_rgba(91,54,24,0.22)] transition hover:bg-[#623817] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {authLoading ? (
@@ -952,7 +990,7 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
                       ) : (
                         <>
                           <UserPlus size={17} />
-                          Tạo tài khoản Owner
+                          Tạo tài khoản mới
                         </>
                       )}
                     </button>
@@ -1014,6 +1052,18 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
                       />
                     </div>
 
+                    {captchaRequired ? (
+                      <div className="rounded-xl border border-[#b99472]/30 bg-[#fffaf2] p-3">
+                        <p className="mb-3 text-sm font-semibold text-[#503521]">
+                          Vui lòng xác minh bạn không phải là robot
+                        </p>
+                        <OwnerRegistrationCaptcha
+                          key={captchaVersion}
+                          onToken={setCaptchaToken}
+                        />
+                      </div>
+                    ) : null}
+
                     {authMessage ? (
                       <div
                         role="alert"
@@ -1025,7 +1075,11 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
 
                     <button
                       type="submit"
-                      disabled={emailOtp.length !== 6 || authLoading}
+                      disabled={
+                        emailOtp.length !== 6 ||
+                        authLoading ||
+                        (captchaRequired && !captchaToken)
+                      }
                       className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-5 text-sm font-bold text-[#fff7e9] shadow-[0_12px_25px_rgba(91,54,24,0.22)] transition hover:bg-[#623817] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {authLoading ? (
@@ -1040,15 +1094,15 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
 
                     <button
                       type="button"
-                      onClick={() =>
-                        setAuthMessage(
-                          "Vui lòng kiểm tra lại email hoặc đăng ký lại nếu mã đã hết hạn.",
-                        )
-                      }
-                      disabled={authLoading}
+                      onClick={() => void handleResendRegistrationCode()}
+                      disabled={authLoading || resendCooldown > 0}
                       className="h-11 w-full rounded-xl border border-[#a9825f]/30 bg-[#fffaf2] text-sm font-semibold text-[#744722] transition hover:bg-[#f5e6d1] disabled:opacity-50"
                     >
-                      Gửi lại mã
+                      {authLoading
+                        ? "Đang gửi lại..."
+                        : resendCooldown > 0
+                          ? `Gửi lại mã sau ${resendCooldown}s`
+                          : "Gửi lại mã"}
                     </button>
 
                     <button

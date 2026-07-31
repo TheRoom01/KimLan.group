@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
+import {
+  getRegistrationClientIp,
+  hashRegistrationIdentifier,
+} from "@/lib/owner/registrationSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 
@@ -45,6 +49,42 @@ function generateCode() {
     100000 +
       Math.random() * 900000,
   ).toString();
+}
+
+async function sendVerificationEmail(email: string, code: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from:
+        process.env.OWNER_EMAIL_FROM ||
+        "KimLan Group <noreply@canhodichvu.pro>",
+      to: [email],
+      subject: "Mã xác minh tài khoản Owner",
+      html: `
+        <div style="font-family:Arial,sans-serif;color:#432918;line-height:1.6">
+          <h2>Xác minh tài khoản Owner</h2>
+          <p>Mã xác minh của bạn là:</p>
+          <p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p>
+          <p>Mã có hiệu lực trong 10 phút. Không chia sẻ mã này với người khác.</p>
+        </div>
+      `,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Resend ${response.status}: ${(await response.text()).slice(0, 500)}`,
+    );
+  }
 }
 
 
@@ -105,6 +145,49 @@ export async function POST(
 
     const admin =
       createSupabaseAdminClient();
+
+    const clientIp = getRegistrationClientIp(request);
+    const emailHash = hashRegistrationIdentifier(email);
+    const ipHash = hashRegistrationIdentifier(clientIp);
+    const { data: rateLimit, error: rateLimitError } = await admin.rpc(
+      "owner_registration_consume_send_v1",
+      {
+        p_email_hash: emailHash,
+        p_ip_hash: ipHash,
+      },
+    );
+
+    if (rateLimitError) {
+      throw rateLimitError;
+    }
+
+    const limit = rateLimit as {
+      allowed?: boolean;
+      reason?: string;
+      retry_after?: number;
+    } | null;
+
+    if (!limit?.allowed) {
+      const retryAfter = Math.max(1, Number(limit?.retry_after || 60));
+      return NextResponse.json(
+        {
+          ok: false,
+          code:
+            limit?.reason === "hourly_limit"
+              ? "REGISTRATION_HOURLY_LIMIT"
+              : "REGISTRATION_COOLDOWN",
+          retryAfter,
+          message:
+            limit?.reason === "hourly_limit"
+              ? "Bạn đã gửi tối đa 5 mã trong một giờ. Vui lòng thử lại sau."
+              : `Vui lòng chờ ${retryAfter} giây trước khi gửi mã mới.`,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(retryAfter) },
+        },
+      );
+    }
 
 
     /*
@@ -196,7 +279,7 @@ export async function POST(
       );
 
 
-    await admin
+    const { error: verificationError } = await admin
       .from(
         "owner_registration_verifications",
       )
@@ -220,11 +303,11 @@ export async function POST(
         },
       );
 
+    if (verificationError) {
+      throw verificationError;
+    }
 
-    console.log(
-      "OWNER EMAIL OTP:",
-      code,
-    );
+    await sendVerificationEmail(email, code);
 
 
     return NextResponse.json({

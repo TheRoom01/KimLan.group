@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
+import {
+  getRegistrationClientIp,
+  hashRegistrationIdentifier,
+  verifyTurnstileToken,
+} from "@/lib/owner/registrationSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -32,6 +37,11 @@ export async function POST(
         ? body.code.trim()
         : "";
 
+    const captchaToken =
+      typeof body.captchaToken === "string"
+        ? body.captchaToken
+        : "";
+
 
     if (!email || !code) {
       return NextResponse.json(
@@ -49,6 +59,38 @@ export async function POST(
 
     const admin =
       createSupabaseAdminClient();
+
+    const clientIp = getRegistrationClientIp(request);
+    const emailHash = hashRegistrationIdentifier(email);
+    const ipHash = hashRegistrationIdentifier(clientIp);
+    const { data: captchaRequired, error: captchaCheckError } = await admin.rpc(
+      "owner_registration_captcha_required_v1",
+      {
+        p_email_hash: emailHash,
+        p_ip_hash: ipHash,
+      },
+    );
+
+    if (captchaCheckError) {
+      throw captchaCheckError;
+    }
+
+    if (
+      captchaRequired &&
+      !(await verifyTurnstileToken(captchaToken, clientIp))
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "CAPTCHA_REQUIRED",
+          captchaRequired: true,
+          message: captchaToken
+            ? "Xác minh CAPTCHA không thành công. Vui lòng thử lại."
+            : "Vui lòng hoàn thành CAPTCHA trước khi xác minh mã.",
+        },
+        { status: 400 },
+      );
+    }
 
 
     /*
@@ -112,9 +154,20 @@ export async function POST(
       verification.code_hash !==
       hashCode(code)
     ) {
+      const { data: failedAttempts } = await admin.rpc(
+        "owner_registration_record_failure_v1",
+        {
+          p_email_hash: emailHash,
+          p_ip_hash: ipHash,
+        },
+      );
+      const requireCaptcha = Number(failedAttempts || 0) >= 3;
+
       return NextResponse.json(
         {
           ok:false,
+          code: requireCaptcha ? "CAPTCHA_REQUIRED" : "INVALID_OTP",
+          captchaRequired: requireCaptcha,
           message:
             "Mã xác minh không đúng",
         },
@@ -274,6 +327,11 @@ export async function POST(
         "email",
         email,
       );
+
+    await admin
+      .from("owner_registration_rate_limits")
+      .delete()
+      .in("identifier_hash", [emailHash, ipHash]);
 
 
     /*
