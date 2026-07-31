@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "KimLan Group - The Room",
-    short_name: "KimLan",
+    name: "Kim Lân Group",
+    short_name: "The Room SG",
     description:
       "Tìm kiếm và quản lý tòa nhà, phòng, khách thuê và hợp đồng.",
     start_url: "/",

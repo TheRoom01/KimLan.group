@@ -105,7 +105,7 @@ export default function OwnerSidebar() {
             </span>
 
             <span className="hidden text-lg font-semibold text-[#fff6e8] xl:inline xl:text-xl">
-              Landlord
+              The Room SG
             </span>
           </Link>
 
