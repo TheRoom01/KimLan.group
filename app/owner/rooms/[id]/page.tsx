@@ -28,7 +28,7 @@ export default async function RoomDetailPage({
   const isArchived = room.lifecycle_status === "archived";
 
   return (
-    <div className="min-w-0 space-y-5 sm:space-y-6">
+    <div className="w-full min-w-0 max-w-none space-y-5 sm:space-y-6">
       <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">
@@ -81,18 +81,20 @@ export default async function RoomDetailPage({
         </div>
       ) : null}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-        <RoomMediaGallery
-          media={room.media}
-          roomId={room.id}
-          canManage={false}
-        />
+      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div className="min-w-0">
+          <RoomMediaGallery
+            media={room.media}
+            roomId={room.id}
+            canManage={false}
+          />
+        </div>
 
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
         <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
         <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Thông tin phòng</h2>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
           <InfoItem label="Giá" value={formatMoney(room.price)} />
           <div>
             <p className="text-sm text-gray-500">Trạng thái phòng</p>

@@ -40,6 +40,8 @@ type EditableRoom = {
   property_id?: string | null;
   lat?: number | null;
   lng?: number | null;
+  // Room details come from a legacy JSON relation with mixed value types.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details?: Record<string, any> | null;
   media?: RoomMedia[];
 };
@@ -202,7 +204,11 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
   }
 
   return (
-    <form id="edit-room-form" onSubmit={submit} className="space-y-6">
+    <form
+      id="edit-room-form"
+      onSubmit={submit}
+      className="space-y-6 rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4 shadow-sm sm:p-6"
+    >
       <RoomTabs activeTab={activeTab} onChange={setActiveTab} />
       <Section title="Thông tin phòng" active={activeTab === "info"}>
         <div className="grid gap-5 md:grid-cols-2">
@@ -354,7 +360,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
       </Section>
 
       <Section title="Tiện nghi và chính sách thuê" active={activeTab === "amenities"}>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <Checkbox name="free_time" label="Giờ giấc tự do" checked={details.free_time} />
           <Checkbox name="has_elevator" label="Thang máy" checked={details.has_elevator} />
           <Checkbox name="has_stairs" label="Cầu thang bộ" checked={details.has_stairs} />
@@ -402,7 +408,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         </div>
 
         <div className="mt-5 grid gap-5">
-          <div className="md:col-span-2">
+          <div className="col-span-2 lg:col-span-4">
             <Field label="Tiện nghi khác" htmlFor="other_amenities">
               <textarea
                 id="other_amenities"
@@ -490,19 +496,19 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         </div>
       ) : null}
 
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={() => router.back()}
           disabled={loading}
-          className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-xl border border-[#9d744f]/30 bg-white px-4 py-2 text-sm font-medium text-[#684324] hover:bg-[#f8ead7] disabled:opacity-50"
         >
           Hủy
         </button>
         <button
           type="submit"
           disabled={loading}
-          className="rounded-lg bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl bg-[#744722] px-5 py-2 text-sm font-bold text-white hover:bg-[#633b1d] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Đang lưu..." : "Lưu thay đổi"}
         </button>
@@ -521,8 +527,8 @@ function Section({
   active?: boolean;
 }) {
   return (
-    <section className={`${active ? "block" : "hidden"} rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4 shadow-sm sm:p-6`}>
-      <h2 className="mb-5 text-lg font-semibold">{title}</h2>
+    <section className={active ? "block" : "hidden"}>
+      <h2 className="sr-only">{title}</h2>
       {children}
     </section>
   );
@@ -530,7 +536,7 @@ function Section({
 
 function RoomTabs({ activeTab, onChange }: { activeTab: "info" | "amenities" | "fees"; onChange: (tab: "info" | "amenities" | "fees") => void }) {
   const options = [['info', 'Thông tin'], ['amenities', 'Tiện nghi'], ['fees', 'Chi phí']] as const;
-  return <><select aria-label="Chọn nhóm thông tin phòng" value={activeTab} onChange={(event) => onChange(event.target.value as typeof activeTab)} className="h-11 w-full rounded-xl border border-[#9d744f]/35 bg-[#744722] px-3 text-sm font-bold text-white outline-none sm:hidden">{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><div className="hidden grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1 sm:grid">{options.map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold transition ${activeTab === key ? 'bg-[#744722] text-white shadow-sm' : 'text-[#684324] hover:bg-[#ead2b2]'}`}>{label}</button>)}</div></>;
+  return <div className="grid grid-cols-3 gap-2 rounded-2xl bg-[#f3e1c9] p-1">{options.map(([key, label]) => <button key={key} type="button" onClick={() => onChange(key)} className={`rounded-xl px-2 py-2.5 text-sm font-bold transition ${activeTab === key ? 'bg-[#744722] text-white shadow-sm' : 'text-[#684324] hover:bg-[#ead2b2]'}`}>{label}</button>)}</div>;
 }
 
 function Field({
@@ -609,12 +615,12 @@ function Checkbox({
   checked?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-gray-800">
+    <label className="flex items-center gap-2 rounded-xl border border-[#aa825d]/35 bg-[#fff9ef] px-3 py-2.5 text-sm font-semibold text-gray-800">
       <input
         type="checkbox"
         name={name}
         defaultChecked={Boolean(checked)}
-        className="h-4 w-4 rounded border-gray-300"
+        className="h-4 w-4 rounded border-gray-300 accent-[#744722]"
       />
       {label}
     </label>

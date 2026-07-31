@@ -50,9 +50,9 @@ export default async function EditRoomPage({
   }
 
   return (
-    <div className="space-y-8">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-        <div>
+    <div className="mx-auto w-full max-w-4xl space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold">
             Chỉnh sửa phòng {room.room_code}
           </h1>
@@ -61,14 +61,16 @@ export default async function EditRoomPage({
           </p>
         </div>
 
-        {room.property_id ? <RoomDefaultsSyncButton propertyId={room.property_id} formId="edit-room-form" /> : <span />}
-        <Link
-          href={`/owner/rooms/${room.id}`}
-          className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-100 sm:justify-self-end"
-        >
-          ← Quay lại
+        <Link href={`/owner/rooms/${room.id}`} className="shrink-0 text-sm font-medium text-gray-600 hover:text-black">
+          ← Chi tiết phòng
         </Link>
       </div>
+
+      {room.property_id ? (
+        <div className="flex justify-end">
+          <RoomDefaultsSyncButton propertyId={room.property_id} formId="edit-room-form" />
+        </div>
+      ) : null}
 
       <EditRoomForm room={room} />
     </div>
