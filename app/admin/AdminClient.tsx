@@ -372,8 +372,8 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
 
     if (adminLevel === 1) {
       openConfirm(
-        "Ẩn phòng",
-        "Bạn có chắc muốn ẩn phòng này? Dữ liệu, media và lịch sử vẫn được giữ để Admin L1 có thể kiểm tra hoặc công khai lại.",
+        "Xóa phòng",
+        "Bạn có chắc muốn xóa phòng này?",
         async () => {
           try {
             setLoading(true);
@@ -390,9 +390,9 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
             setPage(1);
             await loadRooms(1, debouncedSearch, { useCache: false });
 
-            notify("Đã ẩn phòng");
+            notify("Đã xóa phòng");
           } catch (e: any) {
-            setErrorMsg(e?.message ?? "Ẩn phòng thất bại");
+            setErrorMsg(e?.message ?? "Xóa phòng thất bại");
           } finally {
             setLoading(false);
           }
@@ -901,7 +901,7 @@ const openZaloUX = useCallback(
                   <button
                     style={iconBtn}
                     onClick={() => deleteRoom((r as any).id)}
-                    title="Ẩn phòng"
+                    title={adminLevel === 1 ? "Xóa phòng" : "Ẩn phòng"}
                   >
                     <Trash2 size={18} strokeWidth={1.8} color="#ef4444" />
                   </button>
