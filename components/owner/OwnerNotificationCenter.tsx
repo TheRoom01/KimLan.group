@@ -20,17 +20,6 @@ type NotificationItem = {
 type NotificationResult = {
   notifications: NotificationItem[];
   unread_count: number;
-  property_suggestions: PropertySuggestion[];
-};
-
-type PropertySuggestion = {
-  id: string;
-  code?: string | null;
-  house_number?: string | null;
-  address?: string | null;
-  ward?: string | null;
-  district?: string | null;
-  city?: string | null;
 };
 
 export default function OwnerNotificationCenter() {
@@ -40,7 +29,6 @@ export default function OwnerNotificationCenter() {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [suggestions, setSuggestions] = useState<PropertySuggestion[]>([]);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -48,7 +36,6 @@ export default function OwnerNotificationCenter() {
       const result = await readApiResponse<NotificationResult>(response);
       setNotifications(result.notifications ?? []);
       setUnreadCount(result.unread_count ?? 0);
-      setSuggestions(result.property_suggestions ?? []);
     } catch (error) {
       console.error("[OwnerNotificationCenter]", error);
     } finally {
@@ -115,7 +102,6 @@ export default function OwnerNotificationCenter() {
           <div className="max-h-[min(65vh,520px)] overflow-y-auto overscroll-contain [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
             {loading ? <p className="p-6 text-center text-sm text-[#80634a]">Đang tải thông báo...</p> : <>
               {notifications.length === 0 ? <div className="p-6 text-center"><Bell className="mx-auto text-[#b39475]" size={26} /><p className="mt-2 text-sm font-semibold text-[#684324]">Bạn chưa có thông báo mới</p></div> : notifications.map((item) => <NotificationRow key={item.id} item={item} onOpen={openNotification} onDelete={deleteNotification} />)}
-              {suggestions.length ? <div className="border-t border-[#aa825d]/20 bg-[#f5e5cf]/65 p-3"><div className="mb-2 flex items-center gap-2 text-sm font-bold text-[#4d3422]"><Building2 size={16} /> Tòa nhà có thể liên quan đến số điện thoại của bạn</div><p className="mb-3 text-[11px] leading-4 text-[#80634a]">Số điện thoại chỉ dùng để gợi ý, không tự động cấp quyền.</p><div className="space-y-2">{suggestions.map((property) => <button key={property.id} type="button" onClick={() => { setOpen(false); router.push("/owner/properties/create"); }} className="w-full rounded-xl border border-[#aa825d]/20 bg-[#fff9ef] p-3 text-left transition hover:bg-white"><span className="block text-xs font-bold leading-5 text-[#503521]">{[property.house_number, property.address, property.ward, property.district, property.city].filter(Boolean).join(", ")}</span>{property.code ? <span className="mt-1 block text-[11px] text-[#80634a]">Mã tòa nhà: {property.code}</span> : null}<span className="mt-1.5 block text-[11px] font-bold text-[#744722]">Tạo yêu cầu xác minh quyền →</span></button>)}</div></div> : null}
             </>}
           </div>
         </section>
@@ -142,6 +128,9 @@ function NotificationRow({ item, onOpen, onDelete }: { item: NotificationItem; o
 function notificationHref(item: NotificationItem) {
   if (item.reference_type === "property_join_request" && item.reference_id) {
     return `/owner/properties?request=${encodeURIComponent(item.reference_id)}`;
+  }
+  if (item.reference_type === "property_phone_suggestion" && item.reference_id) {
+    return `/owner/properties/create?property_id=${encodeURIComponent(item.reference_id)}`;
   }
   return null;
 }

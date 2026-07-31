@@ -31,6 +31,15 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const supabase = await createSupabaseServerClient();
     const user = await getAuthenticatedUser(supabase);
     if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập để xóa thông báo", 401);
+    if (id.startsWith("property-suggestion:")) {
+      const propertyId = id.slice("property-suggestion:".length);
+      const { error } = await supabase.from("property_suggestion_dismissals").upsert(
+        { user_id: user.id, property_id: propertyId },
+        { onConflict: "user_id,property_id" },
+      );
+      if (error) return mapDatabaseError(error);
+      return apiSuccess({ id, dismissed: true });
+    }
     const { data, error } = await supabase.from("notifications").delete().eq("id", id).eq("user_id", user.id).select("id").maybeSingle();
     if (error) return mapDatabaseError(error);
     if (!data) return apiError("NOT_FOUND", "Không tìm thấy thông báo", 404);
