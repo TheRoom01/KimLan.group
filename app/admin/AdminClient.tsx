@@ -72,7 +72,10 @@ export default function AdminClient({ initialRooms, initialTotal, report, }: Adm
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTitle, setConfirmTitle] = useState("Xác nhận");
   const [confirmText, setConfirmText] = useState("");
+  const [confirmPrimaryLabel, setConfirmPrimaryLabel] = useState("Xác nhận");
+  const [confirmSecondaryLabel, setConfirmSecondaryLabel] = useState<string | null>(null);
   const confirmActionRef = useRef<null | (() => void | Promise<void>)>(null);
+  const confirmSecondaryActionRef = useRef<null | (() => void | Promise<void>)>(null);
 
   const toastTimerRef = useRef<number | null>(null);
   const [reportState] = useState(report ?? null);
@@ -132,24 +135,57 @@ const openConfirm = useCallback(
   (title: string, text: string, action: () => void | Promise<void>) => {
     setConfirmTitle(title);
     setConfirmText(text);
+    setConfirmPrimaryLabel("Xác nhận");
+    setConfirmSecondaryLabel(null);
     confirmActionRef.current = action;
+    confirmSecondaryActionRef.current = null;
     setConfirmOpen(true);
   },
   []
 );
 
+const openChoiceConfirm = useCallback(
+  (
+    title: string,
+    text: string,
+    primaryLabel: string,
+    primaryAction: () => void | Promise<void>,
+    secondaryLabel: string,
+    secondaryAction: () => void | Promise<void>,
+  ) => {
+    setConfirmTitle(title);
+    setConfirmText(text);
+    setConfirmPrimaryLabel(primaryLabel);
+    setConfirmSecondaryLabel(secondaryLabel);
+    confirmActionRef.current = primaryAction;
+    confirmSecondaryActionRef.current = secondaryAction;
+    setConfirmOpen(true);
+  },
+  [],
+);
+
 const closeConfirm = useCallback(() => {
   setConfirmOpen(false);
   confirmActionRef.current = null;
+  confirmSecondaryActionRef.current = null;
 }, []);
 
 const runConfirmAction = useCallback(async () => {
   const fn = confirmActionRef.current;
   setConfirmOpen(false);
   confirmActionRef.current = null;
+  confirmSecondaryActionRef.current = null;
   if (fn) {
     await fn();
   }
+}, []);
+
+const runConfirmSecondaryAction = useCallback(async () => {
+  const fn = confirmSecondaryActionRef.current;
+  setConfirmOpen(false);
+  confirmActionRef.current = null;
+  confirmSecondaryActionRef.current = null;
+  if (fn) await fn();
 }, []);
 
 useEffect(() => {
@@ -231,18 +267,27 @@ useEffect(() => {
 
   (async () => {
     try {
-      const { data: levelData, error: levelErr } =
-        await supabase.rpc("get_my_admin_level");
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        if (alive) setAdminLevel(null);
+        return;
+      }
+
+      const { data: adminUser, error: levelErr } = await supabase
+        .from("admin_users")
+        .select("level")
+        .eq("user_id", authData.user.id)
+        .maybeSingle();
 
       if (!alive) return;
 
       if (levelErr) {
-        console.warn("get_my_admin_level failed", levelErr);
+        console.warn("admin_users level lookup failed", levelErr);
         setAdminLevel(null);
         return;
       }
 
-      const lvl = Number(levelData ?? 0);
+      const lvl = Number(adminUser?.level ?? 0);
       setAdminLevel(Number.isFinite(lvl) ? lvl : null);
     } catch (e) {
       console.warn("get_my_admin_level exception", e);
@@ -371,9 +416,18 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
     }
 
     if (adminLevel === 1) {
-      openConfirm(
+      const refreshAfterAction = async (message: string) => {
+        cacheRef.current.clear();
+        cursorMapRef.current.clear();
+        setPage(1);
+        await loadRooms(1, debouncedSearch, { useCache: false });
+        notify(message);
+      };
+
+      openChoiceConfirm(
         "Xóa phòng",
-        "Bạn có chắc muốn xóa phòng này?",
+        "Bạn có chắc muốn xử lý phòng này? Ẩn phòng: Phòng được xóa khỏi trang công khai, vẫn giữ lại dữ liệu HĐ thuê và doanh thu.",
+        "Xóa vĩnh viễn",
         async () => {
           try {
             setLoading(true);
@@ -385,25 +439,39 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
               return;
             }
 
-            cacheRef.current.clear();
-            cursorMapRef.current.clear();
-            setPage(1);
-            await loadRooms(1, debouncedSearch, { useCache: false });
-
-            notify("Đã xóa phòng");
+            await refreshAfterAction("Đã xóa vĩnh viễn phòng");
           } catch (e: any) {
             setErrorMsg(e?.message ?? "Xóa phòng thất bại");
           } finally {
             setLoading(false);
           }
-        }
+        },
+        "Ẩn phòng",
+        async () => {
+          try {
+            setLoading(true);
+            setErrorMsg(null);
+
+            const res = await supabase.rpc("hide_room", { p_room_id: id });
+            if (res.error) {
+              setErrorMsg(res.error.message);
+              return;
+            }
+
+            await refreshAfterAction("Đã ẩn phòng và giữ lại dữ liệu");
+          } catch (e: any) {
+            setErrorMsg(e?.message ?? "Ẩn phòng thất bại");
+          } finally {
+            setLoading(false);
+          }
+        },
       );
       return;
     }
 
     setErrorMsg("Không có quyền thao tác.");
   },
-  [adminLevel, debouncedSearch, loadRooms, notify, openConfirm, page]
+  [adminLevel, debouncedSearch, loadRooms, notify, openChoiceConfirm, openConfirm, page]
 );
 
   const updateRoomStatus = useCallback(
@@ -1178,6 +1246,7 @@ const openZaloUX = useCallback(
             <div
               style={{
                 display: "flex",
+                flexWrap: "wrap",
                 justifyContent: "flex-end",
                 gap: 10,
               }}
@@ -1211,8 +1280,27 @@ const openZaloUX = useCallback(
                   fontWeight: 600,
                 }}
               >
-                Xác nhận
+                {confirmPrimaryLabel}
               </button>
+
+              {confirmSecondaryLabel ? (
+                <button
+                  type="button"
+                  onClick={runConfirmSecondaryAction}
+                  title="Phòng được xóa khỏi trang công khai, vẫn giữ lại dữ liệu HĐ thuê và doanh thu"
+                  style={{
+                    background: "#744722",
+                    color: "#fff",
+                    border: "none",
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  {confirmSecondaryLabel}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
