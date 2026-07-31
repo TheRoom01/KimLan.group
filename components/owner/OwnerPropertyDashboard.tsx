@@ -76,10 +76,6 @@ export default function OwnerPropertyDashboard({
                 </h2>
               </div>
 
-              <p className="mt-1 text-sm leading-6 text-[#846951]">
-                Mỗi cột thể hiện số phòng đang trống. Chiều cao được thu
-                gọn theo tỷ lệ tương đối; số phía trên là dữ liệu chính xác.
-              </p>
             </div>
 
             <div className="inline-flex shrink-0 items-center gap-2 text-xs font-semibold text-[#74583e]">

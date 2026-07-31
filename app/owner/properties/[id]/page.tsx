@@ -155,9 +155,9 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
 
           <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <StatCard title="Tổng phòng" value={summary.total_rooms} />
-            <StatCard title="Đã thuê" value={summary.rented_rooms} color="text-[#2d6a3d]" />
-            <StatCard title="Đang trống" value={summary.empty_rooms} color="text-[#22834c]" />
-            <StatCard title="Sắp trống" value={summary.upcoming_rooms} color="text-[#9a5b13]" />
+            <StatCard title="Đã thuê" value={summary.rented_rooms} color="text-red-600" />
+            <StatCard title="Đang trống" value={summary.empty_rooms} color="text-emerald-600" />
+            <StatCard title="Sắp trống" value={summary.upcoming_rooms} color="text-amber-600" />
           </div>
 
           <p className="mt-6 whitespace-pre-line text-sm leading-7 text-[#6f5239]">
@@ -178,7 +178,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
             {phones.length ? phones.map((phone) => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-3 rounded-xl px-1 py-1.5 transition hover:bg-[#f8ead7] hover:text-[#744722]"><ContactIcon><Phone size={16} /></ContactIcon><span>{phone}</span></a>) : <ContactRow icon={<Phone size={16} />} text="Chưa cập nhật số điện thoại" />}
             {accountUser.contact_email || ownerMember?.email ? <a href={`mailto:${accountUser.contact_email || ownerMember?.email}`} className="flex items-center gap-3 break-all hover:text-[#744722]"><ContactIcon><Mail size={16} /></ContactIcon><span>{accountUser.contact_email || ownerMember?.email}</span></a> : null}
             {defaults.link_zalo ? <a href={normalizeExternalUrl(String(defaults.link_zalo))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl px-1 py-1.5 font-semibold text-[#744722] transition hover:bg-[#f8ead7]"><ContactIcon><ExternalLink size={16} /></ContactIcon><span className="break-all">Mở Zalo</span></a> : <ContactRow icon={<ExternalLink size={16} />} text="Chưa cập nhật link Zalo" />}
-            {ownerMembers.map((member, index) => <div key={member.id || index} className="rounded-xl bg-[#f8ead7]/60 px-3 py-2"><p className="text-xs text-[#9a7758]">Chủ sở hữu {ownerMembers.length > 1 ? index + 1 : ""}</p><p className="mt-0.5 font-semibold text-[#4d3422]">{member.display_name || member.email || accountUser.display_name || "Chưa cập nhật tên"}</p></div>)}
+            {ownerMembers.map((member, index) => <div key={member.id || index} className="rounded-xl bg-[#f8ead7]/60 px-3 py-2"><p className="text-xs text-[#9a7758]">Chủ tòa nhà {ownerMembers.length > 1 ? index + 1 : ""}</p><p className="mt-0.5 font-semibold text-[#4d3422]">{member.display_name || member.email || accountUser.display_name || "Chưa cập nhật tên"}</p></div>)}
           </div>
         </aside>
       </section>
@@ -203,14 +203,20 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
           <div className="flex flex-wrap gap-4 text-xs font-semibold text-[#80634a]"><Legend color="bg-[#2f9e62]" label="Đang trống" /><Legend color="bg-[#cf5252]" label="Đã thuê" /><Legend color="bg-[#d99a35]" label="Sắp trống" /></div>
         </div>
         {rooms.length ? (
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {rooms.map((room) => {
               const status = room.displayStatus || room.status || "Đang trống";
               const style = roomStatusStyle(status);
-              return <Link key={room.id} href={`/owner/rooms/${room.id}`} className={`group rounded-2xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${style.card}`}>
-                <div className="flex items-start justify-between gap-3"><div><p className={`text-lg font-extrabold ${style.title}`}>{room.room_code || "Chưa đặt mã"}</p><p className="mt-1 text-xs text-[#80634a]">{room.room_type || "Chưa phân loại"}{room.price != null ? ` · ${Number(room.price).toLocaleString("vi-VN")}đ` : ""}</p></div><KeyRound size={17} className="shrink-0 opacity-60" /></div>
-                <p className={`mt-3 text-right text-xs font-bold ${style.title}`}>{status}</p>
-              </Link>;
+              
+
+              return <Link key={room.id} href={`/owner/rooms/${room.id}`} className={`group rounded-xl border p-3 transition hover:shadow-sm ${style.card}`}>
+  <div className="flex items-center justify-between gap-2">
+    <p className={`text-sm font-extrabold ${style.title}`}>{room.room_code || "Chưa đặt mã"}</p>
+    {status === "Đã thuê" ? <KeyRound size={14} className="opacity-60" /> : null}
+  </div>
+  <p className="mt-1 truncate text-[11px] text-[#80634a]">{room.room_type || "Chưa phân loại"}{room.price != null ? ` · ${Number(room.price).toLocaleString("vi-VN")}đ` : ""}</p>
+  <p className={`mt-2 text-[11px] font-bold ${style.title}`}>{status}</p>
+</Link>;
             })}
           </div>
         ) : <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 p-6 text-sm text-[#80634a]">Chưa có phòng trong tòa nhà này.</div>}

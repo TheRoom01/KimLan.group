@@ -32,7 +32,7 @@ function getStatusLabel(property: PropertyCardData) {
 function getRoleLabel(role?: string | null) {
   switch (role) {
     case "owner":
-      return "Chủ sở hữu";
+      return "Chủ tòa nhà";
     case "manager":
       return "Quản lý";
     case "viewer":

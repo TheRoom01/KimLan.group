@@ -382,9 +382,7 @@ export default async function OwnerPage() {
             <h1 className="text-2xl font-bold tracking-tight text-[#432918] sm:text-3xl">
               Dashboard chủ nhà
             </h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#7b604a]">
-              Theo dõi tòa nhà, công suất phòng và các hợp đồng cần xử lý.
-            </p>
+            
           </div>
 
           <Link
@@ -462,12 +460,7 @@ export default async function OwnerPage() {
             </div>
 
             <div className="mt-4 space-y-2.5">
-              <AttentionItem
-                href="/owner/contracts"
-                icon={FileText}
-                title="Hợp đồng cần theo dõi"
-                description={`${expiringContracts.length} hợp đồng hết hạn trong 30 ngày`}
-              />
+                           
               <AttentionItem
                 href="/owner/rooms?status=empty"
                 icon={Home}
@@ -582,9 +575,7 @@ export default async function OwnerPage() {
             <h2 className="text-sm font-bold uppercase tracking-wide text-[#4f321e] sm:text-lg">
               Hợp đồng gần đây
             </h2>
-            <p className="mt-1 text-sm text-[#846951]">
-              Hoạt động hợp đồng mới nhất trong danh mục của bạn.
-            </p>
+            
           </div>
           <Link
             href="/owner/contracts"

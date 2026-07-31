@@ -35,13 +35,17 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
     <div className="min-w-0 space-y-5 sm:space-y-6">
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">
-            <Building2 size={15} />
-            Quản lý tài sản
-          </p>
-          <h1 className="mt-1 text-2xl font-bold text-[#432918] sm:text-3xl">
-            Danh sách tòa nhà
-          </h1>
+          <div className="flex items-center gap-3">
+            <Building2
+              size={28}
+              strokeWidth={1.8}
+              className="shrink-0 text-[#744722]"
+            />
+
+            <h1 className="text-2xl font-bold text-[#432918] sm:text-3xl">
+              Danh sách tòa nhà
+            </h1>
+          </div>
           <p className="mt-1 text-sm text-[#7f6651]">
             {normalizedQuery ? `Tìm thấy ${visibleProperties.length}/${properties.length} tòa nhà` : `Tổng cộng: ${properties.length} tài sản bạn có quyền truy cập`}
           </p>

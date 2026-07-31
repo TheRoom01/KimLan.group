@@ -96,14 +96,15 @@ export default function OwnerSidebar() {
             href="/owner"
             className="flex shrink-0 items-center gap-2 rounded-xl px-1 py-2 font-semibold tracking-tight"
           >
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#f2d9b6] text-[#6a3f20] shadow-inner">
-              <KeyRound
-                size={19}
-                strokeWidth={2.2}
+            <span className="grid h-10 w-10 place-items-center overflow-hidden">
+              <img
+                src="/logo.png"
+                alt="The Room"
+                className="h-10 w-10 object-contain"
               />
             </span>
 
-            <span className="hidden text-lg xl:inline xl:text-xl">
+            <span className="hidden text-lg font-semibold text-[#fff6e8] xl:inline xl:text-xl">
               Landlord
             </span>
           </Link>

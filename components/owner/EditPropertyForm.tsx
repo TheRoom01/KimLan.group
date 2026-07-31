@@ -265,10 +265,10 @@ export default function EditPropertyForm({
 
       </div>
 
-      <div className={activeTab === "amenities" ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" : "hidden"}>
-        {AMENITIES.map(([name, label]) => <label key={name} className="flex items-center gap-3 rounded-xl border bg-[#fff9ef] p-3 text-sm font-semibold"><input type="checkbox" name={name} defaultChecked={Boolean(defaults.room_details?.[name])} />{label}</label>)}
-        <Field label="Tiện nghi khác" htmlFor="other_amenities"><textarea id="other_amenities" name="other_amenities" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_amenities ?? ""} /></Field>
-      </div>
+      <div className={activeTab === "amenities" ? "grid grid-cols-2 gap-2 lg:grid-cols-4" : "hidden"}>
+  {AMENITIES.map(([name, label]) => <label key={name} className="flex items-center gap-2 rounded-xl border border-[#aa825d]/35 bg-[#fff9ef] px-3 py-2.5 text-sm font-semibold"><input type="checkbox" name={name} defaultChecked={Boolean(defaults.room_details?.[name])} className="h-4 w-4 accent-[#744722]" />{label}</label>)}
+  <div className="col-span-2 lg:col-span-4"><Field label="Tiện nghi khác" htmlFor="other_amenities"><textarea id="other_amenities" name="other_amenities" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_amenities ?? ""} /></Field></div>
+</div>
 
       <div className={activeTab === "fees" ? "grid gap-4 sm:grid-cols-2" : "hidden"}>
         {FEES.map(([name, label, defaultUnit]) => <div key={name} className="grid grid-cols-[minmax(0,1fr)_minmax(110px,140px)] gap-2"><Field label={label} htmlFor={`${name}_value`}><input id={`${name}_value`} name={`${name}_value`} type="number" className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_value`] ?? ""} /></Field><Field label="Đơn vị" htmlFor={`${name}_unit`}><input id={`${name}_unit`} name={`${name}_unit`} className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_unit`] || defaultUnit} /></Field></div>)}
@@ -276,21 +276,30 @@ export default function EditPropertyForm({
         <Field label="Ghi chú phí khác" htmlFor="other_fee_note"><input id="other_fee_note" name="other_fee_note" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_fee_note ?? ""} /></Field>
       </div>
 
-      <section className="space-y-3 rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="font-bold text-[#4d3422]">Hình ảnh tòa nhà</h2><p className="text-xs text-[#80634a]">Ảnh đầu tiên là ảnh đại diện. Kéo thả để đổi thứ tự.</p></div>
-          <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-[#744722] px-4 text-sm font-bold text-white">
-            <ImagePlus size={17} /> Thêm ảnh
-            <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={uploadImages} />
-          </label>
-        </div>
-        {gallery.length ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {gallery.map((url, index) => <article key={`${url}-${index}`} draggable onDragStart={() => setDraggedIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropImage(event, index)} className="overflow-hidden rounded-xl border bg-white">
-            {isVideoUrl(url) ? <video src={url} controls className="h-40 w-full bg-black object-contain" /> : <img src={url} alt={`Ảnh tòa nhà ${index + 1}`} className="h-40 w-full object-cover" />}
-            <div className="flex items-center justify-between px-3 py-2"><span className="flex items-center gap-1 text-xs font-semibold"><GripVertical size={15} />{index === 0 ? "Media đại diện" : `Media ${index + 1}`}</span><button type="button" onClick={() => removeMedia(index)} className="text-red-700" aria-label="Xóa media"><Trash2 size={16} /></button></div>
-          </article>)}
-        </div> : <div className="rounded-xl border border-dashed p-8 text-center text-sm text-[#80634a]">Chưa có ảnh tòa nhà.</div>}
-      </section>
+      {activeTab === "info" ? <section className="space-y-3 rounded-2xl border border-[#aa825d]/25 bg-[#fff9ef] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h2 className="font-bold text-[#4d3422]">Hình ảnh tòa nhà</h2><p className="text-xs text-[#80634a]">Ảnh đầu tiên là ảnh đại diện. Kéo thả để đổi thứ tự.</p></div>
+            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-[#744722] px-4 text-sm font-bold text-white">
+              <ImagePlus size={17} /> Thêm ảnh
+              <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={uploadImages} />
+            </label>
+          </div>
+
+          {gallery.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {gallery.map((url, index) => <article key={`${url}-${index}`} draggable onDragStart={() => setDraggedIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropImage(event, index)} className="overflow-hidden rounded-xl border bg-white">
+              {isVideoUrl(url) ? <video src={url} controls className="h-28 w-full bg-black object-cover" /> : <img src={url} alt={`Ảnh tòa nhà ${index + 1}`} className="h-28 w-full object-cover" />}
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <span className="flex items-center gap-1 text-[11px] font-semibold">
+                  <GripVertical size={13} />
+                  {index === 0 ? "Media đại diện" : `Media ${index + 1}`}
+                </span>
+                <button type="button" onClick={() => removeMedia(index)} className="text-red-700" aria-label="Xóa media">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </article>)}
+          </div> : <div className="rounded-xl border border-dashed p-6 text-center text-sm text-[#80634a]">Chưa có ảnh tòa nhà.</div>}
+        </section> : null}
 
       <Field label="Ghi chú" htmlFor="note">
         <textarea

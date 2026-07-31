@@ -38,12 +38,21 @@ export default function RoomMediaGallery({
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(media?.[0]?.id ?? null);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenIndex, setFullscreenIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   useEffect(() => {
     setItems(media ?? []);
     setActiveId(media?.[0]?.id ?? null);
     setOrderDirty(false);
   }, [media]);
+
+  function changePreview(direction: number) {
+    const currentIndex = items.findIndex((item) => item.id === activeItem.id);
+    const nextIndex = (currentIndex + direction + items.length) % items.length;
+    setActiveId(items[nextIndex].id);
+  }
 
   function moveItem(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
@@ -170,9 +179,6 @@ export default function RoomMediaGallery({
             <ImageIcon size={20} className="text-[#744722]" />
             <h2 className="text-lg font-bold text-[#4f321e]">Hình ảnh / Video phòng</h2>
           </div>
-          <p className="mt-1 text-sm leading-6 text-[#846951]">
-            Vuốt hoặc kéo danh sách ảnh nhỏ để xem lần lượt từng ảnh/video.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-[#ead3b3] px-2.5 py-1 text-xs font-semibold text-[#684324]">
@@ -203,11 +209,19 @@ export default function RoomMediaGallery({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#2b1a10]">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#2b1a10]" onTouchStart={(event) => setTouchStartX(event.touches[0].clientX)} onTouchEnd={(event) => {
+        if (touchStartX === null) return;
+        const diff = touchStartX - event.changedTouches[0].clientX;
+        if (diff > 50) changePreview(1);
+        if (diff < -50) changePreview(-1);
+        setTouchStartX(null);
+      }}>
         {activeItem.type === "video" ? (
           <video src={activeItem.url} controls preload="metadata" className="aspect-[4/3] max-h-[360px] w-full object-contain" />
         ) : (
-          <img src={activeItem.url} alt="Media phòng đang xem" className="aspect-[4/3] max-h-[360px] w-full object-contain" />
+          <button type="button" onClick={() => { setFullscreenIndex(items.findIndex((media) => media.id === activeItem.id)); setFullscreen(true); }} className="block w-full">
+            <img src={activeItem.url} alt="Media phòng đang xem" className="aspect-[4/3] max-h-[360px] w-full object-contain" />
+          </button>
         )}
       </div>
 
@@ -279,6 +293,25 @@ export default function RoomMediaGallery({
           </article>
         ))}
       </div>
+      {fullscreen ? <div className="fixed inset-0 z-[200] bg-black/95 p-4" onClick={() => setFullscreen(false)}>
+  <div className="flex h-full snap-x snap-mandatory overflow-x-auto touch-pan-x" style={{ scrollSnapType: "x mandatory" }}>
+    {items.map((item, index) => (
+      item.type === "image" ? (
+        <div key={item.id} className="flex h-full w-full shrink-0 snap-center items-center justify-center">
+          <img src={item.url} alt={`Ảnh ${index + 1}`} className="max-h-full max-w-full object-contain" />
+        </div>
+      ) : (
+        <div key={item.id} className="flex h-full w-full shrink-0 snap-center items-center justify-center">
+          <video src={item.url} controls className="max-h-full max-w-full" />
+        </div>
+      )
+    ))}
+  </div>
+
+  <button type="button" onClick={(event) => { event.stopPropagation(); setFullscreen(false); }} className="absolute right-4 top-4 rounded-full bg-white/20 px-4 py-2 text-white">
+    Đóng
+  </button>
+</div> : null}
     </section>
   );
 }
