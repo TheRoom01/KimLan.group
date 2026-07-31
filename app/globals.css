@@ -5,6 +5,8 @@ html {
 }
 
 :root {
+  --font-geist-sans: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-geist-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --tr-bg-main: #D2B48C;
 
   --tr-glass-bg: rgba(210, 180, 140, 0.46);
@@ -19,6 +21,7 @@ html {
 body {
   background: #D2B48C;
   color: #3f2f24;
+  font-family: var(--font-geist-sans);
 }
 
 /* ===== ADMIN FORM BASE ===== */

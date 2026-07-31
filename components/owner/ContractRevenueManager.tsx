@@ -32,8 +32,18 @@ type Contract = {
   end_date?: string | null;
   monthly_price?: number | null;
   deposit_amount?: number | null;
-  room?: { room_code?: string | null } | null;
+  room?: {
+    room_code?: string | null;
+    room_details?: RoomDefaultFees | RoomDefaultFees[] | null;
+  } | null;
   tenant?: { full_name?: string | null } | null;
+};
+type RoomDefaultFees = {
+  electric_fee_value?: number | null;
+  water_fee_value?: number | null;
+  service_fee_value?: number | null;
+  parking_fee_value?: number | null;
+  other_fee_value?: number | null;
 };
 
 export default function ContractRevenueManager({ contract }: { contract: Contract }) {
@@ -379,6 +389,10 @@ function cycle(revenue: Rev) {
 }
 
 function empty(contract: Contract): Rev {
+  const details = Array.isArray(contract.room?.room_details)
+    ? contract.room.room_details[0]
+    : contract.room?.room_details;
+
   return {
     room_code: contract.room?.room_code ?? "",
     tenant_name: contract.tenant?.full_name ?? "",
@@ -386,11 +400,11 @@ function empty(contract: Contract): Rev {
     rent_amount: Number(contract.monthly_price ?? 0),
     electricity_start: 0,
     electricity_end: 0,
-    electricity_unit_price: 0,
-    parking_fee: 0,
-    service_fee: 0,
-    water_fee: 0,
-    other_fee: 0,
+    electricity_unit_price: Number(details?.electric_fee_value ?? 0),
+    parking_fee: Number(details?.parking_fee_value ?? 0),
+    service_fee: Number(details?.service_fee_value ?? 0),
+    water_fee: Number(details?.water_fee_value ?? 0),
+    other_fee: Number(details?.other_fee_value ?? 0),
     paid_amount: 0,
     payment_status: "pending",
     note: "",

@@ -1,22 +1,11 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 
 import "./globals.css";
 import "./room-share-visual-sync.css";
 import AuthControls from "@/components/AuthControls";
 import ClientErrorOverlay from './_debug/ClientErrorOverlay';
-
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import PwaRegister from "@/components/pwa/PwaRegister";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -125,6 +114,18 @@ export const metadata: Metadata = {
   },
 
   category: "Real Estate",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "KimLan",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#744722",
 };
 
 export default function RootLayout({
@@ -168,7 +169,7 @@ export default function RootLayout({
         />
       </head>
 
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className="antialiased">
         <noscript>
           <iframe
             src="https://www.googletagmanager.com/ns.html?id=GTM-KXSD23BK"
@@ -179,6 +180,7 @@ export default function RootLayout({
         </noscript>
 
         <AuthControls />
+        <PwaRegister />
         {children}
         {modal}
         <ClientErrorOverlay />

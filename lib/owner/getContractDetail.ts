@@ -41,6 +41,20 @@ export async function getContractDetail(
 
         room_code,
 
+        room_details (
+
+          electric_fee_value,
+
+          water_fee_value,
+
+          service_fee_value,
+
+          parking_fee_value,
+
+          other_fee_value
+
+        ),
+
         properties!rooms_property_id_fkey (
 
             id,
