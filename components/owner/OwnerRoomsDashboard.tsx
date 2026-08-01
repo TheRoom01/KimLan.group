@@ -170,7 +170,10 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
 
     const isInsideFloating = (target: EventTarget | null) =>
       target instanceof Element &&
-      Boolean(target.closest(`[data-building-floating="${group.key}"]`));
+      Boolean(
+        target.closest(`[data-building-floating="${group.key}"]`) ||
+        target.closest('[data-owner-floating="true"]'),
+      );
     const closeFloating = () => {
       setExpandedId(null);
       setHelpOpen(false);

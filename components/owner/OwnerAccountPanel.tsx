@@ -33,6 +33,7 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 import { readApiResponse } from "@/lib/api/client";
 
 import OwnerAvatarCropper from "@/components/owner/OwnerAvatarCropper";
+import OwnerTrashPanel from "@/components/owner/OwnerTrashPanel";
 import { PanelLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 
 type AccountProperty = {
@@ -173,6 +174,7 @@ function createProfileDraft(
 
 
 export default function OwnerAccountPanel() {
+  const [trashOpen, setTrashOpen] = useState(false);
   const [open, setOpen] = useState(false);
 
   const [data, setData] = useState<AccountPanelData | null>(
@@ -638,6 +640,16 @@ async function deleteAvatar() {
                   </div>
                 </div>
 
+                <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); setTrashOpen(true); }}
+                  aria-label="Mở thùng rác"
+                  title="Thùng rác"
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-white/15 bg-white/5 transition hover:bg-white/10"
+                >
+                  <Trash2 size={18} />
+                </button>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -646,6 +658,7 @@ async function deleteAvatar() {
                 >
                   <X size={19} />
                 </button>
+                </div>
               </div>
             </header>
 
@@ -1054,6 +1067,8 @@ className="text-sm font-semibold text-[#744722]"
           </aside>
         </>
       ) : null}
+
+      <OwnerTrashPanel open={trashOpen} onClose={() => setTrashOpen(false)} />
 
       {avatarMenuOpen ? (
   <div className="fixed inset-0 z-[400]">

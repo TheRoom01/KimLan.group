@@ -9,6 +9,8 @@ import {
 import TenantRosterCard from "@/components/owner/TenantRosterCard";
 import ContractRevenueManager from "@/components/owner/ContractRevenueManager";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
+import DeleteContractButton from "@/components/owner/DeleteContractButton";
+import { notFound } from "next/navigation";
 
 function formatDate(value?: string | null) {
   return value
@@ -29,6 +31,7 @@ export default async function ContractDetailPage({
 }) {
   const { id } = await params;
   const contract = await getContractDetail(id);
+  if (!contract) notFound();
   const normalizedStatus =
     normalizeContractStatus(contract.status) ?? contract.status;
 
@@ -115,6 +118,7 @@ export default async function ContractDetailPage({
             {canEnd && (
               <EndContractButton contractId={contract.id} />
             )}
+            <DeleteContractButton contractId={contract.id} />
           </div>
         </div>
       </div>

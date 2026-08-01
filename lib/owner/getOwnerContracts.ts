@@ -26,9 +26,15 @@ export async function getOwnerContracts(){
     throw error;
 
   }
-
-
-
-  return data ?? [];
+  const contracts = data ?? [];
+  if (contracts.length === 0) return [];
+  const { data: visible, error: visibleError } = await supabase
+    .from("rental_contracts")
+    .select("id")
+    .in("id", contracts.map((contract: { id: string }) => contract.id))
+    .is("deleted_at", null);
+  if (visibleError) throw visibleError;
+  const visibleIds = new Set((visible ?? []).map((contract) => contract.id));
+  return contracts.filter((contract: { id: string }) => visibleIds.has(contract.id));
 
 }

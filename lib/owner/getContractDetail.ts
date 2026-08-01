@@ -107,22 +107,20 @@ export async function getContractDetail(
       "id",
       contractId
     )
-    .single();
+    .is("deleted_at", null)
+    .maybeSingle();
 
 
 
   if(error){
-
-    console.error(
-        "getContractDetail error:",
-        error
-    );
 
     throw new Error(
         error.message
     );
 
     }
+
+  if (!data) return null;
 
 
 

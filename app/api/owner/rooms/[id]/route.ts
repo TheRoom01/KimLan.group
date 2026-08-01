@@ -92,7 +92,7 @@ function roomLocationPatch(body: Record<string, unknown>) {
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   {
     params,
   }: {
@@ -113,7 +113,11 @@ export async function DELETE(
       );
     }
 
-    const { data, error } = await supabase.rpc("archive_owner_room_v1", {
+    const permanent = new URL(request.url).searchParams.get("mode") === "permanent";
+    const rpcName = permanent
+      ? "delete_owner_room_permanently_v1"
+      : "archive_owner_room_v1";
+    const { data, error } = await supabase.rpc(rpcName, {
       p_room_id: roomId,
     });
 
