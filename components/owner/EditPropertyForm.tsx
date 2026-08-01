@@ -5,6 +5,7 @@ import { GripVertical, ImagePlus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { readApiResponse } from "@/lib/api/client";
+import { buildGoogleMapsSearchUrl } from "@/lib/owner/googleMapsUrl";
 import { generatePropertyCode } from "@/lib/owner/propertyCode";
 
 type EditableProperty = {
@@ -48,6 +49,25 @@ export default function EditPropertyForm({
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [activeTab, setActiveTab] = useState<"info" | "amenities" | "fees">("info");
   const defaults = property.default_room_data ?? {};
+  const [addressDraft, setAddressDraft] = useState({
+    house_number: property.house_number,
+    address: property.address,
+    ward: property.ward ?? "",
+    district: property.district,
+    city: property.city,
+  });
+  const [googleMapsUrl, setGoogleMapsUrl] = useState(
+    property.google_maps_url || buildGoogleMapsSearchUrl(property),
+  );
+
+  function updateAddress(
+    field: keyof typeof addressDraft,
+    value: string,
+  ) {
+    const next = { ...addressDraft, [field]: value };
+    setAddressDraft(next);
+    setGoogleMapsUrl(buildGoogleMapsSearchUrl(next));
+  }
 
   async function uploadFile(file: File, propertyId: string) {
     const presignResponse = await fetch("/api/upload/r2-presign", {
@@ -198,7 +218,8 @@ export default function EditPropertyForm({
             name="house_number"
             className={INPUT_CLASS}
             maxLength={100}
-            defaultValue={property.house_number}
+            value={addressDraft.house_number}
+            onChange={(event) => updateAddress("house_number", event.target.value)}
             required
           />
         </Field>
@@ -209,7 +230,8 @@ export default function EditPropertyForm({
             name="address"
             className={INPUT_CLASS}
             maxLength={500}
-            defaultValue={property.address}
+            value={addressDraft.address}
+            onChange={(event) => updateAddress("address", event.target.value)}
             required
           />
         </Field>
@@ -220,7 +242,8 @@ export default function EditPropertyForm({
             name="ward"
             className={INPUT_CLASS}
             maxLength={120}
-            defaultValue={property.ward ?? ""}
+            value={addressDraft.ward}
+            onChange={(event) => updateAddress("ward", event.target.value)}
           />
         </Field>
 
@@ -230,7 +253,8 @@ export default function EditPropertyForm({
             name="district"
             className={INPUT_CLASS}
             maxLength={120}
-            defaultValue={property.district}
+            value={addressDraft.district}
+            onChange={(event) => updateAddress("district", event.target.value)}
             required
           />
         </Field>
@@ -241,20 +265,22 @@ export default function EditPropertyForm({
             name="city"
             className={INPUT_CLASS}
             maxLength={120}
-            defaultValue={property.city}
+            value={addressDraft.city}
+            onChange={(event) => updateAddress("city", event.target.value)}
             required
           />
         </Field>
 
-        <Field label="Link Google Maps" htmlFor="google_maps_url">
+        <Field label="Link Google Maps" htmlFor="google_maps_url" hint="Tự động tạo từ địa chỉ tòa nhà; bạn vẫn có thể thay bằng link thủ công.">
           <input
             id="google_maps_url"
             name="google_maps_url"
             type="url"
             className={INPUT_CLASS}
             maxLength={2000}
-            placeholder="https://maps.google.com/..."
-            defaultValue={property.google_maps_url ?? ""}
+            placeholder="https://www.google.com/maps/search/?api=1&query=..."
+            value={googleMapsUrl}
+            onChange={(event) => setGoogleMapsUrl(event.target.value)}
           />
         </Field>
         <Field label="Trạng thái mặc định" htmlFor="room_status"><select id="room_status" name="room_status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>

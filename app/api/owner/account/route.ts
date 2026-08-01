@@ -43,7 +43,8 @@ export async function GET() {
     }
 
     if (avatarResponse.error) {
-      return mapDatabaseError(
+      console.warn(
+        "Owner account avatars unavailable; continuing without avatars:",
         avatarResponse.error,
       );
     }
@@ -115,12 +116,44 @@ export async function GET() {
           ).members
         : [];
 
+    const panelProperties = Array.isArray(
+      (panel as { properties?: unknown }).properties,
+    )
+      ? (panel as { properties: unknown[] }).properties
+      : [];
+
+    const baseMembers = panelMembers.map((candidate) => {
+      if (!candidate || typeof candidate !== "object") return candidate;
+
+      const member = candidate as Record<string, unknown>;
+      const userId =
+        typeof member.user_id === "string" ? member.user_id : "";
+
+      return {
+        ...member,
+        avatar_url: avatarByUserId.get(userId) ?? null,
+      };
+    });
+
+    const basePanelResponse = () =>
+      apiSuccess({
+        ...panel,
+        properties: panelProperties,
+        members: baseMembers,
+      });
+
     const { data: myMemberships, error: myMembershipError } = await supabase
       .from("property_members")
       .select("property_id, role, status")
       .eq("user_id", user.id)
       .eq("status", "active");
-    if (myMembershipError) return mapDatabaseError(myMembershipError);
+    if (myMembershipError) {
+      console.warn(
+        "Owner account memberships unavailable; using panel fallback:",
+        myMembershipError,
+      );
+      return basePanelResponse();
+    }
 
     const joinedPropertyIds = Array.from(new Set((myMemberships ?? []).map((membership) => membership.property_id).filter(Boolean)));
     const { data: liveProperties, error: livePropertyError } = joinedPropertyIds.length
@@ -130,7 +163,13 @@ export async function GET() {
           .in("id", joinedPropertyIds)
           .or("lifecycle_status.is.null,lifecycle_status.neq.archived")
       : { data: [], error: null };
-    if (livePropertyError) return mapDatabaseError(livePropertyError);
+    if (livePropertyError) {
+      console.warn(
+        "Owner account properties unavailable; using panel fallback:",
+        livePropertyError,
+      );
+      return basePanelResponse();
+    }
 
     const propertyById = new Map((liveProperties ?? []).map((property) => [property.id, property]));
     const livePropertyIds = [...propertyById.keys()];
@@ -141,7 +180,13 @@ export async function GET() {
           .in("property_id", livePropertyIds)
           .eq("status", "active")
       : { data: [], error: null };
-    if (sharedMembershipError) return mapDatabaseError(sharedMembershipError);
+    if (sharedMembershipError) {
+      console.warn(
+        "Owner account shared memberships unavailable; using panel fallback:",
+        sharedMembershipError,
+      );
+      return basePanelResponse();
+    }
 
     const profileByUserId = new Map<string, Record<string, unknown>>();
     for (const candidate of panelMembers) {
@@ -168,15 +213,19 @@ export async function GET() {
     }
 
     const sharedMemberIds = [...membershipsByUser.keys()];
-    const admin = createSupabaseAdminClient();
     const { data: memberPhones, error: memberPhonesError } = sharedMemberIds.length
-      ? await admin
+      ? await createSupabaseAdminClient()
           .from("member_contact_phones")
           .select("id, user_id, phone, is_primary, is_verified")
           .in("user_id", sharedMemberIds)
           .order("is_primary", { ascending: false })
       : { data: [], error: null };
-    if (memberPhonesError) return mapDatabaseError(memberPhonesError);
+    if (memberPhonesError) {
+      console.warn(
+        "Owner account member phones unavailable; continuing without phones:",
+        memberPhonesError,
+      );
+    }
 
     const phonesByUserId = new Map<string, typeof memberPhones>();
     for (const phone of memberPhones ?? []) {

@@ -16,6 +16,13 @@ type Tenant = {
   cccd_back_url?: string | null;
 };
 
+type PresignResult = {
+  key: string;
+  publicUrl: string;
+  uploadUrl: string;
+  requiredHeaders?: Record<string, string>;
+};
+
 const MAX_BYTES = 10 * 1024 * 1024;
 const INPUT = "w-full rounded-xl border border-[#aa825d]/30 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#744722]";
 
@@ -39,14 +46,36 @@ export default function TenantProfileEditor({ tenant, roomId }: { tenant: Tenant
 
   async function upload(file: File, side: "front" | "back") {
     if (!roomId) throw new Error("Không xác định được phòng của khách thuê.");
-    const presign = await readApiResponse<{ key: string; publicUrl: string; uploadUrl: string; requiredHeaders?: Record<string, string> }>(
-      await fetch("/api/upload/r2-presign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room_id: roomId, tenant_id: tenant.id, tenant_side: side, file_name: file.name, content_type: file.type, size: file.size }),
-      }),
-    );
-    const uploaded = await fetch(presign.uploadUrl, { method: "PUT", headers: presign.requiredHeaders, body: file });
+    const response = await fetch("/api/upload/r2-presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room_id: roomId, tenant_id: tenant.id, tenant_side: side, file_name: file.name, content_type: file.type, size: file.size }),
+    });
+    const payload = (await response.json().catch(() => null)) as
+      | PresignResult
+      | { error?: string }
+      | null;
+
+    if (
+      !response.ok ||
+      !payload ||
+      !("uploadUrl" in payload) ||
+      !("publicUrl" in payload) ||
+      !("key" in payload)
+    ) {
+      throw new Error(
+        payload && "error" in payload
+          ? payload.error || "Không thể chuẩn bị tải ảnh CCCD."
+          : "Không thể chuẩn bị tải ảnh CCCD.",
+      );
+    }
+
+    const presign = payload;
+    const uploaded = await fetch(presign.uploadUrl, {
+      method: "PUT",
+      headers: presign.requiredHeaders ?? { "Content-Type": file.type },
+      body: file,
+    });
     if (!uploaded.ok) throw new Error(`Không thể upload CCCD mặt ${side === "front" ? "trước" : "sau"}.`);
     return presign;
   }

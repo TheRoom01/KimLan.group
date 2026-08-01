@@ -465,9 +465,16 @@ async function deleteAvatar() {
 }
 
   async function logout() {
-    await fetch("/api/device/logout", { method: "POST" }).catch(() => null);
-    await supabaseBrowser().auth.signOut();
-    window.location.assign("/owner");
+    try {
+      await fetch("/api/device/logout", { method: "POST" }).catch(() => null);
+      const { error } = await supabaseBrowser().auth.signOut({ scope: "local" });
+
+      if (error) {
+        console.warn("Supabase local sign-out failed:", error);
+      }
+    } finally {
+      window.location.replace("/owner");
+    }
   }
 
   return (

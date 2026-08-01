@@ -342,9 +342,11 @@ export default function CreateRoomForm({
             />
           </Field>
 
-          <Field label="Link Google Maps" htmlFor="google_maps_url">
-            <input id="google_maps_url" name="google_maps_url" type="url" className={INPUT_CLASS} maxLength={2000} placeholder="https://maps.google.com/..." defaultValue={defaults.google_maps_url ?? ""} />
-          </Field>
+          <div className="md:col-span-2">
+            <Field label="Link Google Maps" htmlFor="google_maps_url" hint="Tự động kế thừa từ tòa nhà.">
+              <input id="google_maps_url" name="google_maps_url" type="url" className={`${INPUT_CLASS} bg-[#f5eee5]`} maxLength={2000} readOnly defaultValue={defaults.google_maps_url ?? ""} />
+            </Field>
+          </div>
 
           <div className="md:col-span-2">
             <Field label="Mô tả" htmlFor="description">

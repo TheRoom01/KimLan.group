@@ -284,8 +284,8 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
             />
           </Field>
 
-          <Field label="Link Google Maps" htmlFor="google_maps_url">
-            <input id="google_maps_url" name="google_maps_url" type="url" className={INPUT_CLASS} maxLength={2000} placeholder="https://maps.google.com/..." defaultValue={room.google_maps_url ?? ""} />
+          <Field label="Link Google Maps" htmlFor="google_maps_url" hint="Tự động đồng bộ từ tòa nhà.">
+            <input id="google_maps_url" name="google_maps_url" type="url" className={`${INPUT_CLASS} bg-[#f5eee5]`} maxLength={2000} readOnly defaultValue={room.google_maps_url ?? ""} />
           </Field>
 
           <div className="md:col-span-2">
