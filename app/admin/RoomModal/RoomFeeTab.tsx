@@ -59,12 +59,12 @@ export default function RoomFeeTab({
   }, [])
 
   const feeGridStyle = useMemo<React.CSSProperties>(
-    () => (isMobile ? { ...grid2, gridTemplateColumns: '1fr' } : grid2),
+    () => (isMobile ? { ...grid2, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 } : grid2),
     [isMobile]
   )
 
   const inputsRowStyle = useMemo<React.CSSProperties>(
-    () => (isMobile ? { ...inputsRow, gridTemplateColumns: '1fr 140px' } : inputsRow),
+    () => (isMobile ? { ...inputsRow, gridTemplateColumns: '1fr', gap: 6 } : inputsRow),
     [isMobile]
   )
 
@@ -146,19 +146,48 @@ function MoneyField({
   unitPlaceholder?: string
   rowStyle?: React.CSSProperties
 }) {
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const restoreCaret = (digitPosition: number) => {
+    window.requestAnimationFrame(() => {
+      const input = inputRef.current
+      if (!input) return
+      let seen = 0
+      let caret = input.value.length
+      for (let index = 0; index < input.value.length; index += 1) {
+        if (/\d/.test(input.value[index])) seen += 1
+        if (seen === digitPosition) {
+          caret = index + 1
+          break
+        }
+      }
+      input.setSelectionRange(caret, caret)
+    })
+  }
+
   return (
     <div>
       <label style={labelStyle}>{label}:</label>
 
       <div style={rowStyle ?? inputsRow}>
-        <input
-          style={inputStyle}
-          type="number"
-          min={0}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => onValue(Math.max(0, Number(e.target.value)))}
-          placeholder="0"
-        />
+        <div style={moneyInputWrap}>
+          <input
+            ref={inputRef}
+            style={{ ...inputStyle, paddingRight: 34 }}
+            type="text"
+            inputMode="numeric"
+            value={Number.isFinite(value) && value > 0 ? Math.trunc(value).toLocaleString('vi-VN') : ''}
+            onChange={(e) => {
+              const caret = e.currentTarget.selectionStart ?? e.currentTarget.value.length
+              const digitPosition = e.currentTarget.value.slice(0, caret).replace(/\D/g, '').length
+              const raw = e.target.value.replace(/\D/g, '')
+              onValue(raw ? Number.parseInt(raw, 10) : 0)
+              restoreCaret(digitPosition)
+            }}
+            placeholder="0"
+          />
+          <span style={moneySuffix}>đ</span>
+        </div>
 
         <input
           style={{
@@ -185,10 +214,28 @@ function TextArea({
   value: string
   onChange: (v: string) => void
 }) {
+  const [height, setHeight] = useState(100)
+
+  const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = height
+    const move = (moveEvent: PointerEvent) => setHeight(Math.max(100, Math.min(420, startHeight + moveEvent.clientY - startY)))
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop, { once: true })
+  }
+
   return (
     <div>
       <label style={labelStyle}>{label}</label>
-      <textarea style={textareaStyle} value={value} onChange={(e) => onChange(e.target.value)} />
+      <div style={{ position: 'relative' }}>
+        <textarea style={{ ...textareaStyle, height }} value={value} onChange={(e) => onChange(e.target.value)} />
+        <button type="button" aria-label="Kéo để mở rộng ô nhập" title="Kéo để mở rộng" style={resizeHandle} onPointerDown={startResize}>↕</button>
+      </div>
     </div>
   )
 }
@@ -222,8 +269,9 @@ const grid2: React.CSSProperties = {
 
 const inputsRow: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: '1fr 180px',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(120px, 28%)',
   gap: 12,
+  alignItems: 'stretch',
 }
 
 const labelStyle: React.CSSProperties = {
@@ -243,9 +291,41 @@ const inputStyle: React.CSSProperties = {
 
 const textareaStyle: React.CSSProperties = {
   ...inputStyle,
-  minHeight: 140,
-  resize: 'vertical',
+  minHeight: 100,
+  resize: 'none',
+  paddingRight: 34,
+  display: 'block',
   whiteSpace: 'pre-wrap',
   lineHeight: 1.6,
   fontFamily: 'inherit',
+}
+
+const moneyInputWrap: React.CSSProperties = { position: 'relative', minWidth: 0 }
+
+const moneySuffix: React.CSSProperties = {
+  position: 'absolute',
+  right: 12,
+  top: '50%',
+  transform: 'translateY(-50%)',
+  color: '#475569',
+  fontWeight: 700,
+  pointerEvents: 'none',
+}
+
+const resizeHandle: React.CSSProperties = {
+  position: 'absolute',
+  right: 5,
+  bottom: 5,
+  width: 28,
+  height: 28,
+  border: '1px solid #94a3b8',
+  borderRadius: 7,
+  background: '#fff',
+  color: '#334155',
+  fontSize: 21,
+  fontWeight: 800,
+  lineHeight: 1,
+  cursor: 'ns-resize',
+  touchAction: 'none',
+  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.18)',
 }

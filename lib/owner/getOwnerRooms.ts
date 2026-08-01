@@ -79,6 +79,7 @@ export async function getOwnerRooms() {
       property_id,
       properties!rooms_property_id_fkey (
         id,
+        code,
         name,
         house_number,
         address,

@@ -4,6 +4,7 @@ import { Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { readApiResponse } from "@/lib/api/client";
+import MoneyInput from "@/components/owner/MoneyInput";
 
 type Month = { month: number; year: number };
 type Payment = { id: string; amount: number; paid_at: string; payment_method: string };
@@ -269,8 +270,8 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
                 <Read value={form.tenant_name} />
                 <InputCell value={form.deposit_amount} onChange={(value) => change("deposit_amount", value)} />
                 <InputCell value={form.rent_amount} onChange={(value) => change("rent_amount", value)} />
-                <InputCell value={form.electricity_start} onChange={(value) => change("electricity_start", value)} />
-                <InputCell value={form.electricity_end} onChange={(value) => change("electricity_end", value)} />
+                <InputCell value={form.electricity_start} onChange={(value) => change("electricity_start", value)} money={false} />
+                <InputCell value={form.electricity_end} onChange={(value) => change("electricity_end", value)} money={false} />
                 <InputCell value={form.electricity_unit_price} onChange={(value) => change("electricity_unit_price", value)} />
                 <Read value={electricity} />
                 <InputCell value={form.parking_fee} onChange={(value) => change("parking_fee", value)} />
@@ -322,8 +323,8 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
                   <SheetRead label="Người thuê" value={form.tenant_name} />
                   <SheetInput label="Tiền cọc" value={form.deposit_amount} onChange={(value) => change("deposit_amount", value)} />
                   <SheetInput label="Giá thuê" value={form.rent_amount} onChange={(value) => change("rent_amount", value)} />
-                  <SheetInput label="Số điện đầu tháng (kWh)" value={form.electricity_start} onChange={(value) => change("electricity_start", value)} />
-                  <SheetInput label="Số điện cuối tháng (kWh)" value={form.electricity_end} onChange={(value) => change("electricity_end", value)} />
+                  <SheetInput label="Số điện đầu tháng (kWh)" value={form.electricity_start} onChange={(value) => change("electricity_start", value)} money={false} />
+                  <SheetInput label="Số điện cuối tháng (kWh)" value={form.electricity_end} onChange={(value) => change("electricity_end", value)} money={false} />
                   <SheetInput label="Đơn giá điện (đ/kWh)" value={form.electricity_unit_price} onChange={(value) => change("electricity_unit_price", value)} />
                   <SheetRead label="Tiền điện" value={electricity} />
                   <SheetInput label="Gửi xe" value={form.parking_fee} onChange={(value) => change("parking_fee", value)} />
@@ -450,14 +451,14 @@ function Read({ value, emphasized = false }: { value: string | number; emphasize
   return <td className={`whitespace-nowrap border p-2 ${emphasized ? "bg-[#fff1d8] font-bold text-[#744722]" : "font-semibold"}`}>{typeof value === "number" ? money(value) : value}</td>;
 }
 
-function InputCell({ value, onChange }: { value: number; onChange: (value: string) => void }) {
-  return <td className="border p-0"><input type="number" min={0} step="any" value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(event.target.value)} className="w-full min-w-28 border-0 bg-white p-2 outline-none focus:bg-amber-50" /></td>;
+function InputCell({ value, onChange, money = true }: { value: number; onChange: (value: string) => void; money?: boolean }) {
+  return <td className="border p-0">{money ? <MoneyInput value={value} onValueChange={(amount) => onChange(String(amount))} className="w-full min-w-28 border-0 bg-white p-2 outline-none focus:bg-amber-50" /> : <input type="number" min={0} step="any" value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(event.target.value)} className="w-full min-w-28 border-0 bg-white p-2 outline-none focus:bg-amber-50" />}</td>;
 }
 
 function SheetRead({ label, value, emphasized = false }: { label: string; value: string | number; emphasized?: boolean }) {
   return <tr><th className="w-[48%] border-r border-t border-[#a9825f]/30 bg-[#f3e1c9] p-3 text-left">{label}</th><td className={`border-t border-[#a9825f]/30 p-3 text-right ${emphasized ? "bg-[#fff1d8] text-base font-bold text-[#744722]" : "bg-white font-semibold"}`}>{typeof value === "number" ? money(value) : value}</td></tr>;
 }
 
-function SheetInput({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) {
-  return <tr><th className="w-[48%] border-r border-t border-[#a9825f]/30 bg-[#f3e1c9] p-3 text-left">{label}</th><td className="border-t border-[#a9825f]/30 bg-white p-1"><input type="number" min={0} step="any" value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(event.target.value)} className="w-full p-2 text-right font-semibold outline-none focus:bg-amber-50" /></td></tr>;
+function SheetInput({ label, value, onChange, money = true }: { label: string; value: number; onChange: (value: string) => void; money?: boolean }) {
+  return <tr><th className="w-[48%] border-r border-t border-[#a9825f]/30 bg-[#f3e1c9] p-3 text-left">{label}</th><td className="border-t border-[#a9825f]/30 bg-white p-1">{money ? <MoneyInput value={value} onValueChange={(amount) => onChange(String(amount))} className="w-full p-2 text-right font-semibold outline-none focus:bg-amber-50" /> : <input type="number" min={0} step="any" value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(event.target.value)} className="w-full p-2 text-right font-semibold outline-none focus:bg-amber-50" />}</td></tr>;
 }

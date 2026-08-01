@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ImageIcon, X } from "lucide-react";
 
 type TenantIdentity = {
@@ -14,10 +14,14 @@ type TenantIdentity = {
 export default function TenantIdentityModal({
   tenant,
   onClose,
+  closeOnOutsideInteraction = false,
 }: {
   tenant: TenantIdentity;
   onClose: () => void;
+  closeOnOutsideInteraction?: boolean;
 }) {
+  const contentRef = useRef<HTMLElement>(null);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -33,6 +37,35 @@ export default function TenantIdentityModal({
     };
   }, [onClose]);
 
+  useEffect(() => {
+    if (!closeOnOutsideInteraction) return;
+
+    const isOutside = (target: EventTarget | null) =>
+      target instanceof Node && !contentRef.current?.contains(target);
+    const closeFromPointer = (event: PointerEvent) => {
+      if (isOutside(event.target)) onClose();
+    };
+    const closeFromMove = (event: PointerEvent) => {
+      if (event.buttons > 0 && isOutside(event.target)) onClose();
+    };
+    const closeFromOutside = (event: Event) => {
+      if (isOutside(event.target)) onClose();
+    };
+
+    document.addEventListener("pointerdown", closeFromPointer, true);
+    document.addEventListener("pointermove", closeFromMove, true);
+    document.addEventListener("wheel", closeFromOutside, true);
+    document.addEventListener("touchmove", closeFromOutside, true);
+    document.addEventListener("scroll", closeFromOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromPointer, true);
+      document.removeEventListener("pointermove", closeFromMove, true);
+      document.removeEventListener("wheel", closeFromOutside, true);
+      document.removeEventListener("touchmove", closeFromOutside, true);
+      document.removeEventListener("scroll", closeFromOutside, true);
+    };
+  }, [closeOnOutsideInteraction, onClose]);
+
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-[#2b1a10]/70 p-3 backdrop-blur-sm sm:p-6"
@@ -43,7 +76,7 @@ export default function TenantIdentityModal({
         if (event.currentTarget === event.target) onClose();
       }}
     >
-      <section className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[24px] border border-[#d7b78f]/30 bg-[#fff9ef] shadow-[0_28px_80px_rgba(42,24,12,0.35)]">
+      <section ref={contentRef} className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[24px] border border-[#d7b78f]/30 bg-[#fff9ef] shadow-[0_28px_80px_rgba(42,24,12,0.35)]">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#b58f69]/20 bg-[#fff9ef]/95 px-4 py-4 backdrop-blur sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">

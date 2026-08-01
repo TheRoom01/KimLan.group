@@ -1,24 +1,20 @@
 "use client";
 
+import {
+  CalendarDays,
+  Edit3,
+  ExternalLink,
+  GripVertical,
+  Phone,
+} from "lucide-react";
 import Link from "next/link";
-import { ArrowRight, ImageIcon, KeyRound, Users } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
 import {
   normalizeRoomStatus,
-  type OwnerPropertyReference,
   type OwnerTenantReference,
 } from "@/lib/owner/types";
-import TenantIdentityModal from "@/components/owner/TenantIdentityModal";
-import DeleteRoomCardButton from "@/components/owner/DeleteRoomCardButton";
-import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
-
-type RoomMediaReference = {
-  id?: string;
-  type?: "image" | "video" | string | null;
-  url?: string | null;
-  is_cover?: boolean | null;
-  sort_order?: number | null;
-};
 
 type RoomCardData = {
   id: string;
@@ -27,188 +23,476 @@ type RoomCardData = {
   price?: number | null;
   status?: string | null;
   displayStatus?: string | null;
-  daysRemaining?: number | null;
+  contract?: {
+    id?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+  } | null;
   tenant?: OwnerTenantReference[] | OwnerTenantReference | null;
   tenants?: OwnerTenantReference[] | null;
-  media?: RoomMediaReference[] | null;
-  coverImage?: string | null;
-  property?: OwnerPropertyReference | null;
-  can_manage?: boolean;
 };
 
-function propertyLabel(property?: OwnerPropertyReference | null) {
-  if (!property) return null;
+type Props = {
+  room: RoomCardData;
+  expanded: boolean;
+  resizeMode: boolean;
+  width: number;
+  height: number;
+  onToggle: () => void;
+  onResize: (axis: "width" | "height", amount: number) => void;
+  onResizeDone: () => void;
+  onDragHandlePointerDown: (
+    event: React.PointerEvent<HTMLButtonElement>
+  ) => void;
+};
 
-  return propertyDisplayAddress(property);
+type ModalPosition = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+};
+
+function displayDate(value?: string | null) {
+  if (!value) return "Chưa cập nhật";
+
+  const date = new Date(`${value}T00:00:00`);
+
+  return Number.isNaN(date.getTime())
+    ? "Chưa cập nhật"
+    : date.toLocaleDateString("vi-VN");
 }
 
-function coverUrl(room: RoomCardData) {
-  if (room.coverImage) return room.coverImage;
+export default function RoomCard({
+  room,
+  expanded,
+  resizeMode,
+  width,
+  height,
+  onToggle,
+  onResize,
+  onResizeDone,
+  onDragHandlePointerDown,
+}: Props) {
+  const cardRef = useRef<HTMLElement | null>(null);
 
-  return [...(room.media ?? [])]
-    .sort(
-      (left, right) =>
-        Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0),
-    )
-    .find((item) => item.type === "image" && item.is_cover)?.url ??
-    room.media?.find((item) => item.type === "image")?.url ??
-    null;
-}
+  const [modalPosition, setModalPosition] = useState<ModalPosition>({
+    top: 0,
+    left: 12,
+    width: 310,
+    maxHeight: 420,
+  });
 
-export default function RoomCard({ room }: { room: RoomCardData }) {
-  const [selectedTenant, setSelectedTenant] =
-    useState<OwnerTenantReference | null>(null);
   const status =
     normalizeRoomStatus(room.displayStatus) ??
     normalizeRoomStatus(room.status) ??
     "Đang trống";
-  const statusStyle =
-    status === "Đã thuê"
-      ? "bg-[#dcefdc] text-[#2d6a3d]"
-      : status === "Sắp trống"
-        ? "bg-[#f8e6c5] text-[#8a5b1f]"
-        : "bg-[#eadbc8] text-[#684324]";
+
   const tenants = Array.from(
     new Map(
       [
         ...(room.tenants ?? []),
-        ...(Array.isArray(room.tenant) ? room.tenant : room.tenant ? [room.tenant] : []),
-      ].map((tenant) => [tenant.id, tenant]),
-    ).values(),
+        ...(Array.isArray(room.tenant)
+          ? room.tenant
+          : room.tenant
+            ? [room.tenant]
+            : []),
+      ].map((tenant) => [tenant.id, tenant])
+    ).values()
   );
+
   const representative =
-    tenants.find((tenant) => tenant.role === "Chủ hợp đồng") ?? tenants[0];
-  const buildingName = propertyLabel(room.property);
-  const imageUrl = coverUrl(room);
+    tenants.find((tenant) => tenant.role === "Chủ hợp đồng") ??
+    tenants[0] ??
+    null;
+
+  const palette =
+    status === "Đã thuê"
+      ? "border-red-200 bg-red-50 text-red-950 hover:border-red-300"
+      : status === "Sắp trống"
+        ? "border-amber-200 bg-amber-50 text-amber-950 hover:border-amber-300"
+        : "border-emerald-200 bg-emerald-50 text-emerald-950 hover:border-emerald-300";
+
+  const badge =
+    status === "Đã thuê"
+      ? "border-red-200/60 bg-red-100/90 text-red-800"
+      : status === "Sắp trống"
+        ? "border-amber-200/60 bg-amber-100/90 text-amber-800"
+        : "border-emerald-200/60 bg-emerald-100/90 text-emerald-800";
+
+  useLayoutEffect(() => {
+    if (!expanded) return;
+
+    const updateModalPosition = () => {
+      const cardElement = cardRef.current;
+      if (!cardElement) return;
+
+      const cardRect = cardElement.getBoundingClientRect();
+
+      const viewportPadding = 12;
+      const modalGap = 8;
+
+      const modalWidth = Math.min(
+        310,
+        window.innerWidth - viewportPadding * 2
+      );
+
+      let left = cardRect.left;
+
+      // Nếu modal tràn mép phải thì tự dịch sang trái.
+      if (left + modalWidth > window.innerWidth - viewportPadding) {
+        left = window.innerWidth - modalWidth - viewportPadding;
+      }
+
+      // Không để modal tràn mép trái.
+      left = Math.max(viewportPadding, left);
+
+      // Modal luôn bắt đầu ngay bên dưới thẻ đang mở.
+      const top = cardRect.bottom + modalGap;
+
+      // Giới hạn chiều cao để modal luôn nằm trong màn hình.
+      const availableHeight = Math.max(
+        80,
+        window.innerHeight - top - viewportPadding
+      );
+
+      setModalPosition({
+        top,
+        left,
+        width: modalWidth,
+        maxHeight: availableHeight,
+      });
+    };
+
+    updateModalPosition();
+
+    const animationFrame =
+      window.requestAnimationFrame(updateModalPosition);
+
+    window.addEventListener("resize", updateModalPosition);
+    window.addEventListener("scroll", updateModalPosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", updateModalPosition);
+      window.removeEventListener("scroll", updateModalPosition, true);
+    };
+  }, [expanded]);
+
+  const detailModal =
+    expanded && typeof document !== "undefined"
+      ? createPortal(
+          <section
+            data-owner-floating="true"
+            style={{
+              top: modalPosition.top,
+              left: modalPosition.left,
+              width: modalPosition.width,
+              maxHeight: modalPosition.maxHeight,
+            }}
+            className="
+              fixed z-[100]
+              overflow-x-hidden overflow-y-auto
+              overscroll-contain
+              rounded-[20px]
+              border border-white/30
+              bg-[linear-gradient(145deg,rgba(102,79,66,0.62),rgba(58,39,30,0.7)_48%,rgba(40,25,19,0.76))]
+              p-4
+              text-[#fffaf4]
+              shadow-[0_18px_55px_rgba(28,15,9,0.38),inset_0_1px_0_rgba(255,255,255,0.26),inset_0_-1px_0_rgba(255,255,255,0.07)]
+              backdrop-blur-[26px]
+              backdrop-saturate-[1.55]
+              before:pointer-events-none
+              before:absolute
+              before:inset-[1px]
+              before:rounded-[19px]
+              before:bg-[linear-gradient(145deg,rgba(255,255,255,0.18),rgba(255,255,255,0.035)_44%,rgba(255,255,255,0.075))]
+              before:content-['']
+              after:pointer-events-none
+              after:absolute
+              after:left-5
+              after:right-5
+              after:top-0
+              after:h-px
+              after:bg-gradient-to-r
+              after:from-transparent
+              after:via-white/70
+              after:to-transparent
+              after:content-['']
+            "
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Chi tiết nhanh phòng ${room.room_code || ""}`}
+          >
+            <div className="relative z-10">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white">
+                    P. {room.room_code || "-"}
+                  </p>
+
+                  <p className="mt-1 text-xs font-medium text-white/60">
+                    {room.room_type || "Chưa phân loại"}
+                  </p>
+                </div>
+
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${badge}`}
+                >
+                  {status}
+                </span>
+              </div>
+
+              <dl className="mt-4 grid grid-cols-[98px_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+                <QuickRow
+                  label="Giá phòng"
+                  value={
+                    room.price == null
+                      ? "Chưa cập nhật"
+                      : `${Number(room.price).toLocaleString("vi-VN")}đ`
+                  }
+                />
+
+                <dt className="font-semibold text-white/55">
+                  Hợp đồng thuê
+                </dt>
+
+                <dd className="min-w-0 break-words font-bold text-white">
+                  {room.contract?.id ? (
+                    <Link
+                      data-interactive="true"
+                      href={`/owner/contracts/${room.contract.id}`}
+                      className="inline-flex items-center gap-1 text-[#f2bd88] underline decoration-white/25 underline-offset-2 transition hover:text-[#ffd8b1] hover:decoration-[#ffd8b1]"
+                    >
+                      {representative?.full_name || "Xem hợp đồng"}
+                      <ExternalLink size={11} />
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-white/45">
+                      Chưa có hợp đồng thuê
+                    </span>
+                  )}
+                </dd>
+
+                <QuickRow
+                  label="Số điện thoại"
+                  value={representative?.phone || "Chưa cập nhật"}
+                  icon={<Phone size={12} />}
+                />
+
+                <QuickRow
+                  label="Ngày check-in"
+                  value={displayDate(room.contract?.start_date)}
+                  icon={<CalendarDays size={12} />}
+                />
+
+                <QuickRow
+                  label="Ngày check-out"
+                  value={displayDate(room.contract?.end_date)}
+                  icon={<CalendarDays size={12} />}
+                />
+              </dl>
+
+              <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/15 pt-3">
+                <Link
+                  data-interactive="true"
+                  href={`/owner/rooms/${room.id}`}
+                  className="
+                    inline-flex min-h-10 items-center justify-center gap-1
+                    rounded-xl
+                    border border-white/20
+                    bg-white/10
+                    px-2
+                    text-[10px] font-bold text-white
+                    shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]
+                    backdrop-blur-lg
+                    transition
+                    hover:bg-white/20
+                    active:scale-[0.98]
+                  "
+                >
+                  <ExternalLink size={13} />
+                  Chi tiết
+                </Link>
+
+                <Link
+                  data-interactive="true"
+                  href={`/owner/rooms/${room.id}/edit`}
+                  className="
+                    inline-flex min-h-10 items-center justify-center gap-1
+                    rounded-xl
+                    border border-[#ffc28a]/30
+                    bg-[#b67845]/70
+                    px-2
+                    text-[10px] font-bold text-white
+                    shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]
+                    backdrop-blur-lg
+                    transition
+                    hover:bg-[#c88954]/85
+                    active:scale-[0.98]
+                  "
+                >
+                  <Edit3 size={13} />
+                  Chỉnh sửa
+                </Link>
+              </div>
+            </div>
+          </section>,
+          document.body
+        )
+      : null;
 
   return (
-    <>
-      <article className="group overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] shadow-[0_14px_35px_rgba(92,61,34,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(92,61,34,0.14)]">
-        <div className="relative aspect-[16/9] overflow-hidden bg-[#eadbc8]">
-          {room.can_manage ? <DeleteRoomCardButton roomId={room.id} /> : null}
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={`Ảnh cover phòng ${room.room_code || ""}`}
-              className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
-            />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-[#98785b]">
-              <ImageIcon size={26} />
-              <span className="text-xs">Chưa có ảnh cover</span>
-            </div>
-          )}
-          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-[#2b1a10]/70 to-transparent p-4 pt-10">
-            <div className="min-w-0 text-[#fff8eb]">
-              <p className="truncate text-lg font-bold">
-                Phòng {room.room_code || "-"}
-              </p>
-              {buildingName ? (
-                <p className="mt-0.5 truncate text-xs text-[#f4dcc0]">
-                  {buildingName}
-                </p>
-              ) : null}
-            </div>
-            <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${statusStyle}`}>
-              {status}
-            </span>
-          </div>
-        </div>
+    <div className="relative min-w-0">
+      <article
+        ref={cardRef}
+        style={{ minHeight: height }}
+        className={`relative rounded-xl border shadow-sm transition ${
+          palette
+        } ${resizeMode ? "ring-2 ring-[#744722]/35" : ""}`}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (!resizeMode) onToggle();
+          }}
+          aria-expanded={expanded}
+          className="flex h-full w-full min-w-0 flex-col items-start justify-center px-3 py-3 pr-10 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#744722] focus-visible:ring-offset-2"
+        >
+          <strong className="block max-w-full truncate text-sm font-black">
+            P. {room.room_code || "-"}
+          </strong>
 
-        <div className="space-y-4 p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#5a3b25]">
-                {room.room_type || "Chưa phân loại"}
-              </p>
-              <p className="mt-1 text-sm text-[#80634a]">
-                Giá:{" "}
-                <strong className="text-[#684324]">
-                  {room.price === null || room.price === undefined
-                    ? "-"
-                    : `${Number(room.price).toLocaleString("vi-VN")}đ`}
-                </strong>
-              </p>
-            </div>
-            <KeyRound size={18} className="shrink-0 text-[#9b7655]" />
-          </div>
+          <span className="mt-1 block max-w-full truncate text-[11px] font-semibold opacity-70">
+            {room.room_type || "Chưa phân loại"}
+          </span>
+        </button>
 
-          {room.daysRemaining !== null &&
-          room.daysRemaining !== undefined &&
-          room.daysRemaining >= 0 ? (
-            <p className="rounded-xl bg-[#f8e6c5] px-3 py-2 text-xs font-semibold text-[#8a5b1f]">
-              Hợp đồng còn {room.daysRemaining} ngày
-            </p>
-          ) : null}
-
-          <div className="rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Users size={17} className="text-[#744722]" />
-                <p className="text-xs font-bold uppercase tracking-wide text-[#5a3b25]">
-                  Khách đang thuê phòng 
-                </p>
-              </div>
-              <span className="rounded-full bg-[#ead3b3] px-2 py-0.5 text-[10px] font-bold text-[#684324]">
-                {tenants.length}
-              </span>
-            </div>
-
-            {tenants.length === 0 ? (
-              <p className="mt-3 text-sm text-[#80634a]">Chưa có khách thuê.</p>
-            ) : (
-              <div className="mt-3 divide-y divide-[#b58f69]/20">
-                {tenants.map((tenant) => {
-                  const isRepresentative =
-                    tenant.id === representative?.id ||
-                    tenant.role === "Chủ hợp đồng";
-
-                  return (
-                    <button
-                      type="button"
-                      key={tenant.id}
-                      onClick={() => setSelectedTenant(tenant)}
-                      className="flex w-full min-w-0 items-center justify-between gap-3 py-2 text-left transition first:pt-0 last:pb-0 hover:text-[#744722]"
-                    >
-                      <span className="min-w-0">
-                        <span className="flex min-w-0 flex-wrap items-center gap-2">
-                          <span className="truncate text-sm font-semibold text-[#4d3422]">
-                            {tenant.full_name}
-                          </span>
-                          {isRepresentative ? (
-                            <span className="rounded-full bg-[#744722] px-2 py-0.5 text-[10px] font-bold text-[#fff8eb]">
-                              Đại diện
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-[#80634a]">
-                          {tenant.phone || "Chưa có SĐT"}
-                        </span>
-                      </span>
-                      <ArrowRight size={15} className="shrink-0 text-[#9b7655]" />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <Link
-            href={`/owner/rooms/${room.id}`}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-3 text-sm font-semibold text-[#fff8eb] transition hover:bg-[#623817]"
+        {resizeMode ? (
+          <div
+            data-owner-floating="true"
+            className="
+              absolute left-0 top-[calc(100%+6px)] z-30
+              w-[min(230px,calc(100vw-40px))]
+              rounded-xl
+              border border-white/20
+              bg-[linear-gradient(145deg,rgba(91,66,52,0.68),rgba(45,29,21,0.78))]
+              p-2
+              text-[10px] text-[#fff8ef]
+              shadow-[0_18px_45px_rgba(37,20,10,0.42),inset_0_1px_0_rgba(255,255,255,0.18)]
+              backdrop-blur-[22px]
+              backdrop-saturate-150
+            "
           >
-            Quản lý phòng
-            <ArrowRight size={16} />
-          </Link>
-        </div>
+            <div className="grid grid-cols-[42px_1fr_1fr] items-center gap-1.5">
+              <span className="font-bold text-white/75">Ngang</span>
+
+              <ResizeButton
+                label="Giảm chiều ngang"
+                onClick={() => onResize("width", -20)}
+              >
+                −
+              </ResizeButton>
+
+              <ResizeButton
+                label="Tăng chiều ngang"
+                onClick={() => onResize("width", 20)}
+              >
+                +
+              </ResizeButton>
+
+              <span className="font-bold text-white/75">Dọc</span>
+
+              <ResizeButton
+                label="Giảm chiều dọc"
+                onClick={() => onResize("height", -16)}
+              >
+                −
+              </ResizeButton>
+
+              <ResizeButton
+                label="Tăng chiều dọc"
+                onClick={() => onResize("height", 16)}
+              >
+                +
+              </ResizeButton>
+            </div>
+
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/10 pt-2">
+              <span className="tabular-nums text-white/60">
+                {width} × {height}px
+              </span>
+
+              <button
+                type="button"
+                onClick={onResizeDone}
+                className="h-8 rounded-lg border border-white/15 bg-[#b67845]/80 px-3 font-bold text-white shadow-sm backdrop-blur-lg transition hover:bg-[#c88954] active:scale-95"
+              >
+                Xong
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          data-interactive="true"
+          aria-label={`Kéo để đổi vị trí phòng ${room.room_code || ""}`}
+          title="Kéo để đổi vị trí"
+          disabled={resizeMode}
+          onPointerDown={onDragHandlePointerDown}
+          className="absolute right-1.5 top-1.5 grid h-8 w-8 touch-none place-items-center rounded-lg text-current opacity-55 transition hover:bg-white/60 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[#744722] disabled:cursor-not-allowed disabled:opacity-25"
+        >
+          <GripVertical size={16} />
+        </button>
       </article>
 
-      {selectedTenant ? (
-        <TenantIdentityModal
-          tenant={selectedTenant}
-          onClose={() => setSelectedTenant(null)}
-        />
-      ) : null}
+      {detailModal}
+    </div>
+  );
+}
+
+function ResizeButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="h-8 rounded-lg border border-white/15 bg-white/10 font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-lg transition hover:bg-white/20 active:scale-95"
+    >
+      {children}
+    </button>
+  );
+}
+
+function QuickRow({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <>
+      <dt className="font-semibold text-white/55">{label}</dt>
+
+      <dd className="flex min-w-0 items-center gap-1.5 break-words font-bold text-white">
+        {icon ? (
+          <span className="shrink-0 text-[#e8ad76]">{icon}</span>
+        ) : null}
+
+        <span className="min-w-0 break-words">{value}</span>
+      </dd>
     </>
   );
 }

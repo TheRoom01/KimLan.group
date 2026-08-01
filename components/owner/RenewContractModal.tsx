@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
+import MoneyInput from "@/components/owner/MoneyInput";
 
 function addOneYear(dateValue: string) {
   const date = new Date(`${dateValue}T00:00:00`);
@@ -84,16 +85,14 @@ export default function RenewContractModal({
 
             <div>
               <label htmlFor="renew_price">Giá thuê mới</label>
-              <input
+              <MoneyInput
                 id="renew_price"
-                type="number"
-                min={0}
                 className="w-full rounded border p-2"
                 value={form.monthly_price}
-                onChange={(event) =>
+                onValueChange={(amount) =>
                   setForm((current) => ({
                     ...current,
-                    monthly_price: Number(event.target.value),
+                    monthly_price: amount,
                   }))
                 }
               />

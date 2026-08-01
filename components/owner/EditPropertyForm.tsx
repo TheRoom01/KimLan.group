@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
 import { buildGoogleMapsSearchUrl } from "@/lib/owner/googleMapsUrl";
 import { generatePropertyCode } from "@/lib/owner/propertyCode";
+import MoneyInput from "@/components/owner/MoneyInput";
 
 type EditableProperty = {
   id: string;
@@ -297,8 +298,8 @@ export default function EditPropertyForm({
 </div>
 
       <div className={activeTab === "fees" ? "grid gap-4 sm:grid-cols-2" : "hidden"}>
-        {FEES.map(([name, label, defaultUnit]) => <div key={name} className="grid grid-cols-[minmax(0,1fr)_minmax(110px,140px)] gap-2"><Field label={label} htmlFor={`${name}_value`}><input id={`${name}_value`} name={`${name}_value`} type="number" className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_value`] ?? ""} /></Field><Field label="Đơn vị" htmlFor={`${name}_unit`}><input id={`${name}_unit`} name={`${name}_unit`} className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_unit`] || defaultUnit} /></Field></div>)}
-        <Field label="Phí khác" htmlFor="other_fee_value"><input id="other_fee_value" name="other_fee_value" type="number" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_fee_value ?? ""} /></Field>
+        {FEES.map(([name, label, defaultUnit]) => <div key={name} className="grid grid-cols-[minmax(0,1fr)_minmax(110px,140px)] gap-2"><Field label={label} htmlFor={`${name}_value`}><MoneyInput id={`${name}_value`} name={`${name}_value`} className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_value`] ?? ""} /></Field><Field label="Đơn vị" htmlFor={`${name}_unit`}><input id={`${name}_unit`} name={`${name}_unit`} className={INPUT_CLASS} defaultValue={defaults.room_details?.[`${name}_unit`] || defaultUnit} /></Field></div>)}
+        <Field label="Phí khác" htmlFor="other_fee_value"><MoneyInput id="other_fee_value" name="other_fee_value" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_fee_value ?? ""} /></Field>
         <Field label="Ghi chú phí khác" htmlFor="other_fee_note"><input id="other_fee_note" name="other_fee_note" className={INPUT_CLASS} defaultValue={defaults.room_details?.other_fee_note ?? ""} /></Field>
       </div>
 

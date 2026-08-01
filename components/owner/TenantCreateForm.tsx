@@ -3,6 +3,7 @@
 import { ChangeEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
+import MoneyInput from "@/components/owner/MoneyInput";
 
 const MAX_IDENTITY_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -231,16 +232,14 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
             <span className="mb-1.5 block text-xs font-semibold text-[#5a3b25]">
               {label}
             </span>
-            <input
+            <MoneyInput
               id={key}
-              type="number"
-              min={0}
               className="h-11 w-full rounded-xl border border-[#aa825d]/30 bg-[#fffdf8] px-3.5 text-sm text-[#4d3422] outline-none transition focus:border-[#744722] focus:ring-4 focus:ring-[#744722]/10"
               value={form[key as "monthly_price" | "deposit_amount"]}
-              onChange={(event) =>
+              onValueChange={(amount) =>
                 setForm((current) => ({
                   ...current,
-                  [key]: Number(event.target.value),
+                  [key]: amount,
                 }))
               }
             />

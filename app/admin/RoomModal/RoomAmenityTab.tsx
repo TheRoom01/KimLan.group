@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { RoomDetail } from './types'
 import { amenityConfig } from './room.config'
 import { sectionBox } from './styles'
@@ -10,6 +11,21 @@ type Props = {
 }
 
 export default function RoomAmenityTab({ detailForm, onChange }: Props) {
+  const [notesHeight, setNotesHeight] = useState(110)
+
+  const startResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = notesHeight
+    const move = (moveEvent: PointerEvent) => setNotesHeight(Math.max(110, Math.min(420, startHeight + moveEvent.clientY - startY)))
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop, { once: true })
+  }
+
   return (
     <div style={sectionBox}>
       <div style={grid}>
@@ -59,17 +75,20 @@ export default function RoomAmenityTab({ detailForm, onChange }: Props) {
 
       <div style={textareaWrap}>
         <label style={labelStyle}>Các tiện ích khác</label>
-        <textarea
-          style={textareaStyle}
-          value={detailForm.other_amenities ?? ''}
-          onChange={e => onChange({ other_amenities: e.target.value })}
-          placeholder={`Nhập các tiện ích khác theo đúng bố cục bạn muốn hiển thị
+        <div style={{ position: 'relative' }}>
+          <textarea
+            style={{ ...textareaStyle, height: notesHeight }}
+            value={detailForm.other_amenities ?? ''}
+            onChange={e => onChange({ other_amenities: e.target.value })}
+            placeholder={`Nhập các tiện ích khác theo đúng bố cục bạn muốn hiển thị
 
         Ví dụ:
         - Có ban công
         - Có máy giặt riêng
         - Giờ giấc tự do`}
-        />
+          />
+          <button type="button" aria-label="Kéo để mở rộng ô nhập" title="Kéo để mở rộng" style={resizeHandle} onPointerDown={startResize}>↕</button>
+        </div>
       </div>
     </div>
   )
@@ -175,9 +194,29 @@ const textareaStyle: React.CSSProperties = {
   borderRadius: 10,
   border: '1px solid #cbd5e1',
   background: '#f8fafc',
-  minHeight: 140,
-  resize: 'vertical',
+  minHeight: 110,
+  resize: 'none',
+  paddingRight: 34,
+  display: 'block',
   whiteSpace: 'pre-wrap',
   lineHeight: 1.6,
   fontFamily: 'inherit',
+}
+
+const resizeHandle: React.CSSProperties = {
+  position: 'absolute',
+  right: 5,
+  bottom: 5,
+  width: 28,
+  height: 28,
+  border: '1px solid #94a3b8',
+  borderRadius: 7,
+  background: '#fff',
+  color: '#334155',
+  fontSize: 21,
+  fontWeight: 800,
+  lineHeight: 1,
+  cursor: 'ns-resize',
+  touchAction: 'none',
+  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.18)',
 }

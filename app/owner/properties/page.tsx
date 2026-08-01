@@ -3,6 +3,7 @@ import Link from "next/link";
 import PropertyCard from "@/components/owner/PropertyCard";
 import { getProperties } from "@/lib/owner/getProperties";
 import PropertyJoinRequestPanel from "@/components/owner/PropertyJoinRequestPanel";
+import PropertyListToolbar, { type PropertyOccupancyFilter } from "@/components/owner/PropertyListToolbar";
 import { Building2, Plus } from "lucide-react";
 
 function normalizeSearchValue(value: string) {
@@ -25,11 +26,18 @@ function propertySearchScore(property: Awaited<ReturnType<typeof getProperties>>
   return score + Math.max(0, 500 - Math.abs(address.length - query.length));
 }
 
-export default async function PropertiesPage({ searchParams }: { searchParams: Promise<{ building_search?: string }> }) {
+export default async function PropertiesPage({ searchParams }: { searchParams: Promise<{ building_search?: string; occupancy?: string }> }) {
   const properties = await getProperties();
-  const { building_search: searchTerm = "" } = await searchParams;
+  const { building_search: searchTerm = "", occupancy } = await searchParams;
+  const occupancyFilter: PropertyOccupancyFilter | null = occupancy === "empty" || occupancy === "full" ? occupancy : null;
   const normalizedQuery = normalizeSearchValue(searchTerm);
-  const visibleProperties = normalizedQuery ? properties.map((property) => ({ property, score: propertySearchScore(property, normalizedQuery) })).filter((item): item is { property: (typeof properties)[number]; score: number } => item.score !== null).sort((left, right) => right.score - left.score).map((item) => item.property) : properties;
+  const rankedProperties = normalizedQuery ? properties.map((property) => ({ property, score: propertySearchScore(property, normalizedQuery) })).filter((item): item is { property: (typeof properties)[number]; score: number } => item.score !== null).sort((left, right) => right.score - left.score).map((item) => item.property) : properties;
+  const visibleProperties = rankedProperties.filter((property) => {
+    if (occupancyFilter === "empty") return Number(property.empty_rooms ?? 0) > 0;
+    if (occupancyFilter === "full") return Number(property.total_rooms ?? 0) > 0 && Number(property.empty_rooms ?? 0) === 0;
+    return true;
+  });
+  const hasListFilter = Boolean(normalizedQuery || occupancyFilter);
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
@@ -47,7 +55,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
             </h1>
           </div>
           <p className="mt-1 text-sm text-[#7f6651]">
-            {normalizedQuery ? `Tìm thấy ${visibleProperties.length}/${properties.length} tòa nhà` : `Tổng cộng: ${properties.length} tài sản bạn có quyền truy cập`}
+            {hasListFilter ? `Hiển thị ${visibleProperties.length}/${properties.length} tòa nhà` : `Tổng cộng: ${properties.length} tài sản bạn có quyền truy cập`}
           </p>
         </div>
 
@@ -62,13 +70,15 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       
       <PropertyJoinRequestPanel />
 
+      <PropertyListToolbar key={`${searchTerm}:${occupancyFilter ?? "all"}`} initialSearch={searchTerm} activeFilter={occupancyFilter} />
+
       {visibleProperties.length === 0 ? (
         <div className="rounded-[22px] border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-8 text-center">
-          <h2 className="text-lg font-bold text-[#4d3422]">{normalizedQuery ? "Không tìm thấy tòa nhà phù hợp" : "Chưa có tòa nhà"}</h2>
+          <h2 className="text-lg font-bold text-[#4d3422]">{hasListFilter ? "Không tìm thấy tòa nhà phù hợp" : "Chưa có tòa nhà"}</h2>
           <p className="mt-2 text-sm text-[#80634a]">
-            {normalizedQuery ? `Không có địa chỉ nào khớp với “${searchTerm.trim()}”. Hãy thử từ khóa ngắn hơn.` : "Tạo tài sản mới hoặc tham gia quản lý tòa nhà được chia sẻ bởi chủ sở hữu khác."}
+            {hasListFilter ? "Không có tòa nhà nào khớp với từ khóa và bộ lọc hiện tại. Hãy thử đổi điều kiện tìm kiếm." : "Tạo tài sản mới hoặc tham gia quản lý tòa nhà được chia sẻ bởi chủ sở hữu khác."}
           </p>
-          {!normalizedQuery ? <Link
+          {!hasListFilter ? <Link
             href="/owner/properties/create"
             className="mt-5 inline-flex h-10 items-center rounded-xl bg-[#744722] px-4 text-sm font-semibold text-[#fff8eb]"
           >

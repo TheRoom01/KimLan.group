@@ -199,6 +199,13 @@ useEffect(() => {
   ? { ...grid4, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }
   : grid4
 
+  const detailGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 12,
+    alignItems: 'start',
+  }
+
   return (
     <div style={sectionBox}>
       {/* Row 1: Số nhà | tên đường | Phường | Quận */}
@@ -513,10 +520,10 @@ useEffect(() => {
   })}
 </div>
 
-{/* Link Zalo + SĐT (2 cột, lưu RIÊNG: link_zalo & zalo_phone) */}
-<div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 220px", gap: 12 }}>
+{/* Các khối nhiều chữ luôn xếp 2 cột, kể cả mobile */}
+<div style={detailGridStyle}>
   <TextArea
-    label="Link Zalo"
+    label="Link nhóm Zalo & File:"
     value={zaloUrlDraft}
     onChange={(v) => {
       const nextUrl = String(v ?? "");
@@ -527,17 +534,13 @@ useEffect(() => {
     }}
   />
 
-  <div>
-    <label style={labelStyle}>SĐT chủ</label>
+  <div style={{ minWidth: 0 }}>
+    <label style={labelStyle}>SĐT chủ nhà:</label>
 
-    <textarea
-      style={textareaStyle}
+    <ResizableTextArea
       value={zaloPhoneDraft}
-      onChange={(e) => {
-        const nextPhoneBlock = e.target.value; // ✅ giữ nguyên mọi icon/emoji/ký tự
+      onChange={(nextPhoneBlock) => {
         setZaloPhoneDraft(nextPhoneBlock);
-
-        // ✅ chỉ cập nhật zalo_phone
         onChange({ ...(value as any), zalo_phone: nextPhoneBlock });
       }}
       placeholder={'☎️0** *** 000 A Tú'}
@@ -554,33 +557,29 @@ useEffect(() => {
         ))}
     </div>
   </div>
-</div>
-
-
-      <TextArea
-        label="Link Google Maps"
-        value={value.google_maps_url}
-        onChange={(v) => onChange({ ...value, google_maps_url: v })}
-      />
+      
 
  {/* Mô tả */}
       <TextArea
-        label="Mô tả"
+        label="Mô tả:"
         value={value.description}
         onChange={v => onChange({ ...value, description: v })}
       />
 
-    <div>
-      <label style={labelStyle}>Chính sách</label>
-      <textarea
-        style={textareaStyle}
+    <div style={{ minWidth: 0 }}>
+      <label style={labelStyle}>Chính sách:</label>
+      <ResizableTextArea
         value={chinh_sach}
-        onChange={(e) => onChangeChinhSach(e.target.value)}
+        onChange={onChangeChinhSach}
         placeholder="Nhập chính sách..."
       />
     </div>
-
-
+    <TextArea
+        label="Link Google Maps:"
+        value={value.google_maps_url}
+        onChange={(v) => onChange({ ...value, google_maps_url: v })}
+      />
+</div>
     </div>
   )
 }
@@ -611,7 +610,7 @@ function Input({
   )
 }
 
-function InputNumber({ 
+function InputNumber({
   label,
   value,
   onChange,
@@ -623,16 +622,7 @@ function InputNumber({
   return (
     <div>
       <label style={labelStyle}>{label}</label>
-      <input
-        style={inputStyle}
-        type="text"
-        inputMode="numeric"
-        value={value ? value.toString() : ""}
-        onChange={(e) => {
-          const raw = e.target.value.replace(/\D/g, ""); // chỉ giữ số
-          onChange(raw ? parseInt(raw, 10) : 0);
-        }}
-      />
+      <MoneyInput value={value} onChange={onChange} />
     </div>
   )
 }
@@ -647,9 +637,102 @@ function TextArea({
   onChange: (v: string) => void
 }) {
   return (
-    <div>
+    <div style={{ minWidth: 0 }}>
       <label style={labelStyle}>{label}</label>
-      <textarea style={textareaStyle} value={value} onChange={e => onChange(e.target.value)} />
+      <ResizableTextArea value={value} onChange={onChange} />
+    </div>
+  )
+}
+
+function MoneyInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const digits = Number.isFinite(value) && value > 0 ? Math.trunc(value).toLocaleString('vi-VN') : ''
+
+  const restoreCaret = (digitPosition: number) => {
+    window.requestAnimationFrame(() => {
+      const input = inputRef.current
+      if (!input) return
+      let seen = 0
+      let caret = input.value.length
+      for (let index = 0; index < input.value.length; index += 1) {
+        if (/\d/.test(input.value[index])) seen += 1
+        if (seen === digitPosition) {
+          caret = index + 1
+          break
+        }
+      }
+      input.setSelectionRange(caret, caret)
+    })
+  }
+
+  return (
+    <div style={moneyInputWrap}>
+      <input
+        ref={inputRef}
+        style={{ ...inputStyle, paddingRight: 34 }}
+        type="text"
+        inputMode="numeric"
+        value={digits}
+        onChange={(e) => {
+          const caret = e.currentTarget.selectionStart ?? e.currentTarget.value.length
+          const digitPosition = e.currentTarget.value.slice(0, caret).replace(/\D/g, '').length
+          const raw = e.target.value.replace(/\D/g, '')
+          onChange(raw ? Number.parseInt(raw, 10) : 0)
+          restoreCaret(digitPosition)
+        }}
+        placeholder="0"
+        aria-label="Số tiền"
+      />
+      <span style={moneySuffix}>đ</span>
+    </div>
+  )
+}
+
+function ResizableTextArea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}) {
+  const [height, setHeight] = useState(92)
+
+  const startResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = height
+
+    const move = (moveEvent: PointerEvent) => {
+      setHeight(Math.max(92, Math.min(420, startHeight + moveEvent.clientY - startY)))
+    }
+    const stop = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+    }
+
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop, { once: true })
+  }
+
+  return (
+    <div style={textareaWrap}>
+      <textarea
+        style={{ ...textareaStyle, height }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        aria-label="Kéo để mở rộng ô nhập"
+        title="Kéo để mở rộng"
+        style={resizeHandle}
+        onPointerDown={startResize}
+      >
+        ↕
+      </button>
     </div>
   )
 }
@@ -822,8 +905,47 @@ function Select({
 
 const textareaStyle: React.CSSProperties = {
   ...inputStyle,
-  minHeight: 110,
-  resize: 'vertical',
+  minHeight: 92,
+  resize: 'none',
+  paddingRight: 34,
+  display: 'block',
+}
+
+const textareaWrap: React.CSSProperties = {
+  position: 'relative',
+  minWidth: 0,
+}
+
+const resizeHandle: React.CSSProperties = {
+  position: 'absolute',
+  right: 5,
+  bottom: 5,
+  width: 28,
+  height: 28,
+  border: '1px solid #94a3b8',
+  borderRadius: 7,
+  background: '#fff',
+  color: '#334155',
+  fontSize: 21,
+  fontWeight: 800,
+  lineHeight: 1,
+  cursor: 'ns-resize',
+  touchAction: 'none',
+  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.18)',
+}
+
+const moneyInputWrap: React.CSSProperties = {
+  position: 'relative',
+}
+
+const moneySuffix: React.CSSProperties = {
+  position: 'absolute',
+  right: 12,
+  top: '50%',
+  transform: 'translateY(-50%)',
+  color: '#475569',
+  fontWeight: 700,
+  pointerEvents: 'none',
 }
 
 const addImageBtn: React.CSSProperties = {

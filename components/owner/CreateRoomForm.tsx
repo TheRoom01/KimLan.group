@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import PendingRoomMediaPreview from "@/components/owner/PendingRoomMediaPreview";
 import RoomTypePicker from "@/components/owner/RoomTypePicker";
+import MoneyInput from "@/components/owner/MoneyInput";
 
 import { readApiResponse } from "@/lib/api/client";
 import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
@@ -301,15 +302,11 @@ export default function CreateRoomForm({
           </Field>
 
           <Field label="Giá thuê tháng" htmlFor="price">
-            <input
+            <MoneyInput
               id="price"
               name="price"
-              type="number"
-              min={0}
-              step={1}
               className={INPUT_CLASS}
               placeholder="4500000"
-              defaultValue=""
             />
           </Field>
 
@@ -660,15 +657,12 @@ function FeeField({
         {label}
       </label>
       <div className="grid grid-cols-2 gap-2">
-        <input
+        <MoneyInput
           id={valueName}
           name={valueName}
-          type="number"
-          min={0}
-          step="any"
           className={INPUT_CLASS}
           placeholder="Số tiền"
-          defaultValue={String(defaultValue ?? "")}
+          defaultValue={defaultValue}
         />
         <input
           name={unitName}
