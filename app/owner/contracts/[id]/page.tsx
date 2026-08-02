@@ -11,6 +11,7 @@ import ContractRevenueManager from "@/components/owner/ContractRevenueManager";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 import DeleteContractButton from "@/components/owner/DeleteContractButton";
 import { notFound } from "next/navigation";
+import ContractImagesManager from "@/components/owner/ContractImagesManager";
 
 function formatDate(value?: string | null) {
   return value
@@ -122,6 +123,8 @@ export default async function ContractDetailPage({
           </div>
         </div>
       </div>
+
+      <ContractImagesManager contractId={contract.id} />
 
       <ContractRevenueManager contract={contract} />
     </div>
