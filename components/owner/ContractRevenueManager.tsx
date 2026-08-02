@@ -211,89 +211,91 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
       {loading ? (
         <Loader2 className="mx-auto my-10 animate-spin" />
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4">
           {!form.id && selected ? (
             <p className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               Tháng {selected.month}/{selected.year} chưa có dữ liệu đã lưu.
             </p>
           ) : null}
 
-          <table className="w-full min-w-[1580px] border-collapse text-sm">
-            <thead>
-              <tr>
-                {[
-                  "Thu tiền",
-                  "Mã phòng",
-                  "Người thuê",
-                  "Tiền cọc",
-                  "Giá thuê",
-                  "Số điện đầu tháng (kWh)",
-                  "Số điện cuối tháng (kWh)",
-                  "Đơn giá điện",
-                  "Tiền điện",
-                  "Gửi xe",
-                  "Phí DV",
-                  "Nước",
-                  "Phí khác",
-                  "Tổng doanh thu",
-                  "Đã thu",
-                  "Còn thiếu",
-                  "Ghi chú",
-                ].map((label) => (
-                  <th key={label} className="whitespace-nowrap border border-[#b99370]/35 bg-[#f3e1c9] p-2">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="border p-2">
-                  <button
-                    onClick={() => (form.id ? void pay() : void save())}
-                    className={`rounded-full px-2 py-1 font-bold ${
-                      form.payment_status === "paid"
-                        ? "bg-green-100 text-green-800"
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1580px] border-collapse text-sm">
+              <thead>
+                <tr>
+                  {[
+                    "Thu tiền",
+                    "Tổng doanh thu",
+                    "Đã thu",
+                    "Còn thiếu",
+                    "Mã phòng",
+                    "Người thuê",
+                    "Tiền cọc",
+                    "Giá thuê",
+                    "Số điện đầu tháng (kWh)",
+                    "Số điện cuối tháng (kWh)",
+                    "Đơn giá điện",
+                    "Tiền điện",
+                    "Gửi xe",
+                    "Phí DV",
+                    "Nước",
+                    "Phí khác",
+                    "Ghi chú",
+                  ].map((label) => (
+                    <th key={label} className="whitespace-nowrap border border-[#b99370]/35 bg-[#f3e1c9] p-2">
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border p-2">
+                    <button
+                      onClick={() => (form.id ? void pay() : void save())}
+                      className={`rounded-full px-2 py-1 font-bold ${
+                        form.payment_status === "paid"
+                          ? "bg-green-100 text-green-800"
+                          : form.payment_status === "partial"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {form.payment_status === "paid"
+                        ? "Đã thu"
                         : form.payment_status === "partial"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {form.payment_status === "paid"
-                      ? "Đã thu"
-                      : form.payment_status === "partial"
-                        ? "Thu một phần"
-                        : "Chưa thu"}
-                  </button>
-                </td>
-                <Read value={form.room_code} />
-                <Read value={form.tenant_name} />
-                <InputCell value={form.deposit_amount} onChange={(value) => change("deposit_amount", value)} />
-                <InputCell value={form.rent_amount} onChange={(value) => change("rent_amount", value)} />
-                <InputCell value={form.electricity_start} onChange={(value) => change("electricity_start", value)} money={false} />
-                <InputCell value={form.electricity_end} onChange={(value) => change("electricity_end", value)} money={false} />
-                <InputCell value={form.electricity_unit_price} onChange={(value) => change("electricity_unit_price", value)} />
-                <Read value={electricity} />
-                <InputCell value={form.parking_fee} onChange={(value) => change("parking_fee", value)} />
-                <InputCell value={form.service_fee} onChange={(value) => change("service_fee", value)} />
-                <InputCell value={form.water_fee} onChange={(value) => change("water_fee", value)} />
-                <InputCell value={form.other_fee} onChange={(value) => change("other_fee", value)} />
-                <Read value={amount} emphasized />
-                <Read value={form.paid_amount} />
-                <Read value={missing} />
-                <td className="border p-1">
-                  <input value={form.note} onChange={(event) => change("note", event.target.value)} className="w-full min-w-40 border-0 bg-transparent p-2 outline-none focus:bg-amber-50" />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                          ? "Thu một phần"
+                          : "Chưa thu"}
+                    </button>
+                  </td>
+                  <Read value={amount} emphasized />
+                  <Read value={form.paid_amount} />
+                  <Read value={missing} />
+                  <Read value={form.room_code} />
+                  <Read value={form.tenant_name} />
+                  <InputCell value={form.deposit_amount} onChange={(value) => change("deposit_amount", value)} />
+                  <InputCell value={form.rent_amount} onChange={(value) => change("rent_amount", value)} />
+                  <InputCell value={form.electricity_start} onChange={(value) => change("electricity_start", value)} money={false} />
+                  <InputCell value={form.electricity_end} onChange={(value) => change("electricity_end", value)} money={false} />
+                  <InputCell value={form.electricity_unit_price} onChange={(value) => change("electricity_unit_price", value)} />
+                  <Read value={electricity} />
+                  <InputCell value={form.parking_fee} onChange={(value) => change("parking_fee", value)} />
+                  <InputCell value={form.service_fee} onChange={(value) => change("service_fee", value)} />
+                  <InputCell value={form.water_fee} onChange={(value) => change("water_fee", value)} />
+                  <InputCell value={form.other_fee} onChange={(value) => change("other_fee", value)} />
+                  <td className="border p-1">
+                    <input value={form.note} onChange={(event) => change("note", event.target.value)} className="w-full min-w-40 border-0 bg-transparent p-2 outline-none focus:bg-amber-50" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-          <div className="mt-4 flex justify-end gap-2">
-            <button onClick={() => void openDetail()} className="rounded-xl border border-[#9d744f]/30 bg-white px-4 py-2 text-[#684324]">
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => void openDetail()}
+              className="rounded-xl border border-black bg-black px-4 py-2 font-semibold text-white transition hover:bg-[#222222]"
+            >
               Chi tiết
-            </button>
-            <button onClick={() => void save()} disabled={saving || !selected} className="rounded-xl bg-[#744722] px-4 py-2 text-white disabled:opacity-50">
-              {saving ? "Đang lưu..." : "Lưu doanh thu"}
             </button>
           </div>
         </div>

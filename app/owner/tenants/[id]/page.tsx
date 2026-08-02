@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Phone, UserRound } from "lucide-react";
+import { CalendarDays, KeyRound, Phone, UserRound } from "lucide-react";
 import { getTenantDetail } from "@/lib/owner/getTenantDetail";
 import TenantProfileEditor from "@/components/owner/TenantProfileEditor";
 import { propertyDisplayAddress, type PropertyAddressLike } from "@/lib/owner/propertyDisplayAddress";
@@ -113,23 +113,60 @@ export default async function TenantDetailPage({
             {contracts.map((contract) => (
               <div
                 key={contract.id}
-                className="rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7] p-4"
+                className="relative rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7] p-4"
               >
                 <div className="grid gap-2 text-sm sm:grid-cols-2">
-                  <Info label="Bắt đầu" value={formatDate(contract.start_date)} />
-                  <Info label="Kết thúc" value={formatDate(contract.end_date)} />
-                  <Info
-                    label="Tiền cọc"
-                    value={
-                      contract.deposit_amount
-                        ? `${Number(contract.deposit_amount).toLocaleString("vi-VN")}đ`
-                        : "-"
-                    }
-                  />
-                  <Info label="Trạng thái" value={contract.status || "-"} />
-                  <Info label="Phòng" value={contract.room?.room_code || "-"} />
-                  <Info label="Tòa nhà" value={propertyDisplayAddress(contract.property)} />
-                </div>
+  <div className="flex min-w-0 items-start justify-between gap-3 sm:col-span-2">
+    <Info
+      label="Bắt đầu"
+      value={formatDate(contract.start_date)}
+    />
+
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="whitespace-nowrap text-xs font-medium text-[#684324]">
+        Xem chi tiết HĐ:
+      </span>
+
+      <Link
+        href={`/owner/contracts/${contract.id}`}
+        aria-label="Xem chi tiết hợp đồng"
+        title="Xem chi tiết hợp đồng"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#744722] text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#633b1d] hover:shadow-md"
+      >
+        <KeyRound size={17} />
+      </Link>
+    </div>
+  </div>
+
+  <Info
+    label="Kết thúc"
+    value={formatDate(contract.end_date)}
+  />
+
+  <Info
+    label="Tiền cọc"
+    value={
+      contract.deposit_amount
+        ? `${Number(contract.deposit_amount).toLocaleString("vi-VN")}đ`
+        : "-"
+    }
+  />
+
+  <Info
+    label="Trạng thái"
+    value={contract.status || "-"}
+  />
+
+  <Info
+    label="Phòng"
+    value={contract.room?.room_code || "-"}
+  />
+
+  <Info
+    label="Tòa nhà"
+    value={propertyDisplayAddress(contract.property)}
+  />
+</div>
               </div>
             ))}
           </div>

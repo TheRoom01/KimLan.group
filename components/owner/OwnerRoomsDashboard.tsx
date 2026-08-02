@@ -21,6 +21,14 @@ import {
   type PropertyAddressLike,
 } from "@/lib/owner/propertyDisplayAddress";
 import type { OwnerTenantReference } from "@/lib/owner/types";
+import {
+  clampOwnerRoomCardSize,
+  DEFAULT_OWNER_ROOM_CARD_SIZE,
+  OWNER_ROOM_CARD_LIMITS,
+  OWNER_ROOM_CARD_SIZE_STORAGE_KEY,
+  type OwnerRoomCardSize as CardSize,
+  type OwnerRoomCardSizes as CardSizes,
+} from "@/lib/owner/roomCardSizing";
 
 type RoomStatus = "empty" | "rented" | "upcoming";
 
@@ -64,17 +72,14 @@ const STATUS_OPTIONS: Array<{ value: "all" | RoomStatus; label: string }> = [
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-type CardSize = { width: number; height: number };
-type CardSizes = Record<string, CardSize>;
+type SnapAxis = "width" | "height";
+type SnapGuide = { axis: SnapAxis; position: number };
 
-const DEFAULT_CARD_SIZE: CardSize = { width: 150, height: 76 };
-const CARD_LIMITS = {
-  minWidth: 120,
-  maxWidth: 300,
-  minHeight: 76,
-  maxHeight: 240,
-};
-const ROOM_SIZE_STORAGE_KEY = "owner-room-card-sizes-v1";
+const DEFAULT_CARD_SIZE = DEFAULT_OWNER_ROOM_CARD_SIZE;
+const CARD_LIMITS = OWNER_ROOM_CARD_LIMITS;
+const ROOM_SIZE_STORAGE_KEY = OWNER_ROOM_CARD_SIZE_STORAGE_KEY;
+const SNAP_ENTER_THRESHOLD = 8;
+const SNAP_EXIT_THRESHOLD = 14;
 
 function normalizedStatus(room: OwnerRoom): RoomStatus {
   const status = String(room.displayStatus || room.status || "").toLowerCase();
@@ -113,6 +118,7 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [resizingId, setResizingId] = useState<string | null>(null);
   const [cardSizes, setCardSizes] = useState<CardSizes>({});
+  const [snapGuide, setSnapGuide] = useState<SnapGuide | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -120,6 +126,16 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
   const pointerOrigin = useRef<{ x: number; y: number } | null>(null);
   const suppressClickUntil = useRef(0);
   const lastDragTarget = useRef<string | null>(null);
+  const rawResizeRef = useRef<{
+    roomId: string;
+    axis: SnapAxis;
+    value: number;
+  } | null>(null);
+  const snapMatchRef = useRef<{
+    roomId: string;
+    axis: SnapAxis;
+    target: number;
+  } | null>(null);
 
   const clearLongPress = () => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
@@ -132,10 +148,10 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
       try {
         const saved = JSON.parse(localStorage.getItem(ROOM_SIZE_STORAGE_KEY) || "{}") as CardSizes;
         setCardSizes(Object.fromEntries(
-          Object.entries(saved).map(([id, size]) => [id, {
-            width: clamp(Number(size.width) || DEFAULT_CARD_SIZE.width, CARD_LIMITS.minWidth, CARD_LIMITS.maxWidth),
-            height: clamp(Number(size.height) || DEFAULT_CARD_SIZE.height, CARD_LIMITS.minHeight, CARD_LIMITS.maxHeight),
-          }]),
+          Object.entries(saved).map(([id, size]) => [
+            id,
+            clampOwnerRoomCardSize(size),
+          ]),
         ));
       } catch {
         // Dùng kích thước mặc định nếu storage không hợp lệ.
@@ -143,6 +159,13 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (resizingId !== null) return;
+    setSnapGuide(null);
+    rawResizeRef.current = null;
+    snapMatchRef.current = null;
+  }, [resizingId]);
 
   const persistCardSizes = (next: CardSizes) => {
     setCardSizes(next);
@@ -328,12 +351,81 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
     window.addEventListener("pointercancel", onEnd);
   };
 
-  const resizeCard = (roomId: string, axis: "width" | "height", amount: number) => {
+  const clearResizeSnap = () => {
+    setSnapGuide(null);
+    rawResizeRef.current = null;
+    snapMatchRef.current = null;
+  };
+
+  const showSnapGuide = (roomId: string, axis: SnapAxis, snappedValue: number) => {
+    const board = boardRef.current;
+    const card = Array.from(
+      board?.querySelectorAll<HTMLElement>("[data-room-id]") ?? [],
+    ).find((element) => element.dataset.roomId === roomId);
+    if (!board || !card) return;
+
+    const boardRect = board.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    setSnapGuide({
+      axis,
+      position:
+        axis === "width"
+          ? cardRect.left - boardRect.left + snappedValue
+          : cardRect.top - boardRect.top + snappedValue,
+    });
+  };
+
+  const resizeCard = (roomId: string, axis: SnapAxis, amount: number) => {
     const current = cardSizes[roomId] || DEFAULT_CARD_SIZE;
+    const currentAxisValue = current[axis];
+    const activeRaw = rawResizeRef.current;
+    const rawValue = clamp(
+      activeRaw?.roomId === roomId && activeRaw.axis === axis
+        ? activeRaw.value + amount
+        : currentAxisValue + amount,
+      axis === "width" ? CARD_LIMITS.minWidth : CARD_LIMITS.minHeight,
+      axis === "width" ? CARD_LIMITS.maxWidth : CARD_LIMITS.maxHeight,
+    );
+    rawResizeRef.current = { roomId, axis, value: rawValue };
+
+    const candidateTargets = orderedRooms
+      .filter((room) => room.id !== roomId)
+      .map((room) => (cardSizes[room.id] || DEFAULT_CARD_SIZE)[axis]);
+    const nearestTarget = candidateTargets.reduce<number | null>(
+      (nearest, target) =>
+        nearest === null || Math.abs(target - rawValue) < Math.abs(nearest - rawValue)
+          ? target
+          : nearest,
+      null,
+    );
+
+    const activeSnap = snapMatchRef.current;
+    let snappedValue: number | null = null;
+    if (
+      activeSnap?.roomId === roomId &&
+      activeSnap.axis === axis &&
+      Math.abs(rawValue - activeSnap.target) <= SNAP_EXIT_THRESHOLD
+    ) {
+      snappedValue = activeSnap.target;
+    } else {
+      snapMatchRef.current = null;
+      if (
+        nearestTarget !== null &&
+        Math.abs(rawValue - nearestTarget) <= SNAP_ENTER_THRESHOLD
+      ) {
+        snappedValue = nearestTarget;
+        snapMatchRef.current = { roomId, axis, target: nearestTarget };
+      }
+    }
+
+    const nextAxisValue = snappedValue ?? rawValue;
     const nextSize = axis === "width"
-      ? { ...current, width: clamp(current.width + amount, CARD_LIMITS.minWidth, CARD_LIMITS.maxWidth) }
-      : { ...current, height: clamp(current.height + amount, CARD_LIMITS.minHeight, CARD_LIMITS.maxHeight) };
+      ? { ...current, width: nextAxisValue }
+      : { ...current, height: nextAxisValue };
     persistCardSizes({ ...cardSizes, [roomId]: nextSize });
+
+    if (snappedValue !== null) showSnapGuide(roomId, axis, snappedValue);
+    else setSnapGuide(null);
   };
 
   return (
@@ -341,6 +433,21 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
       ref={boardRef}
       className="relative w-full min-w-0 max-w-full overflow-visible rounded-[22px] border border-[#ead8bd] bg-[#fffaf1] p-3 shadow-[0_8px_24px_rgba(91,57,31,0.06)] sm:p-4"
     >
+      {snapGuide ? (
+        <div
+          aria-hidden="true"
+          className={
+            snapGuide.axis === "width"
+              ? "pointer-events-none absolute bottom-0 top-0 z-30 border-l-2 border-dashed border-[#a56734]/80"
+              : "pointer-events-none absolute left-0 right-0 z-30 border-t-2 border-dashed border-[#a56734]/80"
+          }
+          style={
+            snapGuide.axis === "width"
+              ? { left: snapGuide.position }
+              : { top: snapGuide.position }
+          }
+        />
+      ) : null}
       <header className="mb-3 flex items-start justify-between gap-3 border-b border-[#efe1cc] pb-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-bold text-[#3f2a1b] sm:text-base">
@@ -379,6 +486,7 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
                 <li>Kéo biểu tượng chấm ở card để đổi vị trí phòng.</li>
                 <li>Nhấn giữ card 1 giây để bật chế độ thay đổi kích thước riêng.</li>
                 <li>Dùng control Ngang/Dọc trên card để tăng hoặc giảm kích thước.</li>
+                <li>Kích thước sẽ tự hít theo thẻ gần bằng và hiện đường canh đứt nét.</li>
                 <li>Chọn “Xong” hoặc nhấn Esc để thoát chế độ resize.</li>
               </ul>
               <button
@@ -424,7 +532,11 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
                 setExpandedId((current) => (current === room.id ? null : room.id));
               }}
               onResize={(axis, amount) => resizeCard(room.id, axis, amount)}
-              onResizeDone={() => setResizingId(null)}
+              onResizeEnd={clearResizeSnap}
+              onResizeDone={() => {
+                clearResizeSnap();
+                setResizingId(null);
+              }}
               onDragHandlePointerDown={(event) =>
                 onDragHandlePointerDown(event, room.id)
               }

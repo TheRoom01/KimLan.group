@@ -117,7 +117,22 @@ export async function DELETE(
     let objectDeleted = false;
     let objectDeleteWarning: string | null = null;
 
-    if (media.provider === "r2" && key?.startsWith(expectedPrefix)) {
+    let sharedReferenceCount = 0;
+    if (key) {
+      const { count: pathCount, error: referenceError } = await authorization.supabase
+        .from("room_media")
+        .select("id", { count: "exact", head: true })
+        .eq("path", key);
+      if (referenceError) objectDeleteWarning = "Không thể kiểm tra media đang được dùng chung";
+      const { count: urlCount, error: urlReferenceError } = await authorization.supabase
+        .from("room_media")
+        .select("id", { count: "exact", head: true })
+        .eq("url", media.url);
+      if (urlReferenceError) objectDeleteWarning = "Không thể kiểm tra media đang được dùng chung";
+      sharedReferenceCount = Math.max(pathCount ?? 0, urlCount ?? 0);
+    }
+
+    if (media.provider === "r2" && key?.startsWith(expectedPrefix) && sharedReferenceCount === 0 && !objectDeleteWarning) {
       if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
         objectDeleteWarning = "R2 credentials are not configured";
       } else {
@@ -141,6 +156,7 @@ export async function DELETE(
       replacement_cover_id: replacementCoverId,
       object_deleted: objectDeleted,
       warning: objectDeleteWarning,
+      shared_reference_count: sharedReferenceCount,
     });
   } catch (error) {
     return mapUnknownError(error);

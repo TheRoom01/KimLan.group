@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import RoomModal from "./RoomModal";
 import VipLinkManager from "./VipLinkManager";
 import type { Room, TabKey } from "@/app/types/room";
@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 const PAGE_SIZE = 20;
 
 function normalizeSearchKeyword(value?: string | null) {
-  return String(value ?? "")
+  const normalized = String(value ?? "")
     .normalize("NFC")
 
     // "Phường 13", "phuong 13", "Phường13" -> "13"
@@ -33,6 +33,8 @@ function normalizeSearchKeyword(value?: string | null) {
     .replace(/[|;:]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  return normalized.length >= 3 ? normalized : "";
 }
 
 type AdminClientProps = {
@@ -95,16 +97,12 @@ const buildClonedRoom = (r: Room) => {
     id: undefined,
 
     room_code: "",
-    price: 0,
-    room_type: "",
-
-    // 🔥 PHẢI GIỮ LẠI
     chinh_sach: base.chinh_sach ?? "",
 
     // nếu detail nằm trong nested object
     room_details: base.room_details ?? base.detail ?? null,
 
-    media: [],
+    media: base.media ?? base.room_media ?? [],
 
     _isClone: true,
   };
@@ -169,6 +167,21 @@ const closeConfirm = useCallback(() => {
   confirmActionRef.current = null;
   confirmSecondaryActionRef.current = null;
 }, []);
+
+const openRoomCopy = useCallback(async (source: Room) => {
+  const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+    p_id: source.id,
+    p_role: 0,
+  });
+  if (error) {
+    notify(`Không thể tải dữ liệu phòng nguồn: ${error.message}`);
+    return;
+  }
+  const full = (data ?? {}) as any;
+  setEditingRoom(buildClonedRoom({ ...source, ...full } as Room));
+  setActiveTab("info");
+  setOpenModal(true);
+}, [notify]);
 
 const runConfirmAction = useCallback(async () => {
   const fn = confirmActionRef.current;
@@ -601,73 +614,33 @@ const openZaloUX = useCallback(
 
       {/* HEADER */}
       <div style={header}>
-        <div style={headerLeft}>
-          <div style={{ ...searchWrap, position: "relative" }}>
-            <input
-              placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
-              value={search}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSearch(v);
-                setPage(1);
-                cursorMapRef.current.clear();
-                cacheRef.current.clear();
-              }}
-              style={searchInputWithClear}
-            />
-
-{search && (
-  <button
-    type="button"
-    onClick={() => {
-      setSearch("");
-      setPage(1);
-      cursorMapRef.current.clear();
-      cacheRef.current.clear();
-    }}
-    style={{
-      position: "absolute",
-      right: 0,
-      top: "50%",
-      transform: "translateY(-50%)",
-      width: 56,
-      height: 40,
-      padding: 0,
-      border: "none",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "transparent",
-      color: "#111827",
-      fontSize: 30,
-      cursor: "pointer",
-      zIndex: 2,
-    }}
-    aria-label="Xoá tìm kiếm"
-    title="Xoá tìm kiếm"
-  >
-    ×
-  </button>
-
-            )}
-          </div>
-        </div>
-
         <div
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.2fr)",
               alignItems: "center",
-              justifyContent: "flex-end",
-              gap: 10,
-              flexWrap: "wrap",
+              gap: 6,
+              width: "100%",
+              minWidth: 0,
             }}
           >
             {adminLevel === 1 && (
-              <VipLinkManager />
+              <VipLinkManager buttonStyle={compactActionBtn} />
             )}
-
             <button
-              style={addBtn}
+              style={{ ...compactActionBtn, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+              onClick={() => {
+                const code = window.prompt("Nhập mã phòng muốn sao chép:")?.trim().toLocaleLowerCase("vi-VN");
+                if (!code) return;
+                const source = rooms.find((room) => String(room.room_code || "").trim().toLocaleLowerCase("vi-VN") === code);
+                if (!source) return notify("Không tìm thấy mã phòng trong danh sách hiện tại.");
+                void openRoomCopy(source);
+              }}
+            >
+              <Copy size={16} /> Copy phòng
+            </button>
+            <button
+              style={{ ...addBtn, width: "100%", minWidth: 0, fontWeight: 700, fontSize: "clamp(10px, 3vw, 13px)", overflow: "hidden", textOverflow: "ellipsis" }}
               onClick={() => {
                 setEditingRoom(null);
                 setActiveTab("info");
@@ -680,6 +653,22 @@ const openZaloUX = useCallback(
       </div>
 
       {errorMsg && <div style={{ ...errorBox, marginTop: 10 }}>{errorMsg}</div>}
+      <div style={{ ...searchWrap, maxWidth: "none", marginTop: 10 }}>
+        <input
+          placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+            cursorMapRef.current.clear();
+            cacheRef.current.clear();
+          }}
+          style={searchInputWithClear}
+        />
+        {search ? (
+          <button type="button" onClick={() => { setSearch(""); setPage(1); cursorMapRef.current.clear(); cacheRef.current.clear(); }} style={clearSearchBtn} aria-label="Xoá tìm kiếm" title="Xoá tìm kiếm">×</button>
+        ) : null}
+      </div>
 {/* TABLE */}
 <div style={tableWrap}>
   <table
@@ -947,14 +936,11 @@ const openZaloUX = useCallback(
                       fontSize: 35,
                     }}
                     onClick={() => {
-                      const cloned = buildClonedRoom(r as Room);
-                      setEditingRoom(cloned);
-                      setActiveTab("info");
-                      setOpenModal(true);
+                      void openRoomCopy(r as Room);
                     }}
-                    title="Thêm phòng giống phòng này"
+                    title="Copy phòng này"
                   >
-                    +
+                    <Copy size={16} />
                   </button>
 
                   <button
@@ -1434,7 +1420,8 @@ const clearSearchBtn: CSSProperties = {
   cursor: "pointer",
 };
 const addBtn: CSSProperties = {
-  padding: "10px 14px",
+  minHeight: 38,
+  padding: "8px 14px",
   borderRadius: 10,
   border: "1px solid #111827",
   background: "#111827",
@@ -1443,8 +1430,25 @@ const addBtn: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const compactActionBtn: CSSProperties = {
+  minHeight: 38,
+  width: "100%",
+  minWidth: 0,
+  padding: "7px 4px",
+  borderRadius: 10,
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#744722",
+  fontSize: "clamp(9px, 2.7vw, 12px)",
+  fontWeight: 650,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
 const tableWrap: CSSProperties = {
-  marginTop: 16,
+  marginTop: 6,
   border: "1px solid #e5e7eb",
   borderRadius: 12,
   overflowX: "auto",

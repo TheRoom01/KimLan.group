@@ -334,9 +334,8 @@ export default async function OwnerPage() {
     (property) => property.empty > 0,
   ).length;
 
-  const projectedRevenue = propertyOverview.reduce(
-    (total, item) => total + item.monthlyRevenue,
-    0,
+  const currentMonthTotalRevenue = toNumber(
+    dashboard.current_month_total_revenue,
   );
  
   const kpis = [
@@ -551,9 +550,9 @@ export default async function OwnerPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#eacda7]">
               Tổng hợp tài chính
             </p>
-            <h2 className="mt-1 text-lg font-bold">Doanh thu dự kiến/tháng</h2>
+            <h2 className="mt-1 text-lg font-bold">Tổng doanh thu tháng này</h2>
             <p className="mt-5 break-words text-2xl font-bold sm:text-3xl">
-              {formatCurrency(projectedRevenue)}
+              {formatCurrency(currentMonthTotalRevenue)}
             </p>
             <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
               <div className="min-w-0 rounded-xl bg-white/10 p-3">

@@ -110,7 +110,7 @@ const ADMIN_L2_KEYS = [
 ] as const;
 
 const normalizeSearchKeyword = (value?: string | null) => {
-  return String(value ?? "")
+  const normalized = String(value ?? "")
     .normalize("NFC")
 
     // "P.13", "p13", "Phường 13", "phuong 13" -> "13"
@@ -122,10 +122,14 @@ const normalizeSearchKeyword = (value?: string | null) => {
 
     .replace(/\.{2,}/g, " ")
     .replace(/[…,，。]+/g, " ")
-    .replace(/[|;:/\\()[\]{}"'“”‘’`~!@#$%^&*_+=<>?]+/g, " ")
+    // Keep "/" because it is meaningful inside Vietnamese house numbers
+    // (for example: "463B/63").
+    .replace(/[|;:\\()[\]{}"'“”‘’`~!@#$%^&*_+=<>?]+/g, " ")
     .replace(/[-–—]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  return normalized.length >= 3 ? normalized : "";
 };
 
 /**

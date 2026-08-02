@@ -121,6 +121,18 @@ export async function POST(
     }
 
     const s3 = getS3();
+    const { data: sharedMedia, error: sharedMediaError } = await authorization.supabase
+      .from("room_media")
+      .select("path, url")
+      .neq("room_id", roomId);
+    if (sharedMediaError) {
+      return NextResponse.json({ error: "Cannot verify shared media references" }, { status: 500 });
+    }
+    const sharedKeys = new Set(
+      (sharedMedia ?? [])
+        .flatMap((item) => [keyFromPublicUrl(item.path), keyFromPublicUrl(item.url)])
+        .filter((key): key is string => Boolean(key)),
+    );
 
     async function prunePrefix(prefix: string) {
       if (realKeepCount(prefix) === 0) {
@@ -141,7 +153,7 @@ export async function POST(
 
         for (const object of response.Contents ?? []) {
           const key = object.Key || "";
-          if (key && !keepKeys.has(key)) keysToDelete.push(key);
+          if (key && !keepKeys.has(key) && !sharedKeys.has(key)) keysToDelete.push(key);
         }
 
         continuationToken = response.IsTruncated

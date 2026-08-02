@@ -70,10 +70,23 @@ export async function getOwnerDashboard() {
       },
       recent_contracts: [],
       expiring_contracts: [],
+      current_month_total_revenue: 0,
     };
   }
 
-  const [dashboardResult, roomsResult] = await Promise.all([
+  const monthParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    month: "numeric",
+    year: "numeric",
+  }).formatToParts(new Date());
+  const currentMonth = Number(
+    monthParts.find((part) => part.type === "month")?.value,
+  );
+  const currentYear = Number(
+    monthParts.find((part) => part.type === "year")?.value,
+  );
+
+  const [dashboardResult, roomsResult, revenueResult] = await Promise.all([
     supabase.rpc("get_owner_dashboard_v1", {
       p_attention_limit: 50,
       p_activity_limit: 50,
@@ -83,6 +96,12 @@ export async function getOwnerDashboard() {
       .select("id, property_id, status, lifecycle_status")
       .in("property_id", propertyIds)
       .eq("lifecycle_status", "active"),
+    supabase
+      .from("room_monthly_revenues")
+      .select("total_amount, room_revenue_cycles!inner(month, year)")
+      .in("property_id", propertyIds)
+      .eq("room_revenue_cycles.month", currentMonth)
+      .eq("room_revenue_cycles.year", currentYear),
   ]);
 
   if (dashboardResult.error) {
@@ -95,6 +114,11 @@ export async function getOwnerDashboard() {
     throw roomsResult.error;
   }
 
+  if (revenueResult.error) {
+    console.error("[Owner] getOwnerDashboard revenues:", revenueResult.error);
+    throw revenueResult.error;
+  }
+
   const propertyIdSet = new Set(propertyIds);
   const dashboard =
     dashboardResult.data && typeof dashboardResult.data === "object"
@@ -102,14 +126,48 @@ export async function getOwnerDashboard() {
       : {};
   const rooms = roomsResult.data ?? [];
 
-  const recentContracts = Array.isArray(dashboard.recent_contracts)
-    ? dashboard.recent_contracts
-        .filter((contract) => {
-          const propertyId = contractPropertyId(contract);
-          return propertyId !== null && propertyIdSet.has(propertyId);
-        })
-        .slice(0, 5)
+  const recentContractCandidates = Array.isArray(dashboard.recent_contracts)
+    ? dashboard.recent_contracts.filter((contract) => {
+        const propertyId = contractPropertyId(contract);
+        return propertyId !== null && propertyIdSet.has(propertyId);
+      })
     : [];
+  const recentContractIds = recentContractCandidates
+    .map((contract) =>
+      contract && typeof contract === "object"
+        ? asString((contract as Record<string, unknown>).id)
+        : null,
+    )
+    .filter((id): id is string => Boolean(id));
+
+  let activeRecentContractIds = new Set<string>();
+  if (recentContractIds.length > 0) {
+    const { data: activeContracts, error: activeContractsError } = await supabase
+      .from("rental_contracts")
+      .select("id")
+      .in("id", recentContractIds)
+      .in("status", ["active", "Đang hiệu lực"])
+      .is("deleted_at", null);
+
+    if (activeContractsError) {
+      console.error(
+        "[Owner] getOwnerDashboard active recent contracts:",
+        activeContractsError,
+      );
+      throw activeContractsError;
+    }
+    activeRecentContractIds = new Set(
+      (activeContracts ?? []).map((contract) => contract.id),
+    );
+  }
+
+  const recentContracts = recentContractCandidates
+    .filter((contract) => {
+      if (!contract || typeof contract !== "object") return false;
+      const id = asString((contract as Record<string, unknown>).id);
+      return id !== null && activeRecentContractIds.has(id);
+    })
+    .slice(0, 5);
 
   const expiringContracts = Array.isArray(dashboard.expiring_contracts)
     ? dashboard.expiring_contracts
@@ -140,10 +198,18 @@ export async function getOwnerDashboard() {
     },
   );
 
+  const currentMonthTotalRevenue = (revenueResult.data ?? []).reduce(
+    (total, revenue) => total + Number(revenue.total_amount ?? 0),
+    0,
+  );
+
   return {
     ...dashboard,
     summary,
     recent_contracts: recentContracts,
     expiring_contracts: expiringContracts,
+    current_month_total_revenue: Number.isFinite(currentMonthTotalRevenue)
+      ? currentMonthTotalRevenue
+      : 0,
   };
 }

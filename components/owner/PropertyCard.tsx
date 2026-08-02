@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Building2, Plus, Users } from "lucide-react";
 import DeletePropertyCardButton from "@/components/owner/DeletePropertyCardButton";
+import OwnerCopyRoomButton from "@/components/owner/OwnerCopyRoomButton";
 
 type PropertyCardData = {
   id: string;
@@ -128,7 +129,7 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
           thành viên quản lý
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <Link
             href={`/owner/properties/${property.id}`}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 text-sm font-semibold text-[#fff8eb] transition hover:bg-[#623817]"
@@ -137,13 +138,13 @@ export default function PropertyCard({ property }: { property: PropertyCardData 
             <ArrowRight size={16} />
           </Link>
           {canManage && property.lifecycle_status !== "archived" ? (
-            <Link
+            <><Link
               href={`/owner/rooms/create?property_id=${property.id}`}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 text-sm font-semibold text-[#684324] transition hover:bg-[#f3e1c9]"
             >
               <Plus size={16} />
               Thêm phòng
-            </Link>
+            </Link><OwnerCopyRoomButton propertyId={property.id} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-3 text-sm font-semibold text-[#684324] transition hover:bg-[#f3e1c9]" /></>
           ) : null}
         </div>
       </div>

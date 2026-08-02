@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { KeyRound } from "lucide-react";
 
 import ArchiveRoomButton from "@/components/owner/ArchiveRoomButton";
 import RoomMediaGallery from "@/components/owner/RoomMediaGallery";
@@ -141,7 +142,24 @@ export default async function RoomDetailPage({
       />
 
       <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
-        <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Hợp đồng hiện tại</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-[#4f321e]">Hợp đồng hiện tại</h2>
+          {contract?.id ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-[#80634a]">
+                Xem chi tiết HĐ:
+              </span>
+              <Link
+                href={`/owner/contracts/${contract.id}`}
+                aria-label="Mở chi tiết hợp đồng hiện tại"
+                title="Mở chi tiết hợp đồng hiện tại"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#744722] text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#633b1d] hover:shadow-md"
+              >
+                <KeyRound size={17} />
+              </Link>
+            </div>
+          ) : null}
+        </div>
 
         {contract ? (
           <div className="grid gap-3 sm:grid-cols-2">

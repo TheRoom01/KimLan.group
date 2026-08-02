@@ -48,15 +48,20 @@ const MAX_FILES = 20;
 export default function CreateRoomForm({
   propertyId,
   defaults = {},
+  copySourceRoomId,
 }: {
   propertyId: string;
   // Property defaults are stored in legacy JSON with mixed value types.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   defaults?: Record<string, any>;
+  copySourceRoomId?: string;
 }) {
   const detailDefaults = defaults.room_details ?? {};
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
+  const [copiedMedia, setCopiedMedia] = useState<any[]>(
+    copySourceRoomId && Array.isArray(defaults.media) ? defaults.media : [],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus | null>(null);
@@ -208,6 +213,18 @@ export default function CreateRoomForm({
 
       setCreatedRoomId(roomId);
 
+      if (copySourceRoomId) {
+        const response = await fetch(`/api/owner/rooms/${roomId}/clone-media`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_room_id: copySourceRoomId,
+            media_ids: copiedMedia.map((item) => item.id).filter(Boolean),
+          }),
+        });
+        await readApiResponse(response);
+      }
+
       let firstImageAssigned = false;
 
       for (const [index, file] of files.entries()) {
@@ -294,11 +311,12 @@ export default function CreateRoomForm({
               maxLength={100}
               required
               placeholder="P.101"
+              defaultValue={defaults.room_code ?? ""}
             />
           </Field>
 
           <Field label="Loại phòng" htmlFor="room_type">
-            <RoomTypePicker />
+            <RoomTypePicker initialValue={defaults.room_type ?? ""} />
           </Field>
 
           <Field label="Giá thuê tháng" htmlFor="price">
@@ -307,6 +325,7 @@ export default function CreateRoomForm({
               name="price"
               className={INPUT_CLASS}
               placeholder="4500000"
+              defaultValue={defaults.price}
             />
           </Field>
 
@@ -353,7 +372,7 @@ export default function CreateRoomForm({
                 className={`${INPUT_CLASS} min-h-28 resize-y`}
                 maxLength={5000}
                 placeholder="Nhập nội dung mô tả"
-                defaultValue=""
+                defaultValue={defaults.description ?? ""}
               />
             </Field>
           </div>
@@ -455,6 +474,21 @@ export default function CreateRoomForm({
       </Section>
 
       <Section title="Media" active={activeTab === "info"}>
+        {copySourceRoomId && copiedMedia.length ? (
+          <div className="mb-4">
+            <p className="mb-3 rounded-xl border border-[#aa825d]/25 bg-[#f8ead7] p-3 text-sm text-[#684324]">
+              Đang dùng chung {copiedMedia.length} ảnh/video từ phòng nguồn. Bạn có thể bỏ từng media trước khi tạo phòng.
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {copiedMedia.map((item, index) => (
+                <article key={item.id ?? `${item.url}-${index}`} className="relative overflow-hidden rounded-xl border border-[#aa825d]/30 bg-white">
+                  {item.type === "video" ? <video src={item.url} controls className="h-32 w-full object-cover" /> : <img src={item.url} alt={`Media copy ${index + 1}`} className="h-32 w-full object-cover" />}
+                  <button type="button" disabled={submitting} onClick={() => setCopiedMedia((current) => current.filter((_, mediaIndex) => mediaIndex !== index))} className="absolute right-2 top-2 rounded-full bg-white/90 p-1.5 text-red-700 shadow" aria-label="Bỏ media khỏi phòng mới"><Trash2 size={15} /></button>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <Field
           label="Thêm ảnh/video"
           htmlFor="media_files"

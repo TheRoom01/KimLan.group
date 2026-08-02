@@ -12,9 +12,9 @@ const UUID_PATTERN =
 export default async function CreateRoomPage({
   searchParams,
 }: {
-  searchParams: Promise<{ property_id?: string }>;
+  searchParams: Promise<{ property_id?: string; copy_from?: string }>;
 }) {
-  const { property_id: propertyId } = await searchParams;
+  const { property_id: propertyId, copy_from: copyFrom } = await searchParams;
 
   if (!propertyId || !UUID_PATTERN.test(propertyId)) {
     return (
@@ -35,6 +35,15 @@ export default async function CreateRoomPage({
 
   const detail = await getPropertyDetail(propertyId);
   const property = detail.property;
+  const copiedRoom = copyFrom && UUID_PATTERN.test(copyFrom)
+    ? await (async () => {
+        try {
+          const { getRoomDetail } = await import("@/lib/owner/getRoomDetail");
+          const room = await getRoomDetail(copyFrom);
+          return room.property_id === propertyId ? room : null;
+        } catch { return null; }
+      })()
+    : null;
   const supabase = await createSupabaseServerClient();
   const { data: propertyDefaults } = await supabase
     .from("properties")
@@ -54,7 +63,7 @@ export default async function CreateRoomPage({
     <div className="mx-auto w-full max-w-4xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-3xl font-bold">Tạo phòng</h1>
+          <h1 className="text-3xl font-bold">{copiedRoom ? `Copy phòng ${copiedRoom.room_code}` : "Tạo phòng"}</h1>
           <p className="mt-1 text-gray-500">
             Tòa nhà: {propertyDisplayAddress(property)}
           </p>
@@ -74,6 +83,7 @@ export default async function CreateRoomPage({
 
       <CreateRoomForm
         propertyId={propertyId}
+        copySourceRoomId={copiedRoom?.id}
         defaults={{
           // Database JSON contains mixed scalar and nested values.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,6 +93,7 @@ export default async function CreateRoomPage({
           address: property.address ?? "",
           ward: property.ward ?? "",
           district: property.district ?? "",
+          ...(copiedRoom ? { ...copiedRoom, room_code: "", status: "Đang trống", room_details: copiedRoom.details ?? {} } : {}),
         }}
       />
     </div>

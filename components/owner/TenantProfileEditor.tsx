@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, FormEvent, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { CreditCard, Loader2, Save, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
@@ -127,7 +127,11 @@ export default function TenantProfileEditor({ tenant, roomId }: { tenant: Tenant
         <Field label="Số điện thoại"><input name="phone" defaultValue={tenant.phone ?? ""} className={INPUT} /></Field>
         <Field label="Số CCCD"><input name="cccd" defaultValue={tenant.cccd ?? ""} className={INPUT} /></Field>
         <Field label="Ngày sinh"><input name="date_of_birth" type="date" defaultValue={tenant.date_of_birth ?? ""} className={INPUT} /></Field>
-        <Field label="Địa chỉ"><input name="address" defaultValue={tenant.address ?? ""} className={INPUT} /></Field>
+        <div className="lg:col-span-2">
+          <Field label="Địa chỉ">
+            <AutoGrowingAddress defaultValue={tenant.address ?? ""} />
+          </Field>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -159,4 +163,29 @@ export default function TenantProfileEditor({ tenant, roomId }: { tenant: Tenant
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="space-y-1.5"><span className="block text-xs font-semibold text-[#5a3b25]">{label}</span>{children}</label>;
+}
+
+function AutoGrowingAddress({ defaultValue }: { defaultValue: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    resizeAddress(ref.current);
+  }, []);
+
+  return (
+    <textarea
+      ref={ref}
+      name="address"
+      rows={1}
+      defaultValue={defaultValue}
+      onInput={(event) => resizeAddress(event.currentTarget)}
+      className={`${INPUT} min-h-11 resize-none overflow-hidden leading-6`}
+    />
+  );
+}
+
+function resizeAddress(element: HTMLTextAreaElement | null) {
+  if (!element) return;
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
 }

@@ -9,6 +9,21 @@ import { parseUuid, readJsonObject } from "@/lib/api/validation";
 import { parseCreateOwnerRoomInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id: rawId } = await params;
+    const propertyId = parseUuid(rawId, "property_id");
+    const supabase = await createSupabaseServerClient();
+    const user = await getAuthenticatedUser(supabase);
+    if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập", 401);
+    const { data: canManage, error: accessError } = await supabase.rpc("can_manage_property", { p_property_id: propertyId });
+    if (accessError || canManage !== true) return apiError("FORBIDDEN", "Bạn không có quyền quản lý tòa nhà này", 403);
+    const { data, error } = await supabase.from("rooms").select("id, room_code, room_type, price").eq("property_id", propertyId).neq("lifecycle_status", "archived").order("room_code");
+    if (error) return mapDatabaseError(error);
+    return apiSuccess(data ?? []);
+  } catch (error) { return mapUnknownError(error); }
+}
+
 export async function POST(
   request: Request,
   {
@@ -70,28 +85,8 @@ export async function POST(
 
     }
 
-    if (roomId) {
-      const { error: locationError } = await supabase
-        .from("rooms")
-        .update(roomLocationPatch(body))
-        .eq("id", roomId)
-        .eq("property_id", propertyId);
-      if (locationError) return mapDatabaseError(locationError);
-    }
-
-
     return apiSuccess(data,201);
   } catch (error) {
     return mapUnknownError(error);
   }
-}
-
-function roomLocationPatch(body: Record<string, unknown>) {
-  const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max) || null;
-  return {
-    house_number: text(body.house_number, 100),
-    address: text(body.address, 500),
-    ward: text(body.ward, 120),
-    district: text(body.district, 120),
-  };
 }

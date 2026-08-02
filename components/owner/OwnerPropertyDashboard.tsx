@@ -31,10 +31,10 @@ function formatCurrency(value: number) {
 /**
  * Dùng căn bậc hai để nén chênh lệch.
  *
- * Ví dụ tòa nhà có 100 phòng trống không tạo cột cao gấp
- * 100 lần tòa nhà có một phòng trống.
+ * Ví dụ tòa nhà có 100 phòng không tạo cột cao gấp
+ * 100 lần tòa nhà có một phòng.
  */
-function getEmptyBarHeight(
+function getBarHeight(
   value: number,
   maxValue: number,
 ) {
@@ -57,9 +57,9 @@ export default function OwnerPropertyDashboard({
 }: {
   items: OwnerPropertyDashboardItem[];
 }) {
-  const maxEmptyValue = Math.max(
+  const maxRoomValue = Math.max(
     1,
-    ...items.map((item) => item.empty),
+    ...items.map((item) => item.total),
   );
 
   return (
@@ -78,9 +78,15 @@ export default function OwnerPropertyDashboard({
 
             </div>
 
-            <div className="inline-flex shrink-0 items-center gap-2 text-xs font-semibold text-[#74583e]">
-              <span className="h-3 w-3 rounded-sm bg-[#75451f]" />
-              Phòng đang trống
+            <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 text-xs font-semibold text-[#74583e]">
+              <span className="inline-flex items-center gap-2">
+                <span className="h-3 w-3 rounded-sm bg-[#929292]" />
+                Tổng số phòng
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <span className="h-3 w-3 rounded-sm bg-[#75451f]" />
+                Phòng đang trống
+              </span>
             </div>
           </div>
 
@@ -104,42 +110,44 @@ export default function OwnerPropertyDashboard({
           <div className="mt-5 overflow-x-auto pb-2">
             <div className="flex min-w-max items-stretch gap-3">
               {items.map((item) => {
-                const barHeight = getEmptyBarHeight(
+                const emptyBarHeight = getBarHeight(
                   item.empty,
-                  maxEmptyValue,
+                  maxRoomValue,
+                );
+                const totalBarHeight = getBarHeight(
+                  item.total,
+                  maxRoomValue,
                 );
 
                 return (
                   <Link
                     key={item.id}
                     href={`/owner/properties/${item.id}`}
-                    title={`${item.name}: ${item.empty} phòng trống`}
+                    title={`${item.name}: ${item.empty} phòng trống trên tổng ${item.total} phòng`}
                     className="group flex w-[118px] shrink-0 flex-col rounded-2xl border border-[#a9825f]/20 bg-[#f8ead7] p-3 transition hover:-translate-y-0.5 hover:border-[#8b5a32]/35 hover:shadow-md sm:w-[128px]"
                   >
-                    <div className="flex h-32 flex-col items-center justify-end">
-                      <span className="mb-2 text-xl font-bold leading-none text-[#52331f]">
-                        {item.empty}
-                      </span>
+                    <div className="flex h-32 items-end justify-center gap-1">
+                      <div className="flex h-full flex-col items-center justify-end">
+                        <span className="mb-2 text-base font-bold leading-none text-[#626262]">
+                          {item.total}
+                        </span>
 
-                      <div
-                        className={`
-                            relative w-5 rounded-md
-                            bg-gradient-to-t
-                            from-[#5d3417]
-                            to-[#946038]
-                            shadow-[0_8px_18px_rgba(100,56,21,0.22)]
-                            transition
-                            group-hover:scale-105
-                            ${
-                            item.empty === 0
-                                ? "opacity-30"
-                                : ""
-                            }
-                        `}
-                        style={{
-                          height: `${barHeight}px`,
-                        }}
-                      />
+                        <div
+                          className={`relative w-5 rounded-md bg-gradient-to-t from-[#777] to-[#aaa] shadow-[0_8px_18px_rgba(70,70,70,0.18)] transition group-hover:scale-105 ${item.total === 0 ? "opacity-30" : ""}`}
+                          style={{ height: `${totalBarHeight}px` }}
+                        />
+                      </div>
+
+                      <div className="flex h-full flex-col items-center justify-end">
+                        <span className="mb-2 text-base font-bold leading-none text-[#52331f]">
+                          {item.empty}
+                        </span>
+
+                        <div
+                          className={`relative w-5 rounded-md bg-gradient-to-t from-[#5d3417] to-[#946038] shadow-[0_8px_18px_rgba(100,56,21,0.22)] transition group-hover:scale-105 ${item.empty === 0 ? "opacity-30" : ""}`}
+                          style={{ height: `${emptyBarHeight}px` }}
+                        />
+                      </div>
                     </div>
 
                     <div className="mt-3 min-w-0 border-t border-[#ad835d]/20 pt-3 text-center">

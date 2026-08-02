@@ -305,6 +305,7 @@ useEffect(() => {
       <div style={infoGridStyle}>
        <Select
         label="Trạng thái"
+        statusColors
         value={value.status ?? "Đang trống"}
         options={[
           "Đang trống",
@@ -783,6 +784,13 @@ type SimpleSelectProps = {
   value: string
   options: string[]
   onChange: (v: string) => void
+  statusColors?: boolean
+}
+
+const STATUS_SELECT_COLORS: Record<string, React.CSSProperties> = {
+  "Đã thuê": { background: "#fee2e2", borderColor: "#fecaca", color: "#991b1b" },
+  "Đang trống": { background: "#dcfce7", borderColor: "#bbf7d0", color: "#166534" },
+  "Sắp trống": { background: "#fef9c3", borderColor: "#fde047", color: "#854d0e" },
 }
 
 function Select({
@@ -790,6 +798,7 @@ function Select({
   value,
   options,
   onChange,
+  statusColors = false,
 }: SimpleSelectProps) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -832,22 +841,21 @@ function Select({
     justifyContent: "space-between",
     alignItems: "center",
     cursor: "pointer",
-   background:
-    value === "Đã thuê"
-      ? "#374151"   // xám đậm (gần đen)
-      : value === "Trống"
-      ? "#e5e7eb"   // xám vừa
-      : inputStyle.background,
-    color:
-    value === "Đã thuê"
-      ? "#ffffff"   // chữ trắng cho tương phản
-      : "#111827",
+    ...(statusColors ? STATUS_SELECT_COLORS[value] : {}),
+    ...(statusColors ? {
+      width: "fit-content",
+      minWidth: 112,
+      borderRadius: 999,
+      padding: "8px 12px",
+      fontWeight: 700,
+      gap: 8,
+    } : {}),
      }}
 
   onClick={() => setOpen(v => !v)}
 >
-  <span>{value || "Chọn..."}</span>
-  <span style={{ opacity: 0.6 }}>▾</span>
+  <span>{statusColors ? "✓ " : ""}{value || "Chọn..."}</span>
+  <span style={{ opacity: 0.7 }}>⌄</span>
 </button>
 
       {open && (
@@ -856,7 +864,8 @@ function Select({
             position: "absolute",
             top: "calc(100% + 6px)",
             left: 0,
-            right: 0,
+            right: statusColors ? "auto" : 0,
+            minWidth: statusColors ? 128 : undefined,
             zIndex: 1000,
             background: "#fff",
             border: "1px solid #e5e7eb",
@@ -866,7 +875,7 @@ function Select({
             boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
           }}
         >
-          {options.map((o) => {
+          {options.filter((o) => !statusColors || o !== value).map((o) => {
             const active = o === value
             return (
               <button
@@ -880,15 +889,14 @@ function Select({
                   width: "100%",
                   padding: "10px 12px",
                   textAlign: "left",
-                  background: active
-                    ? "#111827"
-                    : o === "Đã thuê"
-                    ? "#f3f4f6"
-                    : o === "Trống"
-                    ? "#f9fafb"
-                    : "transparent",
-                  color: active ? "#fff" : "#111827",
-                  border: "none",
+                  ...(statusColors ? STATUS_SELECT_COLORS[o] : {
+                    background: active ? "#111827" : "transparent",
+                    color: active ? "#fff" : "#111827",
+                  }),
+                  border: statusColors ? `1px solid ${STATUS_SELECT_COLORS[o]?.borderColor ?? "#e5e7eb"}` : "none",
+                  borderRadius: statusColors ? 8 : 0,
+                  marginBottom: statusColors ? 4 : 0,
+                  fontWeight: statusColors ? 700 : 400,
                   cursor: "pointer",
                 }}
               >

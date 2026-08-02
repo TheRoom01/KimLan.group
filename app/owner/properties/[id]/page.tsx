@@ -7,7 +7,6 @@ import {
   CircleParking,
   Clock3,
   ExternalLink,
-  KeyRound,
   Mail,
   MapPin,
   PawPrint,
@@ -20,6 +19,8 @@ import {
 import PropertyImageCarousel from "@/components/owner/PropertyImageCarousel";
 import PropertyInvitationsPanel from "@/components/owner/PropertyInvitationsPanel";
 import PropertyRoomCandidates from "@/components/owner/PropertyRoomCandidates";
+import PropertyRoomCardGrid from "@/components/owner/PropertyRoomCardGrid";
+import OwnerCopyRoomButton from "@/components/owner/OwnerCopyRoomButton";
 import PropertyMembersPanel, {
   type PropertyMemberItem,
 } from "@/components/owner/PropertyMembersPanel";
@@ -175,6 +176,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
             <div className="mt-6 flex flex-wrap gap-2">
               <Link href={`/owner/properties/${property.id}/edit`} className="rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 py-2.5 text-sm font-semibold text-[#684324] hover:bg-[#f3e1c9]">Chỉnh sửa tòa nhà</Link>
               <Link href={`/owner/rooms/create?property_id=${property.id}`} className="rounded-xl bg-[#744722] px-4 py-2.5 text-sm font-semibold text-[#fff8eb] hover:bg-[#623817]">+ Tạo phòng</Link>
+              <OwnerCopyRoomButton propertyId={property.id} className="inline-flex items-center gap-2 rounded-xl border border-[#9a704b]/30 bg-[#fffdf8] px-4 py-2.5 text-sm font-semibold text-[#684324] hover:bg-[#f3e1c9]" />
             </div>
           ) : null}
         </div>
@@ -210,22 +212,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
           <div className="flex flex-wrap gap-4 text-xs font-semibold text-[#80634a]"><Legend color="bg-[#2f9e62]" label="Đang trống" /><Legend color="bg-[#cf5252]" label="Đã thuê" /><Legend color="bg-[#d99a35]" label="Sắp trống" /></div>
         </div>
         {rooms.length ? (
-          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            {rooms.map((room) => {
-              const status = room.displayStatus || room.status || "Đang trống";
-              const style = roomStatusStyle(status);
-              
-
-              return <Link key={room.id} href={`/owner/rooms/${room.id}`} className={`group rounded-xl border p-3 transition hover:shadow-sm ${style.card}`}>
-  <div className="flex items-center justify-between gap-2">
-    <p className={`text-sm font-extrabold ${style.title}`}>{room.room_code || "Chưa đặt mã"}</p>
-    {status === "Đã thuê" ? <KeyRound size={14} className="opacity-60" /> : null}
-  </div>
-  <p className="mt-1 truncate text-[11px] text-[#80634a]">{room.room_type || "Chưa phân loại"}{room.price != null ? ` · ${Number(room.price).toLocaleString("vi-VN")}đ` : ""}</p>
-  <p className={`mt-2 text-[11px] font-bold ${style.title}`}>{status}</p>
-</Link>;
-            })}
-          </div>
+          <PropertyRoomCardGrid rooms={rooms} />
         ) : <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 p-6 text-sm text-[#80634a]">Chưa có phòng trong tòa nhà này.</div>}
       </section>
 
@@ -259,12 +246,6 @@ function PropertyStatusBadge({ approvalStatus, lifecycleStatus }: { approvalStat
 function MembershipRoleBadge({ role }: { role: string }) {
   const labels: Record<string, string> = { owner: "Chủ nhà", manager: "Quản lý", viewer: "Chỉ xem" };
   return <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{labels[role] || "Thành viên"}</span>;
-}
-
-function roomStatusStyle(status: string) {
-  if (status === "Đã thuê") return { card: "border-red-200 bg-red-50/80 hover:border-red-300", title: "text-red-700" };
-  if (status === "Sắp trống") return { card: "border-amber-200 bg-amber-50/80 hover:border-amber-300", title: "text-amber-700" };
-  return { card: "border-emerald-200 bg-emerald-50/80 hover:border-emerald-300", title: "text-emerald-700" };
 }
 
 function isVideoUrl(url: string) { return /\.(mp4|webm|mov|m4v)(?:$|\?)/i.test(url) || url.includes("/video/"); }

@@ -2,6 +2,10 @@
 
 import {
   CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
   Edit3,
   ExternalLink,
   GripVertical,
@@ -40,7 +44,9 @@ type Props = {
   height: number;
   onToggle: () => void;
   onResize: (axis: "width" | "height", amount: number) => void;
+  onResizeEnd: () => void;
   onResizeDone: () => void;
+  showDragHandle?: boolean;
   onDragHandlePointerDown: (
     event: React.PointerEvent<HTMLButtonElement>
   ) => void;
@@ -71,10 +77,71 @@ export default function RoomCard({
   height,
   onToggle,
   onResize,
+  onResizeEnd,
   onResizeDone,
+  showDragHandle = true,
   onDragHandlePointerDown,
 }: Props) {
   const cardRef = useRef<HTMLElement | null>(null);
+
+const resizeDragRef = useRef<{
+  axis: "width" | "height";
+  lastX: number;
+  lastY: number;
+} | null>(null);
+
+function startEdgeResize(
+  event: React.PointerEvent<HTMLDivElement>,
+  axis: "width" | "height"
+) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  event.currentTarget.setPointerCapture(event.pointerId);
+
+  resizeDragRef.current = {
+    axis,
+    lastX: event.clientX,
+    lastY: event.clientY,
+  };
+}
+
+function moveEdgeResize(event: React.PointerEvent<HTMLDivElement>) {
+  const currentResize = resizeDragRef.current;
+
+  if (!currentResize) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const amount =
+    currentResize.axis === "width"
+      ? event.clientX - currentResize.lastX
+      : event.clientY - currentResize.lastY;
+
+  // Tránh cập nhật liên tục khi con trỏ chỉ rung nhẹ 1px.
+  if (Math.abs(amount) < 2) return;
+
+  onResize(currentResize.axis, amount);
+
+  resizeDragRef.current = {
+    ...currentResize,
+    lastX: event.clientX,
+    lastY: event.clientY,
+  };
+}
+
+function stopEdgeResize(event: React.PointerEvent<HTMLDivElement>) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
+  resizeDragRef.current = null;
+  onResizeEnd();
+}
 
   const [modalPosition, setModalPosition] = useState<ModalPosition>({
     top: 0,
@@ -369,71 +436,120 @@ export default function RoomCard({
         </button>
 
         {resizeMode ? (
-          <div
-            data-owner-floating="true"
-            className="
-              absolute left-0 top-[calc(100%+6px)] z-30
-              w-[min(230px,calc(100vw-40px))]
-              rounded-xl
-              border border-white/20
-              bg-[linear-gradient(145deg,rgba(91,66,52,0.68),rgba(45,29,21,0.78))]
-              p-2
-              text-[10px] text-[#fff8ef]
-              shadow-[0_18px_45px_rgba(37,20,10,0.42),inset_0_1px_0_rgba(255,255,255,0.18)]
-              backdrop-blur-[22px]
-              backdrop-saturate-150
-            "
-          >
-            <div className="grid grid-cols-[42px_1fr_1fr] items-center gap-1.5">
-              <span className="font-bold text-white/75">Ngang</span>
+  <>
+    {/* Vùng kéo cạnh phải để thay đổi chiều ngang */}
+    <div
+      data-owner-floating="true"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Kéo cạnh phải để thay đổi chiều ngang"
+      title="Kéo cạnh phải để thay đổi chiều ngang"
+      onPointerDown={(event) => startEdgeResize(event, "width")}
+      onPointerMove={moveEdgeResize}
+      onPointerUp={stopEdgeResize}
+      onPointerCancel={stopEdgeResize}
+      className="
+        absolute -right-3 bottom-2 top-2 z-40
+        w-6
+        cursor-ew-resize
+        touch-none
+        select-none
+      "
+    >
+      {/* Hai mũi tên chỉ để mô tả, không trực tiếp nhận thao tác */}
+      <div
+        className="
+          pointer-events-none
+          absolute left-1/2 top-1/2
+          flex -translate-x-1/2 -translate-y-1/2
+          items-center gap-0
+          text-[#744722]/75
+          drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)]
+        "
+      >
+        <ChevronLeft size={13} strokeWidth={1.5} />
+        <ChevronRight size={13} strokeWidth={1.5} />
+      </div>
+    </div>
 
-              <ResizeButton
-                label="Giảm chiều ngang"
-                onClick={() => onResize("width", -20)}
-              >
-                −
-              </ResizeButton>
+    {/* Vùng kéo cạnh dưới để thay đổi chiều cao */}
+    <div
+      data-owner-floating="true"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Kéo cạnh dưới để thay đổi chiều cao"
+      title="Kéo cạnh dưới để thay đổi chiều cao"
+      onPointerDown={(event) => startEdgeResize(event, "height")}
+      onPointerMove={moveEdgeResize}
+      onPointerUp={stopEdgeResize}
+      onPointerCancel={stopEdgeResize}
+      className="
+        absolute -bottom-3 left-2 right-2 z-40
+        h-6
+        cursor-ns-resize
+        touch-none
+        select-none
+      "
+    >
+      {/* Hai mũi tên chỉ để mô tả, không trực tiếp nhận thao tác */}
+      <div
+        className="
+          pointer-events-none
+          absolute left-1/2 top-1/2
+          flex -translate-x-1/2 -translate-y-1/2
+          flex-col items-center gap-0
+          text-[#744722]/75
+          drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)]
+        "
+      >
+        <ChevronUp size={13} strokeWidth={1.5} />
+        <ChevronDown size={13} strokeWidth={1.5} />
+      </div>
+    </div>
 
-              <ResizeButton
-                label="Tăng chiều ngang"
-                onClick={() => onResize("width", 20)}
-              >
-                +
-              </ResizeButton>
+    {/* Kích thước hiện tại */}
+    <span
+      className="
+        pointer-events-none
+        absolute bottom-1.5 left-2 z-30
+        rounded-md
+        bg-white/75
+        px-1.5 py-0.5
+        text-[9px] font-semibold tabular-nums
+        text-[#684324]
+        shadow-sm
+        backdrop-blur-sm
+      "
+    >
+      {width} × {height}px
+    </span>
 
-              <span className="font-bold text-white/75">Dọc</span>
+    {/* Thoát chế độ chỉnh kích thước */}
+    <button
+      type="button"
+      data-interactive="true"
+      onClick={(event) => {
+        event.stopPropagation();
+        onResizeDone();
+      }}
+      className="
+        absolute bottom-1.5 right-2 z-50
+        rounded-md
+        bg-[#744722]
+        px-2 py-1
+        text-[9px] font-bold text-white
+        shadow-sm
+        transition
+        hover:bg-[#633b1d]
+        active:scale-95
+      "
+    >
+      Xong
+    </button>
+  </>
+) : null}
 
-              <ResizeButton
-                label="Giảm chiều dọc"
-                onClick={() => onResize("height", -16)}
-              >
-                −
-              </ResizeButton>
-
-              <ResizeButton
-                label="Tăng chiều dọc"
-                onClick={() => onResize("height", 16)}
-              >
-                +
-              </ResizeButton>
-            </div>
-
-            <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/10 pt-2">
-              <span className="tabular-nums text-white/60">
-                {width} × {height}px
-              </span>
-
-              <button
-                type="button"
-                onClick={onResizeDone}
-                className="h-8 rounded-lg border border-white/15 bg-[#b67845]/80 px-3 font-bold text-white shadow-sm backdrop-blur-lg transition hover:bg-[#c88954] active:scale-95"
-              >
-                Xong
-              </button>
-            </div>
-          </div>
-        ) : null}
-
+        {showDragHandle ? (
         <button
           type="button"
           data-interactive="true"
@@ -445,6 +561,7 @@ export default function RoomCard({
         >
           <GripVertical size={16} />
         </button>
+        ) : null}
       </article>
 
       {detailModal}
@@ -452,26 +569,6 @@ export default function RoomCard({
   );
 }
 
-function ResizeButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="h-8 rounded-lg border border-white/15 bg-white/10 font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-lg transition hover:bg-white/20 active:scale-95"
-    >
-      {children}
-    </button>
-  );
-}
 
 function QuickRow({
   label,

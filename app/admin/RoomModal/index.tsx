@@ -1088,16 +1088,16 @@ const detailSample =
     setRoomForm({
       property_id: base.property_id ?? "",
       room_code: isCloneMode ? "" : "",
-      room_type: isCloneMode ? "" : "",
+      room_type: isCloneMode ? (base.room_type ?? "") : "",
 
       house_number: base.house_number ?? "",
       address: base.address ?? "",
       ward: base.ward ?? "",
       district: base.district ?? "",
 
-      price: 0,
+      price: isCloneMode ? Number(base.price ?? 0) : 0,
       status: "Đang trống",
-      description: "",
+      description: isCloneMode ? (base.description ?? "") : "",
 
       link_zalo: base.link_zalo ?? "",
       google_maps_url: base.google_maps_url ?? "",

@@ -146,7 +146,7 @@ async function copyText(
   }
 }
 
-export default function VipLinkManager() {
+export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSProperties }) {
   const [
     open,
     setOpen,
@@ -617,9 +617,7 @@ export default function VipLinkManager() {
         onClick={
           openManager
         }
-        style={
-          openButton
-        }
+        style={{ ...openButton, ...buttonStyle }}
       >
         🔗 Tạo link VIP
       </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import PendingRoomMediaPreview from "@/components/owner/PendingRoomMediaPreview";
@@ -21,6 +21,11 @@ type RoomMedia = {
   url?: string;
   is_cover?: boolean;
   sort_order?: number;
+};
+
+type DeleteMediaResult = {
+  deleted_media_id: string;
+  replacement_cover_id?: string | null;
 };
 
 type EditableRoom = {
@@ -59,38 +64,100 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [uploadStatus, setUploadStatus] =
     useState<RoomMediaUploadProgress | null>(null);
   const [activeTab, setActiveTab] = useState<"info" | "amenities" | "fees">("info");
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  function showToast(message: string) {
+    setToastMessage(message);
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2200);
+  }
 
   function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files ?? []);
     setErrorMessage(null);
 
     try {
-      validateRoomMediaFiles(selected);
-      setFiles(selected);
+      const combined = [...files, ...selected];
+      validateRoomMediaFiles(combined);
+      setFiles(combined);
     } catch (error) {
-      setFiles([]);
-      event.target.value = "";
       setErrorMessage(
         error instanceof Error ? error.message : "Danh sách media không hợp lệ",
       );
+    } finally {
+      // Cho phép chọn lại cùng một file sau khi đã xóa file đó khỏi preview.
+      event.target.value = "";
     }
   }
 
-  async function deleteExistingMedia(media: RoomMedia) {
-    if (!media.id || !window.confirm("Xóa ảnh/video này khỏi phòng?")) return;
-    setLoading(true);
+  function deleteExistingMedia(media: RoomMedia) {
+    if (!media.id) return;
+
+    const mediaId = media.id;
+    const removedIndex = currentMedia.findIndex((item) => item.id === mediaId);
     setErrorMessage(null);
-    try {
-      await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/media/${media.id}`, { method: "DELETE" }));
-      setCurrentMedia((items) => items.filter((item) => item.id !== media.id));
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Không thể xóa media");
-    } finally {
-      setLoading(false);
-    }
+
+    // Ẩn ngay trên UI; việc xóa DB và R2 tiếp tục chạy nền.
+    setCurrentMedia((items) => {
+      const remaining = items.filter((item) => item.id !== mediaId);
+      if (!media.is_cover) return remaining;
+
+      const replacementIndex = remaining.findIndex((item) => item.type === "image");
+      return remaining.map((item, index) => ({
+        ...item,
+        is_cover: index === replacementIndex,
+      }));
+    });
+
+    void (async () => {
+      try {
+        const result = await readApiResponse<DeleteMediaResult>(
+          await fetch(`/api/owner/rooms/${room.id}/media/${mediaId}`, {
+            method: "DELETE",
+          }),
+        );
+
+        if (result.replacement_cover_id) {
+          setCurrentMedia((items) =>
+            items.map((item) => ({
+              ...item,
+              is_cover: item.id === result.replacement_cover_id,
+            })),
+          );
+        }
+        showToast("Đã xóa media");
+      } catch (error) {
+        // Khôi phục đúng vị trí nếu API xóa thất bại.
+        setCurrentMedia((items) => {
+          if (items.some((item) => item.id === mediaId)) return items;
+          const restored = [...items];
+          restored.splice(Math.max(0, Math.min(removedIndex, restored.length)), 0, media);
+          return media.is_cover
+            ? restored.map((item) => ({ ...item, is_cover: item.id === mediaId }))
+            : restored;
+        });
+        setErrorMessage(
+          error instanceof Error ? error.message : "Không thể xóa media",
+        );
+      }
+    })();
   }
 
   function reorderExistingMedia(targetIndex:number){
@@ -486,6 +553,15 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
           className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
           {errorMessage}
+        </div>
+      ) : null}
+
+      {toastMessage ? (
+        <div
+          role="status"
+          className="fixed bottom-5 right-5 z-[100] rounded-xl bg-[#432918] px-4 py-3 text-sm font-semibold text-white shadow-xl"
+        >
+          {toastMessage}
         </div>
       ) : null}
 
