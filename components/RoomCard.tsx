@@ -34,6 +34,7 @@ type Room = {
   owner_id?: string | null;
   link_zalo?: string | null;
   zalo_phone?: string | null;
+  google_maps_url?: string | null;
 
   creator_admin_phone?: string | null;
   creator_admin_name?: string | null;
@@ -48,6 +49,63 @@ type RoomCardProps = {
   index?: number;
   onNavigate: (href: string) => void;
 };
+
+function ToolbarButton({
+  label,
+  title,
+  icon,
+  disabled = false,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  icon: React.ReactNode;
+  disabled?: boolean;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-disabled={disabled}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!disabled) onClick(event);
+      }}
+      className={`inline-flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap px-2 text-[11px] font-semibold text-white transition ${
+        disabled
+          ? "cursor-not-allowed opacity-45"
+          : "hover:text-white/75 active:scale-[0.97]"
+      }`}
+    >
+      <span className="grid h-4 w-4 shrink-0 place-items-center">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.1 15.4 17" />
+      <path d="M15.4 7 8.6 10.9" />
+    </svg>
+  );
+}
+
+function MapPinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
 
 function publicHouseNumber(value?: string | null) {
   const s = String(value || "").trim();
@@ -71,6 +129,35 @@ function publicHouseNumber(value?: string | null) {
   }
 
   return "...";
+}
+
+function firstExternalUrl(value?: string | null) {
+  const match = String(value ?? "").match(/https?:\/\/[^\s,;]+/i)?.[0];
+  if (!match) return "";
+  try {
+    const url = new URL(match);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function googleMapsUrl(value?: string | null) {
+  const raw = String(value ?? "").trim();
+  const candidate = /^https?:\/\//i.test(raw) ? raw : raw ? `https://${raw}` : "";
+  if (!candidate) return "";
+  try {
+    const url = new URL(candidate);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    return host === "maps.app.goo.gl" ||
+      host === "goo.gl" ||
+      host === "google.com" ||
+      host.endsWith(".google.com")
+      ? url.toString()
+      : "";
+  } catch {
+    return "";
+  }
 }
 
 function formatTimeAgo(value?: string | null) {
@@ -525,6 +612,58 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
 
   const level = Number(adminLevel) || 0;
   const isAdmin = level === 1 || level === 2;
+  const zaloToolbarUrl = isAdmin ? firstExternalUrl(room.link_zalo) : "";
+  const mapsToolbarUrl = googleMapsUrl(room.google_maps_url);
+  const toolbarDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startScrollLeft: number;
+    dragged: boolean;
+  } | null>(null);
+  const suppressToolbarClickUntil = useRef(0);
+
+  function startToolbarDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    toolbarDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: event.currentTarget.scrollLeft,
+      dragged: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.style.cursor = "grabbing";
+  }
+
+  function moveToolbarDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = toolbarDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    if (!drag.dragged && Math.abs(deltaX) < 4) return;
+    drag.dragged = true;
+    event.preventDefault();
+    event.currentTarget.scrollLeft = drag.startScrollLeft - deltaX;
+  }
+
+  function finishToolbarDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = toolbarDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.dragged) suppressToolbarClickUntil.current = Date.now() + 150;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    event.currentTarget.style.cursor = "grab";
+    toolbarDragRef.current = null;
+  }
+
+  function openToolbarUrl(
+    event: React.MouseEvent<HTMLButtonElement>,
+    url: string,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 
   const href = `/rooms/${room.id}?modal=1`;
 
@@ -1035,11 +1174,9 @@ return (
         </div>
       </div>
 
-      {/* ADDRESS + DESCRIPTION + SHARE */}
+      {/* ADDRESS + DESCRIPTION + TOOLBAR */}
       <div className="px-3 pb-3">
-        <div className="flex items-end gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-white font-semibold leading-6 line-clamp-2 drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+        <p className="line-clamp-2 font-semibold leading-6 text-white drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
               📍{adminLevel === 1 || adminLevel === 2
                 ? room.house_number
                   ? `${room.house_number} `
@@ -1083,63 +1220,70 @@ return (
                   </svg>
                 )}
               </button>
-            </p>
+        </p>
 
-            {room.description && (
-         <div
-            className="
-              mt-1 max-w-full truncate
-              text-[14px] font-semibold leading-5
-              text-red-400
-            "
-            title={String(room.description).trim()}
-          >
-            {String(room.description).split(/\r?\n/)[0]?.trim()}
-            {String(room.description).includes("\n") ? "..." : ""}
+        <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(132px,48%)] items-center gap-2">
+          <div className="min-w-0 overflow-hidden">
+            {room.description ? (
+              <div
+                className="max-w-full truncate text-[14px] font-semibold leading-5 text-red-400"
+                title={String(room.description).trim()}
+              >
+                {String(room.description).split(/\r?\n/)[0]?.trim()}
+                {String(room.description).includes("\n") ? "..." : ""}
+              </div>
+            ) : null}
           </div>
-        )}
-         </div>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-
-              if (safeAdminLevel === 1 || safeAdminLevel === 2) {
-                openAdminShareModal(e);
-                return;
+          <div
+            className="min-w-0 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            onPointerDown={startToolbarDrag}
+            onPointerMove={moveToolbarDrag}
+            onPointerUp={finishToolbarDrag}
+            onPointerCancel={finishToolbarDrag}
+            onClickCapture={(event) => {
+              if (Date.now() < suppressToolbarClickUntil.current) {
+                event.preventDefault();
+                event.stopPropagation();
               }
-
-              handleShareRoom(e);
-
             }}
-            className="
-              shrink-0 inline-flex h-10 w-10 items-center justify-center
-              rounded-full border border-white/20
-              bg-black/35 backdrop-blur-[10px]
-              shadow-[0_8px_24px_rgba(0,0,0,0.35)]
-              hover:bg-black/80 transition
-            "
-            title="Chia sẻ"
-            aria-label="Chia sẻ"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-6 w-6 text-white"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <path d="M8.6 13.1 15.4 17" />
-              <path d="M15.4 7 8.6 10.9" />
-            </svg>
-          </button>
+            <div className="flex w-max min-w-full justify-end gap-0.5">
+              <ToolbarButton
+                label="Share"
+                title="Chia sẻ phòng"
+                onClick={(event) => {
+                  if (safeAdminLevel === 1 || safeAdminLevel === 2) {
+                    void openAdminShareModal(event);
+                    return;
+                  }
+                  void handleShareRoom(event);
+                }}
+                icon={<ShareIcon />}
+              />
+              <ToolbarButton
+                label="Zalo"
+                title={zaloToolbarUrl ? "Mở Zalo" : "Phòng chưa có link Zalo"}
+                disabled={!zaloToolbarUrl}
+                onClick={(event) => openToolbarUrl(event, zaloToolbarUrl)}
+                icon={
+                  <span className="grid h-4 w-4 place-items-center rounded-full border border-white/60 text-[9px] font-black leading-none">
+                    Z
+                  </span>
+                }
+              />
+              <ToolbarButton
+                label="GG Maps"
+                title={mapsToolbarUrl ? "Mở vị trí trong Google Maps" : "Phòng chưa có link Google Maps"}
+                disabled={!mapsToolbarUrl}
+                onClick={(event) => openToolbarUrl(event, mapsToolbarUrl)}
+                icon={<MapPinIcon />}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
