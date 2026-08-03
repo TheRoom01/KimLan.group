@@ -9,6 +9,9 @@ type PropertySuggestion = {
   ward?: string | null;
   district?: string | null;
   city?: string | null;
+  has_owner?: boolean;
+  pending_role?: "owner" | "manager" | null;
+  match_source?: "property" | "room" | null;
 };
 
 export async function GET() {
@@ -50,13 +53,18 @@ export async function GET() {
         message: [property.house_number, property.address, property.ward, property.district, property.city].filter(Boolean).join(", "),
         reference_id: property.id,
         reference_type: "property_phone_suggestion",
-        is_read: true,
-        created_at: new Date(0).toISOString(),
+        is_read: false,
+        created_at: new Date().toISOString(),
+        metadata: {
+          has_owner: property.has_owner === true,
+          pending_role: property.pending_role ?? null,
+          match_source: property.match_source ?? null,
+        },
       }));
 
     return apiSuccess({
       notifications: [...(notificationsResult.data ?? []), ...suggestionNotifications],
-      unread_count: unreadResult.count ?? 0,
+      unread_count: (unreadResult.count ?? 0) + suggestionNotifications.length,
     });
   } catch (error) {
     return mapUnknownError(error);

@@ -404,6 +404,11 @@ export type CreateOwnerRoomInput = {
 
   google_maps_url: string | null;
 
+  house_number: string | null;
+  address: string | null;
+  ward: string | null;
+  district: string | null;
+
 
   room_details: JsonObject | null;
 
@@ -478,6 +483,11 @@ export function parseCreateOwnerRoomInput(
       "Link Google Maps",
       2000,
     ),
+
+    house_number: parseOptionalString(body.house_number, "Số nhà", 300),
+    address: parseOptionalString(body.address, "Địa chỉ", 1000),
+    ward: parseOptionalString(body.ward, "Phường / xã", 300),
+    district: parseOptionalString(body.district, "Quận / huyện", 300),
 
 
     room_details:

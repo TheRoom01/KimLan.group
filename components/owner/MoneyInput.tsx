@@ -36,10 +36,19 @@ export default function MoneyInput({
   const [internalValue, setInternalValue] = useState(() => toAmount(defaultValue));
   const amount = controlled ? toAmount(value) : internalValue;
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const hiddenInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (controlled) setInternalValue(toAmount(value));
-  }, [controlled, value]);
+    const input = hiddenInputRef.current;
+    if (!input || controlled) return;
+    const syncExternalValue = () => {
+      const next = toAmount(input.value);
+      setInternalValue(next);
+      onValueChange?.(next);
+    };
+    input.addEventListener("change", syncExternalValue);
+    return () => input.removeEventListener("change", syncExternalValue);
+  }, [controlled, onValueChange]);
 
   const restoreCaret = (digitPosition: number) => {
     window.requestAnimationFrame(() => {
@@ -60,7 +69,7 @@ export default function MoneyInput({
 
   return (
     <div className="relative min-w-0">
-      {name ? <input type="hidden" name={name} value={amount || ""} /> : null}
+      {name ? <input ref={hiddenInputRef} type="hidden" name={name} value={amount || ""} readOnly /> : null}
       <input
         ref={inputRef}
         id={id}

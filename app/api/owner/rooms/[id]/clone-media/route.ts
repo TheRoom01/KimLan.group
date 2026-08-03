@@ -10,8 +10,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const sourceId = parseUuid(String(body.source_room_id ?? ""), "source_room_id");
     const targetAuth = await authorizeRoomMutation(targetId);
     if (!targetAuth.allowed) return apiError(targetAuth.error, "Bạn không có quyền cập nhật phòng đích", targetAuth.status);
-    const sourceAuth = await authorizeRoomMutation(sourceId);
-    if (!sourceAuth.allowed) return apiError(sourceAuth.error, "Bạn không có quyền sao chép phòng nguồn", sourceAuth.status);
+    const { data: canManageSource, error: sourcePermissionError } = await targetAuth.supabase
+      .rpc("can_manage_room", { p_room_id: sourceId });
+    if (sourcePermissionError) return mapDatabaseError(sourcePermissionError);
+    if (canManageSource !== true) return apiError("FORBIDDEN", "Bạn không có quyền sao chép phòng nguồn", 403);
 
     const { data: rooms, error: roomsError } = await targetAuth.supabase
       .from("rooms").select("id, property_id").in("id", [sourceId, targetId]);
@@ -34,7 +36,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data: media, error: mediaError } = await mediaQuery;
     if (mediaError) return mapDatabaseError(mediaError);
     if (!media?.length) return apiSuccess([]);
-    const rows = media.map(({ id: _id, ...item }) => ({ ...item, room_id: targetId }));
+    const rows = media.map((item) => ({
+      room_id: targetId,
+      type: item.type,
+      provider: item.provider,
+      url: item.url,
+      path: item.path,
+      is_cover: item.is_cover,
+      sort_order: item.sort_order,
+    }));
     const { data, error } = await targetAuth.supabase.from("room_media").insert(rows)
       .select("id, room_id, type, provider, url, path, is_cover, sort_order, created_at");
     if (error) return mapDatabaseError(error);

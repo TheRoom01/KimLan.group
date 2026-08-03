@@ -10,6 +10,12 @@ import MoneyInput from "@/components/owner/MoneyInput";
 
 import { readApiResponse } from "@/lib/api/client";
 import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
+import { isUploadImage, isUploadVideo } from "@/lib/media/uploadFileType";
+import {
+  uploadRoomMediaFiles,
+  validateRoomMediaFiles,
+  type RoomMediaUploadProgress,
+} from "@/lib/owner/uploadRoomMedia";
 
 type CreateRoomResult = {
   mode?: "created" | "existing";
@@ -25,25 +31,16 @@ type CreateRoomResult = {
   details_saved?: boolean;
 };
 
-type PresignResult = {
-  key: string;
-  publicUrl: string;
-  uploadUrl: string;
-  requiredHeaders?: Record<string, string>;
-  type: "image" | "video";
-};
-
-type UploadStatus = {
-  current: number;
-  total: number;
-  fileName: string;
+type CopiedMedia = {
+  id?: string;
+  type?: "image" | "video";
+  url?: string;
+  is_cover?: boolean;
+  sort_order?: number;
 };
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-[#aa825d]/35 bg-white px-3 py-2 text-sm outline-none transition focus:border-[#744722] focus:ring-2 focus:ring-[#aa825d]/20";
-const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
-const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
-const MAX_FILES = 20;
 
 export default function CreateRoomForm({
   propertyId,
@@ -59,18 +56,18 @@ export default function CreateRoomForm({
   const detailDefaults = defaults.room_details ?? {};
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
-  const [copiedMedia, setCopiedMedia] = useState<any[]>(
+  const [copiedMedia, setCopiedMedia] = useState<CopiedMedia[]>(
     copySourceRoomId && Array.isArray(defaults.media) ? defaults.media : [],
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<RoomMediaUploadProgress | null>(null);
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"info" | "amenities" | "fees">("info");
 
   const fileSummary = useMemo(() => {
-    const images = files.filter((file) => file.type.startsWith("image/")).length;
-    const videos = files.filter((file) => file.type.startsWith("video/")).length;
+    const images = files.filter(isUploadImage).length;
+    const videos = files.filter(isUploadVideo).length;
     return `${images} ảnh, ${videos} video`;
   }, [files]);
 
@@ -78,40 +75,15 @@ export default function CreateRoomForm({
     const selected = Array.from(event.target.files ?? []);
     setError(null);
 
-    if (selected.length > MAX_FILES) {
+    try {
+      validateRoomMediaFiles(selected);
+      setFiles(selected);
+    } catch (validationError) {
       setFiles([]);
-      setError(`Chỉ được chọn tối đa ${MAX_FILES} file mỗi phòng`);
+      setError(validationError instanceof Error ? validationError.message : "Media không hợp lệ");
+    } finally {
       event.target.value = "";
-      return;
     }
-
-    for (const file of selected) {
-      const isImage = file.type.startsWith("image/");
-      const isVideo = file.type.startsWith("video/");
-
-      if (!isImage && !isVideo) {
-        setFiles([]);
-        setError(`File ${file.name} không phải ảnh hoặc video`);
-        event.target.value = "";
-        return;
-      }
-
-      if (isVideo && file.size > MAX_VIDEO_BYTES) {
-        setFiles([]);
-        setError(`Video ${file.name} vượt giới hạn 50 MB`);
-        event.target.value = "";
-        return;
-      }
-
-      if (isImage && file.size > MAX_IMAGE_BYTES) {
-        setFiles([]);
-        setError(`Ảnh ${file.name} vượt giới hạn 15 MB`);
-        event.target.value = "";
-        return;
-      }
-    }
-
-    setFiles(selected);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -202,15 +174,6 @@ export default function CreateRoomForm({
         );
       }
      
-     if (createResult.mode === "existing") {
-
-        router.push(
-          `/owner/rooms/${roomId}/edit`
-        );
-
-        return;
-      }
-
       setCreatedRoomId(roomId);
 
       if (copySourceRoomId) {
@@ -225,41 +188,14 @@ export default function CreateRoomForm({
         await readApiResponse(response);
       }
 
-      let firstImageAssigned = false;
-
-      for (const [index, file] of files.entries()) {
-        setUploadStatus({
-          current: index + 1,
-          total: files.length,
-          fileName: file.name,
+      if (files.length > 0) {
+        await uploadRoomMediaFiles({
+          roomId,
+          files,
+          startSortOrder: copiedMedia.length,
+          coverAlreadyExists: copiedMedia.some((item) => item.type === "image"),
+          onProgress: setUploadStatus,
         });
-
-        const presign = await createPresignedUpload(roomId, file);
-        await uploadToR2(file, presign);
-
-        const isCover = presign.type === "image" && !firstImageAssigned;
-        if (isCover) firstImageAssigned = true;
-
-        const mediaResponse = await fetch(`/api/owner/rooms/${roomId}/media`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            items: [
-              {
-                type: presign.type,
-                provider: "r2",
-                url: presign.publicUrl,
-                path: presign.key,
-                is_cover: isCover,
-                sort_order: index,
-              },
-            ],
-          }),
-        });
-
-      await readApiResponse(mediaResponse);
       }
 
       /**
@@ -569,58 +505,6 @@ export default function CreateRoomForm({
       </div>
     </form>
   );
-}
-
-async function createPresignedUpload(
-  roomId: string,
-  file: File,
-): Promise<PresignResult> {
-  const response = await fetch("/api/upload/r2-presign", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      room_id: roomId,
-      file_name: file.name,
-      content_type: file.type,
-      size: file.size,
-    }),
-  });
-
-  const payload = (await response.json().catch(() => null)) as
-    | PresignResult
-    | { error?: string }
-    | null;
-
-  if (!response.ok || !payload || !("uploadUrl" in payload)) {
-    throw new Error(
-      payload && "error" in payload && payload.error
-        ? payload.error
-        : `Không thể tạo URL upload cho ${file.name}`,
-    );
-  }
-
-  return payload;
-}
-
-async function uploadToR2(file: File, presign: PresignResult) {
-  const response = await fetch(presign.uploadUrl, {
-    method: "PUT",
-    headers: presign.requiredHeaders ?? {
-      "Content-Type": file.type,
-    },
-    body: file,
-  });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `Upload ${file.name} lên R2 thất bại (${response.status})${
-        detail ? `: ${detail.slice(0, 200)}` : ""
-      }`,
-    );
-  }
 }
 
 function Section({

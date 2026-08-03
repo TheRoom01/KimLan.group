@@ -1,4 +1,5 @@
 import { readApiResponse } from "@/lib/api/client";
+import { mapWithConcurrency, resolveUploadContentType } from "@/lib/media/uploadFileType";
 
 export const MAX_ROOM_VIDEO_BYTES = 50 * 1024 * 1024;
 export const MAX_ROOM_IMAGE_BYTES = 15 * 1024 * 1024;
@@ -24,8 +25,9 @@ export function validateRoomMediaFiles(files: File[]) {
   }
 
   for (const file of files) {
-    const isImage = file.type.startsWith("image/");
-    const isVideo = file.type.startsWith("video/");
+    const contentType = resolveUploadContentType(file);
+    const isImage = contentType.startsWith("image/");
+    const isVideo = contentType.startsWith("video/");
 
     if (!isImage && !isVideo) {
       throw new Error(`File ${file.name} không phải ảnh hoặc video`);
@@ -56,54 +58,53 @@ export async function uploadRoomMediaFiles({
 }) {
   validateRoomMediaFiles(files);
 
+  const prepared = await mapWithConcurrency(
+    files,
+    4,
+    async (file, index) => ({
+      file,
+      index,
+      presign: await createPresignedUpload(roomId, file),
+    }),
+  );
+
+  let completed = 0;
+  await mapWithConcurrency(
+    prepared,
+    3,
+    async ({ file, presign }) => {
+      await uploadToR2(file, presign);
+      completed += 1;
+      onProgress?.({
+        current: completed,
+        total: files.length,
+        fileName: file.name,
+      });
+    },
+  );
+
   let coverAssigned = coverAlreadyExists;
-  const uploaded: Array<{
-    type: "image" | "video";
-    url: string;
-    path: string;
-  }> = [];
-
-  for (const [index, file] of files.entries()) {
-    onProgress?.({
-      current: index + 1,
-      total: files.length,
-      fileName: file.name,
-    });
-
-    const presign = await createPresignedUpload(roomId, file);
-    await uploadToR2(file, presign);
-
+  const rows = prepared.map(({ presign, index }) => {
     const isCover = presign.type === "image" && !coverAssigned;
     if (isCover) coverAssigned = true;
-
-    const mediaResponse = await fetch(`/api/owner/rooms/${roomId}/media`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        items: [
-          {
-            type: presign.type,
-            provider: "r2",
-            url: presign.publicUrl,
-            path: presign.key,
-            is_cover: isCover,
-            sort_order: startSortOrder + index,
-          },
-        ],
-      }),
-    });
-
-    await readApiResponse<unknown>(mediaResponse);
-    uploaded.push({
+    return {
       type: presign.type,
+      provider: "r2" as const,
       url: presign.publicUrl,
       path: presign.key,
-    });
-  }
+      is_cover: isCover,
+      sort_order: startSortOrder + index,
+    };
+  });
 
-  return uploaded;
+  const mediaResponse = await fetch(`/api/owner/rooms/${roomId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items: rows }),
+  });
+  await readApiResponse<unknown>(mediaResponse);
+
+  return rows.map(({ type, url, path }) => ({ type, url, path }));
 }
 
 async function createPresignedUpload(
@@ -118,7 +119,7 @@ async function createPresignedUpload(
     body: JSON.stringify({
       room_id: roomId,
       file_name: file.name,
-      content_type: file.type,
+      content_type: resolveUploadContentType(file),
       size: file.size,
     }),
   });
@@ -143,7 +144,7 @@ async function uploadToR2(file: File, presign: PresignResult) {
   const response = await fetch(presign.uploadUrl, {
     method: "PUT",
     headers: presign.requiredHeaders ?? {
-      "Content-Type": file.type,
+      "Content-Type": resolveUploadContentType(file),
     },
     body: file,
   });

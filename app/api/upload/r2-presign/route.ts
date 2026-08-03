@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveUploadContentType } from "@/lib/media/uploadFileType";
 
 export const runtime = "nodejs";
 
@@ -51,7 +52,10 @@ export async function POST(request: Request) {
     const tenantSide = String(body?.tenant_side || "").trim();
     const fixedName = String(body?.fixed_name || "").trim();
     const fileName = String(body?.file_name || "").trim();
-    const contentType = String(body?.content_type || "").trim();
+    const contentType = resolveUploadContentType({
+      name: fileName,
+      type: String(body?.content_type || ""),
+    });
     const size = Number(body?.size || 0);
 
     if (

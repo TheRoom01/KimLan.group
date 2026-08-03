@@ -3,6 +3,7 @@
 import { ImageIcon, Loader2, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { readApiResponse } from "@/lib/api/client";
+import { mapWithConcurrency, resolveUploadContentType } from "@/lib/media/uploadFileType";
 
 type Media = { key: string; url: string; size: number; updated_at?: string | null };
 type Presign = { key: string; uploadUrl: string; requiredHeaders: Record<string, string> };
@@ -60,7 +61,7 @@ export default function ContractImagesManager({ contractId }: { contractId: stri
     setDragging(false); setModalError(null);
     if (!files.length) return;
     if (items.length + pending.length + files.length > MAX_FILES) return setModalError(`Mỗi hợp đồng tối đa ${MAX_FILES} ảnh.`);
-    const invalid = files.find((file) => !file.type.startsWith("image/") || file.size > MAX_BYTES);
+    const invalid = files.find((file) => !resolveUploadContentType(file).startsWith("image/") || file.size > MAX_BYTES);
     if (invalid) return setModalError(`Ảnh ${invalid.name} không hợp lệ hoặc vượt quá 15 MB.`);
     setPending((current) => [...current, ...files.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
     if (input.current) input.current.value = "";
@@ -77,14 +78,17 @@ export default function ContractImagesManager({ contractId }: { contractId: stri
     if (!pending.length) return setModalError("Hãy chọn ít nhất một ảnh hợp đồng.");
     setUploading(true); setModalError(null);
     try {
-      for (const { file } of pending) {
-        const presign = await readApiResponse<Presign>(await fetch(`/api/owner/contracts/${contractId}/media`, {
+      const prepared = await mapWithConcurrency(pending, 4, async ({ file }) => ({
+        file,
+        presign: await readApiResponse<Presign>(await fetch(`/api/owner/contracts/${contractId}/media`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file_name: file.name, content_type: file.type, size: file.size }),
-        }));
+          body: JSON.stringify({ file_name: file.name, content_type: resolveUploadContentType(file), size: file.size }),
+        })),
+      }));
+      await mapWithConcurrency(prepared, 3, async ({ file, presign }) => {
         const uploaded = await fetch(presign.uploadUrl, { method: "PUT", headers: presign.requiredHeaders, body: file });
         if (!uploaded.ok) throw new Error(`Không thể upload ${file.name}`);
-      }
+      });
       const count = pending.length;
       pending.forEach((item) => URL.revokeObjectURL(item.preview));
       setPending([]); setOpen(false); setMessage(`Đã tải lên ${count} ảnh hợp đồng.`);

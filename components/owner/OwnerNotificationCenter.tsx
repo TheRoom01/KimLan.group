@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Building2, FileText, Trash2 } from "lucide-react";
+import { Bell, Building2, FileText, KeyRound, Loader2, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -16,6 +16,17 @@ type NotificationItem = {
   reference_type?: string | null;
   is_read: boolean;
   created_at: string;
+  metadata?: {
+    has_owner?: boolean;
+    pending_role?: "owner" | "manager" | null;
+    match_source?: "property" | "room" | null;
+  } | null;
+};
+
+type AccessRequestResult = {
+  mode?: "access_granted" | "request_pending" | "already_member";
+  property_id?: string;
+  role?: "owner" | "manager";
 };
 
 type NotificationResult = {
@@ -30,6 +41,9 @@ export default function OwnerNotificationCenter() {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [accessSuggestion, setAccessSuggestion] = useState<NotificationItem | null>(null);
+  const [requestingRole, setRequestingRole] = useState<"owner" | "manager" | null>(null);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -58,6 +72,13 @@ export default function OwnerNotificationCenter() {
   }, [open]);
 
   async function openNotification(item: NotificationItem) {
+    if (item.reference_type === "property_phone_suggestion") {
+      setOpen(false);
+      setAccessError(null);
+      setAccessSuggestion(item);
+      return;
+    }
+
     if (!item.is_read) {
       try {
         await readApiResponse(await fetch(`/api/owner/notifications/${item.id}`, { method: "PATCH" }));
@@ -71,6 +92,33 @@ export default function OwnerNotificationCenter() {
     setOpen(false);
     const destination = notificationHref(item);
     if (destination) router.push(destination);
+  }
+
+  async function requestPropertyAccess(role: "owner" | "manager") {
+    const propertyId = accessSuggestion?.reference_id;
+    if (!propertyId) return;
+    setRequestingRole(role);
+    setAccessError(null);
+    try {
+      const result = await readApiResponse<AccessRequestResult>(await fetch("/api/owner/property-access-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_id: propertyId, role }),
+      }));
+      setNotifications((current) => current.filter((item) => item.id !== accessSuggestion.id));
+      setUnreadCount((current) => Math.max(0, current - 1));
+      setAccessSuggestion(null);
+      router.refresh();
+      if (result.mode === "access_granted" || result.mode === "already_member") {
+        router.push(`/owner/properties/${propertyId}`);
+      } else {
+        window.alert("Đã gửi yêu cầu. Chủ tòa nhà hiện tại sẽ nhận được thông báo để phê duyệt.");
+      }
+    } catch (error) {
+      setAccessError(error instanceof Error ? error.message : "Không thể gửi yêu cầu nhận quyền");
+    } finally {
+      setRequestingRole(null);
+    }
   }
 
   async function deleteNotification(item: NotificationItem) {
@@ -107,6 +155,39 @@ export default function OwnerNotificationCenter() {
           </div>
         </section>
       ) : null}
+
+      {accessSuggestion ? (
+        <div className="fixed inset-0 z-[400] grid place-items-center bg-black/45 p-4 backdrop-blur-sm" onMouseDown={() => { if (!requestingRole) setAccessSuggestion(null); }}>
+          <section className="w-full max-w-md rounded-3xl border border-white/35 bg-[#fff9ef] p-5 text-[#432918] shadow-2xl" onMouseDown={(event) => event.stopPropagation()} aria-label="Xác nhận quyền tòa nhà">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#744722] text-white"><KeyRound size={20} /></span>
+                <h2 className="mt-4 text-lg font-black">Nhận quyền tòa nhà</h2>
+                <p className="mt-2 text-sm leading-6 text-[#80634a]">Số điện thoại đã xác minh của bạn trùng với thông tin Zalo tại:</p>
+                <p className="mt-1 font-bold text-[#4d3422]">{accessSuggestion.message}</p>
+              </div>
+              <button type="button" aria-label="Đóng" disabled={Boolean(requestingRole)} onClick={() => setAccessSuggestion(null)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl hover:bg-[#f3e1c9] disabled:opacity-50"><X size={18} /></button>
+            </div>
+
+            {accessSuggestion.metadata?.has_owner ? (
+              <p className="mt-4 rounded-xl border border-[#d8bd99] bg-[#f8ead7] p-3 text-xs leading-5 text-[#74583e]">Tòa nhà đã có chủ. Yêu cầu của bạn sẽ được gửi đến chủ hiện tại để xác nhận.</p>
+            ) : (
+              <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">Tòa nhà chưa có chủ sở hữu. Quyền bạn chọn sẽ được kích hoạt sau khi xác minh số điện thoại.</p>
+            )}
+
+            {accessError ? <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{accessError}</p> : null}
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={Boolean(requestingRole)} onClick={() => void requestPropertyAccess("manager")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#9a704b]/30 bg-white px-3 text-sm font-bold text-[#684324] hover:bg-[#f3e1c9] disabled:opacity-50">
+                {requestingRole === "manager" ? <Loader2 size={16} className="animate-spin" /> : <Building2 size={16} />} Quản lý
+              </button>
+              <button type="button" disabled={Boolean(requestingRole)} onClick={() => void requestPropertyAccess("owner")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#744722] px-3 text-sm font-bold text-white hover:bg-[#623817] disabled:opacity-50">
+                {requestingRole === "owner" ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />} Chủ nhà
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -115,7 +196,11 @@ function NotificationRow({ item, onOpen, onDelete }: { item: NotificationItem; o
   const [offset, setOffset] = useState(0);
   const startX = useRef<number | null>(null);
   const dragged = useRef(false);
-  const Icon = item.reference_type === "property_join_request" ? Building2 : FileText;
+  const Icon = item.reference_type === "property_phone_suggestion"
+    ? KeyRound
+    : item.reference_type === "property_join_request"
+      ? Building2
+      : FileText;
 
   return <div className="relative overflow-hidden border-b border-[#aa825d]/15 bg-red-700 text-white">
     <div className="absolute inset-y-0 left-0 flex w-24 items-center justify-center gap-1 text-xs font-bold"><Trash2 size={16} /> Xóa</div>
@@ -130,8 +215,8 @@ function notificationHref(item: NotificationItem) {
   if (item.reference_type === "property_join_request" && item.reference_id) {
     return `/owner/properties?request=${encodeURIComponent(item.reference_id)}`;
   }
-  if (item.reference_type === "property_phone_suggestion" && item.reference_id) {
-    return `/owner/properties/create?property_id=${encodeURIComponent(item.reference_id)}`;
+  if (item.reference_type === "property" && item.reference_id) {
+    return `/owner/properties/${encodeURIComponent(item.reference_id)}`;
   }
   return null;
 }

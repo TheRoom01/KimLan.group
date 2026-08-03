@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { parseUuid } from "@/lib/api/validation";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveUploadContentType } from "@/lib/media/uploadFileType";
 
 export const runtime = "nodejs";
 const BUCKET = process.env.R2_BUCKET || "rooms-media";
@@ -59,7 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!(await authorize(contractId))) return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message: "Bạn không có quyền tải ảnh hợp đồng" } }, { status: 403 });
     const body = await request.json() as Record<string, unknown>;
     const name = String(body.file_name ?? "").trim();
-    const contentType = String(body.content_type ?? "").trim();
+    const contentType = resolveUploadContentType({ name, type: String(body.content_type ?? "") });
     const size = Number(body.size ?? 0);
     if (!name || !contentType.startsWith("image/") || !Number.isFinite(size) || size <= 0 || size > MAX_BYTES) {
       return NextResponse.json({ ok: false, error: { code: "INVALID_INPUT", message: "Chỉ nhận file ảnh tối đa 15 MB" } }, { status: 400 });

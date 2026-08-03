@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import CreateRoomForm from "@/components/owner/CreateRoomForm";
 import RoomDefaultsSyncButton from "@/components/owner/RoomDefaultsSyncButton";
-import { getPropertyDetail } from "@/lib/owner/getPropertyDetail";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 
@@ -33,23 +32,39 @@ export default async function CreateRoomPage({
     );
   }
 
-  const detail = await getPropertyDetail(propertyId);
-  const property = detail.property;
-  const copiedRoom = copyFrom && UUID_PATTERN.test(copyFrom)
-    ? await (async () => {
-        try {
-          const { getRoomDetail } = await import("@/lib/owner/getRoomDetail");
-          const room = await getRoomDetail(copyFrom);
-          return room.property_id === propertyId ? room : null;
-        } catch { return null; }
-      })()
-    : null;
   const supabase = await createSupabaseServerClient();
-  const { data: propertyDefaults } = await supabase
-    .from("properties")
-    .select("default_room_data, google_maps_url")
-    .eq("id", propertyId)
-    .single();
+  const [propertyResult, copiedRoomResult] = await Promise.all([
+    supabase
+      .from("properties")
+      .select("id, house_number, address, ward, district, city, google_maps_url, default_room_data")
+      .eq("id", propertyId)
+      .single(),
+    copyFrom && UUID_PATTERN.test(copyFrom)
+      ? supabase
+          .from("rooms")
+          .select(`
+            id, property_id, room_code, room_type, price, description, chinh_sach, link_zalo,
+            zalo_phone, google_maps_url, house_number, address, ward, district,
+            room_details (*),
+            room_media (id, type, url, is_cover, sort_order)
+          `)
+          .eq("id", copyFrom)
+          .single()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  const property = propertyResult.data;
+  const rawCopiedRoom = copiedRoomResult.data;
+  const copiedRoom = rawCopiedRoom?.property_id === propertyId
+    ? {
+        ...rawCopiedRoom,
+        details: Array.isArray(rawCopiedRoom.room_details)
+          ? rawCopiedRoom.room_details[0] ?? null
+          : rawCopiedRoom.room_details,
+        media: [...(rawCopiedRoom.room_media ?? [])].sort(
+          (left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0),
+        ),
+      }
+    : null;
 
   if (!property) {
     return (
@@ -87,8 +102,8 @@ export default async function CreateRoomPage({
         defaults={{
           // Database JSON contains mixed scalar and nested values.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ...((propertyDefaults?.default_room_data as Record<string, any>) ?? {}),
-          google_maps_url: propertyDefaults?.google_maps_url ?? "",
+          ...((property.default_room_data as Record<string, any>) ?? {}),
+          google_maps_url: property.google_maps_url ?? "",
           house_number: property.house_number ?? "",
           address: property.address ?? "",
           ward: property.ward ?? "",

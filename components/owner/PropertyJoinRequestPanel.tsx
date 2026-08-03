@@ -122,13 +122,6 @@ export default function PropertyJoinRequestPanel() {
     try {
 
 
-      const rpc =
-        action === "approve"
-          ? "approve_property_join_request_v1"
-          : "reject_property_join_request_v1";
-
-
-
       const response =
         await fetch(
           "/api/owner/property-join-requests/action",
@@ -284,7 +277,7 @@ export default function PropertyJoinRequestPanel() {
               Quyền yêu cầu:
 
               {" "}
-              Owner
+              {request.requested_role === "manager" ? "Quản lý" : "Chủ nhà"}
 
             </p>
 
@@ -300,7 +293,7 @@ export default function PropertyJoinRequestPanel() {
                   text-[#8a6b50]
                   "
                 >
-                  "{request.message}"
+                  &ldquo;{request.message}&rdquo;
                 </p>
               )
               : null
