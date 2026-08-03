@@ -30,6 +30,33 @@ export function isUploadVideo(file: Pick<File, "name" | "type">) {
   return resolveUploadContentType(file).startsWith("video/");
 }
 
+export function isHeicImage(file: Pick<File, "name" | "type">) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const contentType = file.type.trim().toLowerCase();
+  return extension === "heic" || extension === "heif" || contentType === "image/heic" || contentType === "image/heif";
+}
+
+export async function prepareImageForUpload(file: File): Promise<File> {
+  if (!isHeicImage(file)) return file;
+
+  try {
+    const { default: convertHeic } = await import("heic2any");
+    const converted = await convertHeic({ blob: file, toType: "image/jpeg", quality: 0.9 });
+    const blob = Array.isArray(converted) ? converted[0] : converted;
+    const baseName = file.name.replace(/\.(heic|heif)$/i, "") || "anh-dien-thoai";
+    return new File([blob], `${baseName}.jpg`, {
+      type: "image/jpeg",
+      lastModified: file.lastModified,
+    });
+  } catch {
+    throw new Error(`Không thể chuyển ảnh ${file.name} từ HEIC sang JPEG. Hãy thử chọn lại ảnh.`);
+  }
+}
+
+export async function prepareImagesForUpload(files: readonly File[]) {
+  return mapWithConcurrency(files, 2, prepareImageForUpload);
+}
+
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],
   concurrency: number,

@@ -4,6 +4,7 @@ import { ChangeEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
 import MoneyInput from "@/components/owner/MoneyInput";
+import { prepareImageForUpload, resolveUploadContentType } from "@/lib/media/uploadFileType";
 
 const MAX_IDENTITY_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -46,14 +47,19 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
 
-  function handleIdentityImage(
+  async function handleIdentityImage(
     event: ChangeEvent<HTMLInputElement>,
     side: "front" | "back",
   ) {
-    const file = event.target.files?.[0] ?? null;
-    if (file && (!file.type.startsWith("image/") || file.size > MAX_IDENTITY_IMAGE_BYTES)) {
+    const selected = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    const file = selected ? await prepareImageForUpload(selected).catch((error: unknown) => {
+      setErrorMessage(error instanceof Error ? error.message : "Không thể xử lý ảnh CCCD.");
+      return null;
+    }) : null;
+    if (selected && !file) return;
+    if (file && (!resolveUploadContentType(file).startsWith("image/") || file.size > MAX_IDENTITY_IMAGE_BYTES)) {
       setErrorMessage("Ảnh CCCD phải là file hình ảnh và không vượt quá 10 MB.");
-      event.target.value = "";
       return;
     }
 
@@ -275,10 +281,10 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
               </span>
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 className="sr-only"
                 onChange={(event) =>
-                  handleIdentityImage(event, side)
+                  void handleIdentityImage(event, side)
                 }
               />
             </label>

@@ -10,7 +10,7 @@ import MoneyInput from "@/components/owner/MoneyInput";
 
 import { readApiResponse } from "@/lib/api/client";
 import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
-import { isUploadImage, isUploadVideo } from "@/lib/media/uploadFileType";
+import { isUploadImage, isUploadVideo, prepareImagesForUpload } from "@/lib/media/uploadFileType";
 import {
   uploadRoomMediaFiles,
   validateRoomMediaFiles,
@@ -71,18 +71,18 @@ export default function CreateRoomForm({
     return `${images} ảnh, ${videos} video`;
   }, [files]);
 
-  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files ?? []);
+    event.target.value = "";
     setError(null);
 
     try {
-      validateRoomMediaFiles(selected);
-      setFiles(selected);
+      const prepared = await prepareImagesForUpload(selected);
+      validateRoomMediaFiles(prepared);
+      setFiles(prepared);
     } catch (validationError) {
       setFiles([]);
       setError(validationError instanceof Error ? validationError.message : "Media không hợp lệ");
-    } finally {
-      event.target.value = "";
     }
   }
 
@@ -433,7 +433,7 @@ export default function CreateRoomForm({
           <input
             id="media_files"
             type="file"
-            accept="image/*,video/*"
+            accept="image/*,.heic,.heif,video/*"
             multiple
             onChange={handleFiles}
             disabled={submitting}

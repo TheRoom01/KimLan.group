@@ -3,7 +3,7 @@
 import { ImageIcon, Loader2, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { readApiResponse } from "@/lib/api/client";
-import { mapWithConcurrency, resolveUploadContentType } from "@/lib/media/uploadFileType";
+import { mapWithConcurrency, prepareImagesForUpload, resolveUploadContentType } from "@/lib/media/uploadFileType";
 
 type Media = { key: string; url: string; size: number; updated_at?: string | null };
 type Presign = { key: string; uploadUrl: string; requiredHeaders: Record<string, string> };
@@ -56,10 +56,17 @@ export default function ContractImagesManager({ contractId }: { contractId: stri
     if (input.current) input.current.value = "";
   }
 
-  function choose(filesLike: FileList | File[]) {
-    const files = Array.from(filesLike);
+  async function choose(filesLike: FileList | File[]) {
+    const selected = Array.from(filesLike);
     setDragging(false); setModalError(null);
-    if (!files.length) return;
+    if (!selected.length) return;
+    let files: File[];
+    try {
+      files = await prepareImagesForUpload(selected);
+    } catch (error) {
+      setModalError(error instanceof Error ? error.message : "Không thể xử lý ảnh từ điện thoại.");
+      return;
+    }
     if (items.length + pending.length + files.length > MAX_FILES) return setModalError(`Mỗi hợp đồng tối đa ${MAX_FILES} ảnh.`);
     const invalid = files.find((file) => !resolveUploadContentType(file).startsWith("image/") || file.size > MAX_BYTES);
     if (invalid) return setModalError(`Ảnh ${invalid.name} không hợp lệ hoặc vượt quá 15 MB.`);
@@ -125,9 +132,9 @@ export default function ContractImagesManager({ contractId }: { contractId: stri
         <button type="button" disabled={uploading} onClick={() => input.current?.click()}
           onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()}
           onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
-          onDrop={(event: DragEvent<HTMLButtonElement>) => { event.preventDefault(); choose(event.dataTransfer.files); }}
+          onDrop={(event: DragEvent<HTMLButtonElement>) => { event.preventDefault(); void choose(event.dataTransfer.files); }}
           className={`grid min-h-40 w-full place-items-center rounded-2xl border-2 border-dashed px-5 py-6 text-center transition ${dragging ? "border-[#744722] bg-[#f2ddbf]" : "border-[#aa825d]/40 bg-[#f8ead7] hover:border-[#744722]"} disabled:opacity-60`}>
-          <input ref={input} type="file" accept="image/*" multiple className="hidden" onChange={(event: ChangeEvent<HTMLInputElement>) => event.target.files && choose(event.target.files)} />
+          <input ref={input} type="file" accept="image/*,.heic,.heif" multiple className="hidden" onChange={(event: ChangeEvent<HTMLInputElement>) => { const selected = event.target.files; event.target.value = ""; if (selected) void choose(selected); }} />
           <span className="text-sm font-semibold text-[#684324]"><Upload className="mx-auto mb-2" size={27} />Kéo thả ảnh hợp đồng vào đây<br/><small className="font-normal text-[#8a6b50]">hoặc bấm để chọn file · tối đa 15 MB/ảnh</small></span>
         </button>
         {pending.length ? <div className="mt-4"><p className="mb-2 text-sm font-semibold text-[#5a3b25]">Ảnh chờ lưu ({pending.length})</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{pending.map((item, index) => <article key={`${item.file.name}-${item.file.lastModified}-${index}`} className="relative overflow-hidden rounded-xl border border-[#aa825d]/25 bg-white"><img src={item.preview} alt={item.file.name} className="h-36 w-full object-contain p-2"/><button type="button" disabled={uploading} onClick={() => removePending(index)} className="absolute right-2 top-2 rounded-full bg-white/95 p-2 text-red-700 shadow" aria-label="Bỏ ảnh"><Trash2 size={15}/></button><p className="truncate border-t px-2 py-1.5 text-[11px] text-[#80634a]">{item.file.name}</p></article>)}</div></div> : null}

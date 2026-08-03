@@ -4,6 +4,7 @@ import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "
 import { CreditCard, Loader2, Save, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
+import { prepareImageForUpload, resolveUploadContentType } from "@/lib/media/uploadFileType";
 
 type Tenant = {
   id: string;
@@ -34,13 +35,20 @@ export default function TenantProfileEditor({ tenant, roomId }: { tenant: Tenant
   const frontRef = useRef<HTMLInputElement>(null);
   const backRef = useRef<HTMLInputElement>(null);
 
-  function choose(file: File | undefined, side: "front" | "back") {
+  async function choose(file: File | undefined, side: "front" | "back") {
     if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > MAX_BYTES) {
+    let prepared: File;
+    try {
+      prepared = await prepareImageForUpload(file);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không thể xử lý ảnh CCCD.");
+      return;
+    }
+    if (!resolveUploadContentType(prepared).startsWith("image/") || prepared.size > MAX_BYTES) {
       setMessage("Ảnh CCCD phải là hình ảnh và không vượt quá 10 MB.");
       return;
     }
-    setFiles((current) => ({ ...current, [side]: file }));
+    setFiles((current) => ({ ...current, [side]: prepared }));
     setMessage(null);
   }
 
@@ -142,9 +150,9 @@ export default function TenantProfileEditor({ tenant, roomId }: { tenant: Tenant
           return (
             <button key={side} type="button" onClick={() => inputRef.current?.click()}
               onDragOver={(event: DragEvent) => event.preventDefault()}
-              onDrop={(event: DragEvent) => { event.preventDefault(); choose(event.dataTransfer.files?.[0], side); }}
+              onDrop={(event: DragEvent) => { event.preventDefault(); void choose(event.dataTransfer.files?.[0], side); }}
               className="overflow-hidden rounded-2xl border-2 border-dashed border-[#aa825d]/35 bg-[#f8ead7] text-left transition hover:border-[#744722]">
-              <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(event: ChangeEvent<HTMLInputElement>) => choose(event.target.files?.[0], side)} />
+              <input ref={inputRef} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(event: ChangeEvent<HTMLInputElement>) => { const selected = event.target.files?.[0]; event.target.value = ""; void choose(selected, side); }} />
               <div className="flex items-center gap-2 border-b border-[#aa825d]/20 px-4 py-3 text-sm font-bold text-[#5a3b25]"><CreditCard size={16} /> CCCD mặt {side === "front" ? "trước" : "sau"}</div>
               {file ? <img src={URL.createObjectURL(file)} alt="Ảnh mới" className="h-44 w-full object-contain p-3" />
                 : currentUrl ? <img src={currentUrl} alt="CCCD" className="h-44 w-full object-contain p-3" />

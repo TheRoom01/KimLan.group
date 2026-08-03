@@ -13,6 +13,15 @@ const DETAIL_FIELDS = [
   "long_term", "other_amenities",
 ] as const;
 
+type PropertyDefaultsResult = {
+  default_room_data?: Record<string, unknown> | null;
+  google_maps_url?: string | null;
+  house_number?: string | null;
+  address?: string | null;
+  ward?: string | null;
+  district?: string | null;
+};
+
 export default function RoomDefaultsSyncButton({propertyId,formId}:{propertyId:string;formId:string}) {
   const [loading,setLoading]=useState(false);
   const [message,setMessage]=useState<string|null>(null);
@@ -20,25 +29,32 @@ export default function RoomDefaultsSyncButton({propertyId,formId}:{propertyId:s
   async function sync(){
     setLoading(true);setMessage(null);
     try{
-      const result=await readApiResponse<any>(await fetch(`/api/owner/properties/${propertyId}`,{cache:"no-store"}));
-      const property=result?.property??result;
+      const result=await readApiResponse<PropertyDefaultsResult|{property?:PropertyDefaultsResult|null}>(await fetch(`/api/owner/properties/${propertyId}`,{cache:"no-store"}));
+      const property=(Object.prototype.hasOwnProperty.call(result,"property")
+        ? (result as {property?:PropertyDefaultsResult|null}).property??{}
+        : result) as PropertyDefaultsResult;
       const defaults=property?.default_room_data??{};
       const values:Record<string,unknown>={
         status:defaults.status,zalo_phone:defaults.zalo_phone,link_zalo:defaults.link_zalo,
         google_maps_url:property?.google_maps_url,chinh_sach:defaults.chinh_sach,house_number:property?.house_number,address:property?.address,
         ward:property?.ward,district:property?.district,
       };
-      const details=defaults.room_details??{};
+      const rawDetails=defaults.room_details;
+      const details=rawDetails&&typeof rawDetails==="object"&&!Array.isArray(rawDetails)
+        ? rawDetails as Record<string,unknown>
+        : {};
       for(const name of DETAIL_FIELDS) values[name]=details[name];
       const form=document.getElementById(formId) as HTMLFormElement|null;
       if(!form) throw new Error("Không tìm thấy biểu mẫu phòng");
       for(const[name,value]of Object.entries(values)){
         if(value===undefined)continue;
-        const field=form.elements.namedItem(name) as HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement|null;
-        if(!field)continue;
-        if(field instanceof HTMLInputElement&&field.type==="checkbox")field.checked=Boolean(value);
-        else field.value=value===null?"":String(value);
-        field.dispatchEvent(new Event("change",{bubbles:true}));
+        const fields=Array.from(form.querySelectorAll<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>(`[name="${CSS.escape(name)}"]`));
+        for(const field of fields){
+          if(field instanceof HTMLInputElement&&field.type==="checkbox")field.checked=Boolean(value);
+          else field.value=value===null?"":String(value);
+          field.dispatchEvent(new Event("input",{bubbles:true}));
+          field.dispatchEvent(new Event("change",{bubbles:true}));
+        }
       }
       setMessage("Đã đồng bộ dữ liệu tòa nhà mới nhất. Hãy kiểm tra và bấm Lưu.");
     }catch(error){setMessage(error instanceof Error?error.message:"Không thể đồng bộ tòa nhà")}finally{setLoading(false)}

@@ -9,6 +9,7 @@ import MoneyInput from "@/components/owner/MoneyInput";
 
 import { readApiResponse } from "@/lib/api/client";
 import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
+import { prepareImagesForUpload } from "@/lib/media/uploadFileType";
 import {
   uploadRoomMediaFiles,
   validateRoomMediaFiles,
@@ -89,21 +90,20 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
     }, 2200);
   }
 
-  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+  async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files ?? []);
+    event.target.value = "";
     setErrorMessage(null);
 
     try {
-      const combined = [...files, ...selected];
+      const prepared = await prepareImagesForUpload(selected);
+      const combined = [...files, ...prepared];
       validateRoomMediaFiles(combined);
       setFiles(combined);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Danh sách media không hợp lệ",
       );
-    } finally {
-      // Cho phép chọn lại cùng một file sau khi đã xóa file đó khỏi preview.
-      event.target.value = "";
     }
   }
 
@@ -527,7 +527,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
           <input
             id="media_files"
             type="file"
-            accept="image/*,video/*"
+            accept="image/*,.heic,.heif,video/*"
             multiple
             onChange={handleFiles}
             disabled={loading}
