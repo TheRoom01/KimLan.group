@@ -50,7 +50,7 @@ export async function POST(
     const payload = parseCreateOwnerRoomInput(body);
 
     const { data, error } = await supabase.rpc(
-      "create_owner_room_v2",
+      "create_owner_room_full_v3",
       {
         p_property_id: propertyId,
         p_payload: payload,
@@ -58,52 +58,6 @@ export async function POST(
     );
 
     if (error) return mapDatabaseError(error);
-    const result = data as { room_id?: string; room?: { id?: string } } | null;
-    const roomId = result?.room_id ?? result?.room?.id;
-    if (roomId) {
-      // create_owner_room_v2 vẫn có các nhánh legacy chỉ lưu một phần payload.
-      // Ghi lại toàn bộ dữ liệu cho cả phòng mới và phòng trùng trước khi upload media.
-      const { error: updateError } = await supabase.rpc("update_owner_room_full_v1", {
-        p_room_id: roomId,
-        p_payload: { ...payload, publish_status: "draft" },
-      });
-      if (updateError) return mapDatabaseError(updateError);
-
-      const { error: locationError } = await supabase
-        .from("rooms")
-        .update({
-          house_number: payload.house_number,
-          address: payload.address,
-          ward: payload.ward,
-          district: payload.district,
-        })
-        .eq("id", roomId);
-      if (locationError) return mapDatabaseError(locationError);
-
-      const { error: syncError } = await supabase.rpc(
-        "sync_room_shared_property_fields_v1",
-        {
-          p_room_id: roomId,
-          p_link_zalo: payload.link_zalo,
-          p_google_maps_url: payload.google_maps_url,
-          p_chinh_sach: payload.chinh_sach,
-          p_prefer_property_when_empty: true,
-        },
-      );
-      if (syncError) return mapDatabaseError(syncError);
-    }
-
-    if (
-      data &&
-      typeof data === "object" &&
-      "mode" in data &&
-      data.mode === "existing"
-    ) {
-
-      return apiSuccess(data, 200);
-
-    }
-
     return apiSuccess(data,201);
   } catch (error) {
     return mapUnknownError(error);

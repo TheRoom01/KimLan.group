@@ -103,12 +103,14 @@ export default async function CreateRoomPage({
           // Database JSON contains mixed scalar and nested values.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...((property.default_room_data as Record<string, any>) ?? {}),
-          google_maps_url: property.google_maps_url ?? "",
-          house_number: property.house_number ?? "",
-          address: property.address ?? "",
-          ward: property.ward ?? "",
-          district: property.district ?? "",
           ...(copiedRoom ? { ...copiedRoom, room_code: "", status: "Đang trống", room_details: copiedRoom.details ?? {} } : {}),
+          // Legacy rooms may not have their own location. Do not let null copied
+          // values erase the selected property's address in the create form.
+          house_number: copiedRoom?.house_number ?? property.house_number ?? "",
+          address: copiedRoom?.address ?? property.address ?? "",
+          ward: copiedRoom?.ward ?? property.ward ?? "",
+          district: copiedRoom?.district ?? property.district ?? "",
+          google_maps_url: copiedRoom?.google_maps_url ?? property.google_maps_url ?? "",
         }}
       />
     </div>

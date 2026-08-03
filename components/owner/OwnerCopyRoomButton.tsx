@@ -2,7 +2,8 @@
 
 import { Copy } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 type CopyCandidate = { id: string; room_code?: string | null; room_type?: string | null; price?: number | null };
 
@@ -20,6 +21,15 @@ export default function OwnerCopyRoomButton({
   const [rooms, setRooms] = useState<CopyCandidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
 
   function copy(roomId: string) {
     router.push(`/owner/rooms/create?property_id=${propertyId}&copy_from=${roomId}`);
@@ -48,9 +58,15 @@ export default function OwnerCopyRoomButton({
       <button type="button" onClick={handleClick} className={className}>
         <Copy size={16} /> Copy phòng
       </button>
-      {open ? (
-        <div className="fixed inset-0 z-[1000] grid place-items-center bg-black/45 p-4" onMouseDown={() => setOpen(false)}>
-          <section className="max-h-[80vh] w-full max-w-xl overflow-hidden rounded-2xl bg-[#fff9ef] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+      {open && typeof document !== "undefined" ? createPortal(
+        <div
+          className="fixed inset-0 z-[1000] grid place-items-center bg-black/45 p-4"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setOpen(false);
+          }}
+        >
+          <section className="max-h-[80vh] w-full max-w-xl overflow-hidden rounded-2xl bg-[#fff9ef] shadow-2xl" role="dialog" aria-modal="true">
             <header className="flex items-center justify-between border-b border-[#956b45]/20 p-4">
               <div><h2 className="font-bold text-[#432918]">Chọn phòng muốn sao chép</h2><p className="text-xs text-[#80634a]">Hợp đồng và khách thuê sẽ không được sao chép.</p></div>
               <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-3 py-1.5 text-sm hover:bg-[#f3e1c9]">Đóng</button>
@@ -67,7 +83,8 @@ export default function OwnerCopyRoomButton({
               ))}
             </div>
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );
