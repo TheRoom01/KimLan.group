@@ -242,12 +242,6 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/media`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:orderedMedia.map((media,index)=>({id:media.id,sort_order:index})),cover_id:orderedMedia.find(media=>media.type==="image")?.id??null})}));
       }
 
-      await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: payload.status }),
-      }));
-
       if (files.length > 0) {
         await uploadRoomMediaFiles({
           roomId: room.id,

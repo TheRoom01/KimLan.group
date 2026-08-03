@@ -7,7 +7,8 @@ import {
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/api/auth";
-import { readJsonObject } from "@/lib/api/validation";
+import { parseUuid, readJsonObject } from "@/lib/api/validation";
+import { parseCreateOwnerRoomInput } from "@/lib/owner/validation";
 
 
 export async function POST(request:Request){
@@ -38,17 +39,15 @@ const body =
 
 
 
-const {
-property_id,
-...payload
-}=body;
+const propertyId = parseUuid(body.property_id, "property_id");
+const payload = parseCreateOwnerRoomInput(body);
 
 
 
 const {data,error}=await supabase.rpc(
-"create_owner_room_v2",
+"create_owner_room_full_v3",
 {
-p_property_id:property_id,
+p_property_id:propertyId,
 p_payload:payload
 }
 );

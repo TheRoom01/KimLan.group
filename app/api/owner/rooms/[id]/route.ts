@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/validation";
 import { parseCreateOwnerRoomInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
 
 const PUBLISH_STATUSES = new Set(["draft", "published", "hidden"]);
 
@@ -26,16 +27,17 @@ export async function PATCH(
   try {
     const { id: rawId } = await params;
     const roomId = parseUuid(rawId, "room_id");
-    const supabase = await createSupabaseServerClient();
-    const user = await getAuthenticatedUser(supabase);
-
-    if (!user) {
+    const authorization = await authorizeRoomMutation(roomId);
+    if (!authorization.allowed) {
       return apiError(
-        "UNAUTHENTICATED",
-        "Bạn cần đăng nhập để thực hiện thao tác này",
-        401,
+        authorization.error,
+        authorization.error === "UNAUTHENTICATED"
+          ? "Bạn cần đăng nhập để thực hiện thao tác này"
+          : "Tài khoản đang đăng nhập chưa được cấp quyền chỉnh sửa phòng này",
+        authorization.status,
       );
     }
+    const supabase = authorization.supabase;
 
     const body = await readJsonObject(request);
     const input = parseCreateOwnerRoomInput(body);
