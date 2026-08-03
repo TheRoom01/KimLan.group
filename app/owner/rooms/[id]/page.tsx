@@ -27,6 +27,12 @@ export default async function RoomDetailPage({
   const contract = room.contract;
   const tenants = room.tenants ?? (room.tenant ? [room.tenant] : []);
   const isArchived = room.lifecycle_status === "archived";
+  const fullAddress = formatFullAddress(
+    room.house_number,
+    room.address,
+    room.ward,
+    room.district,
+  );
 
   return (
     <div className="w-full min-w-0 max-w-none space-y-5 sm:space-y-6">
@@ -118,7 +124,7 @@ export default async function RoomDetailPage({
             ) : null}
           </div>
           <InfoItem label="Loại phòng" value={room.room_type || "-"} />
-          <InfoItem label="Địa chỉ" value={room.address || "-"} />
+          <InfoItem label="Địa chỉ" value={fullAddress} />
         </div>
 
         {room.description ? (
@@ -311,6 +317,14 @@ function InfoItem({ label, value }: { label: string; value: string }) {
       <p className="font-semibold text-[#4d3422]">{value}</p>
     </div>
   );
+}
+
+function formatFullAddress(...parts: Array<string | null | undefined>) {
+  const addressParts = parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+
+  return addressParts.length > 0 ? addressParts.join(", ") : "-";
 }
 
 function formatMoney(value: unknown) {

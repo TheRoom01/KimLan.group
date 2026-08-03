@@ -26,7 +26,6 @@ import {
   DEFAULT_OWNER_ROOM_CARD_SIZE,
   OWNER_ROOM_CARD_LIMITS,
   OWNER_ROOM_CARD_SIZE_STORAGE_KEY,
-  type OwnerRoomCardSize as CardSize,
   type OwnerRoomCardSizes as CardSizes,
 } from "@/lib/owner/roomCardSizing";
 
@@ -78,6 +77,7 @@ type SnapGuide = { axis: SnapAxis; position: number };
 const DEFAULT_CARD_SIZE = DEFAULT_OWNER_ROOM_CARD_SIZE;
 const CARD_LIMITS = OWNER_ROOM_CARD_LIMITS;
 const ROOM_SIZE_STORAGE_KEY = OWNER_ROOM_CARD_SIZE_STORAGE_KEY;
+const ROOM_ORDER_STORAGE_KEY = "owner-room-card-order-v1";
 const SNAP_ENTER_THRESHOLD = 8;
 const SNAP_EXIT_THRESHOLD = 14;
 
@@ -112,8 +112,15 @@ function buildingAddress(property: PropertyAddressLike | null) {
   return propertyDisplayAddress(property) || "Tòa nhà chưa cập nhật địa chỉ";
 }
 
-function BuildingBoard({ group }: { group: BuildingGroup }) {
-  const [order, setOrder] = useState(() => group.rooms.map((room) => room.id));
+function BuildingBoard({
+  group,
+  allRoomIds,
+}: {
+  group: BuildingGroup;
+  allRoomIds: string[];
+}) {
+  const [order, setOrder] = useState(() => allRoomIds);
+  const [orderHydrated, setOrderHydrated] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [resizingId, setResizingId] = useState<string | null>(null);
@@ -145,6 +152,49 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const availableIds = allRoomIds;
+      try {
+        const saved = JSON.parse(
+          localStorage.getItem(ROOM_ORDER_STORAGE_KEY) || "{}",
+        ) as Record<string, string[]>;
+        const savedOrder = Array.isArray(saved[group.key]) ? saved[group.key] : [];
+        const availableSet = new Set(availableIds);
+        setOrder([
+          ...savedOrder.filter((id) => availableSet.has(id)),
+          ...availableIds.filter((id) => !savedOrder.includes(id)),
+        ]);
+      } catch {
+        setOrder(availableIds);
+      }
+      setOrderHydrated(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [allRoomIds, group.key]);
+
+  useEffect(() => {
+    if (!orderHydrated) return;
+    const availableIds = allRoomIds;
+    const availableSet = new Set(availableIds);
+    const normalizedOrder = [
+      ...order.filter((id) => availableSet.has(id)),
+      ...availableIds.filter((id) => !order.includes(id)),
+    ];
+
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(ROOM_ORDER_STORAGE_KEY) || "{}",
+      ) as Record<string, string[]>;
+      localStorage.setItem(
+        ROOM_ORDER_STORAGE_KEY,
+        JSON.stringify({ ...saved, [group.key]: normalizedOrder }),
+      );
+    } catch {
+      // Trình duyệt có thể chặn storage; thứ tự của phiên hiện tại vẫn được giữ trong state.
+    }
+  }, [allRoomIds, group.key, order, orderHydrated]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
       try {
         const saved = JSON.parse(localStorage.getItem(ROOM_SIZE_STORAGE_KEY) || "{}") as CardSizes;
         setCardSizes(Object.fromEntries(
@@ -162,9 +212,10 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
 
   useEffect(() => {
     if (resizingId !== null) return;
-    setSnapGuide(null);
     rawResizeRef.current = null;
     snapMatchRef.current = null;
+    const timer = window.setTimeout(() => setSnapGuide(null), 0);
+    return () => window.clearTimeout(timer);
   }, [resizingId]);
 
   const persistCardSizes = (next: CardSizes) => {
@@ -263,7 +314,7 @@ function BuildingBoard({ group }: { group: BuildingGroup }) {
   const moveRoom = (sourceId: string, targetId: string) => {
     if (sourceId === targetId) return;
     setOrder((current) => {
-      const availableIds = group.rooms.map((room) => room.id);
+      const availableIds = allRoomIds;
       const next = [
         ...current.filter((id) => availableIds.includes(id)),
         ...availableIds.filter((id) => !current.includes(id)),
@@ -632,6 +683,17 @@ export default function OwnerRoomsDashboard({ rooms }: { rooms: OwnerRoom[] }) {
     return Array.from(map.values());
   }, [filteredRooms]);
 
+  const allRoomIdsByProperty = useMemo(() => {
+    const map = new Map<string, string[]>();
+    rooms.forEach((room) => {
+      const key = String(room.property_id || "unassigned");
+      const ids = map.get(key);
+      if (ids) ids.push(room.id);
+      else map.set(key, [room.id]);
+    });
+    return map;
+  }, [rooms]);
+
   const upcomingRooms = useMemo(
     () => rooms.filter((room) => normalizedStatus(room) === "upcoming"),
     [rooms],
@@ -740,7 +802,13 @@ export default function OwnerRoomsDashboard({ rooms }: { rooms: OwnerRoom[] }) {
       <div className="grid min-w-0 max-w-full items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 max-w-full space-y-4">
           {groups.length ? (
-            groups.map((group) => <BuildingBoard key={group.key} group={group} />)
+            groups.map((group) => (
+              <BuildingBoard
+                key={group.key}
+                group={group}
+                allRoomIds={allRoomIdsByProperty.get(group.key) ?? []}
+              />
+            ))
           ) : (
             <div className="rounded-[22px] border border-dashed border-[#d9c3a5] bg-[#fffaf1] px-5 py-14 text-center">
               <p className="font-semibold">Không tìm thấy phòng phù hợp</p>
