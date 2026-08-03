@@ -7,6 +7,10 @@ import { supabase } from "@/lib/supabase";
 import { getBrowserContext, openExternalBrowser } from "@/lib/browser";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
 import { createPortal } from "react-dom";
+import {
+  extractRoomActionUrls,
+  normalizeGoogleMapsUrl,
+} from "@/lib/roomActionLinks";
 
 /* ================= Utils ================= */
 
@@ -269,29 +273,6 @@ function getStoredLinkBadge(type: string) {
   if (type === "gdrive") return "GD";
   if (type === "gdoc") return "DOC";
   return "↗";
-}
-
-function normalizeGoogleMapsUrl(value: unknown) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "";
-
-  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
-
-    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
-    const isGoogleMapsHost =
-      hostname === "maps.app.goo.gl" ||
-      hostname === "goo.gl" ||
-      hostname === "google.com" ||
-      hostname.endsWith(".google.com");
-
-    return isGoogleMapsHost ? url.toString() : "";
-  } catch {
-    return "";
-  }
 }
 
 function publicHouseNumber(value?: string | null) {
@@ -1280,11 +1261,7 @@ const visibleZaloPhone = canSeePrivateFields
  * - Dấu phẩy
  * - Dấu chấm phẩy
  */
-const rawStoredLinks = Array.from(
-  new Set(
-    String(visibleLinkZalo ?? "").match(/https?:\/\/[^\s,;]+/gi) ?? []
-  )
-);
+const rawStoredLinks = extractRoomActionUrls(visibleLinkZalo);
 
 /*
  * Đếm số link cùng loại để tự đánh số:

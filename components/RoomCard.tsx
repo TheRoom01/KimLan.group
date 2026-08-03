@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
@@ -8,6 +7,11 @@ import { createPortal } from "react-dom";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
 import { supabase } from "@/lib/supabase";
 import { useRef } from "react";
+import {
+  buildGoogleMapsSearchUrl,
+  firstRoomActionUrl,
+  normalizeGoogleMapsUrl,
+} from "@/lib/roomActionLinks";
 
 
 type Room = {
@@ -55,17 +59,20 @@ function ToolbarButton({
   title,
   icon,
   disabled = false,
+  buttonRef,
   onClick,
 }: {
   label: string;
   title: string;
   icon: React.ReactNode;
   disabled?: boolean;
+  buttonRef?: React.Ref<HTMLButtonElement>;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
       type="button"
+      ref={buttonRef}
       title={title}
       aria-label={title}
       aria-disabled={disabled}
@@ -129,35 +136,6 @@ function publicHouseNumber(value?: string | null) {
   }
 
   return "...";
-}
-
-function firstExternalUrl(value?: string | null) {
-  const match = String(value ?? "").match(/https?:\/\/[^\s,;]+/i)?.[0];
-  if (!match) return "";
-  try {
-    const url = new URL(match);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : "";
-  } catch {
-    return "";
-  }
-}
-
-function googleMapsUrl(value?: string | null) {
-  const raw = String(value ?? "").trim();
-  const candidate = /^https?:\/\//i.test(raw) ? raw : raw ? `https://${raw}` : "";
-  if (!candidate) return "";
-  try {
-    const url = new URL(candidate);
-    const host = url.hostname.toLowerCase().replace(/^www\./, "");
-    return host === "maps.app.goo.gl" ||
-      host === "goo.gl" ||
-      host === "google.com" ||
-      host.endsWith(".google.com")
-      ? url.toString()
-      : "";
-  } catch {
-    return "";
-  }
 }
 
 function formatTimeAgo(value?: string | null) {
@@ -612,8 +590,19 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
 
   const level = Number(adminLevel) || 0;
   const isAdmin = level === 1 || level === 2;
-  const zaloToolbarUrl = isAdmin ? firstExternalUrl(room.link_zalo) : "";
-  const mapsToolbarUrl = googleMapsUrl(room.google_maps_url);
+  const initialZaloToolbarUrl = isAdmin ? firstRoomActionUrl(room.link_zalo) : "";
+  const mapsToolbarUrl =
+    normalizeGoogleMapsUrl(room.google_maps_url) ||
+    buildGoogleMapsSearchUrl(fullAddressText);
+  const toolbarRoomRef = useRef<Room | null>(null);
+  const toolbarRoomRequestRef = useRef<Promise<Room | null> | null>(null);
+  const zaloButtonRef = useRef<HTMLButtonElement>(null);
+  const zaloToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [zaloToast, setZaloToast] = useState<{
+    message: string;
+    top: number;
+    left: number;
+  } | null>(null);
   const toolbarDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -630,8 +619,6 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
       startScrollLeft: event.currentTarget.scrollLeft,
       dragged: false,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    event.currentTarget.style.cursor = "grabbing";
   }
 
   function moveToolbarDrag(event: React.PointerEvent<HTMLDivElement>) {
@@ -639,7 +626,11 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
     if (!drag || drag.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - drag.startX;
     if (!drag.dragged && Math.abs(deltaX) < 4) return;
-    drag.dragged = true;
+    if (!drag.dragged) {
+      drag.dragged = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.style.cursor = "grabbing";
+    }
     event.preventDefault();
     event.currentTarget.scrollLeft = drag.startScrollLeft - deltaX;
   }
@@ -663,6 +654,78 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
     if (!url) return;
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function loadToolbarRoom() {
+    if (toolbarRoomRef.current) return toolbarRoomRef.current;
+    if (toolbarRoomRequestRef.current) return toolbarRoomRequestRef.current;
+
+    toolbarRoomRequestRef.current = (async () => {
+      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+        p_id: room.id,
+        p_role: safeAdminLevel,
+      });
+      if (error) throw error;
+      const detail = (data ?? room) as Room;
+      toolbarRoomRef.current = detail;
+      return detail;
+    })().finally(() => {
+      toolbarRoomRequestRef.current = null;
+    });
+
+    return toolbarRoomRequestRef.current;
+  }
+
+  function showZaloToast(message: string) {
+    const rect = zaloButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    if (zaloToastTimerRef.current) clearTimeout(zaloToastTimerRef.current);
+    setZaloToast({
+      message,
+      top: rect.top - 8,
+      left: rect.left + rect.width / 2,
+    });
+    zaloToastTimerRef.current = setTimeout(() => {
+      setZaloToast(null);
+      zaloToastTimerRef.current = null;
+    }, 2200);
+  }
+
+  useEffect(
+    () => () => {
+      if (zaloToastTimerRef.current) clearTimeout(zaloToastTimerRef.current);
+    },
+    [],
+  );
+
+  async function openZaloFromToolbar(
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isAdmin) return;
+
+    if (initialZaloToolbarUrl) {
+      window.open(initialZaloToolbarUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const popup = window.open("about:blank", "_blank");
+    try {
+      const detail = await loadToolbarRoom();
+      const url = firstRoomActionUrl(detail?.link_zalo);
+      if (!url) {
+        popup?.close();
+        showZaloToast("Phòng chưa có link Zalo hoặc link file");
+        return;
+      }
+      if (popup) popup.location.href = url;
+      else window.location.href = url;
+    } catch (error) {
+      popup?.close();
+      console.error("openZaloFromToolbar error:", error);
+      showZaloToast("Không thể tải link Zalo lúc này");
+    }
   }
 
   const href = `/rooms/${room.id}?modal=1`;
@@ -829,12 +892,19 @@ console.log(room.updated_at, room);
 
 return (
   <>
-   <Link
-      href={href}
-      className="block h-full"
-      onClick={(e) => {
-        e.preventDefault();
+   <div
+      className="block h-full cursor-pointer"
+      role="link"
+      tabIndex={0}
+      onClick={() => {
         onNavigate(href);
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onNavigate(href);
+        }
       }}
     >
     <div
@@ -1266,9 +1336,10 @@ return (
               />
               <ToolbarButton
                 label="Zalo"
-                title={zaloToolbarUrl ? "Mở Zalo" : "Phòng chưa có link Zalo"}
-                disabled={!zaloToolbarUrl}
-                onClick={(event) => openToolbarUrl(event, zaloToolbarUrl)}
+                title={isAdmin ? "Mở Zalo" : "Bạn cần đăng nhập để xem link Zalo"}
+                disabled={!isAdmin}
+                buttonRef={zaloButtonRef}
+                onClick={(event) => void openZaloFromToolbar(event)}
                 icon={
                   <span className="grid h-4 w-4 place-items-center rounded-full border border-white/60 text-[9px] font-black leading-none">
                     Z
@@ -1287,7 +1358,7 @@ return (
         </div>
       </div>
     </div>
-  </Link>
+  </div>
 
     {(safeAdminLevel === 1 || safeAdminLevel === 2) && (
      <ShareRoomModal
@@ -1306,6 +1377,20 @@ return (
         shareRoomData
       }
     />
+      )}
+
+    {zaloToast &&
+      typeof document !== "undefined" &&
+      createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          style={{ top: zaloToast.top, left: zaloToast.left }}
+          className="pointer-events-none fixed z-[2147483647] max-w-[240px] -translate-x-1/2 -translate-y-full rounded-lg border border-white/20 bg-[#392517]/95 px-3 py-2 text-center text-xs font-semibold leading-4 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur-md"
+        >
+          {zaloToast.message}
+        </div>,
+        document.body,
       )}
 
       {/* ADMIN MODAL */}
