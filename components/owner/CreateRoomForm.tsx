@@ -78,10 +78,10 @@ export default function CreateRoomForm({
 
     try {
       const prepared = await prepareImagesForUpload(selected);
-      validateRoomMediaFiles(prepared);
-      setFiles(prepared);
+      const combined = [...files, ...prepared];
+      validateRoomMediaFiles(combined);
+      setFiles(combined);
     } catch (validationError) {
-      setFiles([]);
       setError(validationError instanceof Error ? validationError.message : "Media không hợp lệ");
     }
   }

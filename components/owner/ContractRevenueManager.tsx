@@ -106,8 +106,9 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
 
   function change(field: keyof Rev, value: string) {
     setForm((current) => {
+      const isText = field === "note" || field === "room_code" || field === "tenant_name";
       const next = normalize(
-        { ...current, [field]: field === "note" ? value : Number(value || 0) },
+        { ...current, [field]: isText ? value : Number(value || 0) },
         contract,
       );
       if (selected) setDrafts((currentDrafts) => ({ ...currentDrafts, [key(selected)]: next }));
@@ -298,8 +299,8 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
                   <Read value={amount} emphasized />
                   <Read value={form.paid_amount} />
                   <Read value={missing} />
-                  <Read value={form.room_code} />
-                  <Read value={form.tenant_name} />
+                  <TextInputCell value={form.room_code} onChange={(value) => change("room_code", value)} />
+                  <TextInputCell value={form.tenant_name} onChange={(value) => change("tenant_name", value)} />
                   <InputCell value={form.deposit_amount} onChange={(value) => change("deposit_amount", value)} />
                   <InputCell value={form.rent_amount} onChange={(value) => change("rent_amount", value)} />
                   <InputCell value={form.electricity_start} onChange={(value) => change("electricity_start", value)} money={false} />
@@ -356,8 +357,8 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
             <div className="mt-4 overflow-hidden rounded-xl border border-[#a9825f]/35">
               <table className="w-full border-collapse text-sm">
                 <tbody>
-                  <SheetRead label="Mã phòng" value={form.room_code} />
-                  <SheetRead label="Người thuê" value={form.tenant_name} />
+                  <SheetTextInput label="Mã phòng" value={form.room_code} onChange={(value) => change("room_code", value)} />
+                  <SheetTextInput label="Người thuê" value={form.tenant_name} onChange={(value) => change("tenant_name", value)} />
                   <SheetInput label="Tiền cọc" value={form.deposit_amount} onChange={(value) => change("deposit_amount", value)} />
                   <SheetInput label="Giá thuê" value={form.rent_amount} onChange={(value) => change("rent_amount", value)} />
                   <SheetInput label="Số điện đầu tháng (kWh)" value={form.electricity_start} onChange={(value) => change("electricity_start", value)} money={false} />
@@ -762,10 +763,18 @@ function InputCell({ value, onChange, money = true }: { value: number; onChange:
   return <td className="border p-0">{money ? <MoneyInput value={value} onValueChange={(amount) => onChange(String(amount))} className="w-full min-w-28 border-0 bg-white p-2 outline-none focus:bg-amber-50" /> : <input type="number" min={0} step="any" value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(event.target.value)} className="w-full min-w-28 border-0 bg-white p-2 outline-none focus:bg-amber-50" />}</td>;
 }
 
+function TextInputCell({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <td className="border p-0"><input value={value} onChange={(event) => onChange(event.target.value)} className="w-full min-w-32 border-0 bg-white p-2 outline-none focus:bg-amber-50" /></td>;
+}
+
 function SheetRead({ label, value, emphasized = false }: { label: string; value: string | number; emphasized?: boolean }) {
   return <tr><th className="w-[48%] border-r border-t border-[#a9825f]/30 bg-[#f3e1c9] p-3 text-left">{label}</th><td className={`border-t border-[#a9825f]/30 p-3 text-right ${emphasized ? "bg-[#fff1d8] text-base font-bold text-[#744722]" : "bg-white font-semibold"}`}>{typeof value === "number" ? money(value) : value}</td></tr>;
 }
 
 function SheetInput({ label, value, onChange, money = true }: { label: string; value: number; onChange: (value: string) => void; money?: boolean }) {
   return <tr><th className="w-[48%] border-r border-t border-[#a9825f]/30 bg-[#f3e1c9] p-3 text-left">{label}</th><td className="border-t border-[#a9825f]/30 bg-white p-1">{money ? <MoneyInput value={value} onValueChange={(amount) => onChange(String(amount))} className="w-full p-2 text-right font-semibold outline-none focus:bg-amber-50" /> : <input type="number" min={0} step="any" value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(event.target.value)} className="w-full p-2 text-right font-semibold outline-none focus:bg-amber-50" />}</td></tr>;
+}
+
+function SheetTextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return <tr><th className="w-[48%] border-r border-t border-[#a9825f]/30 bg-[#f3e1c9] p-3 text-left">{label}</th><td className="border-t border-[#a9825f]/30 bg-white p-1"><input value={value} onChange={(event) => onChange(event.target.value)} className="w-full p-2 text-right font-semibold outline-none focus:bg-amber-50" /></td></tr>;
 }
