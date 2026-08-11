@@ -51,6 +51,7 @@ export default function AdminClient({ initialRooms, initialTotal, report, }: Adm
 
   const [openModal, setOpenModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [copyChoiceSource, setCopyChoiceSource] = useState<Room | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
 
   const [loading, setLoading] = useState(false);
@@ -88,7 +89,7 @@ export default function AdminClient({ initialRooms, initialTotal, report, }: Adm
     "Đã thuê",
   ];
 
-const buildClonedRoom = (r: Room) => {
+const buildClonedRoom = (r: Room, includeMedia: boolean) => {
   const base = r as any;
 
   return {
@@ -97,12 +98,14 @@ const buildClonedRoom = (r: Room) => {
     id: undefined,
 
     room_code: "",
+    room_type: includeMedia ? (base.room_type ?? "") : "",
+    price: includeMedia ? Number(base.price ?? 0) : 0,
     chinh_sach: base.chinh_sach ?? "",
 
     // nếu detail nằm trong nested object
     room_details: base.room_details ?? base.detail ?? null,
 
-    media: base.media ?? base.room_media ?? [],
+    media: includeMedia ? (base.media ?? base.room_media ?? []) : [],
 
     _isClone: true,
   };
@@ -168,7 +171,7 @@ const closeConfirm = useCallback(() => {
   confirmSecondaryActionRef.current = null;
 }, []);
 
-const openRoomCopy = useCallback(async (source: Room) => {
+const openRoomCopy = useCallback(async (source: Room, includeMedia: boolean) => {
   const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
     p_id: source.id,
     p_role: 0,
@@ -178,7 +181,7 @@ const openRoomCopy = useCallback(async (source: Room) => {
     return;
   }
   const full = (data ?? {}) as any;
-  setEditingRoom(buildClonedRoom({ ...source, ...full } as Room));
+  setEditingRoom(buildClonedRoom({ ...source, ...full } as Room, includeMedia));
   setActiveTab("info");
   setOpenModal(true);
 }, [notify]);
@@ -634,7 +637,7 @@ const openZaloUX = useCallback(
                 if (!code) return;
                 const source = rooms.find((room) => String(room.room_code || "").trim().toLocaleLowerCase("vi-VN") === code);
                 if (!source) return notify("Không tìm thấy mã phòng trong danh sách hiện tại.");
-                void openRoomCopy(source);
+                setCopyChoiceSource(source);
               }}
             >
               <Copy size={16} /> Copy phòng
@@ -936,7 +939,7 @@ const openZaloUX = useCallback(
                       fontSize: 35,
                     }}
                     onClick={() => {
-                      void openRoomCopy(r as Room);
+                      setCopyChoiceSource(r as Room);
                     }}
                     title="Copy phòng này"
                   >
@@ -1172,6 +1175,110 @@ const openZaloUX = useCallback(
     </div>,
     document.body
   )}
+
+      {copyChoiceSource && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Chọn cách sao chép phòng"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            zIndex: 1002,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setCopyChoiceSource(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              background: "#fff",
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>
+              Sao chép phòng {copyChoiceSource.room_code || ""}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.5, color: "#4b5563" }}>
+              Chọn dữ liệu bạn muốn kế thừa cho phòng mới.
+            </div>
+
+            <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const source = copyChoiceSource;
+                  setCopyChoiceSource(null);
+                  void openRoomCopy(source, false);
+                }}
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                  color: "#1e3a8a",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <strong style={{ display: "block" }}>1. Sao chép không lấy hình ảnh</strong>
+                <span style={{ display: "block", marginTop: 4, fontSize: 12, lineHeight: 1.5 }}>
+                  Giữ địa chỉ và thông tin dùng chung; để trống Mã phòng, Loại phòng, Giá thuê và media.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const source = copyChoiceSource;
+                  setCopyChoiceSource(null);
+                  void openRoomCopy(source, true);
+                }}
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: "1px solid #bbf7d0",
+                  background: "#f0fdf4",
+                  color: "#14532d",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <strong style={{ display: "block" }}>2. Sao chép cả hình ảnh/video</strong>
+                <span style={{ display: "block", marginTop: 4, fontSize: 12, lineHeight: 1.5 }}>
+                  Giữ logic nhân bản hiện tại và chỉ để trống Mã phòng.
+                </span>
+              </button>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={() => setCopyChoiceSource(null)}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#374151",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Huỷ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmOpen && (
         <div

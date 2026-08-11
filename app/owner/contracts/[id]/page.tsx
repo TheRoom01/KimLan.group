@@ -70,7 +70,6 @@ export default async function ContractDetailPage({
       />
 
       <div className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
-        <h2 className="mb-4 text-lg font-bold text-[#4f321e]">Phòng</h2>
         <div className="space-y-2">
           <p>
             <strong>Tòa nhà:</strong> {propertyName || "-"}

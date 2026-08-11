@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, CalendarDays, FileText, Home } from "lucide-react";
 import { getOwnerContracts } from "@/lib/owner/getOwnerContracts";
 import {
+  isClosedContractStatus,
   normalizeContractStatus,
   type OwnerContractSummary,
 } from "@/lib/owner/types";
@@ -34,6 +35,12 @@ export default async function ContractsPage() {
           {contracts.map((contract) => {
             const status =
               normalizeContractStatus(contract.status) ?? contract.status ?? "-";
+            const statusClass =
+              status === "Đang hiệu lực"
+                ? "bg-blue-100 text-blue-700"
+                : isClosedContractStatus(status)
+                  ? "bg-gray-200 text-gray-600"
+                  : "bg-[#ead3b3] text-[#684324]";
 
             return (
               <article
@@ -49,7 +56,7 @@ export default async function ContractsPage() {
                       {contract.tenant?.phone || "Chưa có SĐT"}
                     </p>
                   </div>
-                  <span className="shrink-0 rounded-full bg-[#ead3b3] px-2.5 py-1 text-[10px] font-bold text-[#684324]">
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClass}`}>
                     {status}
                   </span>
                 </div>

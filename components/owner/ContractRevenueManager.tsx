@@ -193,6 +193,42 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
     }
   }
 
+  async function resetPayment() {
+    if (!form.id || form.payment_status !== "paid") return;
+    const confirmed = window.confirm(
+      "Bạn có chắc muốn chuyển trạng thái về Chưa thu? Số tiền đã thu sẽ được đặt về 0.",
+    );
+    if (!confirmed) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await readApiResponse(
+        await fetch(`/api/owner/revenues/${form.id}/payments`, { method: "DELETE" }),
+      );
+      setHistory([]);
+      await load();
+      setToast("Đã chuyển trạng thái về Chưa thu");
+      window.setTimeout(() => setToast(null), 3000);
+    } catch (resetError) {
+      setError(
+        resetError instanceof Error
+          ? resetError.message
+          : "Không thể chuyển trạng thái về Chưa thu",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handlePaymentStatusClick() {
+    if (form.payment_status === "paid") {
+      void resetPayment();
+      return;
+    }
+    if (form.id) void pay();
+    else void save();
+  }
+
   function openInvoice() {
     setInvoice({
       ...form,
@@ -203,10 +239,44 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
     setInvoiceOpen(true);
   }
 
-  function confirmInvoice() {
-    setInvoiceExported(true);
-    setToast("Xuất phiếu thu thành công");
-    window.setTimeout(() => setToast(null), 3000);
+  async function confirmInvoice() {
+    if (!invoice || !selected) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await readApiResponse(
+        await fetch("/api/owner/revenues", {
+          method: invoice.id ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...invoice,
+            revenue_id: invoice.id,
+            contract_id: contract.id,
+            month: selected.month,
+            year: selected.year,
+          }),
+        }),
+      );
+      setForm(normalize(invoice, contract));
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[key(selected)];
+        return next;
+      });
+      await load();
+      setInvoiceExported(true);
+      setToast("Đã lưu bảng doanh thu và xuất phiếu thu thành công");
+      window.setTimeout(() => setToast(null), 3000);
+    } catch (invoiceError) {
+      setInvoiceExported(false);
+      setError(
+        invoiceError instanceof Error
+          ? invoiceError.message
+          : "Không thể lưu dữ liệu phiếu thu",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   const electricity = electricityAmount(form);
@@ -280,14 +350,15 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
                 <tr>
                   <td className="border p-2">
                     <button
-                      onClick={() => (form.id ? void pay() : void save())}
+                      onClick={handlePaymentStatusClick}
+                      disabled={saving}
                       className={`rounded-full px-2 py-1 font-bold ${
                         form.payment_status === "paid"
                           ? "bg-green-100 text-green-800"
                           : form.payment_status === "partial"
                             ? "bg-yellow-100 text-yellow-800"
                             : "bg-red-100 text-red-800"
-                      }`}
+                      } disabled:opacity-50`}
                     >
                       {form.payment_status === "paid"
                         ? "Đã thu"
@@ -407,6 +478,7 @@ export default function ContractRevenueManager({ contract }: { contract: Contrac
           value={invoice}
           month={selected}
           exported={invoiceExported}
+          saving={saving}
           onChange={(next) => {
             setInvoice(next);
             setInvoiceExported(false);
@@ -430,6 +502,7 @@ function ReceiptEditor({
   value,
   month,
   exported,
+  saving,
   onChange,
   onClose,
   onConfirm,
@@ -438,6 +511,7 @@ function ReceiptEditor({
   value: InvoiceDraft;
   month: Month;
   exported: boolean;
+  saving: boolean;
   onChange: (value: InvoiceDraft) => void;
   onClose: () => void;
   onConfirm: () => void;
@@ -462,7 +536,7 @@ function ReceiptEditor({
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-black text-[#244e29]">Xem trước và chỉnh phiếu thu</h3>
-            <p className="mt-1 text-xs text-[#6c765e]">Dữ liệu chỉnh tại đây chỉ dùng cho phiếu thu, không làm thay đổi bảng doanh thu.</p>
+            <p className="mt-1 text-xs text-[#6c765e]">Khi xác nhận, dữ liệu chỉnh tại đây sẽ được lưu vào bảng doanh thu.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Đóng" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl hover:bg-black/5"><X size={20} /></button>
         </div>
@@ -497,7 +571,7 @@ function ReceiptEditor({
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-[#7a8c74]/35 bg-white px-4 font-bold text-[#4f654b]">Hủy</button>
-          <button type="button" onClick={onConfirm} className="min-h-11 rounded-xl bg-[#326b36] px-4 font-bold text-white">Xác nhận xuất phiếu thu</button>
+          <button type="button" onClick={onConfirm} disabled={saving} className="min-h-11 rounded-xl bg-[#326b36] px-4 font-bold text-white disabled:opacity-50">{saving ? "Đang lưu..." : "Xác nhận xuất phiếu thu"}</button>
           {exported ? <button type="button" onClick={onDownload} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#173d1f] px-4 font-bold text-white"><Download size={17} /> Tải phiếu thu PNG</button> : null}
         </div>
       </div>
