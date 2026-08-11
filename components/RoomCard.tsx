@@ -42,6 +42,8 @@ type Room = {
 
   creator_admin_phone?: string | null;
   creator_admin_name?: string | null;
+  room_detail?: Record<string, unknown> | Record<string, unknown>[] | null;
+  room_details?: Record<string, unknown> | Record<string, unknown>[] | null;
 };
 
 type RoomCardProps = {
@@ -53,6 +55,40 @@ type RoomCardProps = {
   index?: number;
   onNavigate: (href: string) => void;
 };
+
+function roomAmenityLabels(room: Room): string[] {
+  const rawDetail = room.room_detail ?? room.room_details;
+  const detail = Array.isArray(rawDetail) ? rawDetail[0] : rawDetail;
+  if (!detail) return [];
+
+  const amenities = [
+    ["has_elevator", "Thang máy"],
+    ["has_stairs", "Thang bộ"],
+    ["shared_washer", "Máy giặt chung"],
+    ["private_washer", "Máy giặt riêng"],
+    ["shared_dryer", "Máy sấy chung"],
+    ["private_dryer", "Máy sấy riêng"],
+    ["has_parking", "Bãi xe"],
+    ["has_basement", "Hầm xe"],
+    ["fingerprint_lock", "Cửa vân tay"],
+    ["free_time", "Giờ giấc tự do"],
+    ["allow_pet", "Nuôi thú cưng"],
+    ["allow_cat", "Nuôi mèo"],
+    ["allow_dog", "Nuôi chó"],
+    ["no_pet", "Không thú cưng"],
+    ["short_term", "Ngắn hạn"],
+    ["long_term", "Dài hạn"],
+  ]
+    .filter(([key]) => Boolean(detail[key]))
+    .map(([, label]) => label);
+
+  const otherAmenities = String(detail.other_amenities ?? "")
+    .split(/[\n,;|•·]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set([...amenities, ...otherAmenities]));
+}
 
 function ToolbarButton({
   label,
@@ -609,7 +645,14 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
     startScrollLeft: number;
     dragged: boolean;
   } | null>(null);
+  const amenityDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startScrollLeft: number;
+    dragged: boolean;
+  } | null>(null);
   const suppressToolbarClickUntil = useRef(0);
+  const suppressAmenityClickUntil = useRef(0);
 
   function startToolbarDrag(event: React.PointerEvent<HTMLDivElement>) {
     if (event.pointerType !== "mouse" || event.button !== 0) return;
@@ -644,6 +687,42 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
     }
     event.currentTarget.style.cursor = "grab";
     toolbarDragRef.current = null;
+  }
+
+  function startAmenityDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    amenityDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: event.currentTarget.scrollLeft,
+      dragged: false,
+    };
+  }
+
+  function moveAmenityDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = amenityDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    if (!drag.dragged && Math.abs(deltaX) < 4) return;
+    if (!drag.dragged) {
+      drag.dragged = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.style.cursor = "grabbing";
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.scrollLeft = drag.startScrollLeft - deltaX;
+  }
+
+  function finishAmenityDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = amenityDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.dragged) suppressAmenityClickUntil.current = Date.now() + 150;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    event.currentTarget.style.cursor = "grab";
+    amenityDragRef.current = null;
   }
 
   function openToolbarUrl(
@@ -729,6 +808,10 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
   }
 
   const href = `/rooms/${room.id}?modal=1`;
+  const amenities = useMemo(
+    () => roomAmenityLabels(room),
+    [room.room_detail, room.room_details],
+  );
 
   const isAvailable = currentStatus === "Đang trống";
 const isComingAvailable = currentStatus === "Sắp trống";
@@ -1030,7 +1113,7 @@ return (
     )}
 
        {/* IMAGE */}
-        <div className="aspect-[1.45/1] w-full overflow-hidden bg-black/20">
+        <div className="relative aspect-[1.45/1] w-full overflow-hidden bg-black/20">
           <div className="grid h-full grid-cols-[60%_40%] gap-1">
             <div className="relative w-full h-full overflow-hidden">
               {room.has_video && mainErrorStage >= 1 && room.video_url ? (
@@ -1111,13 +1194,19 @@ return (
               )}
             </div>
           </div>
+
+          {updatedAt && (
+            <div className="absolute bottom-2 right-2 z-20 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold leading-none text-white/95 shadow backdrop-blur-md">
+              Cập nhật: {formatTimeAgo(updatedAt)}
+            </div>
+          )}
         </div>
-     
+
      {/* CONTENT */}
-      <div className="p-3 flex flex-col gap-2">
-        <div className="flex min-w-0 items-start justify-between gap-2">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(92px,45%)] items-center gap-x-2 gap-y-2 p-3">
+        <div className="min-w-0">
           <h3
-            className="min-w-0 flex-1 text-[13px] font-medium leading-5 line-clamp-2"
+            className="min-w-0 truncate whitespace-nowrap text-[13px] font-medium leading-5"
             style={{ color: roomMetaLabelColor }}
           >
             {room.room_code && (
@@ -1135,21 +1224,48 @@ return (
               {room.room_type}
             </span>
           </h3>
-
-          {updatedAt && (
-            <div className="shrink-0 text-right text-[12px] font-semibold leading-5 text-[#F4E7D6]/90">
-              Cập nhật: {formatTimeAgo(updatedAt)}
-            </div>
-          )}
         </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <div className="shrink-0 text-[18px] font-semibold text-[#60A5FA]">
-            {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
+        <div className="contents">
+          <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-2">
+            <div className="shrink-0 text-[18px] font-semibold text-[#60A5FA]">
+              {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
+            </div>
+            <div
+              className="min-w-0 flex-1 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              title={amenities.join(" · ") || "Tiện ích đang cập nhật"}
+              onPointerDown={startAmenityDrag}
+              onPointerMove={moveAmenityDrag}
+              onPointerUp={finishAmenityDrag}
+              onPointerCancel={finishAmenityDrag}
+              onClickCapture={(event) => {
+                if (Date.now() < suppressAmenityClickUntil.current) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+            >
+              <div className="flex w-max items-center text-[13px] font-semibold text-white drop-shadow-sm">
+                {amenities.length ? (
+                  amenities.map((amenity, index) => (
+                    <span key={amenity} className="shrink-0">
+                      {index > 0 ? <span className="px-1.5 text-white/60">•</span> : null}
+                      {amenity}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-white/75">Tiện ích đang cập nhật</span>
+                )}
+              </div>
+            </div>
           </div>
 
           {isAdmin ? (
-            <div className="relative">
+            <div className="relative col-start-2 row-start-1 justify-self-end">
 
   <button
     ref={badgeRef}
@@ -1237,10 +1353,11 @@ return (
 
 </div>
           ) : (
-            <span className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass}`}>
+            <span className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass} col-start-2 row-start-1 justify-self-end`}>
               {currentStatus}
             </span>
           )}
+
         </div>
       </div>
 
