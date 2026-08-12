@@ -20,7 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const ctx = await context(id);
     if ("error" in ctx) return ctx.error;
-    const { data, error } = await ctx.supabase.from("sales_portal_links").select("id,label,expires_at,revoked_at,last_accessed_at,created_at").eq("property_id", ctx.propertyId).order("created_at", { ascending: false });
+    const { data, error } = await ctx.supabase.from("sales_portal_links").select("id,label,public_token,expires_at,revoked_at,last_accessed_at,created_at").eq("property_id", ctx.propertyId).order("created_at", { ascending: false });
     if (error) return mapDatabaseError(error);
     return apiSuccess(data ?? []);
   } catch (error) { return mapUnknownError(error); }
@@ -37,7 +37,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (expiresAt && Number.isNaN(new Date(expiresAt).getTime())) throw new RequestValidationError("Ngày hết hạn không hợp lệ");
     if (expiresAt && new Date(expiresAt) <= new Date()) throw new RequestValidationError("Ngày hết hạn phải ở tương lai");
     const token = createSalesPortalToken();
-    const { data, error } = await ctx.supabase.from("sales_portal_links").insert({ property_id: ctx.propertyId, token_hash: hashSalesPortalToken(token), label, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null, created_by: ctx.user.id }).select("id,label,expires_at,created_at").single();
+    const { data, error } = await ctx.supabase.from("sales_portal_links").insert({ property_id: ctx.propertyId, token_hash: hashSalesPortalToken(token), public_token: token, label, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null, created_by: ctx.user.id }).select("id,label,public_token,expires_at,created_at").single();
     if (error) return mapDatabaseError(error);
     return apiSuccess({ ...data, token, path: `/sales/${token}` }, 201);
   } catch (error) { return mapUnknownError(error); }
