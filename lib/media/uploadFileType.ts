@@ -1,5 +1,8 @@
 const MIME_BY_EXTENSION: Record<string, string> = {
   avif: "image/avif",
+  csv: "text/csv",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   gif: "image/gif",
   heic: "image/heic",
   heif: "image/heif",
@@ -8,13 +11,17 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   mov: "video/quicktime",
   mp4: "video/mp4",
   png: "image/png",
+  pdf: "application/pdf",
+  txt: "text/plain",
   webm: "video/webm",
   webp: "image/webp",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 
 export function resolveUploadContentType(file: Pick<File, "name" | "type">) {
   const reported = file.type.trim().toLowerCase();
-  if (reported.startsWith("image/") || reported.startsWith("video/")) {
+  if (reported && reported !== "application/octet-stream") {
     return reported;
   }
 

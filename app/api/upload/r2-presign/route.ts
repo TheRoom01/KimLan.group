@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     const propertyId = String(body?.property_id || "").trim();
     const tenantId = String(body?.tenant_id || "").trim();
     const tenantSide = String(body?.tenant_side || "").trim();
+    const salesDocument = body?.sales_document === true;
     const fixedName = String(body?.fixed_name || "").trim();
     const fileName = String(body?.file_name || "").trim();
     const contentType = resolveUploadContentType({
@@ -85,10 +86,30 @@ export async function POST(request: Request) {
 
     const isVideo = contentType.startsWith("video/");
     const isImage = contentType.startsWith("image/");
+    const isAllowedSalesDocument = Boolean(
+      salesDocument &&
+        propertyId &&
+        [
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "text/csv",
+          "text/plain",
+        ].includes(contentType),
+    );
 
-    if (!isVideo && !isImage) {
+    if (!isVideo && !isImage && !isAllowedSalesDocument) {
       return NextResponse.json(
         { error: "Chỉ hỗ trợ image/* hoặc video/*" },
+        { status: 400 },
+      );
+    }
+
+    if (salesDocument && !propertyId) {
+      return NextResponse.json(
+        { error: "Tài liệu Sale phải thuộc một tòa nhà" },
         { status: 400 },
       );
     }
@@ -149,7 +170,7 @@ export async function POST(request: Request) {
     }
 
     const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
-    const folder = isVideo ? "video" : "images";
+    const folder = salesDocument ? "sales-documents" : isVideo ? "video" : "images";
     const key = propertyId
       ? `properties/${propertyId}/${folder}/${crypto.randomUUID()}.${extension}`
       : tenantId
@@ -182,7 +203,7 @@ export async function POST(request: Request) {
         "Content-Type": contentType,
         "Cache-Control": cacheControl,
       },
-      type: isVideo ? "video" : "image",
+      type: salesDocument ? "document" : isVideo ? "video" : "image",
     });
   } catch (error) {
     console.error("R2 presign error:", error);

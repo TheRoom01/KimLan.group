@@ -21,6 +21,7 @@ import PropertyInvitationsPanel from "@/components/owner/PropertyInvitationsPane
 import PropertyRoomCandidates from "@/components/owner/PropertyRoomCandidates";
 import PropertyRoomCardGrid from "@/components/owner/PropertyRoomCardGrid";
 import OwnerCopyRoomButton from "@/components/owner/OwnerCopyRoomButton";
+import SalesPortalManager from "@/components/owner/SalesPortalManager";
 import PropertyMembersPanel, {
   type PropertyMemberItem,
 } from "@/components/owner/PropertyMembersPanel";
@@ -71,7 +72,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
   }
 
   const supabase = await createSupabaseServerClient();
-  const [authResult, permissionResult, accountResult, extrasResult] = await Promise.all([
+  const [authResult, permissionResult, accountResult, extrasResult, salesNotesResult] = await Promise.all([
     supabase.auth.getUser(),
     supabase.rpc("can_manage_property", { p_property_id: property.id }),
     supabase.rpc("get_owner_account_panel_v1"),
@@ -80,6 +81,10 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
       .select("gallery_images, google_maps_url, default_room_data, note")
       .eq("id", property.id)
       .single(),
+    supabase
+      .from("sales_room_notes")
+      .select("room_id, note")
+      .eq("property_id", property.id),
   ]);
 
   const user = authResult.data.user;
@@ -111,6 +116,9 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
   const ownerMember = ownerMembers[0];
   const isOwner = currentMembership?.role === "owner";
   const rooms = data.rooms ?? [];
+  const initialSalesNotes = Object.fromEntries(
+    (salesNotesResult.data ?? []).map((item) => [item.room_id, item.note]),
+  );
   const summary = data.summary;
   const displayName = propertyDisplayAddress(property);
   const defaults = extras.default_room_data ?? {};
@@ -215,6 +223,18 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
           <PropertyRoomCardGrid rooms={rooms} />
         ) : <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 p-6 text-sm text-[#80634a]">Chưa có phòng trong tòa nhà này.</div>}
       </section>
+
+      {canManage ? (
+        <SalesPortalManager
+          propertyId={property.id}
+          rooms={rooms.map((room) => ({
+            id: room.id,
+            room_code: room.room_code,
+            room_type: room.room_type,
+          }))}
+          initialNotes={initialSalesNotes}
+        />
+      ) : null}
 
       <PropertyRoomCandidates propertyId={property.id} isOwner={isOwner} />
       <PropertyMembersPanel propertyId={property.id} currentUserId={user?.id} initialMembers={members} isOwner={isOwner} />
