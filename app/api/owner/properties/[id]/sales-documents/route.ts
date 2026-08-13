@@ -19,7 +19,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const ctx = await context(id);
     if ("error" in ctx) return ctx.error;
-    const { data, error } = await ctx.supabase.from("sales_property_documents").select("id,title,description,file_name,file_url,file_path,mime_type,size_bytes,sort_order,created_at").eq("property_id", ctx.propertyId).order("sort_order").order("created_at", { ascending: false });
+    const { data, error } = await ctx.supabase.from("property_documents").select("id,title,description,file_name,file_url,file_path,mime_type,size_bytes,sort_order,created_at").eq("property_id", ctx.propertyId).order("sort_order").order("created_at", { ascending: false });
     if (error) return mapDatabaseError(error);
     return apiSuccess(data ?? []);
   } catch (error) { return mapUnknownError(error); }
@@ -43,7 +43,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       sort_order: parseNonNegativeInteger(body.sort_order ?? 0, "Thứ tự") ?? 0,
       created_by: ctx.user.id,
     };
-    const { data, error } = await ctx.supabase.from("sales_property_documents").insert(input).select("id,title,description,file_name,file_url,file_path,mime_type,size_bytes,sort_order,created_at").single();
+    const { data, error } = await ctx.supabase.from("property_documents").insert(input).select("id,title,description,file_name,file_url,file_path,mime_type,size_bytes,sort_order,created_at").single();
     if (error) return mapDatabaseError(error);
     return apiSuccess(data, 201);
   } catch (error) { return mapUnknownError(error); }

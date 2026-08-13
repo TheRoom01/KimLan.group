@@ -65,6 +65,67 @@ export function PanelLoadingSkeleton() {
   );
 }
 
+export function OwnerDetailLoadingSkeleton({
+  kind,
+}: {
+  kind: "property" | "room";
+}) {
+  const isProperty = kind === "property";
+
+  return (
+    <div
+      role="status"
+      aria-label={isProperty ? "Đang tải chi tiết tòa nhà" : "Đang tải chi tiết phòng"}
+      className="w-full min-w-0 space-y-5 sm:space-y-6"
+    >
+      <span className="sr-only">
+        {isProperty ? "Đang tải chi tiết tòa nhà..." : "Đang tải chi tiết phòng..."}
+      </span>
+
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 flex-1 space-y-2">
+          <Pulse className="h-3 w-28" />
+          <Pulse className="h-9 w-72 max-w-[80vw]" />
+          <Pulse className="h-4 w-96 max-w-full" />
+        </div>
+        <div className="flex gap-2">
+          <Pulse className="h-10 w-28" />
+          <Pulse className="h-10 w-28" />
+        </div>
+      </div>
+
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+        <section className="min-w-0 rounded-[22px] border border-[#956b45]/15 bg-[#fff9ef] p-4 sm:p-5">
+          <Pulse className={isProperty ? "h-52 w-full sm:h-64" : "h-64 w-full sm:h-80"} />
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <Pulse className="h-20 w-full" />
+            <Pulse className="h-20 w-full" />
+            <Pulse className="h-20 w-full" />
+            <Pulse className="h-20 w-full" />
+          </div>
+        </section>
+
+        <aside className="min-w-0 rounded-[22px] border border-[#956b45]/15 bg-[#fff9ef] p-4 sm:p-5">
+          <Pulse className="h-6 w-36" />
+          <Pulse className="mt-5 h-14 w-full" />
+          <Pulse className="mt-3 h-14 w-full" />
+          <Pulse className="mt-3 h-14 w-full" />
+          <Pulse className="mt-5 h-10 w-full" />
+        </aside>
+      </div>
+
+      <section className="rounded-[22px] border border-[#956b45]/15 bg-[#fff9ef] p-4 sm:p-5">
+        <Pulse className="h-7 w-52 max-w-[70vw]" />
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: isProperty ? 6 : 3 }, (_, index) => (
+            <Pulse key={index} className="h-24 w-full" />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function RoomModalLoadingSkeleton() {
   return (
     <div

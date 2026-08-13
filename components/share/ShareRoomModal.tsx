@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { formatVietnameseWard } from "@/lib/formatWard";
 
 type ShareKey =
   | "room_link"
@@ -48,13 +49,7 @@ function joinParts(parts: Array<string | null | undefined>) {
 }
 
 function formatWard(ward: any) {
-  if (!ward) return null;
-
-  const w = String(ward).trim().replace(/^P\.?\s*/i, "");
-
-  if (/^\d+/.test(w)) return `P.${w}`;
-
-  return `P. ${w}`;
+  return formatVietnameseWard(ward);
 }
 
 function compactShareHouseNumber(input: any) {

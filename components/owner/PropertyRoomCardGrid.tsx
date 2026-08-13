@@ -50,6 +50,12 @@ export default function PropertyRoomCardGrid({ rooms }: { rooms: PropertyRoom[] 
     }
   }, []);
 
+  useEffect(() => {
+    rooms.forEach((room) => {
+      router.prefetch(`/owner/rooms/${room.id}`);
+    });
+  }, [rooms, router]);
+
   return (
     <div className="mt-5 flex flex-wrap items-start gap-2.5">
       {rooms.map((room) => {

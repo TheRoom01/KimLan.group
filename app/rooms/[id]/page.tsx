@@ -11,6 +11,7 @@ import {
   extractRoomActionUrls,
   normalizeGoogleMapsUrl,
 } from "@/lib/roomActionLinks";
+import { formatVietnameseWard } from "@/lib/formatWard";
 
 /* ================= Utils ================= */
 
@@ -31,16 +32,7 @@ function formatVND(value: any) {
 }
 
 function formatWard(ward: any) {
-  if (!ward) return null;
-
-  // Xóa các dạng "P.", "p.", "P  " ở đầu
-  const w = String(ward).trim().replace(/^P\.?\s*/i, "");
-
-  // Nếu là số (7, 12...) => P.7 / P.12
-  if (/^\d+/.test(w)) return `P.${w}`;
-
-  // Nếu là chữ (VD: "Bến Nghé") => P. Bến Nghé
-  return `P. ${w}`;
+  return formatVietnameseWard(ward);
 }
 
 
@@ -417,6 +409,7 @@ const canSeePrivateFields =
   const [fetchStatus, setFetchStatus] = useState<"loading" | "done">("loading");
   
   const [downloadingImages, setDownloadingImages] = useState(false);
+  const [downloadImagesMessage, setDownloadImagesMessage] = useState<string | null>(null);
   const mediaItemsLengthRef = useRef(0);
   const viewerDragStartRef = useRef<{ x: number; y: number } | null>(null);
   const viewerDragArmedRef = useRef(false);
@@ -1154,12 +1147,7 @@ const addressLine = joinParts([
   adminLevel === 1 || adminLevel === 2
     ? [houseNumber, room?.address].filter(Boolean).join(" ")
     : [maskedHouseNumber, room?.address].filter(Boolean).join(" "),
-  room?.ward
-    ? (() => {
-        const w = String(room.ward).trim().replace(/^P\.?\s*/i, "");
-        return `P.${/^[0-9]/.test(w) ? w : ` ${w}`}`;
-      })()
-    : null,
+  formatWard(room?.ward),
   room?.district,
 ]);
 
@@ -1395,6 +1383,59 @@ const policyCopyText = room?.chinh_sach?.trim()
   ? room.chinh_sach.trim()
   : "";
 
+async function downloadRoomImagesToDevice() {
+  if (!imageUrls.length || downloadingImages) return;
+  setDownloadingImages(true);
+  setDownloadImagesMessage(`Đang chuẩn bị 0/${imageUrls.length} ảnh...`);
+  try {
+    const files: File[] = [];
+    for (let index = 0; index < imageUrls.length; index += 1) {
+      files.push(await homeRoomImageFile(imageUrls[index], room?.room_code || room?.id || id, index));
+      setDownloadImagesMessage(`Đang chuẩn bị ${index + 1}/${imageUrls.length} ảnh...`);
+    }
+
+    const canShareFiles = typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files });
+    if (canShareFiles) {
+      try {
+        await navigator.share({ title: `Ảnh phòng ${room?.room_code || ""}`, files });
+        setDownloadImagesMessage("Đã mở bảng lưu/chia sẻ ảnh của thiết bị.");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
+      }
+    }
+
+    files.forEach((file, index) => {
+      const objectUrl = URL.createObjectURL(file);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = file.name;
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      window.setTimeout(() => {
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+      }, index * 180);
+    });
+    setDownloadImagesMessage(`Đang tải ${files.length} ảnh riêng biệt. Nếu trình duyệt hỏi, hãy cho phép tải nhiều tệp.`);
+  } catch (error) {
+    setDownloadImagesMessage(error instanceof DOMException && error.name === "AbortError" ? "Bạn đã đóng bảng lưu ảnh." : error instanceof Error ? error.message : "Không thể tải ảnh phòng.");
+  } finally {
+    setDownloadingImages(false);
+  }
+}
+
+async function homeRoomImageFile(url: string, roomCode: string, index: number) {
+  const response = await fetch(`/api/share-image?url=${encodeURIComponent(url)}`, { cache: "force-cache" });
+  if (!response.ok) throw new Error(`Không thể tải ảnh ${index + 1}.`);
+  const blob = await response.blob();
+  const mime = blob.type.toLowerCase();
+  const extension = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : mime.includes("gif") ? "gif" : "jpg";
+  const safeRoomCode = String(roomCode || "phong").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "phong";
+  return new File([blob], `phong-${safeRoomCode}-${String(index + 1).padStart(2, "0")}.${extension}`, { type: blob.type || "image/jpeg" });
+}
+
 
 return (
   <div
@@ -1441,6 +1482,7 @@ return (
         ✕
       </button>
     )}
+
 
 {!viewerOpen && (
   <button
@@ -1807,63 +1849,21 @@ return (
       {/* ===== TOOLBAR CHỨC NĂNG ===== */}
         {isAdmin && (
           <div className="relative z-30 flex w-full min-w-0 items-center justify-start gap-2 overflow-x-auto overscroll-x-contain py-1 sm:justify-end">
-            {/* Tải toàn bộ ảnh */}
             {imageUrls.length > 0 && (
               <button
                 type="button"
                 disabled={downloadingImages}
-                onClick={() => {
-                  if (downloadingImages) return;
-
-                  try {
-                    setDownloadingImages(true);
-                    setZaloMenuOpen(false);
-
-                    const url = `/api/rooms/${encodeURIComponent(
-                      id
-                    )}/download-images`;
-
-                    window.open(url, "_blank");
-                  } finally {
-                    setDownloadingImages(false);
-                  }
-                }}
-                className="
-                  inline-flex h-9 shrink-0 items-center justify-center gap-1.5
-                  rounded-full
-                  border border-white/20
-                  bg-black/25
-                  px-3
-                  text-xs font-semibold text-white
-                  backdrop-blur-[14px]
-                  shadow-[0_8px_24px_rgba(0,0,0,0.25)]
-                  transition
-                  hover:bg-black/45
-                  active:scale-[0.97]
-                  disabled:cursor-not-allowed
-                  disabled:opacity-60
-                "
-                title={downloadingImages ? "Đang chuẩn bị file..." : "Tải ảnh"}
+                onClick={() => { setZaloMenuOpen(false); void downloadRoomImagesToDevice(); }}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full border border-white/20 bg-black/25 px-3 text-xs font-semibold text-white backdrop-blur-[14px] shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition hover:bg-black/45 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+                title={downloadingImages ? "Đang chuẩn bị ảnh..." : `Tải ${imageUrls.length} ảnh về thiết bị`}
+                aria-label="Tải ảnh phòng về thiết bị"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 3v12" />
-                  <path d="m7 10 5 5 5-5" />
-                  <path d="M5 21h14" />
-                </svg>
-
-                <span>
-                  {downloadingImages ? "Đang tải..." : "Tải ảnh"}
-                </span>
+                {downloadingImages ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>}
+                <span>{downloadingImages ? "Đang chuẩn bị" : "Tải ảnh"}</span>
               </button>
             )}
+
+            {downloadImagesMessage ? <span role="status" className="max-w-[260px] shrink-0 truncate rounded-full border border-white/15 bg-black/25 px-3 py-2 text-[10px] font-semibold text-white/85" title={downloadImagesMessage}>{downloadImagesMessage}</span> : null}
 
             {/* Chia sẻ */}
             <button

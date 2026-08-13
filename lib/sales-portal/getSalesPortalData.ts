@@ -19,7 +19,7 @@ export async function getSalesPortalData(token: string): Promise<SalesPortalData
 
   const [propertyResult, documentsResult, roomsResult, notesResult] = await Promise.all([
     supabase.from("properties").select("id, code, name, house_number, address, ward, district, city, cover_image, gallery_images, google_maps_url, note, default_room_data, lifecycle_status").eq("id", link.property_id).eq("lifecycle_status", "active").maybeSingle(),
-    supabase.from("sales_property_documents").select("id, title, description, file_name, file_url, mime_type, size_bytes").eq("property_id", link.property_id).order("sort_order").order("created_at", { ascending: false }),
+    supabase.from("sales_portal_link_documents").select("property_documents(id, title, description, file_name, file_url, mime_type, size_bytes, sort_order, created_at)").eq("link_id", link.id),
     supabase.from("rooms").select("id, room_code, room_type, price, description, chinh_sach, zalo_phone, status, lifecycle_status, room_details(*), room_media(id,type,url,is_cover,sort_order), rental_contracts(id,status,start_date,end_date,created_at)").eq("property_id", link.property_id).eq("lifecycle_status", "active").order("room_code"),
     supabase.from("sales_room_notes").select("room_id, note").eq("property_id", link.property_id),
   ]);
@@ -89,7 +89,13 @@ export async function getSalesPortalData(token: string): Promise<SalesPortalData
       policy: stringOrNull(defaults.chinh_sach) ?? uniqueStrings((roomsResult.data ?? []).map((room) => room.chinh_sach))[0] ?? null,
       contact_phones: contactPhones,
     },
-    documents: (documentsResult.data ?? []).map((document) => ({ ...document, size_bytes: document.size_bytes == null ? null : Number(document.size_bytes) })),
+    documents: (documentsResult.data ?? [])
+      .flatMap((selection) => {
+        const value = selection.property_documents;
+        return Array.isArray(value) ? value : value ? [value] : [];
+      })
+      .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0) || String(right.created_at ?? "").localeCompare(String(left.created_at ?? "")))
+      .map(({ sort_order: _sortOrder, created_at: _createdAt, ...document }) => ({ ...document, size_bytes: document.size_bytes == null ? null : Number(document.size_bytes) })),
     rooms,
     summary,
   };
