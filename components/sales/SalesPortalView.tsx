@@ -240,7 +240,7 @@ function InfoGroup({ title, children }: { title: string; children: React.ReactNo
 function Metric({ label, value, tone }: { label: string; value: number; tone: "green" | "amber" | "red" }) { const colors = { green: "bg-emerald-50 text-emerald-700", amber: "bg-amber-50 text-amber-700", red: "bg-red-50 text-red-700" }; return <div className={`rounded-2xl p-3 text-center ${colors[tone]}`}><p className="text-xl font-bold">{value}</p><p className="mt-1 text-[11px] font-semibold">{label}</p></div>; }
 function StatusBadge({ status }: { status: SalesRoomStatus }) { const cls = status === "Trống" ? "bg-emerald-600" : status === "Sắp trống" ? "bg-amber-500" : "bg-red-600"; return <span className={`absolute right-3 top-3 rounded-full px-3 py-1 text-xs font-bold text-white shadow ${cls}`}>{status}</span>; }
 function roomBadgeClass(status: SalesRoomStatus) { return status === "Trống" ? "border-emerald-700/35 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-emerald-900/15 hover:to-emerald-700" : status === "Sắp trống" ? "border-amber-600/35 bg-gradient-to-br from-amber-300 to-amber-400 text-amber-950 shadow-amber-900/15 hover:to-amber-500" : "border-red-700/35 bg-gradient-to-br from-red-500 to-red-600 text-white shadow-red-900/15 hover:to-red-700"; }
-async function salesRoomImageFile(url: string, roomCode: string, index: number) {
+  async function salesRoomImageFile(url: string, roomCode: string, index: number) {
   const response = await fetch(`/api/share-image?url=${encodeURIComponent(url)}`, { cache: "force-cache" });
   if (!response.ok) throw new Error(`Không thể tải ảnh ${index + 1}.`);
   const blob = await response.blob();

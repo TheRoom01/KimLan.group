@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import EditPropertyForm from "@/components/owner/EditPropertyForm";
+import PropertyDefaultsFromRoomButton from "@/components/owner/PropertyDefaultsFromRoomButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function EditPropertyPage({
@@ -40,20 +41,27 @@ export default async function EditPropertyPage({
     );
   }
 
+  const { count: roomCount } = await supabase
+    .from("rooms")
+    .select("id", { count: "exact", head: true })
+    .eq("property_id", id)
+    .eq("lifecycle_status", "active");
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Chỉnh sửa tòa nhà</h1>
-         
+      <div>
+        <h1 className="text-3xl font-bold">Chỉnh sửa tòa nhà</h1>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href={`/owner/properties/${id}`}
+            className="text-sm font-medium text-gray-600 hover:text-black"
+          >
+            ← Chi tiết tòa nhà
+          </Link>
+          {(roomCount ?? 0) > 0 ? (
+            <PropertyDefaultsFromRoomButton propertyId={id} />
+          ) : null}
         </div>
-
-        <Link
-          href={`/owner/properties/${id}`}
-          className="text-sm font-medium text-gray-600 hover:text-black"
-        >
-          ← Chi tiết tòa nhà
-        </Link>
       </div>
 
       <EditPropertyForm property={property} />

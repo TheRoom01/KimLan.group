@@ -1,11 +1,12 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { cache } from "react";
 
 import { hashSalesPortalToken, isSalesPortalToken } from "./token";
 import type { SalesPortalData, SalesPortalRoom, SalesRoomStatus } from "./types";
 
 const ACTIVE_CONTRACT_STATUSES = new Set(["active", "pending", "Đang hiệu lực", "Chờ nhận phòng"]);
 
-export async function getSalesPortalData(token: string): Promise<SalesPortalData | null> {
+export const getSalesPortalData = cache(async function getSalesPortalData(token: string): Promise<SalesPortalData | null> {
   if (!isSalesPortalToken(token)) return null;
   const supabase = createSupabaseAdminClient();
   const now = new Date();
@@ -99,7 +100,7 @@ export async function getSalesPortalData(token: string): Promise<SalesPortalData
     rooms,
     summary,
   };
-}
+});
 
 function first(value: unknown) { return Array.isArray(value) ? value[0] ?? null : value ?? null; }
 function asRecord(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }

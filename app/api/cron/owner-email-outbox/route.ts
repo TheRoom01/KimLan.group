@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getOwnerEmailFrom } from "@/lib/email/sender";
 
 export const runtime = "nodejs";
 
@@ -39,7 +40,7 @@ async function run(request: Request) {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: process.env.OWNER_EMAIL_FROM || "KimLan Group <noreply@canhodichvu.pro>",
+          from: getOwnerEmailFrom(),
           to: [row.recipient_email],
           subject: row.subject,
           html: `<p>Có yêu cầu xác minh quyền sở hữu cho <strong>${escapeHtml(address)}</strong>.</p><p>Vui lòng đăng nhập Owner Portal để kiểm tra và chấp nhận hoặc từ chối yêu cầu.</p><p><a href="${siteUrl}/owner/properties">Mở trang quản lý tòa nhà</a></p>`,

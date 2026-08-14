@@ -7,13 +7,15 @@ import {
   type OwnerContractSummary,
 } from "@/lib/owner/types";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
+import OwnerExportButton from "@/components/owner/OwnerExportButton";
 
 export default async function ContractsPage() {
   const contracts = (await getOwnerContracts()) as OwnerContractSummary[];
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
-      <div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
         <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">
           <FileText size={15} />
           Quản lý hợp đồng
@@ -24,6 +26,8 @@ export default async function ContractsPage() {
         <p className="mt-1 text-sm text-[#7f6651]">
           Tổng cộng {contracts.length} hợp đồng thuộc các tòa nhà bạn quản lý.
         </p>
+        </div>
+        <OwnerExportButton href="/api/owner/exports/contracts" label="Xuất Excel / Trang tính" />
       </div>
 
       {contracts.length === 0 ? (

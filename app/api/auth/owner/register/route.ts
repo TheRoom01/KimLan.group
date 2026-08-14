@@ -6,6 +6,7 @@ import {
   hashRegistrationIdentifier,
 } from "@/lib/owner/registrationSecurity";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getOwnerEmailFrom } from "@/lib/email/sender";
 
 
 function normalizeOwnerPhone(
@@ -64,11 +65,16 @@ async function sendVerificationEmail(email: string, code: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from:
-        process.env.OWNER_EMAIL_FROM ||
-        "KimLan Group <noreply@canhodichvu.pro>",
+      from: getOwnerEmailFrom(),
       to: [email],
       subject: "Mã xác minh tài khoản Owner",
+      text: `Mã xác minh tài khoản Owner của bạn là: ${code}. Mã có hiệu lực trong 10 phút.`,
+      ...(process.env.OWNER_EMAIL_REPLY_TO
+        ? { reply_to: process.env.OWNER_EMAIL_REPLY_TO }
+        : {}),
+      headers: {
+        "X-Entity-Ref-ID": crypto.randomUUID(),
+      },
       html: `
         <div style="font-family:Arial,sans-serif;color:#432918;line-height:1.6">
           <h2>Xác minh tài khoản Owner</h2>
@@ -313,7 +319,7 @@ export async function POST(
     return NextResponse.json({
       ok:true,
       message:
-        "Kiểm tra hộp thư rác",
+        "Mã xác minh đã được gửi tới hộp thư của bạn",
     });
 
 
