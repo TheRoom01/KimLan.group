@@ -88,19 +88,6 @@ function safeFileBaseName(input: string) {
   );
 }
 
-function isIOSWebShare() {
-  if (typeof navigator === "undefined") return false;
-
-  const platform = navigator.platform || "";
-  const userAgent = navigator.userAgent || "";
-
-  // iPadOS can identify itself as macOS when "Request Desktop Website" is on.
-  return (
-    /iPad|iPhone|iPod/i.test(userAgent) ||
-    (platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  );
-}
-
 async function loadImageFromBlob(blob: Blob): Promise<BitmapLike> {
   if (typeof createImageBitmap === "function") {
     return await createImageBitmap(blob);
@@ -853,9 +840,6 @@ useEffect(() => {
     const hasImages = selected.length > 0;
     const hasVideos = selectedVideos.length > 0;
     const hasMedia = hasImages || hasVideos;
-    const shouldUseIOSCollage =
-      isIOSWebShare() && selected.length > 1 && !hasVideos;
-
     if (!hasText && !hasMedia) {
       showToast("Không có nội dung, ảnh hoặc video để chia sẻ");
       return;
@@ -886,45 +870,44 @@ useEffect(() => {
       }
 
       if (
-        !shouldUseIOSCollage &&
-        selected.length <= MAX_NATIVE_SHARE_FILES &&
-        selectedVideos.length <= MAX_NATIVE_SHARE_VIDEOS &&
-        navigator?.share
-      ) {
-        // Preloading makes the modal feel faster, but it must not be a prerequisite
-        // for sharing. A failed/slow preload used to leave the UI permanently saying
-        // "Ảnh đang chuẩn bị". Fetch missing files as part of this user action so a
-        // transient proxy/network failure can recover without reopening the modal.
-        const imageFiles = await Promise.all(
-          selected.map((url: string, index: number) =>
-            preparedFiles[url] ?? prepareImageFile(url, index)
-          )
-        );
+  selected.length <= MAX_NATIVE_SHARE_FILES &&
+  selectedVideos.length <= MAX_NATIVE_SHARE_VIDEOS &&
+  navigator?.share
+) {
+  // Preloading makes the modal feel faster, but it must not be a prerequisite
+  // for sharing. A failed/slow preload used to leave the UI permanently saying
+  // "Ảnh đang chuẩn bị". Fetch missing files as part of this user action so a
+  // transient proxy/network failure can recover without reopening the modal.
+  const imageFiles = await Promise.all(
+    selected.map((url: string, index: number) =>
+      preparedFiles[url] ?? prepareImageFile(url, index)
+    )
+  );
 
-        const videoFiles = await Promise.all(
-          selectedVideos.map((url: string, index: number) =>
-            preparedVideoFiles[url] ?? prepareVideoFile(url, index)
-          )
-        );
+  const videoFiles = await Promise.all(
+    selectedVideos.map((url: string, index: number) =>
+      preparedVideoFiles[url] ?? prepareVideoFile(url, index)
+    )
+  );
 
-        const files = [...imageFiles, ...videoFiles];
+      const files = [...imageFiles, ...videoFiles];
 
-        const canShareFiles =
-          typeof navigator.canShare === "function"
-            ? navigator.canShare({ files })
-            : false;
+      const canShareFiles =
+        typeof navigator.canShare === "function"
+          ? navigator.canShare({ files })
+          : false;
 
-        if (canShareFiles) {
-          await navigator.share({
-            title: "The Room",
-            text,
-            files,
-          });
+      if (canShareFiles) {
+        await navigator.share({
+          title: "The Room",
+          text,
+          files,
+        });
 
-          onClose();
-          return;
-        }
+        onClose();
+        return;
       }
+    }
 
       const collageFile = await buildCollageFileFromUrls(
         selected,
