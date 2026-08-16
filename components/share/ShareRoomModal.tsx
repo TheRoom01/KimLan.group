@@ -926,7 +926,10 @@ useEffect(() => {
 
       if (canShareFiles) {
         debugPhase = "native-share-files";
-        await navigator.share({ text, files });
+        // Zalo's iOS Share Extension aborts mixed text + multi-image payloads
+        // after sending only part of the images. The text has already been
+        // copied above, so give the native share sheet images only.
+        await navigator.share({ files });
 
         onClose();
         return;
@@ -967,7 +970,7 @@ useEffect(() => {
       console.error("handleShare error:", e);
       const report = JSON.stringify(
         {
-          version: "share-debug-v2-no-title",
+          version: "share-debug-v3-images-only",
           timestamp: new Date().toISOString(),
           elapsedMs: Date.now() - debugStartedAt,
           phase: debugPhase,
@@ -988,7 +991,7 @@ useEffect(() => {
             selectedImageCount: selected.length,
             selectedVideoCount: selectedVideos.length,
             includedTitle: false,
-            includedText: true,
+            includedText: false,
             reversedFileOrder: false,
             sourceUrls: [...selected, ...selectedVideos],
             files: debugFiles.map((file, index) => ({
