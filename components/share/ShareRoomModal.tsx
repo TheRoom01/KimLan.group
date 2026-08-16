@@ -41,6 +41,24 @@ type Props = {
 
 type BitmapLike = ImageBitmap | HTMLImageElement;
 
+function describeShareError(error: unknown) {
+  if (error instanceof DOMException || error instanceof Error) {
+    return {
+      constructor: error.constructor?.name || "Error",
+      name: error.name,
+      message: error.message,
+      stack: error.stack || null,
+    };
+  }
+
+  return {
+    constructor: typeof error,
+    name: null,
+    message: String(error),
+    stack: null,
+  };
+}
+
 function joinParts(parts: Array<string | null | undefined>) {
   return parts
     .map((p) => (p ?? "").toString().trim())
@@ -370,6 +388,7 @@ export default function ShareRoomModal({
   detail,
 }: Props) {
   const [toast, setToast] = useState<string | null>(null);
+  const [shareDebugReport, setShareDebugReport] = useState<string | null>(null);
 
 const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
 const [shareVideoUrls, setShareVideoUrls] = useState<string[]>([]);
@@ -817,6 +836,11 @@ useEffect(() => {
   async function handleShare() {
     if (sharing) return;
 
+    setShareDebugReport(null);
+    const debugStartedAt = Date.now();
+    let debugPhase = "build-payload";
+    let debugFiles: File[] = [];
+
     const text = buildShareText();
     const selected: string[] = Array.from(
       new Set<string>(
@@ -849,6 +873,7 @@ useEffect(() => {
 
     try {
       if (hasText) {
+        debugPhase = "copy-text";
         await copyText(text);
       }
 
@@ -874,6 +899,7 @@ useEffect(() => {
   selectedVideos.length <= MAX_NATIVE_SHARE_VIDEOS &&
   navigator?.share
 ) {
+  debugPhase = "prepare-images";
   // Preloading makes the modal feel faster, but it must not be a prerequisite
   // for sharing. A failed/slow preload used to leave the UI permanently saying
   // "Ảnh đang chuẩn bị". Fetch missing files as part of this user action so a
@@ -891,13 +917,16 @@ useEffect(() => {
   );
 
       const files = [...imageFiles, ...videoFiles];
+      debugFiles = files;
 
+      debugPhase = "can-share-files";
       const canShareFiles =
         typeof navigator.canShare === "function"
           ? navigator.canShare({ files })
           : false;
 
       if (canShareFiles) {
+        debugPhase = "native-share-files";
         await navigator.share({
           title: "The Room",
           text,
@@ -909,6 +938,7 @@ useEffect(() => {
       }
     }
 
+      debugPhase = "build-collage";
       const collageFile = await buildCollageFileFromUrls(
         selected,
         room.room_code || room.id,
@@ -941,7 +971,48 @@ useEffect(() => {
       onClose();
     } catch (e) {
       console.error("handleShare error:", e);
-      showToast("Không thể chia sẻ ngay lúc này");
+      const report = JSON.stringify(
+        {
+          version: "share-debug-v1",
+          timestamp: new Date().toISOString(),
+          elapsedMs: Date.now() - debugStartedAt,
+          phase: debugPhase,
+          room: {
+            id: room?.id || null,
+            code: room?.room_code || null,
+          },
+          browser: {
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            maxTouchPoints: navigator.maxTouchPoints,
+            language: navigator.language,
+            hasShare: typeof navigator.share === "function",
+            hasCanShare: typeof navigator.canShare === "function",
+          },
+          payload: {
+            textLength: text.length,
+            selectedImageCount: selected.length,
+            selectedVideoCount: selectedVideos.length,
+            sourceUrls: [...selected, ...selectedVideos],
+            files: debugFiles.map((file, index) => ({
+              index,
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              lastModified: file.lastModified,
+            })),
+          },
+          error: describeShareError(e),
+        },
+        null,
+        2
+      );
+
+      setShareDebugReport(report);
+      try {
+        window.localStorage.setItem("last-room-share-debug", report);
+      } catch {}
+      showToast("Chia sẻ báo lỗi — mở Báo cáo debug ở cuối modal");
     } finally {
       setSharing(false);
     }
@@ -1242,6 +1313,29 @@ useEffect(() => {
             <pre className="max-h-32 md:max-h-48 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/20 bg-[rgba(255,255,255,0.06)] p-3 text-sm text-[#F4E7D6] backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
               {buildShareText()}
             </pre>
+
+            {shareDebugReport && (
+              <div className="rounded-2xl border border-red-300/35 bg-red-950/30 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-red-100">
+                    Báo cáo debug chia sẻ
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await copyText(shareDebugReport);
+                      showToast(ok ? "Đã copy báo cáo debug" : "Không thể copy báo cáo");
+                    }}
+                    className="rounded-lg border border-white/20 bg-white/10 px-3 py-1 text-xs text-white hover:bg-white/15"
+                  >
+                    Copy báo cáo
+                  </button>
+                </div>
+                <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all text-[11px] text-red-50/80">
+                  {shareDebugReport}
+                </pre>
+              </div>
+            )}
 
             <div className="
               sticky bottom-0 z-10 -mx-1 flex gap-2
