@@ -40,7 +40,6 @@ type Props = {
 };
 
 type BitmapLike = ImageBitmap | HTMLImageElement;
-type ShareDebugMode = "baseline" | "no-title" | "images-only" | "reverse";
 
 function describeShareError(error: unknown) {
   if (error instanceof DOMException || error instanceof Error) {
@@ -390,8 +389,6 @@ export default function ShareRoomModal({
 }: Props) {
   const [toast, setToast] = useState<string | null>(null);
   const [shareDebugReport, setShareDebugReport] = useState<string | null>(null);
-  const [shareDebugMode, setShareDebugMode] =
-    useState<ShareDebugMode>("baseline");
 
 const [shareImageUrls, setShareImageUrls] = useState<string[]>([]);
 const [shareVideoUrls, setShareVideoUrls] = useState<string[]>([]);
@@ -884,7 +881,6 @@ useEffect(() => {
         if (navigator?.share) {
           try {
             await navigator.share({
-              title: "The Room",
               text,
               url: absoluteRoomUrl || undefined,
             });
@@ -920,28 +916,17 @@ useEffect(() => {
   );
 
       const files = [...imageFiles, ...videoFiles];
-      const filesForShare =
-        shareDebugMode === "reverse" ? [...files].reverse() : files;
-      debugFiles = filesForShare;
+      debugFiles = files;
 
       debugPhase = "can-share-files";
       const canShareFiles =
         typeof navigator.canShare === "function"
-          ? navigator.canShare({ files: filesForShare })
+          ? navigator.canShare({ files })
           : false;
 
       if (canShareFiles) {
         debugPhase = "native-share-files";
-        const sharePayload: ShareData = { files: filesForShare };
-
-        if (shareDebugMode !== "images-only") {
-          sharePayload.text = text;
-        }
-        if (shareDebugMode !== "no-title" && shareDebugMode !== "images-only") {
-          sharePayload.title = "The Room";
-        }
-
-        await navigator.share(sharePayload);
+        await navigator.share({ text, files });
 
         onClose();
         return;
@@ -963,7 +948,6 @@ useEffect(() => {
 
       if (navigator?.share && canShareCollage) {
         await navigator.share({
-          title: "The Room",
           files: [collageFile],
         });
         onClose();
@@ -983,8 +967,7 @@ useEffect(() => {
       console.error("handleShare error:", e);
       const report = JSON.stringify(
         {
-          version: "share-debug-v1",
-          mode: shareDebugMode,
+          version: "share-debug-v2-no-title",
           timestamp: new Date().toISOString(),
           elapsedMs: Date.now() - debugStartedAt,
           phase: debugPhase,
@@ -1004,10 +987,9 @@ useEffect(() => {
             textLength: text.length,
             selectedImageCount: selected.length,
             selectedVideoCount: selectedVideos.length,
-            includedTitle:
-              shareDebugMode !== "no-title" && shareDebugMode !== "images-only",
-            includedText: shareDebugMode !== "images-only",
-            reversedFileOrder: shareDebugMode === "reverse",
+            includedTitle: false,
+            includedText: true,
+            reversedFileOrder: false,
             sourceUrls: [...selected, ...selectedVideos],
             files: debugFiles.map((file, index) => ({
               index,
@@ -1320,30 +1302,6 @@ useEffect(() => {
             </div>
 
             <div className="pt-2 border-t border-white/20" />
-
-            {isAdmin && (
-              <div className="rounded-2xl border border-amber-200/30 bg-amber-950/25 p-3">
-                <label className="block text-sm font-semibold text-amber-50">
-                  Chế độ debug Zalo iOS
-                </label>
-                <select
-                  value={shareDebugMode}
-                  onChange={(event) =>
-                    setShareDebugMode(event.target.value as ShareDebugMode)
-                  }
-                  className="mt-2 w-full rounded-xl border border-white/20 bg-black/30 px-3 py-2 text-sm text-white"
-                >
-                  <option value="baseline">A — Ảnh + title + text (hiện tại)</option>
-                  <option value="no-title">B — Ảnh + text, bỏ title</option>
-                  <option value="images-only">C — Chỉ ảnh, bỏ title và text</option>
-                  <option value="reverse">D — Ảnh + title + text, đảo thứ tự</option>
-                </select>
-                <div className="mt-2 text-xs text-amber-50/70">
-                  Chỉ thay đổi payload gửi sang bảng Share; ảnh vẫn là JPEG và
-                  không bị ghép.
-                </div>
-              </div>
-            )}
 
             <div className="text-sm font-semibold text-[#F4E7D6]/80">
               Preview nội dung
