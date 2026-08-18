@@ -7,7 +7,7 @@ import {
   type OwnerContractSummary,
 } from "@/lib/owner/types";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
-import OwnerExportButton from "@/components/owner/OwnerExportButton";
+import ContractExportButton from "@/components/owner/ContractExportButton";
 
 export default async function ContractsPage() {
   const contracts = (await getOwnerContracts()) as OwnerContractSummary[];
@@ -27,7 +27,7 @@ export default async function ContractsPage() {
           Tổng cộng {contracts.length} hợp đồng thuộc các tòa nhà bạn quản lý.
         </p>
         </div>
-        <OwnerExportButton href="/api/owner/exports/contracts" label="Xuất Excel / Trang tính" />
+        <ContractExportButton />
       </div>
 
       <div className="flex gap-2"><span className="rounded-xl bg-[#744722] px-4 py-2 text-sm font-bold text-white">Hợp đồng thuê</span><Link href="/owner/deposits" className="rounded-xl border border-[#aa825d]/25 bg-[#fff9ef] px-4 py-2 text-sm font-bold text-[#74583e]">Đặt cọc</Link></div>

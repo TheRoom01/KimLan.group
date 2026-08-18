@@ -30,11 +30,19 @@ export async function getOwnerContracts(){
   if (contracts.length === 0) return [];
   const { data: visible, error: visibleError } = await supabase
     .from("rental_contracts")
-    .select("id, contract_type")
+    .select("id, contract_type, booking_status")
     .in("id", contracts.map((contract: { id: string }) => contract.id))
     .is("deleted_at", null);
   if (visibleError) throw visibleError;
-  const visibleIds = new Set((visible ?? []).filter((contract) => contract.contract_type !== "deposit").map((contract) => contract.id));
+  const visibleIds = new Set(
+    (visible ?? [])
+      .filter(
+        (contract) =>
+          contract.contract_type !== "deposit" ||
+          contract.booking_status === "checked_in",
+      )
+      .map((contract) => contract.id),
+  );
   return contracts.filter((contract: { id: string }) => visibleIds.has(contract.id));
 
 }
