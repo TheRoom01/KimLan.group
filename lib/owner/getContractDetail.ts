@@ -32,6 +32,12 @@ export async function getContractDetail(
 
       status,
 
+      contract_type,
+
+      booking_status,
+
+      booking_total_amount,
+
       note,
 
 

@@ -78,16 +78,23 @@ export async function POST(
         ? (data as { tenant_id?: unknown }).tenant_id
         : null);
 
+    const contractId = latestContract?.id ??
+      (data && typeof data === "object" && "contract_id" in data
+        ? (data as { contract_id?: unknown }).contract_id
+        : null);
+    if (typeof contractId !== "string") return apiError("CONFLICT", "Không tìm thấy hợp đồng vừa tạo", 409);
+
+    const { error: configureError } = await supabase.rpc("configure_owner_booking_deposit_v1", {
+      p_contract_id: contractId,
+      p_contract_type: input.contract_type,
+      p_booking_total_amount: input.booking_total_amount,
+    });
+    if (configureError) return mapDatabaseError(configureError);
+
     return apiSuccess(
       {
         result: data,
-        contract_id:
-          latestContract?.id ??
-          (data &&
-          typeof data === "object" &&
-          "contract_id" in data
-            ? (data as { contract_id?: unknown }).contract_id
-            : null),
+        contract_id: contractId,
         tenant_id: tenantId ?? null,
       },
       201,

@@ -8,6 +8,7 @@ import {
 } from "@/lib/owner/types";
 import TenantRosterCard from "@/components/owner/TenantRosterCard";
 import ContractRevenueManager from "@/components/owner/ContractRevenueManager";
+import DepositStatusActions from "@/components/owner/DepositStatusActions";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 import DeleteContractButton from "@/components/owner/DeleteContractButton";
 import { notFound } from "next/navigation";
@@ -51,7 +52,7 @@ export default async function ContractDetailPage({
             Quản lý hợp đồng
           </p>
           <h1 className="mt-1 text-2xl font-bold text-[#432918] sm:text-3xl">Chi tiết hợp đồng</h1>
-          <p className="text-sm text-[#80634a]">Hợp đồng thuê phòng</p>
+          <p className="text-sm text-[#80634a]">{contract.contract_type === "deposit" ? "Hợp đồng đặt cọc giữ phòng" : "Hợp đồng thuê phòng"}</p>
         </div>
 
         <Link
@@ -124,6 +125,8 @@ export default async function ContractDetailPage({
       </div>
 
       <ContractImagesManager contractId={contract.id} />
+
+      {contract.contract_type === "deposit" ? <DepositStatusActions contractId={contract.id} currentStatus={contract.booking_status} /> : null}
 
       <ContractRevenueManager contract={contract} />
     </div>

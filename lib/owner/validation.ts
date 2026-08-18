@@ -151,6 +151,7 @@ export function parseUpdateOwnerRoomStatusInput(
 }
 
 export type CreateOwnerContractInput = {
+  contract_type: "lease" | "deposit";
   full_name: string;
   phone: string | null;
   cccd: string | null;
@@ -158,6 +159,7 @@ export type CreateOwnerContractInput = {
   end_date: string;
   monthly_price: number;
   deposit_amount: number;
+  booking_total_amount: number;
 };
 
 export function parseCreateOwnerContractInput(
@@ -168,7 +170,13 @@ export function parseCreateOwnerContractInput(
 
   assertDateRange(startDate, endDate);
 
+  const contractType = String(body.contract_type ?? "lease").trim();
+  if (contractType !== "lease" && contractType !== "deposit") {
+    throw new RequestValidationError("Loại hợp đồng không hợp lệ", { field: "contract_type" });
+  }
+
   return {
+    contract_type: contractType,
     full_name: parseRequiredString(body.full_name, "Họ tên", 200),
     phone: parseOptionalString(body.phone, "Số điện thoại", 30),
     cccd: parseOptionalString(body.cccd, "CCCD", 30),
@@ -178,6 +186,8 @@ export function parseCreateOwnerContractInput(
       parseNonNegativeInteger(body.monthly_price, "Giá thuê") ?? 0,
     deposit_amount:
       parseNonNegativeInteger(body.deposit_amount, "Tiền cọc") ?? 0,
+    booking_total_amount:
+      parseNonNegativeInteger(body.booking_total_amount, "Tổng tiền cần thanh toán") ?? 0,
   };
 }
 

@@ -218,6 +218,9 @@ function notificationHref(item: NotificationItem) {
   if (item.reference_type === "property" && item.reference_id) {
     return `/owner/properties/${encodeURIComponent(item.reference_id)}`;
   }
+  if (item.reference_type === "booking_deposit" && item.reference_id) {
+    return `/owner/contracts/${encodeURIComponent(item.reference_id)}`;
+  }
   return null;
 }
 

@@ -7,6 +7,7 @@ import {
   FileText,
   Home,
   KeyRound,
+  HandCoins,
   Users,
   Warehouse,
 } from "lucide-react";
@@ -44,6 +45,12 @@ const menus = [
     shortTitle: "Hợp đồng",
     href: "/owner/contracts",
     icon: FileText,
+  },
+  {
+    title: "Đặt cọc",
+    shortTitle: "Đặt cọc",
+    href: "/owner/deposits",
+    icon: HandCoins,
   },
 ];
 
@@ -170,7 +177,7 @@ export default function OwnerSidebar() {
           lg:hidden
         "
       >
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+        <div className="mx-auto grid max-w-lg grid-cols-6 gap-1">
           {menus.map((item) => {
             const active = isMenuActive(
               pathname,

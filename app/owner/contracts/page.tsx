@@ -30,6 +30,8 @@ export default async function ContractsPage() {
         <OwnerExportButton href="/api/owner/exports/contracts" label="Xuất Excel / Trang tính" />
       </div>
 
+      <div className="flex gap-2"><span className="rounded-xl bg-[#744722] px-4 py-2 text-sm font-bold text-white">Hợp đồng thuê</span><Link href="/owner/deposits" className="rounded-xl border border-[#aa825d]/25 bg-[#fff9ef] px-4 py-2 text-sm font-bold text-[#74583e]">Đặt cọc</Link></div>
+
       {contracts.length === 0 ? (
         <div className="rounded-[22px] border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-8 text-center text-sm text-[#80634a]">
           Chưa có hợp đồng.

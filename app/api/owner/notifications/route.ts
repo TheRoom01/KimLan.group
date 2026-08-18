@@ -20,6 +20,9 @@ export async function GET() {
     const user = await getAuthenticatedUser(supabase);
     if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập để xem thông báo", 401);
 
+    const { error: bookingNotificationError } = await supabase.rpc("create_my_booking_deadline_notifications_v1");
+    if (bookingNotificationError) return mapDatabaseError(bookingNotificationError);
+
     const [notificationsResult, unreadResult, suggestionsResult, dismissalsResult] = await Promise.all([
       supabase
         .from("notifications")

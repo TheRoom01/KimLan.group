@@ -33,6 +33,7 @@ function nextYearString() {
 export default function TenantCreateForm({ roomId }: { roomId: string }) {
   const router = useRouter();
   const [form, setForm] = useState({
+    contract_type: "lease" as "lease" | "deposit",
     full_name: "",
     phone: "",
     cccd: "",
@@ -40,6 +41,7 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
     end_date: nextYearString(),
     monthly_price: 0,
     deposit_amount: 0,
+    booking_total_amount: 0,
   });
   const [frontImage, setFrontImage] = useState<File | null>(null);
   const [backImage, setBackImage] = useState<File | null>(null);
@@ -163,7 +165,7 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
         );
       }
 
-      router.push(`/owner/rooms/${roomId}`);
+      router.push(form.contract_type === "deposit" ? "/owner/deposits" : `/owner/rooms/${roomId}`);
       router.refresh();
     } catch (error) {
       setErrorMessage(
@@ -179,7 +181,7 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
     { key: "full_name", label: "Họ tên người đại diện", type: "text" },
     { key: "phone", label: "Số điện thoại", type: "tel" },
     { key: "cccd", label: "Số CCCD", type: "text" },
-    { key: "start_date", label: "Ngày bắt đầu", type: "date" },
+    { key: "start_date", label: form.contract_type === "deposit" ? "Ngày dự kiến check-in" : "Ngày bắt đầu", type: "date" },
     { key: "end_date", label: "Ngày kết thúc", type: "date" },
   ] as const;
 
@@ -187,7 +189,7 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
     <div className="space-y-5 rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6547]">
-          Hợp đồng thuê
+          {form.contract_type === "deposit" ? "Hợp đồng đặt cọc" : "Hợp đồng thuê"}
         </p>
         <h2 className="mt-1 text-xl font-bold text-[#432918]">
           Thêm người đại diện
@@ -196,6 +198,17 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
           Sau khi tạo hợp đồng, bạn có thể thêm người ở cùng trong trang quản lý phòng.
         </p>
       </div>
+
+      <fieldset>
+        <legend className="mb-2 text-xs font-semibold text-[#5a3b25]">Loại hợp đồng</legend>
+        <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[#f3e3cd] p-1.5">
+          {([['lease', 'Thuê nhà'], ['deposit', 'Đặt cọc giữ phòng']] as const).map(([value, label]) => (
+            <button key={value} type="button" onClick={() => setForm((current) => ({ ...current, contract_type: value }))} className={`min-h-10 rounded-xl px-3 text-sm font-bold transition ${form.contract_type === value ? 'bg-[#744722] text-white shadow-sm' : 'text-[#74583e] hover:bg-white/60'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       {errorMessage ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -231,7 +244,7 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         {[
-          ["monthly_price", "Giá thuê"],
+          ["monthly_price", form.contract_type === "deposit" ? "Giá thuê dự kiến" : "Giá thuê"],
           ["deposit_amount", "Tiền cọc"],
         ].map(([key, label]) => (
           <label key={key} className="block">
@@ -252,6 +265,14 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
           </label>
         ))}
       </div>
+
+      {form.contract_type === "deposit" ? (
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-[#5a3b25]">Tổng tiền cần thanh toán</span>
+          <MoneyInput id="booking_total_amount" className="h-11 w-full rounded-xl border border-[#aa825d]/30 bg-[#fffdf8] px-3.5 text-sm text-[#4d3422] outline-none transition focus:border-[#744722] focus:ring-4 focus:ring-[#744722]/10" value={form.booking_total_amount} onValueChange={(amount) => setForm((current) => ({ ...current, booking_total_amount: amount }))} />
+          <span className="mt-1 block text-xs text-[#80634a]">Còn thiếu: {Math.max(0, form.booking_total_amount - form.deposit_amount).toLocaleString('vi-VN')}đ</span>
+        </label>
+      ) : null}
 
       <div className="rounded-2xl border border-[#aa825d]/25 bg-[#f8ead7] p-4">
         <div className="flex items-start justify-between gap-3">
@@ -298,7 +319,7 @@ export default function TenantCreateForm({ roomId }: { roomId: string }) {
         disabled={loading}
         className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-[#744722] px-5 text-sm font-semibold text-[#fff8eb] shadow-sm transition hover:bg-[#623817] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {loading ? "Đang xử lý..." : "Tạo hợp đồng"}
+        {loading ? "Đang xử lý..." : form.contract_type === "deposit" ? "Tạo đặt cọc" : "Tạo hợp đồng"}
       </button>
     </div>
   );
