@@ -2283,9 +2283,10 @@ const overlay: CSSProperties = {
   background: 'rgba(0,0,0,0.4)',
   display: 'flex',
   justifyContent: 'center',
-  alignItems: 'center',
+  // Giữ mép trên cố định; khi đổi tab/nội dung, modal chỉ nở xuống dưới.
+  alignItems: 'flex-start',
   boxSizing: 'border-box',
-  paddingTop: 'max(16px, env(safe-area-inset-top))',
+  paddingTop: 'max(16px, 7.5dvh, env(safe-area-inset-top))',
   paddingRight: 'max(16px, env(safe-area-inset-right))',
   paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
   paddingLeft: 'max(16px, env(safe-area-inset-left))',
@@ -2297,12 +2298,13 @@ const overlay: CSSProperties = {
 const modal: CSSProperties = {
   width: '100%',
   maxWidth: 1000,
-  maxHeight: 'min(85vh, calc(100dvh - max(32px, env(safe-area-inset-top)) - max(32px, env(safe-area-inset-bottom))))',
+  maxHeight: 'calc(100dvh - max(16px, 7.5dvh, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)))',
   background: '#fff',
   borderRadius: 12,
   overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
+  flexShrink: 0,
 }
 
 const modalBody: CSSProperties = {
