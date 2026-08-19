@@ -395,8 +395,8 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
   async (id: string) => {
     if (adminLevel === 2) {
       openConfirm(
-        "Ẩn phòng",
-        "Bạn có chắc muốn ẩn phòng này khỏi danh sách admin L2?",
+        "Xóa phòng",
+        "Bạn có chắc muốn xóa phòng này?",
         async () => {
           try {
             setLoading(true);
@@ -412,9 +412,9 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
             cursorMapRef.current.clear();
             await loadRooms(page, debouncedSearch, { useCache: false });
 
-            notify("Đã ẩn phòng");
+            notify("Đã Xóa phòng");
           } catch (e: any) {
-            setErrorMsg(e?.message ?? "Ẩn phòng thất bại");
+            setErrorMsg(e?.message ?? "Xóa phòng thất bại");
           } finally {
             setLoading(false);
           }

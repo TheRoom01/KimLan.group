@@ -1383,9 +1383,11 @@ const applyAutoReadCandidate = (
     if (
       !isPending &&
       !isEdit &&
-      (!roomForm.house_number.trim() || !roomForm.address.trim())
+      (!roomForm.house_number.trim() ||
+        !roomForm.address.trim() ||
+        !roomForm.district.trim())
     ) {
-      return 'Phòng mới cần đủ Số nhà và tên đường để xác định tòa nhà.'
+      return 'Phòng mới cần đủ Số nhà, tên đường và Quận/Huyện để xác định tòa nhà.'
     }
     if (roomForm.price < 0) return 'Giá không hợp lệ.'
     return null
@@ -1933,10 +1935,15 @@ void (async () => {
       }
     }
 
+    const saveError =
+      e?.message === 'INVALID_ADDRESS'
+        ? 'Vui lòng nhập đủ Số nhà, tên đường và Quận/Huyện.'
+        : e?.message ?? 'Không rõ lỗi'
+
     if (backgroundNewSave) {
-      onNotify?.(`Lưu phòng mới thất bại: ${e?.message ?? 'Không rõ lỗi'}`)
+      onNotify?.(`Lưu phòng mới thất bại: ${saveError}`)
     } else {
-      setErrorMsg(e?.message ?? 'Lưu thất bại')
+      setErrorMsg(saveError)
     }
   } finally {
     setSaving((s) => (s ? false : s))
