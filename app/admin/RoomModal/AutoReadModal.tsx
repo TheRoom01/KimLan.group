@@ -393,6 +393,18 @@ const consumeRange = (
 const ADDRESS_DISTRICTS =
 '(?:q\\.?\\s*\\d{1,2}|quận\\s*\\d{1,2}|tp\\.?\\s*thu\\s*duc|thủ\\s*đức|binh\\s*thanh|bình\\s*thạnh|phu\\s*nhuan|phú\\s*nhuận|tan\\s*binh|tân\\s*bình|go\\s*vap|gò\\s*vấp|binh\\s*tan|bình\\s*tân|tan\\s*phu|tân\\s*phú|nha\\s*be|nhà\\s*bè|hoc\\s*mon|hóc\\s*môn|cu\\s*chi|củ\\s*chi|binh\\s*chanh|bình\\s*chánh|can\\s*gio|cần\\s*giờ)'
 
+const normalizeKnownStreetName = (value: string) => {
+  const compact = stripAccent(value)
+    .replace(/[.\s_-]+/g, '')
+    .toLowerCase()
+
+  if (compact === 'cmt8' || compact === 'cmt08') {
+    return 'Cách Mạng Tháng 8'
+  }
+
+  return value
+}
+
 const findAddressSegment = (raw: string) => {
   const labeled = raw.match(
     /(?:địa\s*chỉ|dia\s*chi|dc)\s*[:\-]\s*(\d+[a-zA-Z]?(?:\/\d+[a-zA-Z]?)*\s+.+)$/i
@@ -474,6 +486,8 @@ function parseAddress(
     .replace(/[,\-\s]+$/, '')
     .replace(/\s{2,}/g, ' ')
     .trim()
+
+  rest = normalizeKnownStreetName(rest)
 
   // Chuẩn hóa Quận
   let districtValue = ''
@@ -793,6 +807,16 @@ function parseFees(text: string): Partial<RoomDetail> {
       if (m)
         water = money(m[1])
 
+      // Ưu tiên đơn vị đo thể tích trước các đơn vị tính theo người/phòng.
+      // Dữ liệu thường được dán dưới dạng: 25k/m3, 25k/m³ hoặc 25k/khối.
+      if (/(?:^|[^a-z0-9])m\s*(?:3|³)(?=$|[^a-z0-9])/i.test(line))
+        waterUnit = 'm3'
+
+      else
+      if (/\bkhoi\b/.test(s))
+        waterUnit = 'khối'
+
+      else
       if (
         /nguoi|người/.test(s)
       )
@@ -878,8 +902,6 @@ function parseFees(text: string): Partial<RoomDetail> {
 
         parkingUnit = 'chiếc/tháng'
       }
-
-      otherNotes.push(line)
 
       continue
     }

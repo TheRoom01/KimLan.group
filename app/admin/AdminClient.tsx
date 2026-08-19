@@ -32,7 +32,8 @@ function normalizeSearchKeyword(value?: string | null) {
     .replace(/[,\n\r\t]+/g, " ")
     .replace(/[|;:]+/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .toLocaleLowerCase("vi-VN");
 
   return normalized.length >= 3 ? normalized : "";
 }
@@ -487,42 +488,35 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
 
       setStatusMenuOpen(false);
 
-      openConfirm(
-        "Đổi trạng thái",
-        `Bạn có chắc muốn chuyển trạng thái phòng sang "${status}"?`,
-        async () => {
-          try {
-            setRooms((prev) =>
-              prev.map((r: any) =>
-                r.id === (selectedRoom as any).id
-                  ? { ...r, status }
-                  : r
-              )
-            );
+      const roomId = (selectedRoom as any).id;
+      const previousStatus = (selectedRoom as any).status;
 
-            const res = await supabase.rpc("update_room_status", {
-              p_room_id: (selectedRoom as any).id,
-              p_status: status,
-            });
+      try {
+        setRooms((prev) =>
+          prev.map((r: any) =>
+            r.id === roomId ? { ...r, status } : r
+          )
+        );
 
-            if (res.error) throw new Error(res.error.message);
+        const res = await supabase.rpc("update_room_status", {
+          p_room_id: roomId,
+          p_status: status,
+        });
 
-            notify("Đã cập nhật trạng thái");
-          } catch (e: any) {
-            setRooms((prev) =>
-              prev.map((r: any) =>
-                r.id === (selectedRoom as any).id
-                  ? { ...r, status: (selectedRoom as any).status }
-                  : r
-              )
-            );
+        if (res.error) throw new Error(res.error.message);
 
-            setErrorMsg(e?.message ?? "Cập nhật thất bại");
-          }
-        }
-      );
+        notify("Đã cập nhật trạng thái");
+      } catch (e: any) {
+        setRooms((prev) =>
+          prev.map((r: any) =>
+            r.id === roomId ? { ...r, status: previousStatus } : r
+          )
+        );
+
+        setErrorMsg(e?.message ?? "Cập nhật thất bại");
+      }
     },
-    [selectedRoom, notify, openConfirm]
+    [selectedRoom, notify]
   );
 const openZaloUX = useCallback(
   (rawLink?: string | null) => {
@@ -627,7 +621,7 @@ const openZaloUX = useCallback(
               minWidth: 0,
             }}
           >
-            {adminLevel === 1 && (
+            {(adminLevel === 1 || adminLevel === 2) && (
               <VipLinkManager buttonStyle={compactActionBtn} />
             )}
             <button

@@ -830,7 +830,8 @@ setRoomForm((prev: any) => {
   }
 
   // Auto (blur) tránh sync lại cùng key; nhưng force thì luôn chạy
-  const key = `${house_number}__${address}`;
+  const norm = (s: any) => String(s ?? "").trim().toLocaleLowerCase("vi-VN");
+  const key = `${norm(house_number)}__${norm(address)}`;
   if (!opts?.force && lastAutofillKeyRef.current === key) return;
   lastAutofillKeyRef.current = key;
 
@@ -848,8 +849,6 @@ setRoomForm((prev: any) => {
    // 1) lấy PHÒNG MỚI NHẤT theo house_number + address (không quan tâm room_details)
   //    - ưu tiên query trực tiếp (nhanh)
   //    - nếu bị RLS chặn (thường gặp ở admin L2) => fallback qua RPC fetch_admin_rooms_*_v1
-  const norm = (s: any) => String(s ?? "").trim().toLowerCase();
-
   async function findLatestRoomByAddressFallback(): Promise<any | null> {
     // Chỉ fallback nếu biết level là 1/2
     const lvl = adminLevel;
@@ -897,7 +896,7 @@ setRoomForm((prev: any) => {
   .select(
     "id, owner_id, ward, district, link_zalo, google_maps_url, zalo_phone, chinh_sach, updated_at"
   )
-  .eq("house_number", house_number)
+  .ilike("house_number", house_number)
   .eq("address", address)
   .order("updated_at", { ascending: false })
   .limit(1);
@@ -1131,7 +1130,7 @@ const detailSample =
 
   void (async () => {
     try {
-      const [roomResult, sharedFieldsResult] = await Promise.all([
+      const [roomResult, sharedFieldsResult, levelResult, userResult] = await Promise.all([
         supabase.rpc(
           "fetch_room_detail_full_v1",
           {
@@ -1142,6 +1141,8 @@ const detailSample =
         supabase.rpc("get_room_shared_property_fields_v1", {
           p_room_id: base.id,
         }),
+        supabase.rpc("get_my_admin_level"),
+        supabase.auth.getUser(),
       ])
 
       const { data, error } = roomResult
@@ -1155,6 +1156,16 @@ const detailSample =
       const sharedFields = sharedFieldsResult.error
         ? null
         : (sharedFieldsResult.data as Record<string, unknown> | null)
+      const loadedAdminLevel = Number(levelResult.data ?? 0)
+      const currentUserId = String(userResult.data.user?.id ?? "").trim()
+      const roomOwnerId = String(room.owner_id ?? "").trim()
+      const canSeePrivateFields =
+        loadedAdminLevel === 1 ||
+        (
+          loadedAdminLevel === 2 &&
+          Boolean(currentUserId) &&
+          roomOwnerId === currentUserId
+        )
 
       const mediaFromRpc = Array.isArray(room?.media)
         ? room.media.map((m: any) => ({
@@ -1189,10 +1200,12 @@ const detailSample =
         status: normalizeStatus(room.status ?? prev.status),
 
         description: room.description ?? prev.description,
-        link_zalo: sharedFields?.link_zalo ?? room.link_zalo ?? "",
+        link_zalo: canSeePrivateFields
+          ? sharedFields?.link_zalo ?? room.link_zalo ?? ""
+          : "",
         google_maps_url:
           sharedFields?.google_maps_url ?? room.google_maps_url ?? "",
-        zalo_phone: room.zalo_phone ?? "",
+        zalo_phone: canSeePrivateFields ? room.zalo_phone ?? "" : "",
 
         chinh_sach:
           sharedFields?.chinh_sach ?? room.chinh_sach ?? prev.chinh_sach,
@@ -1749,7 +1762,7 @@ const up = wasHiddenAtOpen && adminLevel === 1
       p_payload: payload,
       p_visibility_action: hiddenAction,
     })
-  : await supabase.rpc('admin_upsert_room_v2', {
+  : await supabase.rpc('admin_upsert_room_v3', {
       p_room_id: desiredId,
       p_payload: payload,
     })
@@ -2263,8 +2276,12 @@ const overlay: CSSProperties = {
   background: 'rgba(0,0,0,0.4)',
   display: 'flex',
   justifyContent: 'center',
-  alignItems: 'flex-start',
-  padding: 16,
+  alignItems: 'center',
+  boxSizing: 'border-box',
+  paddingTop: 'max(16px, env(safe-area-inset-top))',
+  paddingRight: 'max(16px, env(safe-area-inset-right))',
+  paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+  paddingLeft: 'max(16px, env(safe-area-inset-left))',
   overflowY: 'auto',
   overflowX: 'auto',
   WebkitOverflowScrolling: 'touch',
@@ -2273,7 +2290,7 @@ const overlay: CSSProperties = {
 const modal: CSSProperties = {
   width: '100%',
   maxWidth: 1000,
-  maxHeight: '85vh',
+  maxHeight: 'min(85vh, calc(100dvh - max(32px, env(safe-area-inset-top)) - max(32px, env(safe-area-inset-bottom))))',
   background: '#fff',
   borderRadius: 12,
   overflow: 'hidden',

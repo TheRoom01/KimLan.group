@@ -3106,7 +3106,7 @@ const handleNavigateToRoom = useCallback((href: string) => {
 
 // Contact truyền xuống RoomCard:
 // - Admin đăng nhập: giữ nguyên thông tin admin hiện tại.
-// - Anon VIP: dùng thông tin admin đã tạo link VIP.
+// - Anon VIP: dùng thông tin admin đã tạo Link Giỏ hàng.
 // - Anon thường: null nên RoomCard không hiển thị nút Admin.
 const roomContactPhone = currentUserId
   ? currentAdminPhone

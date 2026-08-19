@@ -79,9 +79,21 @@ function normalizeStreetWord(word: string) {
 }
 
 function toTitleCaseStreet(input: string) {
-  return String(input ?? "")
+  const street = String(input ?? "")
     .trim()
-    .replace(/\s+/g, " ")
+    .replace(/\s+/g, " ");
+
+  const compact = street
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.\s_-]+/g, "")
+    .toLowerCase();
+
+  if (compact === "cmt8" || compact === "cmt08") {
+    return "Cách Mạng Tháng 8";
+  }
+
+  return street
     .split(" ")
     .filter(Boolean)
     .map(normalizeStreetWord)

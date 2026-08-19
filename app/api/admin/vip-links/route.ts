@@ -49,7 +49,7 @@ function getSiteOrigin(
   );
 }
 
-async function requireAdminL1() {
+async function requireVipAdmin() {
   const supabaseUser =
     await createSupabaseServerClient();
 
@@ -83,14 +83,14 @@ async function requireAdminL1() {
 
   if (
     levelError ||
-    level !== 1
+    (level !== 1 && level !== 2)
   ) {
     return {
       response: noStoreJson(
         {
           ok: false,
           error:
-            "Chỉ Admin L1 được quản lý link VIP.",
+            "Chỉ Admin L1 hoặc Admin L2 được quản lý Link Giỏ hàng.",
         },
         403
       ),
@@ -107,7 +107,7 @@ export async function GET(
 ) {
   try {
     const guard =
-      await requireAdminL1();
+      await requireVipAdmin();
 
     if ("response" in guard) {
       return guard.response;
@@ -181,7 +181,7 @@ export async function GET(
         ok: false,
         error:
           error?.message ||
-          "Không tải được danh sách link VIP.",
+          "Không tải được danh sách Link Giỏ hàng.",
       },
       500
     );
@@ -193,7 +193,7 @@ export async function POST(
 ) {
   try {
     const guard =
-      await requireAdminL1();
+      await requireVipAdmin();
 
     if ("response" in guard) {
       return guard.response;
@@ -243,7 +243,7 @@ export async function POST(
 
     /*
      * token_hash dùng để xác thực link.
-     * token_value chỉ được đọc qua API Admin L1 để có thể copy lại link.
+     * token_value chỉ được đọc qua API Admin L1/L2 để có thể copy lại link.
      */
     const token =
       crypto
@@ -342,7 +342,7 @@ export async function POST(
         ok: false,
         error:
           error?.message ||
-          "Không tạo được link VIP.",
+          "Không tạo được Link Giỏ hàng.",
       },
       500
     );
@@ -354,7 +354,7 @@ export async function DELETE(
 ) {
   try {
     const guard =
-      await requireAdminL1();
+      await requireVipAdmin();
 
     if ("response" in guard) {
       return guard.response;
@@ -375,7 +375,7 @@ export async function DELETE(
         {
           ok: false,
           error:
-            "Thiếu ID link VIP cần xóa.",
+            "Thiếu ID link Giỏ hàng cần xóa.",
         },
         400
       );
@@ -408,7 +408,7 @@ export async function DELETE(
         {
           ok: false,
           error:
-            "Link VIP không tồn tại hoặc đã bị xóa.",
+            "Link Giỏ hàng không tồn tại hoặc đã bị xóa.",
         },
         404
       );
@@ -430,7 +430,7 @@ export async function DELETE(
         ok: false,
         error:
           error?.message ||
-          "Không xóa được link VIP.",
+          "Không xóa được Link Giỏ hàng.",
       },
       500
     );

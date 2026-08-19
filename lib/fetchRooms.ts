@@ -163,7 +163,8 @@ const normalizeSearchKeyword = (value?: string | null) => {
     .replace(/[|;:\\()[\]{}"'“”‘’`~!@#$%^&*_+=<>?]+/g, " ")
     .replace(/[-–—]+/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .toLocaleLowerCase("vi-VN");
 
   return normalized.length >= 3 ? normalized : "";
 };

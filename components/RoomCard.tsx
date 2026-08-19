@@ -353,7 +353,7 @@ const isLoggedAdmin =
   (safeAdminLevel === 1 || safeAdminLevel === 2);
 
 // Admin đăng nhập: giữ nguyên fallback cũ.
-// Anon VIP: chỉ nhận contact đã được HomeClient truyền từ link VIP.
+// Anon VIP: chỉ nhận contact đã được HomeClient truyền từ Link Giỏ hàng.
 // Anon thường: currentAdminPhone = null nên không hiện nút Admin.
 const contactPhone = isLoggedAdmin
   ? String(

@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           valid: false,
-          error: "Link VIP không hợp lệ, đã hết hạn hoặc đã bị thu hồi",
+          error: "Link Giỏ hàng không hợp lệ, đã hết hạn hoặc đã bị thu hồi",
         },
         { status: 200 }
       );
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           valid: false,
-          error: "Link VIP đã hết hạn",
+          error: "Link Giỏ đã hết hạn",
         },
         { status: 200 }
       );

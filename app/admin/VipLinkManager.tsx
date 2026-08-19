@@ -259,7 +259,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
           ) {
             throw new Error(
               json?.error ||
-                "Không tải được danh sách link VIP."
+                "Không tải được danh sách Link Giỏ hàng."
             );
           }
 
@@ -275,7 +275,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
         ) {
           setError(
             loadError?.message ||
-              "Không tải được danh sách link VIP."
+              "Không tải được danh sách Link Giỏ hàng."
           );
         } finally {
           setLoading(false);
@@ -393,7 +393,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
       ) {
         throw new Error(
           json?.error ||
-            "Không tạo được link VIP."
+            "Không tạo được Link Giỏ hàng."
         );
       }
 
@@ -432,7 +432,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
     ) {
       setError(
         createError?.message ||
-          "Không tạo được link VIP."
+          "Không tạo được Link Giỏ hàng."
       );
     } finally {
       setCreating(false);
@@ -476,7 +476,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
       );
     } catch {
       setError(
-        "Không thể sao chép link VIP."
+        "Không thể sao chép Link Giỏ hàng."
       );
     }
   }
@@ -494,9 +494,9 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
     const confirmed =
       window.confirm(
         [
-          "Bạn có chắc muốn xóa link VIP này?",
+          "Bạn có chắc muốn xóa link Giỏ hàng này?",
           "",
-          `Ghi chú: ${row.note || "Link VIP"}`,
+          `Ghi chú: ${row.note || "Link Giỏ hàng"}`,
           `Ngày hết hạn: ${formatDateTime(row.expires_at)}`,
           "",
           "Sau khi xóa, link sẽ mất hiệu lực ngay và không thể khôi phục.",
@@ -541,7 +541,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
       ) {
         throw new Error(
           json?.error ||
-            "Không xóa được link VIP."
+            "Không xóa được Link Giỏ hàng."
         );
       }
 
@@ -573,7 +573,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
     ) {
       setError(
         deleteError?.message ||
-          "Không xóa được link VIP."
+          "Không xóa được Link Giỏ hàng."
       );
     } finally {
       setDeletingId(
@@ -619,7 +619,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
         }
         style={{ ...openButton, ...buttonStyle }}
       >
-        🔗 Tạo link VIP
+        🔗 Tạo Link Giỏ hàng
       </button>
 
       {open && (
@@ -641,7 +641,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
           <section
             role="dialog"
             aria-modal="true"
-            aria-label="Quản lý link VIP"
+            aria-label="Quản lý Link Giỏ hàng"
             style={
               modal
             }
@@ -662,7 +662,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
                     modalTitle
                   }
                 >
-                  Quản lý link VIP
+                  Quản lý Link Giỏ hàng
                 </h2>
 
                 <div
@@ -817,7 +817,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
                 >
                   {creating
                     ? "Đang tạo..."
-                    : "Tạo link VIP mới"}
+                    : "Tạo link Giỏ hàng mới"}
                 </button>
               </div>
 
@@ -947,7 +947,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
                       emptyState
                     }
                   >
-                    Chưa có link VIP.
+                    Chưa có Link Giỏ hàng.
                   </div>
                 ) : (
                   links.map(
@@ -979,7 +979,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
                               }
                             >
                               {row.note ||
-                                "Link VIP"}
+                                "Link Giỏ hàng"}
                             </div>
 
                             <div
@@ -1022,7 +1022,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
                                 }}
                                 title={
                                   row.link
-                                    ? "Sao chép link VIP"
+                                    ? "Sao chép Link Giỏ hàng"
                                     : "Link cũ không lưu token gốc"
                                 }
                               >
