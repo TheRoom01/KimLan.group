@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Layers3, Loader2, MapPin, Search, SlidersHorizontal, X } from "lucide-react";
@@ -10,6 +10,7 @@ import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import type { MapBounds, MapRoom } from "@/lib/map/types";
 import { getViewedRoomIds, markRoomViewed, VIEWED_ROOMS_CHANGED_EVENT } from "@/lib/viewedRooms";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
+import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { useAnonymousListingGate } from "@/hooks/useAnonymousListingGate";
 
 type Place = { id: string; label: string; latitude: number; longitude: number; category?: string; type?: string };
@@ -599,6 +600,7 @@ function addRoomMapLayers(map: MapLibreMap, data: RoomFeatureCollection) {
 
 export default function MapSearchClient() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { hasVipAccess, isAccessPending, isAnonLocked } = useAnonymousListingGate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -615,6 +617,8 @@ export default function MapSearchClient() {
   const pendingQueryStringRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobilePanelDragRef = useRef<{ pointerId: number; startY: number; source: "panel" | "handle" } | null>(null);
+  const mobilePanelSuppressClickRef = useRef(false);
   const [rooms, setRooms] = useState<MapRoom[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedLocationKey, setSelectedLocationKey] = useState<string | null>(null);
@@ -623,10 +627,13 @@ export default function MapSearchClient() {
   const [error, setError] = useState<string | null>(null);
   const [mapError, setMapError] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [mapBearing, setMapBearing] = useState(0);
   const [mapStyleId, setMapStyleId] = useState<MapStyleId>("liberty");
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [styleLoading, setStyleLoading] = useState(false);
   const [resultsPanelCollapsed, setResultsPanelCollapsed] = useState(false);
+  const [mobilePanelHidden, setMobilePanelHidden] = useState(false);
+  const [mobilePanelDragOffset, setMobilePanelDragOffset] = useState(0);
   const [roomListPanelBottom, setRoomListPanelBottom] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openOptionGroup, setOpenOptionGroup] = useState<"district" | "roomType" | "status" | null>(null);
@@ -638,6 +645,7 @@ export default function MapSearchClient() {
   const [searchFocus, setSearchFocus] = useState<SearchFocus | null>(null);
   const [viewedRoomIds, setViewedRoomIds] = useState<Set<string>>(() => new Set());
   const [markerPreview, setMarkerPreview] = useState<MarkerPreview | null>(null);
+  const [previewOpeningRoomId, setPreviewOpeningRoomId] = useState<string | null>(null);
   const roomLocations = useMemo(() => groupRoomsByLocation(rooms), [rooms]);
   const selectedLocationRooms = useMemo(
     () => roomLocations.find((location) => location.key === selectedLocationKey)?.rooms ?? [],
@@ -670,6 +678,10 @@ export default function MapSearchClient() {
     if (nearby) labels.push(`Gần tôi: ${nearby.radius} km`);
     return labels;
   }, [allStatusesSelected, appliedPriceRange, hasPriceFilter, nearby, selectedDistricts, selectedRoomTypes, selectedStatuses]);
+
+  useEffect(() => {
+    if (previewOpeningRoomId && pathname !== "/map") setPreviewOpeningRoomId(null);
+  }, [pathname, previewOpeningRoomId]);
 
   useEffect(() => {
     const current = searchParams.toString();
@@ -840,6 +852,8 @@ export default function MapSearchClient() {
         const nextBounds = map.getBounds();
         if (nextBounds) setBounds({ west: nextBounds.getWest(), south: nextBounds.getSouth(), east: nextBounds.getEast(), north: nextBounds.getNorth() });
       };
+      const updateBearing = () => setMapBearing(map.getBearing());
+      map.on("rotate", updateBearing);
       const registerInteractions = () => {
         if (interactionsReady) return;
         interactionsReady = true;
@@ -1100,7 +1114,8 @@ export default function MapSearchClient() {
             ? roomStatusTone(location.rooms[0].status)
             : "available",
           viewed: location.rooms.length === 1 && viewedRoomIds.has(location.rooms[0].id),
-          searchMatch: Boolean(searchFocus && location.rooms.some((room) => roomMatchesPlaceQuery(room, searchFocus))),
+          searchMatch: location.rooms.some((room) => room.id === selectedId)
+            || Boolean(searchFocus && location.rooms.some((room) => roomMatchesPlaceQuery(room, searchFocus))),
         },
       })),
     };
@@ -1192,22 +1207,100 @@ export default function MapSearchClient() {
     mapRef.current?.easeTo({ center: [room.longitude, room.latitude], zoom: Math.max(mapRef.current.getZoom(), 14) });
   }
 
+  function openMobilePreviewRoom(room: MapRoom) {
+    if (window.matchMedia("(min-width: 768px)").matches || previewOpeningRoomId) return;
+    markRoomViewed(room.id);
+    setPreviewOpeningRoomId(room.id);
+    router.push(`/rooms/${room.id}`);
+  }
+
+  function beginMobilePanelDrag(event: ReactPointerEvent<HTMLElement>, source: "panel" | "handle") {
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+    mobilePanelDragRef.current = { pointerId: event.pointerId, startY: event.clientY, source };
+    mobilePanelSuppressClickRef.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMobilePanelDragOffset(0);
+  }
+
+  function moveMobilePanelDrag(event: ReactPointerEvent<HTMLElement>) {
+    const drag = mobilePanelDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const delta = event.clientY - drag.startY;
+    if (Math.abs(delta) > 8) mobilePanelSuppressClickRef.current = true;
+    setMobilePanelDragOffset(Math.max(-220, Math.min(260, delta)));
+  }
+
+  function endMobilePanelDrag(event: ReactPointerEvent<HTMLElement>) {
+    const drag = mobilePanelDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const delta = event.clientY - drag.startY;
+    mobilePanelDragRef.current = null;
+    setMobilePanelDragOffset(0);
+
+    if (drag.source === "handle") {
+      if (delta < -90) {
+        setMobilePanelHidden(false);
+        setResultsPanelCollapsed(false);
+      } else if (delta < -24) {
+        setMobilePanelHidden(false);
+        setResultsPanelCollapsed(true);
+      }
+      return;
+    }
+    if (delta > 55) {
+      if (resultsPanelCollapsed) setMobilePanelHidden(true);
+      else setResultsPanelCollapsed(true);
+    } else if (delta < -55 && resultsPanelCollapsed) {
+      setResultsPanelCollapsed(false);
+    }
+  }
+
+  function cycleResultsPanel() {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setResultsPanelCollapsed((collapsed) => !collapsed);
+      return;
+    }
+    if (resultsPanelCollapsed) setMobilePanelHidden(true);
+    else setResultsPanelCollapsed(true);
+  }
+
   return (
     <main className={`relative h-[calc(100dvh-48px)] min-h-[620px] overflow-hidden bg-[#20150f] text-[#3f2f24] transition-[grid-template-columns] duration-300 lg:grid ${resultsPanelCollapsed ? "lg:grid-cols-[0px_1fr]" : "lg:grid-cols-[390px_1fr]"}`}>
-      <aside className={`absolute inset-x-2 bottom-2 z-20 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#aa825d]/30 bg-[#fff9ef]/95 p-3 shadow-2xl backdrop-blur transition-[max-height,transform] duration-300 lg:static lg:w-[390px] lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-l-0 lg:p-4 ${resultsPanelCollapsed ? "max-h-[18rem] lg:pointer-events-none lg:-translate-x-full" : "max-h-[72dvh] translate-x-0"}`}>
+      <aside
+        className={`absolute inset-x-2 bottom-2 z-20 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#aa825d]/30 bg-[#fff9ef]/95 px-3 pb-3 shadow-2xl backdrop-blur lg:static lg:w-[390px] lg:max-h-none lg:rounded-none lg:border-y-0 lg:border-l-0 lg:p-4 ${mobilePanelDragOffset ? "transition-none" : "transition-[max-height,transform] duration-300"} ${mobilePanelHidden ? "pointer-events-none translate-y-[calc(100%+1rem)] lg:translate-y-0" : ""} ${resultsPanelCollapsed ? "max-h-[18rem] lg:pointer-events-none lg:-translate-x-full" : "max-h-[72dvh] translate-x-0"}`}
+        style={mobilePanelDragOffset ? { transform: `translateY(${resultsPanelCollapsed ? mobilePanelDragOffset : Math.max(0, mobilePanelDragOffset)}px)` } : undefined}
+      >
+        <div
+          className="flex h-5 shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing lg:hidden"
+          aria-label="Giữ và kéo để thay đổi chiều cao panel"
+          onPointerDown={(event) => beginMobilePanelDrag(event, "panel")}
+          onPointerMove={moveMobilePanelDrag}
+          onPointerUp={endMobilePanelDrag}
+          onPointerCancel={endMobilePanelDrag}
+        >
+          <span className="h-1 w-10 rounded-full bg-[#aa825d]/45" />
+        </div>
         <div className="shrink-0" aria-label="Tìm kiếm và bộ lọc phòng">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <Link href="/" className="text-lg font-black text-[#5d381f]">The Room SG</Link>
+          <Link href="/" aria-label="Về trang chủ" title="Về trang chủ" className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#aa825d]/30 bg-white px-2 text-[10px] font-semibold text-[#5d381f] shadow-sm transition hover:bg-[#f3e1c9]">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 10.5 12 3l9 7.5" />
+              <path d="M5 9.5V21h14V9.5" />
+              <path d="M9 21v-6h6v6" />
+            </svg>
+            <span>Home</span>
+          </Link>
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-[#80634a]">{loading ? "Đang tải…" : `${rooms.length} phòng trong vùng`}</span>
             <button
               type="button"
               aria-label={resultsPanelCollapsed ? "Mở rộng danh sách phòng" : "Thu gọn danh sách phòng"}
               title={resultsPanelCollapsed ? "Mở rộng danh sách phòng" : "Thu gọn danh sách phòng"}
-              onClick={() => setResultsPanelCollapsed((collapsed) => !collapsed)}
+              onClick={cycleResultsPanel}
               className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#aa825d]/30 bg-white text-[#5d381f] transition hover:bg-[#f3e1c9]"
             >
-              {resultsPanelCollapsed ? <ChevronUp size={17} className="lg:hidden" /> : <ChevronDown size={17} className="lg:hidden" />}
+              <ChevronDown size={17} className="lg:hidden" />
               <ChevronLeft size={17} className="hidden lg:block" />
             </button>
           </div>
@@ -1252,9 +1345,32 @@ export default function MapSearchClient() {
         </div>
         <div className={`${resultsPanelCollapsed ? "hidden lg:block" : ""} min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1`} aria-label="Danh sách phòng trong vùng bản đồ">
           {geoMessage ? <p className="mb-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{geoMessage}</p> : null}{error ? <p role="alert" className="mb-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{error}</p> : null}
-          <div className="space-y-2">{rooms.slice(0, 100).map((room) => <article key={room.id} onClick={() => focusRoom(room)} className={`flex cursor-pointer gap-3 rounded-xl border p-2 transition ${selectedId === room.id ? "border-[#744722] bg-[#f3e1c9]" : "border-[#aa825d]/20 bg-white"}`}>{room.thumbnail ? <img src={room.thumbnail} loading="lazy" alt="" className="h-16 w-20 rounded-lg object-cover" /> : <div className="grid h-16 w-20 place-items-center rounded-lg bg-[#ead8c0]"><MapPin size={20} /></div>}<div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><h2 className="truncate text-sm font-bold">{[room.room_code, room.room_type].filter(Boolean).join(" | ") || "Phòng cho thuê"}</h2><strong className="whitespace-nowrap text-sm text-[#744722]">{priceLabel(room.price)}</strong></div><p className="mt-1 truncate text-xs text-[#80634a]">{[room.address, room.ward, room.district].filter(Boolean).join(", ")}</p><Link href={`/rooms/${room.id}`} onClick={(e) => { e.stopPropagation(); markRoomViewed(room.id); }} className="mt-1 inline-block text-xs font-bold text-[#744722] hover:underline">Xem chi tiết</Link></div></article>)}{!loading && rooms.length === 0 ? <p className="py-6 text-center text-sm text-[#80634a]">Chưa có phòng có tọa độ trong khu vực này.</p> : null}</div>
+          <div className="space-y-2">{rooms.slice(0, 100).map((room) => <article key={room.id} onClick={() => focusRoom(room)} className={`flex cursor-pointer gap-3 rounded-xl border p-2 transition ${selectedId === room.id ? "border-[#744722] bg-[#f3e1c9]" : "border-[#aa825d]/20 bg-white"}`}>{room.thumbnail ? <img src={room.thumbnail} loading="lazy" alt="" className="h-16 w-20 rounded-lg object-cover" /> : <div className="grid h-16 w-20 place-items-center rounded-lg bg-[#ead8c0]"><MapPin size={20} /></div>}<div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><h2 className="truncate text-sm font-bold">{[room.room_code, room.room_type].filter(Boolean).join(" | ") || "Phòng cho thuê"}</h2><strong className="whitespace-nowrap text-sm text-[#744722]">{priceLabel(room.price)}</strong></div><p className="mt-1 truncate text-xs text-[#80634a]">{[room.address, room.ward, room.district].filter(Boolean).join(", ")}</p><Link href={`/rooms/${room.id}`} onClick={(e) => { e.stopPropagation(); markRoomViewed(room.id); }} className="mt-1 block w-full text-right text-xs font-bold text-[#744722] hover:underline">Xem chi tiết</Link></div></article>)}{!loading && rooms.length === 0 ? <p className="py-6 text-center text-sm text-[#80634a]">Chưa có phòng có tọa độ trong khu vực này.</p> : null}</div>
         </div>
       </aside>
+      {mobilePanelHidden ? (
+        <button
+          type="button"
+          aria-label="Mở lại panel phòng"
+          title="Mở lại panel phòng"
+          onClick={() => {
+            if (mobilePanelSuppressClickRef.current) {
+              mobilePanelSuppressClickRef.current = false;
+              return;
+            }
+            setMobilePanelHidden(false);
+            setResultsPanelCollapsed(true);
+          }}
+          onPointerDown={(event) => beginMobilePanelDrag(event, "handle")}
+          onPointerMove={moveMobilePanelDrag}
+          onPointerUp={endMobilePanelDrag}
+          onPointerCancel={endMobilePanelDrag}
+          style={mobilePanelDragOffset < 0 ? { bottom: -mobilePanelDragOffset } : undefined}
+          className="absolute bottom-0 left-1/2 z-40 grid h-8 w-14 -translate-x-1/2 touch-none place-items-center rounded-t-xl border border-b-0 border-[#aa825d]/40 bg-[#fff9ef]/95 text-[#5d381f] shadow-xl backdrop-blur lg:hidden"
+        >
+          <ChevronUp size={18} />
+        </button>
+      ) : null}
       {resultsPanelCollapsed ? (
         <button
           type="button"
@@ -1275,15 +1391,38 @@ export default function MapSearchClient() {
           className="absolute right-3 z-30 transition-[top] duration-200"
           style={{ top: selectedLocationRooms.length ? (roomListPanelBottom ?? "calc(42dvh + 5rem)") : 80 }}
         >
-          <button
-            type="button"
-            aria-label="Chọn lớp bản đồ"
-            aria-expanded={styleMenuOpen}
-            onClick={() => setStyleMenuOpen((open) => !open)}
-            className="grid h-8 w-8 place-items-center rounded-lg border border-[#aa825d]/35 bg-[#fff9ef]/95 text-[#4d3422] shadow-lg backdrop-blur transition hover:bg-white"
-          >
-            {styleLoading ? <Loader2 size={14} className="animate-spin" /> : <Layers3 size={14} />}
-          </button>
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              aria-label="Chọn lớp bản đồ"
+              aria-expanded={styleMenuOpen}
+              onClick={() => setStyleMenuOpen((open) => !open)}
+              className="grid h-8 w-8 place-items-center rounded-lg border border-[#aa825d]/35 bg-[#fff9ef]/95 text-[#4d3422] shadow-lg backdrop-blur transition hover:bg-white"
+            >
+              {styleLoading ? <Loader2 size={14} className="animate-spin" /> : <Layers3 size={14} />}
+            </button>
+            <button
+              type="button"
+              aria-label="Quay bản đồ về hướng Bắc"
+              title="Quay về hướng Bắc"
+              onClick={() => mapRef.current?.easeTo({ bearing: 0, duration: 500 })}
+              className={`grid h-11 w-9 place-items-center rounded-xl border bg-white/95 shadow-lg backdrop-blur transition hover:bg-white active:scale-95 ${Math.abs(mapBearing) > 0.5 ? "border-red-300" : "border-[#aa825d]/35"}`}
+            >
+              <svg
+                viewBox="0 0 32 32"
+                className="h-8 w-8 drop-shadow-sm transition-transform duration-150"
+                style={{ transform: `rotate(${-mapBearing}deg)` }}
+                aria-hidden="true"
+              >
+                <circle cx="16" cy="16" r="14" fill="#ffffff" stroke="#d1d5db" strokeWidth="1.2" />
+                <path d="M16 3.8 10.7 17 16 14.2 21.3 17Z" fill="#ef4444" />
+                <path d="M16 28.2 10.7 17 16 19.8 21.3 17Z" fill="#aeb4bc" />
+                <path d="M16 3.8 16 14.2 21.3 17Z" fill="#c92e2e" />
+                <path d="M16 28.2 16 19.8 21.3 17Z" fill="#7f8791" />
+                <circle cx="16" cy="17" r="1.65" fill="#ffffff" stroke="#737b85" strokeWidth="0.8" />
+              </svg>
+            </button>
+          </div>
           {styleMenuOpen ? (
             <div className="mt-2 w-60 rounded-2xl border border-[#aa825d]/35 bg-[#fff9ef]/98 p-2.5 shadow-2xl backdrop-blur" role="menu" aria-label="Các lớp bản đồ miễn phí">
               <div className="mb-2 flex items-center justify-between px-1">
@@ -1336,7 +1475,10 @@ export default function MapSearchClient() {
         {markerPreview ? (
           <aside
             aria-label={markerPreview.rooms.length === 1 ? "Xem nhanh phòng" : `Xem nhanh ${markerPreview.rooms.length} phòng`}
-            className="pointer-events-none absolute z-30 w-[min(17rem,calc(100%-1rem))] overflow-hidden rounded-xl border border-[#aa825d]/35 bg-white/98 shadow-2xl backdrop-blur"
+            onClick={() => {
+              if (markerPreview.rooms.length === 1) openMobilePreviewRoom(markerPreview.rooms[0]);
+            }}
+            className={`absolute z-30 w-[min(17rem,calc(100%-1rem))] overflow-hidden rounded-xl border border-[#aa825d]/35 bg-white/98 shadow-2xl backdrop-blur md:pointer-events-none ${markerPreview.rooms.length === 1 ? "cursor-pointer active:scale-[0.98] md:cursor-default md:active:scale-100" : ""}`}
             style={{
               left: markerPreview.x,
               top: markerPreview.placeBelow ? markerPreview.y + 12 : markerPreview.y - 48,
@@ -1367,14 +1509,14 @@ export default function MapSearchClient() {
                 </div>
                 <div className="space-y-1.5">
                   {markerPreview.rooms.slice(0, 5).map((room) => (
-                    <div key={room.id} className="flex items-center gap-2 rounded-lg bg-[#fff9ef] p-1.5">
+                    <button key={room.id} type="button" onClick={() => openMobilePreviewRoom(room)} className="flex w-full items-center gap-2 rounded-lg bg-[#fff9ef] p-1.5 text-left active:bg-[#f3e1c9] md:pointer-events-none">
                       {room.thumbnail ? <img src={room.thumbnail} alt="" className="h-9 w-10 shrink-0 rounded-md object-cover" /> : <div className="grid h-9 w-10 shrink-0 place-items-center rounded-md bg-[#ead8c0]"><MapPin size={15} /></div>}
                       <div className="min-w-0 flex-1">
                         <strong className="block truncate text-xs text-[#4d3422]">{[room.room_code, room.room_type].filter(Boolean).join(" | ") || "Phòng cho thuê"}</strong>
                         <span className="block truncate text-[10px] text-[#80634a]">{[room.address, room.ward, room.district].filter(Boolean).join(", ")}</span>
                       </div>
                       <strong className="shrink-0 text-xs text-[#744722]">{markerPriceLabel(room.price)}</strong>
-                    </div>
+                    </button>
                   ))}
                   {markerPreview.rooms.length > 5 ? <p className="text-center text-[10px] font-semibold text-[#80634a]">Và {markerPreview.rooms.length - 5} phòng khác</p> : null}
                 </div>
@@ -1485,6 +1627,7 @@ export default function MapSearchClient() {
         </div>,
         document.body,
       ) : null}
+      {previewOpeningRoomId ? <RoomModalLoadingSkeleton /> : null}
       {isAnonLocked && !hasVipAccess ? (
         <AnonymousLockModal
           phone="0967.467.587"
