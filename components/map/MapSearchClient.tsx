@@ -8,7 +8,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, La
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap, type MapMouseEvent } from "maplibre-gl";
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import type { MapBounds, MapRoom } from "@/lib/map/types";
-import { getViewedRoomIds, markRoomViewed, VIEWED_ROOMS_CHANGED_EVENT } from "@/lib/viewedRooms";
+import { clearViewedRooms, getViewedRoomIds, markRoomViewed, VIEWED_ROOMS_CHANGED_EVENT } from "@/lib/viewedRooms";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
 import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { useAnonymousListingGate } from "@/hooks/useAnonymousListingGate";
@@ -646,6 +646,7 @@ export default function MapSearchClient() {
   const [viewedRoomIds, setViewedRoomIds] = useState<Set<string>>(() => new Set());
   const [markerPreview, setMarkerPreview] = useState<MarkerPreview | null>(null);
   const [previewOpeningRoomId, setPreviewOpeningRoomId] = useState<string | null>(null);
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const roomLocations = useMemo(() => groupRoomsByLocation(rooms), [rooms]);
   const selectedLocationRooms = useMemo(
     () => roomLocations.find((location) => location.key === selectedLocationKey)?.rooms ?? [],
@@ -1272,17 +1273,23 @@ export default function MapSearchClient() {
         style={mobilePanelDragOffset ? { transform: `translateY(${resultsPanelCollapsed ? mobilePanelDragOffset : Math.max(0, mobilePanelDragOffset)}px)` } : undefined}
       >
         <div
-          className="flex h-5 shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing lg:hidden"
+          className="shrink-0 touch-none cursor-grab active:cursor-grabbing lg:cursor-auto"
           aria-label="Giữ và kéo để thay đổi chiều cao panel"
           onPointerDown={(event) => beginMobilePanelDrag(event, "panel")}
           onPointerMove={moveMobilePanelDrag}
           onPointerUp={endMobilePanelDrag}
           onPointerCancel={endMobilePanelDrag}
+          onClickCapture={(event) => {
+            if (!mobilePanelSuppressClickRef.current) return;
+            event.preventDefault();
+            event.stopPropagation();
+            mobilePanelSuppressClickRef.current = false;
+          }}
         >
-          <span className="h-1 w-10 rounded-full bg-[#aa825d]/45" />
-        </div>
-        <div className="shrink-0" aria-label="Tìm kiếm và bộ lọc phòng">
-        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex h-5 items-center justify-center lg:hidden">
+            <span className="h-1 w-10 rounded-full bg-[#aa825d]/45" />
+          </div>
+          <div className="mb-3 flex items-center justify-between gap-2">
           <Link href="/" aria-label="Về trang chủ" title="Về trang chủ" className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#aa825d]/30 bg-white px-2 text-[10px] font-semibold text-[#5d381f] shadow-sm transition hover:bg-[#f3e1c9]">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M3 10.5 12 3l9 7.5" />
@@ -1304,7 +1311,9 @@ export default function MapSearchClient() {
               <ChevronLeft size={17} className="hidden lg:block" />
             </button>
           </div>
+          </div>
         </div>
+        <div className="shrink-0" aria-label="Tìm kiếm và bộ lọc phòng">
         <form className="relative rounded-2xl border border-[#aa825d]/30 bg-white/75 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]" onSubmit={(event) => { event.preventDefault(); void searchPlace(); }}>
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#80634a]" size={17} />
           <input
@@ -1319,7 +1328,7 @@ export default function MapSearchClient() {
           <button type="submit" disabled={placeLoading} className="absolute right-1.5 top-1.5 grid h-9 min-w-12 place-items-center rounded-xl bg-[#744722] px-2.5 text-xs font-bold text-white shadow-sm">{placeLoading ? <Loader2 className="animate-spin" size={15} /> : "Tìm"}</button>
           {places.length ? <div className="absolute z-30 mt-1 max-h-[50dvh] w-full overflow-y-auto overscroll-contain rounded-xl border bg-white shadow-xl sm:max-h-96">{places.map((place) => <button key={place.id} type="button" onClick={() => focusPlaceSearchResult(place)} className="block w-full border-b px-3 py-2 text-left text-xs hover:bg-[#f3e1c9]">{place.label}</button>)}</div> : null}
         </form>
-        <div className="my-3 flex gap-2"><button type="button" onClick={locateMe} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#744722] px-3 py-2 text-sm font-bold text-white"><Crosshair size={17} /> Gần tôi</button><button type="button" aria-expanded={filtersOpen} onClick={() => { if (resultsPanelCollapsed) setResultsPanelCollapsed(false); setFiltersOpen((open) => !open); }} className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold ${filtersOpen ? "border-[#744722] bg-[#f3e1c9]" : "border-[#aa825d]/40 bg-white"}`}><SlidersHorizontal size={17} /> Bộ lọc</button></div>
+        <div className="my-3 flex flex-wrap items-center gap-2"><button type="button" onClick={() => setClearHistoryOpen(true)} className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-[#aa825d]/40 bg-white px-2.5 text-[11px] font-bold text-[#5d381f] transition hover:bg-[#f3e1c9]">Xóa lịch sử xem</button><button type="button" onClick={locateMe} className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg bg-[#744722] px-2.5 text-xs font-bold text-white"><Crosshair size={15} /> Gần tôi</button><button type="button" aria-expanded={filtersOpen} onClick={() => { if (resultsPanelCollapsed) setResultsPanelCollapsed(false); setFiltersOpen((open) => !open); }} className={`inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border px-2.5 text-xs font-bold ${filtersOpen ? "border-[#744722] bg-[#f3e1c9]" : "border-[#aa825d]/40 bg-white"}`}><SlidersHorizontal size={15} /> Bộ lọc</button></div>
         {activeFilterLabels.length || resultsPanelCollapsed ? (
           <div className="mb-3 flex flex-wrap gap-1.5" aria-label="Bộ lọc đang áp dụng">
             {activeFilterLabels.length ? activeFilterLabels.map((label) => <span key={label} title={label} className="max-w-full shrink-0 truncate rounded-full border border-[#aa825d]/25 bg-[#f3e1c9] px-2.5 py-1 text-[10px] font-semibold text-[#68452d]">{label}</span>) : <span className="rounded-full border border-dashed border-[#aa825d]/30 px-2.5 py-1 text-[10px] text-[#80634a]">Chưa áp dụng bộ lọc</span>}
@@ -1623,6 +1632,27 @@ export default function MapSearchClient() {
               <button type="button" onClick={() => setParams(openOptionGroup === "district" ? { district: "" } : openOptionGroup === "roomType" ? { roomType: "" } : { status: "" })} className="rounded-lg px-3 py-2 text-xs font-bold text-[#744722]">{openOptionGroup === "status" ? "Mặc định" : "Xóa lựa chọn"}</button>
               <button type="button" onClick={() => setOpenOptionGroup(null)} className="rounded-xl bg-[#744722] px-5 py-2 text-xs font-bold text-white">Xong</button>
             </footer>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
+      {clearHistoryOpen && typeof document !== "undefined" ? createPortal(
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-[#2b1b12]/40 p-4 backdrop-blur-[2px]"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setClearHistoryOpen(false);
+          }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="clear-viewed-history-title" className="w-full max-w-sm overflow-hidden rounded-2xl border border-[#aa825d]/35 bg-[#fff9ef] shadow-2xl">
+            <div className="p-5 text-center">
+              <h2 id="clear-viewed-history-title" className="text-base font-black text-[#4d3422]">Xóa lịch sử xem phòng?</h2>
+              <p className="mt-1 text-xs font-semibold text-[#80634a]">Các nút màu xám sẽ trở lại màu bình thường</p>
+              <p className="mt-4 text-sm text-[#5d381f]">Bạn có chắc muốn xóa lịch sử xem phòng hiện tại chứ?</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 border-t border-[#aa825d]/20 p-3">
+              <button type="button" onClick={() => setClearHistoryOpen(false)} className="rounded-xl border border-[#aa825d]/30 bg-white px-4 py-2.5 text-sm font-bold text-[#5d381f]">Hủy</button>
+              <button type="button" onClick={() => { clearViewedRooms(); setClearHistoryOpen(false); }} className="rounded-xl bg-[#744722] px-4 py-2.5 text-sm font-bold text-white">Xóa lịch sử</button>
+            </div>
           </section>
         </div>,
         document.body,
