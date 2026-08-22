@@ -879,6 +879,37 @@ useEffect(() => {
   })();
 }, [id]);
 
+// Google Maps là thao tác công khai trên toolbar. RPC chi tiết cố ý không trả
+// trường này cho anon, nên tải riêng qua endpoint chỉ trả URL sau khi xác nhận
+// người xem có quyền xem chính căn phòng này.
+useEffect(() => {
+  if (!room?.id || room?.google_maps_url) return;
+
+  let cancelled = false;
+
+  void fetch(`/api/rooms/${encodeURIComponent(room.id)}/google-maps`, {
+    cache: "no-store",
+  })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      return response.json() as Promise<{ googleMapsUrl?: string | null }>;
+    })
+    .then((body) => {
+      const googleMapsUrl = normalizeGoogleMapsUrl(body?.googleMapsUrl);
+      if (cancelled || !googleMapsUrl) return;
+      setRoom((previous: any) =>
+        previous ? { ...previous, google_maps_url: googleMapsUrl } : previous,
+      );
+    })
+    .catch(() => {
+      // Toolbar vẫn dùng được cho các thao tác công khai khác nếu Maps lỗi.
+    });
+
+  return () => {
+    cancelled = true;
+  };
+}, [room?.google_maps_url, room?.id]);
+
  const detail =
   (room?.room_detail ??
     room?.room_details ?? // ✅ phòng trường hợp RPC trả key số nhiều
