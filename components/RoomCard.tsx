@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
 import { createPortal } from "react-dom";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
@@ -12,6 +12,7 @@ import {
   firstRoomActionUrl,
   normalizeGoogleMapsUrl,
 } from "@/lib/roomActionLinks";
+import { extractContactPhones } from "@/lib/contactPhones";
 
 
 type Room = {
@@ -364,6 +365,11 @@ const contactPhone = isLoggedAdmin
     ).trim() || null
   : String(currentAdminPhone ?? "").trim() || null;
 
+const contactPhones = useMemo(
+  () => extractContactPhones(contactPhone),
+  [contactPhone]
+);
+
 const contactName = isLoggedAdmin
   ? String(
       currentAdminName ||
@@ -440,6 +446,10 @@ const contactName = isLoggedAdmin
   const [sub1Ok, setSub1Ok] = useState(true);
   const [sub2Ok, setSub2Ok] = useState(true);
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
+  const adminPhones = useMemo(
+    () => extractContactPhones(adminPhone),
+    [adminPhone]
+  );
 const [saved, setSaved] = useState(false);
 const [animating, setAnimating] = useState(false);
 const [copiedAddress, setCopiedAddress] = useState(false);
@@ -1074,13 +1084,13 @@ return (
       
 
     {/* ADMIN BUTTON */}
-    {contactPhone && (
+    {contactPhones.length > 0 && (
       <button
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setAdminPhone(contactPhone);
+          setAdminPhone(contactPhones.map((phone) => phone.dial).join("|"));
         }}
         title={contactName}
         className="
@@ -1511,7 +1521,7 @@ return (
       )}
 
       {/* ADMIN MODAL */}
-    {adminPhone &&
+    {adminPhone && adminPhones.length > 0 &&
       typeof window !== "undefined" &&
       createPortal(
         <div
@@ -1527,7 +1537,7 @@ return (
             className="
               relative
               w-[88%]
-              max-w-[250px]
+              max-w-[360px]
               rounded-[20px]
 
               bg-[linear-gradient(180deg,rgba(249,236,213,0.72),rgba(218,196,166,0.68))]
@@ -1566,100 +1576,42 @@ return (
                 </div>
               )}
 
-              <div
-                className="
-                  mt-1
-                  text-[13px]
-                  font-semibold
-                  tracking-[0.04em]
-                  text-[#4a392b]
-                  drop-shadow-[0_1px_1px_rgba(255,255,255,0.65)]
-                "
-              >
-                {adminPhone.replace(
-                  /(\d{4})(\d{3})(\d{3})/,
-                  "$1 $2 $3"
-                )}
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-x-1 text-[13px] font-bold tracking-[0.02em] text-[#4a392b] drop-shadow-[0_1px_1px_rgba(255,255,255,0.65)]">
+                {adminPhones.map((phone, index) => (
+                  <Fragment key={phone.dial}>
+                    {index > 0 ? <span aria-hidden="true" className="text-[#80634a]">|</span> : null}
+                    <a href={`tel:${phone.dial}`} className="rounded px-0.5 underline decoration-[#80634a]/50 underline-offset-2 hover:text-[#744722]">
+                      {phone.display}
+                    </a>
+                  </Fragment>
+                ))}
               </div>
             </div>
 
             <div className="relative z-10 flex flex-col gap-2">
-              <a
-                href={`tel:${adminPhone}`}
-                className="
-                  w-full
-                  rounded-xl
-
-                  border
-                  border-white/70
-
-                  bg-[rgba(250,244,234,0.88)]
-
-                  py-3
-
-                  text-center
-                  text-[16px]
-                  font-bold
-                  text-[#2f241b]
-
-                  backdrop-blur-[18px]
-
-                  shadow-[0_5px_14px_rgba(45,32,20,0.16),inset_0_1px_0_rgba(255,255,255,0.9)]
-
-                  transition
-                  duration-150
-
-                  hover:bg-[rgba(255,250,241,0.96)]
-                  active:scale-[0.98]
-                "
-              >
-                <span className="flex items-center justify-center gap-2 leading-none">
-                  <span className="text-[18px]">📞</span>
-                  <span>Gọi điện</span>
-                </span>
-              </a>
-
-              <a
-                href={`https://zalo.me/${adminPhone}`}
-                target="_blank"
-                rel="noreferrer"
-                className="
-                  w-full
-                  rounded-xl
-
-                  border
-                  border-white/70
-
-                  bg-[rgba(247,237,221,0.9)]
-
-                  py-3
-
-                  text-center
-                  text-[16px]
-                  font-bold
-                  text-[#2f241b]
-
-                  backdrop-blur-[18px]
-
-                  shadow-[0_5px_14px_rgba(45,32,20,0.16),inset_0_1px_0_rgba(255,255,255,0.9)]
-
-                  transition
-                  duration-150
-
-                  hover:bg-[rgba(255,248,236,0.98)]
-                  active:scale-[0.98]
-                "
-              >
-                <span className="flex items-center justify-center gap-2 leading-none">
-                  <img
-                    src="/zalo.svg"
-                    alt="Zalo"
-                    className="h-[20px] w-[20px]"
-                  />
-
-                  <span>Zalo</span>
-                </span>
-              </a>
+              {adminPhones.map((phone) => (
+                <div key={phone.dial} className="grid grid-cols-2 gap-2">
+                  <a
+                    href={`tel:${phone.dial}`}
+                    aria-label={`Gọi ${phone.display}`}
+                    className="rounded-xl border border-white/70 bg-[rgba(250,244,234,0.88)] px-2 py-2.5 text-center text-[13px] font-bold text-[#2f241b] shadow-[0_5px_14px_rgba(45,32,20,0.16),inset_0_1px_0_rgba(255,255,255,0.9)] transition duration-150 hover:bg-[rgba(255,250,241,0.96)] active:scale-[0.98]"
+                  >
+                    <span className="flex items-center justify-center gap-1.5 leading-none"><span>📞</span><span>{phone.display}</span></span>
+                  </a>
+                  <a
+                    href={`https://zalo.me/${phone.dial}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Mở Zalo số ${phone.display}`}
+                    className="rounded-xl border border-white/70 bg-[rgba(247,237,221,0.9)] px-2 py-2.5 text-center text-[13px] font-bold text-[#2f241b] shadow-[0_5px_14px_rgba(45,32,20,0.16),inset_0_1px_0_rgba(255,255,255,0.9)] transition duration-150 hover:bg-[rgba(255,248,236,0.98)] active:scale-[0.98]"
+                  >
+                    <span className="flex items-center justify-center gap-1.5 leading-none">
+                      <img src="/zalo.svg" alt="" className="h-[18px] w-[18px]" />
+                      <span>Zalo</span>
+                    </span>
+                  </a>
+                </div>
+              ))}
             </div>
           </div>
         </div>,

@@ -50,7 +50,7 @@ export async function GET(
     if (error) return mapDatabaseError(error);
     const { data: defaults, error: defaultsError } = await supabase
       .from("properties")
-      .select("house_number, address, ward, district, google_maps_url, default_room_data")
+      .select("house_number, address, ward, district, latitude, longitude, google_maps_url, default_room_data")
       .eq("id", propertyId)
       .single();
     if (defaultsError) return mapDatabaseError(defaultsError);
@@ -113,6 +113,8 @@ export async function PATCH(
         ward: input.ward,
         district: input.district,
         city: input.city,
+        latitude: input.latitude,
+        longitude: input.longitude,
         cover_image: input.cover_image,
         gallery_images: input.gallery_images,
         google_maps_url: input.google_maps_url,

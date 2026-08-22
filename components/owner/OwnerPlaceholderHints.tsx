@@ -5,8 +5,8 @@ import { useEffect } from "react";
 const FIELD_HINTS: Record<string, string> = {
   house_number: "Ví dụ: 177/10/11",
   address: "Nhập tên đường hoặc địa chỉ",
-  ward: "Nhập phường / xã",
-  district: "Nhập quận / huyện",
+  ward: "Nhập phường ",
+  district: "Nhập quận",
   city: "Nhập tỉnh / thành phố",
   room_code: "Ví dụ: Phòng 203",
   room_type: "Ví dụ: Studio",

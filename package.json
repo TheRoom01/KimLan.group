@@ -14,7 +14,8 @@
     "patch:zalo-parser-phase2-final": "node tools/zalo-reader/apply-phase2-final-marker-album.mjs",
     "patch:zalo-reader-phase3": "node tools/zalo-reader/apply-phase3-24h-import-limit.mjs",
     "test:zalo-lookback": "tsx tools/zalo-reader/parsers/phase3-message-lookback-smoke-test.ts",
-    "patch:zalo-reader-final": "node tools/zalo-reader/apply-final-building-room-architecture.mjs"
+    "patch:zalo-reader-final": "node tools/zalo-reader/apply-final-building-room-architecture.mjs",
+    "map:geocode": "tsx tools/map/geocode-properties.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.975.0",
@@ -25,6 +26,7 @@
     "archiver": "^7.0.1",
     "heic2any": "0.0.4",
     "lucide-react": "^0.474.0",
+    "maplibre-gl": "^5.24.0",
     "next": "16.1.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

@@ -34,5 +34,9 @@ Thumbs.db
 .zalo-reader/
 tools/zalo-reader/state.json
 
+# resumable Map Search geocoding state (may contain production addresses)
+.map-geocode-cache.json
+.map-geocode-batch-jobs.json
+
 .vercel
 .env*

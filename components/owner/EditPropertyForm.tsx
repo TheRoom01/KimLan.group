@@ -8,6 +8,7 @@ import { readApiResponse } from "@/lib/api/client";
 import { buildGoogleMapsSearchUrl } from "@/lib/owner/googleMapsUrl";
 import { generatePropertyCode } from "@/lib/owner/propertyCode";
 import MoneyInput from "@/components/owner/MoneyInput";
+import LocationPicker from "@/components/map/LocationPicker";
 
 type EditableProperty = {
   id: string;
@@ -59,6 +60,11 @@ export default function EditPropertyForm({
   });
   const [googleMapsUrl, setGoogleMapsUrl] = useState(
     property.google_maps_url || buildGoogleMapsSearchUrl(property),
+  );
+  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(
+    Number.isFinite(property.latitude) && Number.isFinite(property.longitude)
+      ? { latitude: Number(property.latitude), longitude: Number(property.longitude) }
+      : null,
   );
 
   function updateAddress(
@@ -154,6 +160,8 @@ export default function EditPropertyForm({
           ward: form.get("ward"),
           district: form.get("district"),
           city: form.get("city"),
+          latitude: location?.latitude ?? null,
+          longitude: location?.longitude ?? null,
           cover_image: gallery[0] ?? null,
           gallery_images: gallery,
           google_maps_url: form.get("google_maps_url"),
@@ -248,7 +256,7 @@ export default function EditPropertyForm({
           />
         </Field>
 
-        <Field label="Quận / huyện" htmlFor="district" required>
+        <Field label="Quận" htmlFor="district" required>
           <input
             id="district"
             name="district"
@@ -284,6 +292,13 @@ export default function EditPropertyForm({
             onChange={(event) => setGoogleMapsUrl(event.target.value)}
           />
         </Field>
+        <div className="md:col-span-2">
+          <LocationPicker
+            value={location}
+            onChange={setLocation}
+            addressQuery={[addressDraft.house_number, addressDraft.address, addressDraft.ward, addressDraft.district, addressDraft.city].filter(Boolean).join(", ")}
+          />
+        </div>
         <Field label="Trạng thái mặc định" htmlFor="room_status"><select id="room_status" name="room_status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
         <Field label="Số điện thoại Zalo" htmlFor="zalo_phone"><textarea id="zalo_phone" name="zalo_phone" className={INPUT_CLASS} defaultValue={defaults.zalo_phone ?? ""} /></Field>
         <Field label="Link Zalo" htmlFor="link_zalo"><input id="link_zalo" name="link_zalo" className={INPUT_CLASS} defaultValue={defaults.link_zalo ?? ""} /></Field>

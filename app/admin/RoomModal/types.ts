@@ -2,7 +2,7 @@
 
 import type { RoomStatus } from '../../types/room'
 
-export type TabKey = 'info' | 'fee' | 'amenity'
+export type TabKey = 'info' | 'fee' | 'amenity' | 'location'
 export type MediaItem = {
   type: "image" | "video";
   url: string;   // public url

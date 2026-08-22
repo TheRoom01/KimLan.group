@@ -12,6 +12,8 @@ export default function CreatePropertyForm({ zaloPhones = [] }: { zaloPhones?: s
         ward: null,
         district: "",
         city: "Hồ Chí Minh",
+        latitude: null,
+        longitude: null,
         gallery_images: [],
         google_maps_url: null,
         default_room_data: {

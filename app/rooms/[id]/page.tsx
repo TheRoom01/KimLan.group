@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from "react";
 
 import { supabase } from "@/lib/supabase";
 import { getBrowserContext, openExternalBrowser } from "@/lib/browser";
@@ -12,6 +12,7 @@ import {
   normalizeGoogleMapsUrl,
 } from "@/lib/roomActionLinks";
 import { formatVietnameseWard } from "@/lib/formatWard";
+import { extractContactPhones } from "@/lib/contactPhones";
 
 /* ================= Utils ================= */
 
@@ -1234,6 +1235,8 @@ if (
 const visibleZaloPhone = canSeePrivateFields
   ? String(room?.zalo_phone ?? "").trim() || null
   : null;
+const visibleZaloPhones = extractContactPhones(visibleZaloPhone);
+const phoneModalPhones = extractContactPhones(phoneModal);
 
 /*
  * Field link_zalo có thể chứa:
@@ -1439,6 +1442,7 @@ async function homeRoomImageFile(url: string, roomCode: string, index: number) {
 
 return (
   <div
+      data-room-detail-modal="true"
       className="
         fixed inset-0 z-[99999]
         flex items-end justify-center
@@ -2236,7 +2240,7 @@ return (
         )}
 
         {room.description && (
-          <div className="mt-2 text-red-700 text-[15px] leading-snug whitespace-pre-line">
+          <div className="mt-2 text-red-400 text-[15px] leading-snug whitespace-pre-line">
             {room.description}
           </div>
         )}
@@ -2355,19 +2359,21 @@ return (
                 SĐT chủ nhà
               </div>
 
-              {visibleZaloPhone ? (
-                <button
-                  type="button"
-                  onClick={() => setPhoneModal(visibleZaloPhone)}
-                  className="
-                    text-left break-all
-                    text-red-400 font-semibold
-                    hover:text-red-300 hover:underline
-                    transition-colors
-                  "
-                >
-                  {visibleZaloPhone}
-                </button>
+              {visibleZaloPhones.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-x-1 text-red-400 font-semibold">
+                  {visibleZaloPhones.map((phone, index) => (
+                    <Fragment key={phone.dial}>
+                      {index > 0 ? <span aria-hidden="true" className="text-[#C9A27E]">|</span> : null}
+                      <button
+                        type="button"
+                        onClick={() => setPhoneModal(phone.dial)}
+                        className="hover:text-red-300 hover:underline transition-colors"
+                      >
+                        {phone.display}
+                      </button>
+                    </Fragment>
+                  ))}
+                </div>
               ) : (
                 <div className="text-gray-500">-</div>
               )}
@@ -2532,13 +2538,13 @@ return (
   </div>
 )}
 
-{phoneModal && (
+{phoneModal && phoneModalPhones.length > 0 && (
   <div
     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30"
     onClick={() => setPhoneModal(null)}
   >
     <div
-      className="w-[280px] rounded-2xl 
+      className="w-[92%] max-w-[360px] rounded-2xl 
       border border-white/10 
       bg-[linear-gradient(135deg,rgba(255, 255, 255, 0.88),rgba(255, 255, 255, 0.54)),rgba(58,33,18,0.45)] 
       backdrop-blur-2xl 
@@ -2546,34 +2552,44 @@ return (
       p-4 space-y-3"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="text-center text-[#f4eadf] font-semibold">
-        {phoneModal}
+      <div className="flex flex-wrap items-center justify-center gap-x-1 text-center text-[#4a392b] font-bold">
+        {phoneModalPhones.map((phone, index) => (
+          <Fragment key={phone.dial}>
+            {index > 0 ? <span aria-hidden="true" className="text-[#80634a]">|</span> : null}
+            <a href={`tel:${phone.dial}`} className="underline decoration-[#80634a]/50 underline-offset-2">
+              {phone.display}
+            </a>
+          </Fragment>
+        ))}
       </div>
 
-      <a
-        href={`tel:${phoneModal}`}
-        className="block text-center rounded-xl bg-[#A47A52]/65 text-white py-2 border border-[#E0B77A]/25 backdrop-blur hover:bg-[#B8895C]/75"
-      >
-        📞 Gọi điện
-      </a>
-
-      <a
-        href={`https://zalo.me/${phoneModal}`}
-        target="_blank"
-        rel="noreferrer"
-        className="block text-center rounded-xl border border-[#E0B77A]/25 bg-white/5 text-[#f4eadf] py-2 backdrop-blur hover:bg-white/10"
-      >
-        💬 Nhắn Zalo
-      </a>
-
-      <button
-        onClick={async () => {
-          await navigator.clipboard.writeText(phoneModal);
-        }}
-        className="block w-full text-center rounded-xl border border-[#E0B77A]/20 bg-white/5 text-white py-2 backdrop-blur hover:bg-white/10"
-      >
-        📋 Copy số
-      </button>
+      {phoneModalPhones.map((phone) => (
+        <div key={phone.dial} className="grid grid-cols-3 gap-2">
+          <a
+            href={`tel:${phone.dial}`}
+            className="rounded-xl bg-[#A47A52]/75 px-2 py-2 text-center text-xs font-bold text-white border border-[#E0B77A]/25 backdrop-blur hover:bg-[#B8895C]/85"
+          >
+            📞 Gọi
+          </a>
+          <a
+            href={`https://zalo.me/${phone.dial}`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-xl border border-[#9c7048]/25 bg-white/45 px-2 py-2 text-center text-xs font-bold text-[#4a392b] backdrop-blur hover:bg-white/65"
+          >
+            💬 Zalo
+          </a>
+          <button
+            type="button"
+            onClick={async () => {
+              await navigator.clipboard.writeText(phone.dial);
+            }}
+            className="rounded-xl border border-[#9c7048]/25 bg-white/45 px-2 py-2 text-center text-xs font-bold text-[#4a392b] backdrop-blur hover:bg-white/65"
+          >
+            📋 Copy
+          </button>
+        </div>
+      ))}
     </div>
   </div>
 )}

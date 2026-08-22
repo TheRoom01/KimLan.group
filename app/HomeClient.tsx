@@ -3148,7 +3148,7 @@ return (
           shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]
         "
       >
-        <div className="flex w-full max-w-none items-start justify-between gap-3 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
+        <div className="grid w-full max-w-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
           {/* LEFT: LOGO + TITLE */}
           <div className="flex min-w-0 items-center gap-2 md:gap-3">
             <LogoIntroButton logoSrc="/logo.png" />
@@ -3163,8 +3163,8 @@ return (
             </div>
           </div>
 
-    {/* RIGHT: ACCOUNT + SAVED */}
-        <div className="relative z-[3000] flex shrink-0 flex-col items-end gap-1.5 whitespace-nowrap self-start">
+    {/* RIGHT: ACCOUNT */}
+        <div className="relative z-[3000] shrink-0 whitespace-nowrap self-start">
           {/* ACCOUNT */}
           <div
             id="auth-anchor"
@@ -3179,7 +3179,18 @@ return (
             "
           />
 
-     {/* SAVED */}
+        </div>
+
+     {/* MAP + SAVED */}
+      <div className="col-span-2 flex items-center justify-between gap-2">
+      <a
+        href="/map"
+        aria-label="Tìm phòng trên bản đồ"
+        title="Tìm phòng trên bản đồ"
+        className="flex h-[34px] min-w-[118px] items-center justify-center rounded-2xl border border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.55)] px-4 text-[12px] font-semibold text-[#E5C9A9] backdrop-blur-[20px] shadow-[0_10px_26px_rgba(0,0,0,0.35)] transition hover:bg-[rgba(255,255,255,0.08)]"
+      >
+        📍 Xem bản đồ
+      </a>
       <a
         href="/saved"
         target="_blank"
@@ -3200,7 +3211,7 @@ return (
       >
         ★ Phòng đã lưu
       </a>
-    </div>
+      </div>
         </div>
       </header>
 

@@ -619,7 +619,7 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
         }
         style={{ ...openButton, ...buttonStyle }}
       >
-        🔗 Tạo Link Giỏ hàng
+        🔗Link Giỏ hàng
       </button>
 
       {open && (

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "kimlan-pwa-v1";
+const CACHE_VERSION = "kimlan-pwa-v2";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const APP_SHELL = [

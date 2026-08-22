@@ -9,6 +9,7 @@ import TabButton from './TabButton'
 import RoomInfoTab from './RoomInfoTab'
 import RoomFeeTab from './RoomFeeTab'
 import RoomAmenityTab from './RoomAmenityTab'
+import RoomLocationTab from './RoomLocationTab'
 import AutoReadModal, { type AutoReadCandidate } from './AutoReadModal'
 
 /* ================= STORAGE KEY HELPERS ================= */
@@ -199,6 +200,10 @@ const [showAutoRead, setShowAutoRead] = useState(false)
 const [showHiddenSaveConfirm, setShowHiddenSaveConfirm] = useState(false)
 const [hiddenAudit, setHiddenAudit] = useState<HiddenRoomAudit | null>(null)
 const [hiddenAuditLoading, setHiddenAuditLoading] = useState(false)
+const [buildingLocation, setBuildingLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+const [buildingLocationDirty, setBuildingLocationDirty] = useState(false)
+const [buildingLocationLoading, setBuildingLocationLoading] = useState(false)
+const [buildingLocationError, setBuildingLocationError] = useState<string | null>(null)
 
   // ✅ NEW: dùng để chọn RPC L1/L2 khi cần fallback (bypass RLS)
   const [adminLevel, setAdminLevel] = useState<number | null>(null)
@@ -1006,6 +1011,10 @@ const detailSample =
   setPropertyCandidates([])
   setShowCloseConfirm(false)
   setShowAutoRead(false)
+  setBuildingLocation(null)
+  setBuildingLocationDirty(false)
+  setBuildingLocationLoading(false)
+  setBuildingLocationError(null)
 
     if (isPending) {
     draftRoomIdRef.current = `zalo-pending-${String(pendingId || '').trim()}`
@@ -1130,7 +1139,8 @@ const detailSample =
 
   void (async () => {
     try {
-      const [roomResult, sharedFieldsResult, levelResult, userResult] = await Promise.all([
+      setBuildingLocationLoading(true)
+      const [roomResult, sharedFieldsResult, levelResult, userResult, locationResult] = await Promise.all([
         supabase.rpc(
           "fetch_room_detail_full_v1",
           {
@@ -1143,6 +1153,9 @@ const detailSample =
         }),
         supabase.rpc("get_my_admin_level"),
         supabase.auth.getUser(),
+        supabase.rpc("get_admin_room_property_location_v1", {
+          p_room_id: base.id,
+        }),
       ])
 
       const { data, error } = roomResult
@@ -1153,6 +1166,18 @@ const detailSample =
       }
 
       const room = (data ?? {}) as any
+      if (locationResult.error) {
+        setBuildingLocationError(locationResult.error.message)
+      } else {
+        const propertyLocation = (locationResult.data ?? {}) as Record<string, unknown>
+        const latitude = propertyLocation.latitude == null ? null : Number(propertyLocation.latitude)
+        const longitude = propertyLocation.longitude == null ? null : Number(propertyLocation.longitude)
+        setBuildingLocation(
+          latitude !== null && longitude !== null && Number.isFinite(latitude) && Number.isFinite(longitude)
+            ? { latitude, longitude }
+            : null,
+        )
+      }
       const sharedFields = sharedFieldsResult.error
         ? null
         : (sharedFieldsResult.data as Record<string, unknown> | null)
@@ -1226,6 +1251,8 @@ const detailSample =
       )
     } catch (e: any) {
       setErrorMsg(e?.message ?? "Load phòng thất bại")
+    } finally {
+      setBuildingLocationLoading(false)
     }
   })()
 }, [editingRoom, isPending, pendingId, pendingRoomPayload, pendingDetailPayload, pendingImages, pendingVideos])
@@ -1786,6 +1813,16 @@ const sharedSync = await supabase.rpc('sync_room_shared_property_fields_v1', {
 
 if (sharedSync.error) throw sharedSync.error
 
+if (buildingLocationDirty) {
+  const locationUpdate = await supabase.rpc('update_admin_room_property_location_v1', {
+    p_room_id: roomId,
+    p_latitude: buildingLocation?.latitude ?? null,
+    p_longitude: buildingLocation?.longitude ?? null,
+  })
+  if (locationUpdate.error) throw locationUpdate.error
+  setBuildingLocationDirty(false)
+}
+
     // =========================
     // ✅ SYNC room_media (B7.6–B7.7)
     // =========================
@@ -2115,6 +2152,9 @@ const stopBackdropEvents = (e: any) => {
             <TabButton active={activeTab === 'amenity'} onClick={() => setActiveTab('amenity')}>
               Tiện ích
             </TabButton>
+            <TabButton active={activeTab === 'location'} onClick={() => setActiveTab('location')}>
+              Vị trí
+            </TabButton>
           </div>
 
           {/* ===== TAB INFO ===== */}
@@ -2165,6 +2205,28 @@ const stopBackdropEvents = (e: any) => {
             <RoomAmenityTab
               detailForm={detailForm}
               onChange={(patch) => setDetailForm((prev) => ({ ...prev, ...patch }))}
+            />
+          )}
+
+          {/* ===== TAB LOCATION ===== */}
+          {activeTab === 'location' && (
+            <RoomLocationTab
+              value={buildingLocation}
+              loading={buildingLocationLoading}
+              error={buildingLocationError}
+              disabled={isPending}
+              addressQuery={[
+                roomForm.house_number,
+                roomForm.address,
+                roomForm.ward,
+                roomForm.district,
+                'Thành phố Hồ Chí Minh',
+              ].filter(Boolean).join(', ')}
+              onChange={(next) => {
+                setBuildingLocation(next)
+                setBuildingLocationDirty(true)
+                setBuildingLocationError(null)
+              }}
             />
           )}
         </div>

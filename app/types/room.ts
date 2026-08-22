@@ -2,10 +2,11 @@ import type { RoomStatus } from "@/lib/owner/types";
 
 export type { RoomStatus } from "@/lib/owner/types";
 
-export type TabKey = "info" | "fee" | "amenity";
+export type TabKey = "info" | "fee" | "amenity" | "location";
 
 export type Room = {
   id: string;
+  property_id?: string | null;
   room_code: string;
   house_number?: string | null;
   address?: string | null;
