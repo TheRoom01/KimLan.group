@@ -12,6 +12,16 @@ const MIN_DAYS = 1;
 const MAX_DAYS = 365;
 const MAX_NOTE_LENGTH = 200;
 
+type VipAccessLinkRecord = {
+  id: string;
+  note: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string | null;
+  created_by: string | null;
+  token_value: string | null;
+};
+
 function sha256(value: string) {
   return crypto
     .createHash("sha256")
@@ -144,12 +154,40 @@ export async function GET(
       throw error;
     }
 
+    const vipRows = (data ?? []) as unknown as VipAccessLinkRecord[];
+
+    const creatorIds = Array.from(
+      new Set(
+        vipRows
+          .map((row) => String(row.created_by ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+    const creatorNames = new Map<string, string>();
+
+    if (creatorIds.length > 0) {
+      const { data: admins, error: adminsError } = await supabase
+        .from("admin_users")
+        .select("user_id,full_name")
+        .in("user_id", creatorIds);
+
+      if (adminsError) {
+        throw adminsError;
+      }
+
+      for (const admin of admins ?? []) {
+        const userId = String(admin.user_id ?? "").trim();
+        const fullName = String(admin.full_name ?? "").trim();
+        if (userId && fullName) creatorNames.set(userId, fullName);
+      }
+    }
+
     const origin =
       getSiteOrigin(request);
 
     const rows =
-      (data ?? []).map(
-        (row: any) => {
+      vipRows.map(
+        (row) => {
           const {
             token_value,
             ...safeRow
@@ -157,6 +195,8 @@ export async function GET(
 
           return {
             ...safeRow,
+            creator_admin_name:
+              creatorNames.get(String(row.created_by ?? "").trim()) || null,
             link: token_value
               ? `${origin}/?vip=${encodeURIComponent(
                   token_value
@@ -309,6 +349,16 @@ export async function POST(
       throw error;
     }
 
+    const { data: creatorAdmin, error: creatorAdminError } = await supabase
+      .from("admin_users")
+      .select("full_name")
+      .eq("user_id", guard.user.id)
+      .maybeSingle();
+
+    if (creatorAdminError) {
+      throw creatorAdminError;
+    }
+
     const origin =
       getSiteOrigin(request);
 
@@ -327,6 +377,8 @@ export async function POST(
       ok: true,
       data: {
         ...safeData,
+        creator_admin_name:
+          String(creatorAdmin?.full_name ?? "").trim() || null,
         link: vipLink,
       },
       link: vipLink,

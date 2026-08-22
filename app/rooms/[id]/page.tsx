@@ -1851,7 +1851,7 @@ return (
       )}
 
       {/* ===== TOOLBAR CHỨC NĂNG ===== */}
-        {isAdmin && (
+        {(
           <div className="relative z-30 flex w-full min-w-0 items-center justify-start gap-2 overflow-x-auto overscroll-x-contain py-1 sm:justify-end">
             {imageUrls.length > 0 && (
               <button
@@ -2080,8 +2080,7 @@ return (
         )}
 
         {/* Dropdown link được render ngoài toolbar để không bị overflow cắt */}
-{isAdmin &&
-  zaloMenuOpen &&
+{zaloMenuOpen &&
   storedLinks.length > 1 &&
   typeof document !== "undefined" &&
   createPortal(

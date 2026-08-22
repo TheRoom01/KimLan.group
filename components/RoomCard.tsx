@@ -353,13 +353,15 @@ const isLoggedAdmin =
   Boolean(currentUserId) &&
   (safeAdminLevel === 1 || safeAdminLevel === 2);
 
-// Admin đăng nhập: giữ nguyên fallback cũ.
+// Admin L2 phải liên hệ đúng người đã tạo phòng, không phải tài khoản L2
+// đang xem card. Admin L1 vẫn giữ fallback hiện tại.
 // Anon VIP: chỉ nhận contact đã được HomeClient truyền từ Link Giỏ hàng.
 // Anon thường: currentAdminPhone = null nên không hiện nút Admin.
 const contactPhone = isLoggedAdmin
   ? String(
-      currentAdminPhone ||
-      room.creator_admin_phone ||
+      (safeAdminLevel === 2
+        ? room.creator_admin_phone || currentAdminPhone
+        : currentAdminPhone || room.creator_admin_phone) ||
       room.zalo_phone ||
       ""
     ).trim() || null
@@ -372,8 +374,9 @@ const contactPhones = useMemo(
 
 const contactName = isLoggedAdmin
   ? String(
-      currentAdminName ||
-      room.creator_admin_name ||
+      (safeAdminLevel === 2
+        ? room.creator_admin_name || currentAdminName
+        : currentAdminName || room.creator_admin_name) ||
       ""
     ).trim() || "Liên hệ"
   : String(currentAdminName ?? "").trim() || "Liên hệ";

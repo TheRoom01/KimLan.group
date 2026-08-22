@@ -15,6 +15,7 @@ type VipLinkRow = {
   revoked_at?: string | null;
   created_at?: string | null;
   created_by?: string | null;
+  creator_admin_name?: string | null;
   link?: string | null;
 };
 
@@ -1067,6 +1068,24 @@ export default function VipLinkManager({ buttonStyle }: { buttonStyle?: CSSPrope
                               dateGrid
                             }
                           >
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <div
+                                style={
+                                  dateLabel
+                                }
+                              >
+                                Admin tạo link
+                              </div>
+
+                              <div
+                                style={
+                                  dateValue
+                                }
+                              >
+                                {row.creator_admin_name || "Chưa cập nhật tên"}
+                              </div>
+                            </div>
+
                             <div>
                               <div
                                 style={
