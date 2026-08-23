@@ -994,6 +994,13 @@ const openZaloUX = useCallback(
 
             const patchedRoom = { ...updatedRoom, updated_at: new Date().toISOString() };
 
+            // Đổi phường được đồng bộ cho cả tòa nhà ở DB, vì vậy cần tải lại
+            // toàn bộ trang thay vì chỉ vá card phòng vừa chỉnh sửa vào local state.
+            if (opts?.reloadPropertyRooms) {
+              await loadRooms(page, debouncedSearch, { useCache: false });
+              return;
+            }
+
             if (normalizeSearchKeyword(debouncedSearch)) {
               await loadRooms(page, debouncedSearch, { useCache: false });
               return;

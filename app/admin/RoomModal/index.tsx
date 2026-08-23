@@ -91,7 +91,10 @@ type Props = {
   }) => void | Promise<void>
 
   // ✅ onSaved nhận room mới để trang admin cập nhật ngay
-  onSaved: (updatedRoom: Room, opts?: { isNew?: boolean }) => void | Promise<void>
+  onSaved: (
+    updatedRoom: Room,
+    opts?: { isNew?: boolean; reloadPropertyRooms?: boolean }
+  ) => void | Promise<void>
 
 }
 
@@ -1949,7 +1952,7 @@ try {
     setSaving(false)
     onClose()
        onNotify?.('Đã lưu phòng. Đang lưu chi tiết...')
-    void onSaved(updatedRoom, { isNew })
+    void onSaved(updatedRoom, { isNew, reloadPropertyRooms: wardChanged })
     
 // ✅ Lưu chi tiết qua RPC (chuẩn Supabase, bypass RLS)
 void (async () => {
