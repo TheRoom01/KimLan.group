@@ -55,6 +55,8 @@ type RoomCardProps = {
   currentAdminName?: string | null;
   index?: number;
   onNavigate: (href: string) => void;
+  onPrefetch?: (href: string, roomId: string) => void;
+  isOpening?: boolean;
 };
 
 function roomAmenityLabels(room: Room): string[] {
@@ -292,6 +294,8 @@ export default function RoomCard({
   currentAdminName,
   index = 0,
   onNavigate,
+  onPrefetch,
+  isOpening = false,
 }: RoomCardProps) {
 
   const images = getFullImageUrls(room);
@@ -992,6 +996,10 @@ return (
       className="block h-full cursor-pointer"
       role="link"
       tabIndex={0}
+      aria-busy={isOpening}
+      onPointerEnter={() => onPrefetch?.(href, room.id)}
+      onPointerDown={() => onPrefetch?.(href, room.id)}
+      onFocus={() => onPrefetch?.(href, room.id)}
       onClick={() => {
         onNavigate(href);
       }}
@@ -1004,7 +1012,7 @@ return (
       }}
     >
     <div
-      className="
+      className={`
         group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
         bg-[rgba(156,127,73,0.5)]
@@ -1014,11 +1022,13 @@ return (
 
         shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]
 
-        transition-all duration-300
-        hover:-translate-y-1
-        hover:bg-[rgba(215,147,69,0.47)]
+        transition-[background-color,border-color,box-shadow,transform,opacity] duration-150 ease-out
+        hover:-translate-y-0.5
+        hover:bg-[rgba(181,143,83,0.58)]
         hover:border-[#E5C9A9]/45
-      "
+        active:translate-y-0 active:scale-[0.992] active:bg-[rgba(202,151,86,0.62)]
+        ${isOpening ? "scale-[0.992] border-[#F0D3AE]/60 bg-[rgba(202,151,86,0.62)] opacity-90" : ""}
+      `}
     >
   {/* glass layers */}
   <div

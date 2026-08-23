@@ -13,6 +13,7 @@ import {
 } from "@/lib/roomActionLinks";
 import { formatVietnameseWard } from "@/lib/formatWard";
 import { extractContactPhones } from "@/lib/contactPhones";
+import { loadRoomDetailFast } from "@/lib/roomDetailPrefetch";
 
 /* ================= Utils ================= */
 
@@ -306,7 +307,6 @@ export default function RoomDetailPage() {
   const isModal = searchParams.get("modal") === "1";
 
   const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
   const [adminLevel, setAdminLevel] = useState(0);
 
 const currentUserIdValue = String(user?.id ?? "").trim();
@@ -832,12 +832,6 @@ async function copyText(text: string) {
 }, [user?.id]);
 
 
-useEffect(() => {
-  setFetchStatus("loading");
-  setRoom(null);
-  setActiveIndex(0);
-}, [id]);   
-
   // ✅ Fetch room detail (ổn định + không kẹt loading)
 useEffect(() => {
   if (!id) return;
@@ -846,25 +840,17 @@ useEffect(() => {
 
   // set trạng thái ngay khi bắt đầu request mới
   setFetchStatus("loading");
-  setLoading(true);
   setRoom(null);
+  setActiveIndex(0);
 
   (async () => {
         try {
-      // ✅ Security: role được tính trong RPC theo auth.uid(); FE không gửi role nữa (giữ param để tương thích)
-      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
-        p_id: id,
-        p_role: 0,
-      });
+      // Tái sử dụng request đã prefetch từ card để modal có dữ liệu sớm hơn.
+      const data = await loadRoomDetailFast(id);
 
       // ✅ nếu không phải request mới nhất -> bỏ qua
       if (myReq !== roomReqIdRef.current) return;
 
-      if (error) {
-        console.error("fetchRoom error:", error);
-        setRoom(null);
-        return;
-      }
       setRoom(data ?? null);
     } catch (e) {
       if (myReq !== roomReqIdRef.current) return;
@@ -872,7 +858,6 @@ useEffect(() => {
       setRoom(null);
     } finally {
       if (myReq === roomReqIdRef.current) {
-        setLoading(false);
         setFetchStatus("done");
       }
     }
@@ -1681,7 +1666,8 @@ return (
                 src={activeItem.url}
                 alt={room?.room_code || ""}
                 className="w-full h-full object-contain bg-black"
-                loading="lazy"
+                loading="eager"
+                fetchPriority="high"
               />
             )
           ) : (

@@ -11,6 +11,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
+import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { prefetchRoomDetail } from "@/lib/roomDetailPrefetch";
+import { flushSync } from "react-dom";
 
 type InitialProps = {
   initialRooms: any[];
@@ -286,6 +289,7 @@ const [vipAdminName, setVipAdminName] = useState<string | null>(null);
   const [petFilters, setPetFilters] = useState<("cat" | "dog" | "nopet")[]>([]);
 const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
+  const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
   const lastFilterSigRef = useRef<string>("");
   const prevAppliedSearchRef = useRef<string>("");
   const pendingRestoredFilterSigRef = useRef<string | null>(null);
@@ -3143,6 +3147,9 @@ useEffect(() => {
 }, [isLoggedIn, hasVipAccess]);
 
 const handleNavigateToRoom = useCallback((href: string) => {
+  const encodedRoomId = href.match(/\/rooms\/([^/?#]+)/)?.[1] ?? "";
+  flushSync(() => setOpeningRoomId(decodeURIComponent(encodedRoomId)));
+
   try {
     const el = scrollRef.current;
 
@@ -3186,6 +3193,15 @@ const handleNavigateToRoom = useCallback((href: string) => {
   pageIndex,
   displayPageIndex,
 ]);
+
+useEffect(() => {
+  setOpeningRoomId(null);
+}, [pathname]);
+
+const handlePrefetchRoom = useCallback((href: string, roomId: string) => {
+  router.prefetch(href);
+  prefetchRoomDetail(roomId);
+}, [router]);
 
 // Contact truyền xuống RoomCard:
 // - Admin đăng nhập: giữ nguyên thông tin admin hiện tại.
@@ -3495,6 +3511,8 @@ return (
           goPrev={goPrev}
           goNext={goNext}
           onNavigate={handleNavigateToRoom}
+          onPrefetch={handlePrefetchRoom}
+          openingRoomId={openingRoomId}
           isRefreshing={isRefreshing}
         />
      
@@ -3538,6 +3556,8 @@ return (
         }}
       />
     )}
+
+    {openingRoomId ? <RoomModalLoadingSkeleton /> : null}
 
     <div
       id="portal-root"

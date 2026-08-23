@@ -24,6 +24,8 @@ type RoomListProps = {
   goPrev: () => void;
   goNext: () => void;
   onNavigate: (href: string) => void;
+  onPrefetch?: (href: string, roomId: string) => void;
+  openingRoomId?: string | null;
   isRefreshing?: boolean;
 };
 
@@ -36,6 +38,8 @@ const RoomList = ({
   currentAdminPhone,
   currentAdminName,
   onNavigate,
+  onPrefetch,
+  openingRoomId = null,
   isRefreshing = false,
 }: RoomListProps) => {
   if (fetchError) {
@@ -77,6 +81,8 @@ const RoomList = ({
               currentAdminName={currentAdminName}
               index={index}
               onNavigate={onNavigate}
+              onPrefetch={onPrefetch}
+              isOpening={openingRoomId === room.id}
             />
           ))}
         </div>
