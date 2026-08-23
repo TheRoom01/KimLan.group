@@ -18,8 +18,9 @@ export function loadRoomDetailFast(roomId: string) {
     return cached.promise;
   }
 
-  const promise = supabase
-    .rpc("fetch_room_detail_full_v1", { p_id: id, p_role: 0 })
+  const promise = Promise.resolve(
+    supabase.rpc("fetch_room_detail_full_v1", { p_id: id, p_role: 0 }),
+  )
     .then(({ data, error }) => {
       if (error) throw error;
       return data ?? null;
