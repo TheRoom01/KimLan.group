@@ -757,6 +757,22 @@ function parseFees(text: string): Partial<RoomDetail> {
 
   const otherNotes: string[] = []
 
+  const feeSegment = (line: string, label: RegExp) => {
+    const flags = label.flags.includes('i') ? label.flags : `${label.flags}i`
+    const match = new RegExp(
+      `${label.source}\\s*[:=\\-]?\\s*([^,;\\n]+)`,
+      flags
+    ).exec(line)
+    return String(match?.[1] || '').trim()
+  }
+
+  const firstMoney = (segment: string) => {
+    const match = segment.match(
+      /\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?/i
+    )
+    return match ? money(match[0]) : 0
+  }
+
   for (const line of lines) {
     const s = stripAccent(line)
 
@@ -775,18 +791,17 @@ function parseFees(text: string): Partial<RoomDetail> {
         /evn|nha nuoc|gia dan/.test(s)
       ) {
         otherNotes.push(line)
-        continue
+      } else {
+        const segment = feeSegment(line, /(?:điện|dien|electric)/i)
+        const m = segment.match(
+          /(\d+(?:[.,]\d+)?\s*k(?:wh)?)/i
+        )
+
+        if (m) {
+          electric = money(m[1])
+        }
       }
 
-      const m = line.match(
-        /(\d+(?:[.,]\d+)?\s*k(?:wh)?)/i
-      )
-
-      if (m) {
-        electric = money(m[1])
-      }
-
-      continue
     }
 
     // =====================
@@ -800,35 +815,33 @@ function parseFees(text: string): Partial<RoomDetail> {
         'nc'
       ])
     ) {
-      const m = line.match(
-        /(\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?)/i
-      )
+      const segment = feeSegment(line, /(?:nước|nuoc|nc)/i)
+      const parsedWater = firstMoney(segment)
 
-      if (m)
-        water = money(m[1])
+      if (parsedWater)
+        water = parsedWater
 
       // Ưu tiên đơn vị đo thể tích trước các đơn vị tính theo người/phòng.
       // Dữ liệu thường được dán dưới dạng: 25k/m3, 25k/m³ hoặc 25k/khối.
-      if (/(?:^|[^a-z0-9])m\s*(?:3|³)(?=$|[^a-z0-9])/i.test(line))
+      if (/(?:^|[^a-z0-9])m\s*(?:3|³)(?=$|[^a-z0-9])/i.test(segment))
         waterUnit = 'm3'
 
       else
-      if (/\bkhoi\b/.test(s))
+      if (/\bkhoi\b/.test(stripAccent(segment)))
         waterUnit = 'khối'
 
       else
       if (
-        /nguoi|người/.test(s)
+        /nguoi|người/.test(stripAccent(segment))
       )
         waterUnit = 'người/tháng'
 
       else
       if (
-        /phong|phòng/.test(s)
+        /phong|phòng/.test(stripAccent(segment))
       )
         waterUnit = 'phòng/tháng'
 
-      continue
     }
 
     // =====================
@@ -848,26 +861,23 @@ function parseFees(text: string): Partial<RoomDetail> {
         'pql'
       ])
     ) {
-      const prices =
-        line.match(
-          /\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?/gi
-        ) || []
+      const segment = feeSegment(
+        line,
+        /(?:phí\s*(?:dịch\s*vụ|dv|qly|quản\s*lý)|phi\s*(?:dich\s*vu|dv|qly|quan\s*ly)|dịch\s*vụ|dich\s*vu|dv|pql|quản\s*lý|quan\s*ly|quanly)/i
+      )
+      const parsedService = firstMoney(segment)
 
-      if (prices.length) {
-        service = Math.max(
-          ...prices.map(money)
-        )
-      }
+      if (parsedService)
+        service = parsedService
 
       if (
-        /nguoi|người/.test(s)
+        /nguoi|người/.test(stripAccent(segment))
       )
         serviceUnit = 'người/tháng'
 
       else
         serviceUnit = 'phòng/tháng'
 
-      continue
     }
 
     // =====================
