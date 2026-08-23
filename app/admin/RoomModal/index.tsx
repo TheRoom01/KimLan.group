@@ -1813,6 +1813,17 @@ const sharedSync = await supabase.rpc('sync_room_shared_property_fields_v1', {
 
 if (sharedSync.error) throw sharedSync.error
 
+const wardChanged = isEdit &&
+  String(editingRoom?.ward ?? '').trim() !== String(roomForm.ward ?? '').trim()
+
+if (wardChanged) {
+  const wardSync = await supabase.rpc('sync_admin_room_ward_to_property_v1', {
+    p_room_id: roomId,
+    p_ward: roomForm.ward,
+  })
+  if (wardSync.error) throw wardSync.error
+}
+
 if (buildingLocationDirty) {
   const locationUpdate = await supabase.rpc('update_admin_room_property_location_v1', {
     p_room_id: roomId,

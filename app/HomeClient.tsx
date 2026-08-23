@@ -2626,6 +2626,89 @@ type BaselineState = {
 
 const preSearchBaselineRef = useRef<BaselineState | null>(null);
 
+const resetAllFiltersAndReload = useCallback(() => {
+  if (filterApplyTimerRef.current) {
+    window.clearTimeout(filterApplyTimerRef.current);
+    filterApplyTimerRef.current = null;
+  }
+
+  // Reset toàn bộ phải luôn tải dữ liệu mặc định mới, không khôi phục cache
+  // của danh sách trước khi người dùng bắt đầu tìm kiếm.
+  preSearchBaselineRef.current = null;
+  filtersVersionRef.current += 1;
+
+  const defaultFilters = {
+    search: "",
+    min: PRICE_DEFAULT[0],
+    max: PRICE_DEFAULT[1],
+    districts: [] as string[],
+    roomTypes: [] as string[],
+    move: null,
+    pets: [] as ("cat" | "dog" | "nopet")[],
+    terms: ["long"] as ("short" | "long")[],
+    sort: "updated_desc" as SortMode,
+    status: null,
+  };
+
+  pendingUrlFiltersRef.current = defaultFilters;
+  armRestoredFilterSig({
+    search: defaultFilters.search,
+    priceApplied: [defaultFilters.min, defaultFilters.max],
+    selectedDistricts: defaultFilters.districts,
+    selectedRoomTypes: defaultFilters.roomTypes,
+    moveFilter: defaultFilters.move,
+    petFilters: defaultFilters.pets,
+    termFilters: defaultFilters.terms,
+    sortMode: defaultFilters.sort,
+    statusFilter: defaultFilters.status,
+  });
+
+  setSearch(defaultFilters.search);
+  setPriceDraft([defaultFilters.min, defaultFilters.max]);
+  setPriceApplied([defaultFilters.min, defaultFilters.max]);
+  setSelectedDistricts(defaultFilters.districts);
+  setSelectedRoomTypes(defaultFilters.roomTypes);
+  setMoveFilter(defaultFilters.move);
+  setPetFilters(defaultFilters.pets);
+  setTermFilters(defaultFilters.terms);
+  setSortMode(defaultFilters.sort);
+  setStatusFilter(defaultFilters.status);
+  setTotal(null);
+
+  pageIndexRef.current = 0;
+  lastPageIndexRef.current = 0;
+  lastDisplayPageIndexRef.current = 0;
+  resetPagination(0);
+
+  replaceUrlShallow(buildQs({
+    q: defaultFilters.search,
+    min: defaultFilters.min,
+    max: defaultFilters.max,
+    d: defaultFilters.districts,
+    t: defaultFilters.roomTypes,
+    m: defaultFilters.move,
+    pet: defaultFilters.pets,
+    term: defaultFilters.terms,
+    s: defaultFilters.sort,
+    st: defaultFilters.status,
+    p: 0,
+    c: null,
+  }));
+
+  try {
+    sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
+    sessionStorage.removeItem(HOME_STATE_KEY);
+  } catch {}
+
+  requestAnimationFrame(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = 0;
+    lastScrollTopRef.current = 0;
+  });
+
+  queueMicrotask(() => fetchPageRef.current(0));
+}, [armRestoredFilterSig, buildQs, replaceUrlShallow, resetPagination]);
+
 // ================== FILTER CHANGE ==================
 useEffect(() => {
 
@@ -3269,16 +3352,7 @@ return (
               sortMode={sortMode}
               setSortMode={setSortMode}
               total={total}
-              onResetAll={() => {
-                setSelectedDistricts([]);
-                setSelectedRoomTypes([]);
-                setMoveFilter(null);
-                setPetFilters([]);
-                setTermFilters(["long"]);
-                setStatusFilter(null);
-                setSortMode("updated_desc");
-                setSearch("");
-              }}
+              onResetAll={resetAllFiltersAndReload}
             />
           </div>
         </div>

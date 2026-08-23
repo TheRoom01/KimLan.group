@@ -485,7 +485,7 @@ export function parseCreateOwnerRoomInput(
       parseOptionalString(
         body.zalo_phone,
         "Số Zalo",
-        30,
+        300,
       ),
 
     google_maps_url: parseOptionalString(
