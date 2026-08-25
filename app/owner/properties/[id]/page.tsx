@@ -27,10 +27,13 @@ import PropertyMembersPanel, {
 } from "@/components/owner/PropertyMembersPanel";
 import { getPropertyDetail } from "@/lib/owner/getPropertyDetail";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
+import { resolveGoogleMapsUrl } from "@/lib/roomActionLinks";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type PropertyExtras = {
   gallery_images?: string[] | null;
+  latitude?: number | null;
+  longitude?: number | null;
   google_maps_url?: string | null;
   default_room_data?: Record<string, any> | null;
   note?: string | null;
@@ -78,7 +81,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
     supabase.rpc("get_owner_account_panel_v1"),
     supabase
       .from("properties")
-      .select("gallery_images, google_maps_url, default_room_data, note")
+      .select("gallery_images, latitude, longitude, google_maps_url, default_room_data, note")
       .eq("id", property.id)
       .single(),
     supabase
@@ -121,6 +124,12 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
   );
   const summary = data.summary;
   const displayName = propertyDisplayAddress(property);
+  const propertyMapsUrl = resolveGoogleMapsUrl({
+    latitude: extras.latitude,
+    longitude: extras.longitude,
+    googleMapsUrl: extras.google_maps_url,
+    address: displayName,
+  });
   const defaults = extras.default_room_data ?? {};
   const roomDetails = defaults.room_details ?? {};
   const images = Array.from(
@@ -164,7 +173,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
                 <PropertyStatusBadge approvalStatus={property.approval_status} lifecycleStatus={property.lifecycle_status} />
                 {currentMembership?.role ? <MembershipRoleBadge role={currentMembership.role} /> : null}
               </div>
-              {extras.google_maps_url ? <a href={extras.google_maps_url} target="_blank" rel="noopener noreferrer" className="mt-3 flex items-start gap-2 text-sm font-semibold leading-6 text-[#744722] transition hover:text-[#4d2d16] hover:underline"><MapPin className="mt-0.5 shrink-0" size={17} /><span className="min-w-0 truncate">{extras.google_maps_url}</span><ExternalLink className="mt-0.5 shrink-0" size={14} /></a> : <p className="mt-3 flex items-center gap-2 text-sm text-[#9a7758]"><MapPin size={17} /> Chưa cập nhật link Google Maps</p>}
+              {propertyMapsUrl ? <a href={propertyMapsUrl} target="_blank" rel="noopener noreferrer" className="mt-3 flex items-start gap-2 text-sm font-semibold leading-6 text-[#744722] transition hover:text-[#4d2d16] hover:underline"><MapPin className="mt-0.5 shrink-0" size={17} /><span className="min-w-0 truncate">Mở vị trí tòa nhà trên Google Maps</span><ExternalLink className="mt-0.5 shrink-0" size={14} /></a> : <p className="mt-3 flex items-center gap-2 text-sm text-[#9a7758]"><MapPin size={17} /> Chưa cập nhật vị trí Google Maps</p>}
               {property.code ? <p className="mt-1 text-xs text-[#9a7758]">Mã tòa nhà: {property.code}</p> : null}
             </div>
           </div>

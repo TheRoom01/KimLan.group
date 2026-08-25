@@ -33,3 +33,45 @@ export function buildGoogleMapsSearchUrl(address: unknown) {
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
     : "";
 }
+
+export function buildGoogleMapsCoordinateUrl(
+  latitude: unknown,
+  longitude: unknown,
+) {
+  const latitudeText = String(latitude ?? "").trim();
+  const longitudeText = String(longitude ?? "").trim();
+  if (!latitudeText || !longitudeText) return "";
+
+  const lat = Number(latitudeText);
+  const lng = Number(longitudeText);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return "";
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+}
+
+export function resolveGoogleMapsUrl({
+  latitude,
+  longitude,
+  googleMapsUrl,
+  address,
+}: {
+  latitude?: unknown;
+  longitude?: unknown;
+  googleMapsUrl?: unknown;
+  address?: unknown;
+}) {
+  return (
+    buildGoogleMapsCoordinateUrl(latitude, longitude) ||
+    normalizeGoogleMapsUrl(googleMapsUrl) ||
+    buildGoogleMapsSearchUrl(address)
+  );
+}

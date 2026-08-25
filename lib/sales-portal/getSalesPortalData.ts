@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { cache } from "react";
+import { resolveGoogleMapsUrl } from "@/lib/roomActionLinks";
 
 import { hashSalesPortalToken, isSalesPortalToken } from "./token";
 import type { SalesPortalData, SalesPortalRoom, SalesRoomStatus } from "./types";
@@ -19,7 +20,7 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
   if (!link || link.revoked_at || (link.expires_at && new Date(link.expires_at) <= now)) return null;
 
   const [propertyResult, documentsResult, roomsResult, notesResult] = await Promise.all([
-    supabase.from("properties").select("id, code, name, house_number, address, ward, district, city, cover_image, gallery_images, google_maps_url, note, default_room_data, lifecycle_status").eq("id", link.property_id).eq("lifecycle_status", "active").maybeSingle(),
+    supabase.from("properties").select("id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, note, default_room_data, lifecycle_status").eq("id", link.property_id).eq("lifecycle_status", "active").maybeSingle(),
     supabase.from("sales_portal_link_documents").select("property_documents(id, title, description, file_name, file_url, mime_type, size_bytes, sort_order, created_at)").eq("link_id", link.id),
     supabase.from("rooms").select("id, room_code, room_type, price, description, chinh_sach, zalo_phone, status, lifecycle_status, room_details(*), room_media(id,type,url,is_cover,sort_order), rental_contracts(id,status,start_date,end_date,created_at)").eq("property_id", link.property_id).eq("lifecycle_status", "active").order("room_code"),
     supabase.from("sales_room_notes").select("room_id, note").eq("property_id", link.property_id),
@@ -77,7 +78,12 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
       full_address: fullAddress,
       cover_image: p.cover_image,
       gallery_images: Array.isArray(p.gallery_images) ? p.gallery_images.filter((item): item is string => typeof item === "string") : [],
-      google_maps_url: p.google_maps_url,
+      google_maps_url: resolveGoogleMapsUrl({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        googleMapsUrl: p.google_maps_url,
+        address: fullAddress,
+      }) || null,
       note: p.note,
     },
     building_info: {

@@ -864,11 +864,9 @@ useEffect(() => {
   })();
 }, [id]);
 
-// Google Maps là thao tác công khai trên toolbar. RPC chi tiết cố ý không trả
-// trường này cho anon, nên tải riêng qua endpoint chỉ trả URL sau khi xác nhận
-// người xem có quyền xem chính căn phòng này.
+// Luôn phân giải qua endpoint để ưu tiên tọa độ tòa nhà trước link thủ công.
 useEffect(() => {
-  if (!room?.id || room?.google_maps_url) return;
+  if (!room?.id) return;
 
   let cancelled = false;
 
@@ -893,7 +891,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [room?.google_maps_url, room?.id]);
+}, [room?.id]);
 
  const detail =
   (room?.room_detail ??

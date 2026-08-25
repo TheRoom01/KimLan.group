@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  buildGoogleMapsSearchUrl,
-  normalizeGoogleMapsUrl,
-} from "@/lib/roomActionLinks";
+import { resolveGoogleMapsUrl } from "@/lib/roomActionLinks";
 
 export const dynamic = "force-dynamic";
 
@@ -20,58 +16,62 @@ function json(body: Record<string, unknown>, status = 200) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
     if (!UUID_PATTERN.test(id)) return json({ error: "INVALID_ROOM_ID" }, 400);
 
-    // Reuse the room-detail RPC as the visibility gate. If the current visitor
-    // cannot view this room, the service-role lookup below is never reached.
     const visitorClient = await createSupabaseServerClient();
-    const { data: visibleRoom, error: visibilityError } =
-      await visitorClient.rpc("fetch_room_detail_full_v1", {
-        p_id: id,
-        p_role: 0,
-      });
-
-    const visibleRoomId = String(
-      (visibleRoom as Record<string, unknown> | null)?.id ?? "",
+    const { data, error } = await visitorClient.rpc(
+      "resolve_room_google_maps_source_v1",
+      { p_id: id },
     );
-    if (visibilityError || visibleRoomId !== id) {
-      return json({ error: "ROOM_NOT_FOUND" }, 404);
-    }
-
-    const admin = createSupabaseAdminClient();
-    const { data: room, error } = await admin
-      .from("rooms")
-      .select(
-        "google_maps_url,is_hidden,house_number,address,ward,district,city",
-      )
-      .eq("id", id)
-      .maybeSingle();
-
     if (error) throw error;
-    if (!room || room.is_hidden) return json({ error: "ROOM_NOT_FOUND" }, 404);
+    if (!data) return json({ error: "ROOM_NOT_FOUND" }, 404);
+
+    const source = data as {
+      latitude?: number | null;
+      longitude?: number | null;
+      google_maps_url?: string | null;
+      house_number?: string | null;
+      address?: string | null;
+      ward?: string | null;
+      district?: string | null;
+      city?: string | null;
+    };
 
     const address = [
-      [room.house_number, room.address].filter(Boolean).join(" "),
-      room.ward,
-      room.district,
-      room.city,
+      [source.house_number, source.address].filter(Boolean).join(" "),
+      source.ward,
+      source.district,
+      source.city,
       "Việt Nam",
     ]
       .map((part) => String(part ?? "").trim())
       .filter(Boolean)
       .join(", ");
 
-    return json({
-      googleMapsUrl:
-        normalizeGoogleMapsUrl(room.google_maps_url) ||
-        buildGoogleMapsSearchUrl(address) ||
-        null,
-    });
+    const googleMapsUrl =
+      resolveGoogleMapsUrl({
+        latitude: source.latitude,
+        longitude: source.longitude,
+        googleMapsUrl: source.google_maps_url,
+        address,
+      }) || null;
+
+    if (
+      googleMapsUrl &&
+      new URL(request.url).searchParams.get("redirect") === "1"
+    ) {
+      return NextResponse.redirect(googleMapsUrl, {
+        status: 307,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
+    return json({ googleMapsUrl });
   } catch (error) {
     console.error("GET /api/rooms/[id]/google-maps failed:", error);
     return json({ error: "GOOGLE_MAPS_UNAVAILABLE" }, 500);

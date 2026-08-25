@@ -7,11 +7,7 @@ import { createPortal } from "react-dom";
 import ShareRoomModal from "@/components/share/ShareRoomModal";
 import { supabase } from "@/lib/supabase";
 import { useRef } from "react";
-import {
-  buildGoogleMapsSearchUrl,
-  firstRoomActionUrl,
-  normalizeGoogleMapsUrl,
-} from "@/lib/roomActionLinks";
+import { firstRoomActionUrl } from "@/lib/roomActionLinks";
 import { extractContactPhones } from "@/lib/contactPhones";
 
 
@@ -644,9 +640,7 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
   const level = Number(adminLevel) || 0;
   const isAdmin = level === 1 || level === 2;
   const initialZaloToolbarUrl = isAdmin ? firstRoomActionUrl(room.link_zalo) : "";
-  const mapsToolbarUrl =
-    normalizeGoogleMapsUrl(room.google_maps_url) ||
-    buildGoogleMapsSearchUrl(fullAddressText);
+  const mapsToolbarUrl = `/api/rooms/${encodeURIComponent(room.id)}/google-maps?redirect=1`;
   const toolbarRoomRef = useRef<Room | null>(null);
   const toolbarRoomRequestRef = useRef<Promise<Room | null> | null>(null);
   const zaloButtonRef = useRef<HTMLButtonElement>(null);
