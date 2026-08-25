@@ -64,11 +64,11 @@ export default function OwnerNotificationCenter() {
 
   useEffect(() => {
     if (!open) return;
-    function closeOnOutsideClick(event: MouseEvent) {
+    function closeOnOutsideInteraction(event: PointerEvent) {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("pointerdown", closeOnOutsideInteraction, true);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideInteraction, true);
   }, [open]);
 
   async function openNotification(item: NotificationItem) {
