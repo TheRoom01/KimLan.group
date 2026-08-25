@@ -11,6 +11,12 @@ import RoomFeeTab from './RoomFeeTab'
 import RoomAmenityTab from './RoomAmenityTab'
 import RoomLocationTab from './RoomLocationTab'
 import AutoReadModal, { type AutoReadCandidate } from './AutoReadModal'
+import {
+  isUploadImage,
+  isUploadVideo,
+  mapWithConcurrency,
+  prepareImageForUpload,
+} from '@/lib/media/uploadFileType'
 
 /* ================= STORAGE KEY HELPERS ================= */
 // Symbols: func toSafeStorageKey
@@ -466,7 +472,7 @@ async function makeThumbWebp(
 const handleUploadFiles = async (files: File[]) => {
   if (!files?.length) return
 
-  const okFiles = files.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
+  let okFiles = files.filter((file) => isUploadImage(file) || isUploadVideo(file))
   if (!okFiles.length) return
 
  // ===== VIDEO RULE (FRONTEND) =====
@@ -480,7 +486,7 @@ const existingVideosCount = Array.isArray((roomForm as any)?.media)
   ? (roomForm as any).media.filter((m: any) => m?.type === 'video').length
   : 0
 
-const selectedVideos = okFiles.filter((f) => f.type.startsWith('video/'))
+const selectedVideos = okFiles.filter((file) => isUploadVideo(file))
 if (existingVideosCount + selectedVideos.length > MAX_VIDEOS_PER_ROOM) {
   alert(`Mỗi phòng chỉ được upload tối đa ${MAX_VIDEOS_PER_ROOM} video`)
   return
@@ -509,7 +515,7 @@ async function assertVideoDuration(file: File) {
 
   // Validate size/type trước khi upload
 for (const f of okFiles) {
-  if (f.type.startsWith('video/')) {
+  if (isUploadVideo(f)) {
     // size (<= 20MB)
     if (f.size > MAX_VIDEO_BYTES) {
       alert(`Video quá lớn (>${MAX_VIDEO_MB}MB): ${f.name}`)
@@ -535,6 +541,12 @@ for (const f of okFiles) {
 
   setUploading(true)
   try {
+    // Ảnh HEIC/HEIF từ điện thoại cần đổi sang JPEG trước khi canvas nén WebP.
+    // Việc nhận diện dựa cả vào phần mở rộng vì một số trình duyệt trả MIME rỗng.
+    okFiles = await mapWithConcurrency(okFiles, 2, async (file) =>
+      isUploadImage(file) ? prepareImageForUpload(file) : file
+    )
+
     // NOTE: patch 2 bạn skip, nên vẫn dùng room_code / unknown
    const safeRoomCode =
     String(roomForm.room_code || '')

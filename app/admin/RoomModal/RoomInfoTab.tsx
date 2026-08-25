@@ -347,17 +347,7 @@ useEffect(() => {
           onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
 
-          const ok = files
-            .filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"))
-            .map((file, index) => ({
-              file,
-              __order: index, // ✅ giữ thứ tự user chọn
-            }));
-
-          if (ok.length) {
-            // chỉ gửi file theo đúng thứ tự đã map
-            onUploadFiles(ok.map(x => x.file));
-          }
+          if (files.length) onUploadFiles(files);
 
           e.currentTarget.value = "";
         }}
