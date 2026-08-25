@@ -5,9 +5,7 @@ import type { SalesPortalRoom, SalesRoomStatus } from "@/lib/sales-portal/types"
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const alt = "Trang cập nhật tình trạng phòng dành cho Sale";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+const size = { width: 1200, height: 630 };
 
 const STATUS_STYLE: Record<SalesRoomStatus, { background: string; color: string }> = {
   "Trống": { background: "#059669", color: "#ffffff" },
@@ -15,7 +13,7 @@ const STATUS_STYLE: Record<SalesRoomStatus, { background: string; color: string 
   "Đang thuê": { background: "#ef233c", color: "#ffffff" },
 };
 
-export default async function SalesOpenGraphImage({ params }: { params: Promise<{ token: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const data = await getSalesPortalData(token);
 
@@ -39,8 +37,8 @@ export default async function SalesOpenGraphImage({ params }: { params: Promise<
       <div style={{ height: 64, display: "flex", alignItems: "center", padding: "0 70px", background: "#7a4b27", color: "#ffffff" }}>
         <div style={{ width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,.35)", borderRadius: 10, fontSize: 18, fontWeight: 800 }}>TR</div>
         <div style={{ display: "flex", flexDirection: "column", marginLeft: 12 }}>
-          <div style={{ fontSize: 18, fontWeight: 800 }}>Trang thông tin cho Sales</div>
-          <div style={{ marginTop: 2, fontSize: 11, color: "#f3d8bb" }}>Dữ liệu cập nhật trực tiếp từ chủ nhà</div>
+          <div style={{ display: "flex", fontSize: 18, fontWeight: 800 }}>Trang thông tin cho Sales</div>
+          <div style={{ display: "flex", marginTop: 2, fontSize: 11, color: "#f3d8bb" }}>Dữ liệu cập nhật trực tiếp từ chủ nhà</div>
         </div>
       </div>
 
@@ -51,11 +49,11 @@ export default async function SalesOpenGraphImage({ params }: { params: Promise<
           </div>
 
           <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "26px 28px" }}>
-            <div style={{ fontSize: 12, letterSpacing: 3, color: "#9a6a42", fontWeight: 700 }}>TÒA NHÀ</div>
-            <div style={{ marginTop: 8, fontSize: 29, lineHeight: 1.14, fontWeight: 800, maxHeight: 67, overflow: "hidden" }}>{data.property.full_address || data.property.name}</div>
+            <div style={{ display: "flex", fontSize: 12, letterSpacing: 3, color: "#9a6a42", fontWeight: 700 }}>TÒA NHÀ</div>
+            <div style={{ display: "flex", marginTop: 8, fontSize: 29, lineHeight: 1.14, fontWeight: 800, maxHeight: 67, overflow: "hidden" }}>{data.property.full_address || data.property.name}</div>
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", color: "#805536", fontSize: 12 }}>
-              <div style={{ marginRight: 8, fontSize: 15 }}>◎</div>
-              <div style={{ maxWidth: 520, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.property.full_address}</div>
+              <div style={{ display: "flex", marginRight: 8, fontSize: 15 }}>◎</div>
+              <div style={{ display: "flex", maxWidth: 520, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.property.full_address}</div>
             </div>
 
             <div style={{ marginTop: 18, display: "flex", gap: 14 }}>
@@ -74,8 +72,8 @@ export default async function SalesOpenGraphImage({ params }: { params: Promise<
         <div style={{ marginTop: 18, flex: 1, display: "flex", flexDirection: "column", padding: "18px 22px", border: "1px solid #dfc7a7", borderRadius: 22, background: "#fffaf2", boxShadow: "0 6px 16px rgba(74,43,24,.08)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Danh sách phòng</div>
-              <div style={{ marginTop: 3, fontSize: 11, color: "#8b6041" }}>Tình trạng phòng được cập nhật trực tiếp từ chủ nhà.</div>
+              <div style={{ display: "flex", fontSize: 18, fontWeight: 800 }}>Danh sách phòng</div>
+              <div style={{ display: "flex", marginTop: 3, fontSize: 11, color: "#8b6041" }}>Tình trạng phòng được cập nhật trực tiếp từ chủ nhà.</div>
             </div>
             <div style={{ display: "flex", gap: 8, fontSize: 11, fontWeight: 700 }}>
               <Legend color="#059669" label="Trống" />
@@ -95,11 +93,11 @@ export default async function SalesOpenGraphImage({ params }: { params: Promise<
 }
 
 function SummaryCard({ value, label, background, color }: { value: number; label: string; background: string; color: string }) {
-  return <div style={{ flex: 1, height: 62, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: 15, background, color }}><div style={{ fontSize: 20, fontWeight: 800 }}>{value}</div><div style={{ marginTop: 3, fontSize: 10 }}>{label}</div></div>;
+  return <div style={{ flex: 1, height: 62, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: 15, background, color }}><div style={{ display: "flex", fontSize: 20, fontWeight: 800 }}>{value}</div><div style={{ display: "flex", marginTop: 3, fontSize: 10 }}>{label}</div></div>;
 }
 
 function InfoRow({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
-  return <div style={{ height: 50, display: "flex", alignItems: "center", padding: "0 12px", border: "1px solid #dfc29e", borderRadius: 13, background: "#f8ead7" }}><div style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "#81491f", color: "#ffffff", fontSize: 16, fontWeight: 800 }}>{icon}</div><div style={{ display: "flex", flexDirection: "column", marginLeft: 11 }}><div style={{ fontSize: 12, fontWeight: 800 }}>{title}</div><div style={{ marginTop: 2, fontSize: 9, color: "#865e3f" }}>{subtitle}</div></div><div style={{ marginLeft: "auto", color: "#754521", fontSize: 20 }}>›</div></div>;
+  return <div style={{ height: 50, display: "flex", alignItems: "center", padding: "0 12px", border: "1px solid #dfc29e", borderRadius: 13, background: "#f8ead7" }}><div style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "#81491f", color: "#ffffff", fontSize: 16, fontWeight: 800 }}>{icon}</div><div style={{ display: "flex", flexDirection: "column", marginLeft: 11 }}><div style={{ display: "flex", fontSize: 12, fontWeight: 800 }}>{title}</div><div style={{ display: "flex", marginTop: 2, fontSize: 9, color: "#865e3f" }}>{subtitle}</div></div><div style={{ display: "flex", marginLeft: "auto", color: "#754521", fontSize: 20 }}>›</div></div>;
 }
 
 function Legend({ color, label }: { color: string; label: string }) {
@@ -108,5 +106,5 @@ function Legend({ color, label }: { color: string; label: string }) {
 
 function RoomBadge({ room }: { room: SalesPortalRoom }) {
   const style = STATUS_STYLE[room.status];
-  return <div style={{ width: 104, height: 49, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 13px", overflow: "hidden", borderRadius: 13, background: style.background, color: style.color, boxShadow: "0 3px 7px rgba(50,30,15,.12)" }}><div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>P. {room.room_code || "-"}</div><div style={{ marginTop: 3, fontSize: 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.room_type || "Phòng"}</div></div>;
+  return <div style={{ width: 104, height: 49, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 13px", overflow: "hidden", borderRadius: 13, background: style.background, color: style.color, boxShadow: "0 3px 7px rgba(50,30,15,.12)" }}><div style={{ display: "flex", fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>P. {room.room_code || "-"}</div><div style={{ display: "flex", marginTop: 3, fontSize: 9, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.room_type || "Phòng"}</div></div>;
 }

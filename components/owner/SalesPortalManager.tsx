@@ -45,7 +45,7 @@ export default function SalesPortalManager({ propertyId, rooms, initialNotes }: 
     setBusy("link"); setMessage(null);
     try {
       const result = await readApiResponse<{ path: string }>(await fetch(`/api/owner/properties/${propertyId}/sales-portal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label, expires_at: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : null, document_ids: newLinkDocumentIds }) }));
-      const url = `${window.location.origin}${result.path}`;
+      const url = withShareVersion(`${window.location.origin}${result.path}`);
       setLatestUrl(url); await navigator.clipboard.writeText(url).catch(() => undefined);
       setMessage("Đã tạo, sao chép link và lưu bộ tài liệu đã chọn.");
       await load();
@@ -68,7 +68,7 @@ export default function SalesPortalManager({ propertyId, rooms, initialNotes }: 
 
   async function copyPortalLink(link: PortalLink) {
     if (!link.public_token) { setMessage("Link cũ chưa có dữ liệu để copy. Vui lòng tạo lại link mới."); return; }
-    await navigator.clipboard.writeText(`${window.location.origin}/sales/${link.public_token}`);
+    await navigator.clipboard.writeText(withShareVersion(`${window.location.origin}/sales/${link.public_token}`));
     setCopiedLinkId(link.id); window.setTimeout(() => setCopiedLinkId(null), 1800);
   }
 
@@ -151,4 +151,10 @@ function onlineDocumentTitle(url: URL) {
   if (host === "dropbox.com") return "Dropbox";
   if (host === "notion.so" || host.endsWith(".notion.site")) return "Notion";
   return `Tài liệu trực tuyến · ${host}`;
+}
+
+function withShareVersion(url: string) {
+  const parsed = new URL(url);
+  parsed.searchParams.set("share", Date.now().toString(36));
+  return parsed.toString();
 }
