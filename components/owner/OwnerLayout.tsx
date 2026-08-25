@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import OwnerSidebar from "./OwnerSidebar";
 import OwnerPlaceholderHints from "./OwnerPlaceholderHints";
+import OwnerExperience from "./OwnerExperience";
 
 export default function OwnerLayout({
   children,
@@ -10,7 +11,7 @@ export default function OwnerLayout({
 }) {
   return (
     <div
-      className="
+      className="owner-shell
         min-h-screen
         overflow-x-hidden
         bg-[#f4eadc]
@@ -19,6 +20,7 @@ export default function OwnerLayout({
     >
       <OwnerPlaceholderHints />
       <OwnerSidebar />
+      <OwnerExperience />
 
       <main
         className="

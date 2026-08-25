@@ -11,6 +11,7 @@ import {
   type OwnerRoomCardSizes,
 } from "@/lib/owner/roomCardSizing";
 import type { OwnerTenantReference } from "@/lib/owner/types";
+import { showOwnerNavigationSkeleton } from "@/lib/owner/clientExperience";
 
 type PropertyRoom = {
   id: string;
@@ -74,7 +75,7 @@ export default function PropertyRoomCardGrid({ rooms }: { rooms: PropertyRoom[] 
               width={size.width}
               height={size.height}
               showDragHandle={false}
-              onToggle={() => router.push(`/owner/rooms/${room.id}`)}
+              onToggle={() => { showOwnerNavigationSkeleton(); router.push(`/owner/rooms/${room.id}`); }}
               onResize={() => undefined}
               onResizeEnd={() => undefined}
               onResizeDone={() => undefined}

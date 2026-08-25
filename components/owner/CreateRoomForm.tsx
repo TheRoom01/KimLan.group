@@ -10,6 +10,11 @@ import MoneyInput from "@/components/owner/MoneyInput";
 
 import { readApiResponse } from "@/lib/api/client";
 import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
+import {
+  hideOwnerNavigationSkeleton,
+  runOwnerBackgroundTask,
+  showOwnerNavigationSkeleton,
+} from "@/lib/owner/clientExperience";
 import { isUploadImage, isUploadVideo, prepareImagesForUpload } from "@/lib/media/uploadFileType";
 import {
   uploadRoomMediaFiles,
@@ -89,6 +94,7 @@ export default function CreateRoomForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
+    showOwnerNavigationSkeleton();
     setError(null);
     setCreatedRoomId(null);
     setUploadStatus(null);
@@ -176,49 +182,37 @@ export default function CreateRoomForm({
      
       setCreatedRoomId(roomId);
 
-      if (copySourceRoomId) {
-        const response = await fetch(`/api/owner/rooms/${roomId}/clone-media`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_room_id: copySourceRoomId,
-            media_ids: copiedMedia.map((item) => item.id).filter(Boolean),
-          }),
-        });
-        await readApiResponse(response);
-      }
-
-      if (files.length > 0) {
-        await uploadRoomMediaFiles({
-          roomId,
-          files,
-          startSortOrder: copiedMedia.length,
-          coverAlreadyExists: copiedMedia.some((item) => item.type === "image"),
-          onProgress: setUploadStatus,
-        });
-      }
-
-      /**
-       * Chỉ công khai phòng sau khi toàn bộ media đã upload
-       * và metadata đã được lưu thành công.
-       *
-       * Trường hợp không chọn media, phòng vẫn được publish
-       * ngay sau bước tạo bản ghi.
-       */
-      const publishResponse = await fetch(
-        `/api/owner/rooms/${roomId}/publish`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: payload.status }),
+      const filesToUpload = [...files];
+      const mediaToClone = copiedMedia.map((item) => item.id).filter(Boolean);
+      runOwnerBackgroundTask({
+        successMessage: `Đã tạo và lưu phòng ${String(payload.room_code || "mới")}`,
+        errorMessage: "Phòng đã được tạo nhưng chưa hoàn tất media/xuất bản",
+        task: async () => {
+          if (copySourceRoomId) {
+            await readApiResponse(await fetch(`/api/owner/rooms/${roomId}/clone-media`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source_room_id: copySourceRoomId, media_ids: mediaToClone }),
+            }));
+          }
+          if (filesToUpload.length > 0) {
+            await uploadRoomMediaFiles({
+              roomId,
+              files: filesToUpload,
+              startSortOrder: copiedMedia.length,
+              coverAlreadyExists: copiedMedia.some((item) => item.type === "image"),
+            });
+          }
+          await readApiResponse<unknown>(await fetch(`/api/owner/rooms/${roomId}/publish`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: payload.status }),
+          }));
         },
-      );
-
-      await readApiResponse<unknown>(publishResponse);
-
+      });
       router.push(`/owner/rooms/${roomId}`);
-      router.refresh();
     } catch (submitError) {
+      hideOwnerNavigationSkeleton();
       setError(
         submitError instanceof Error
           ? submitError.message
@@ -488,7 +482,7 @@ export default function CreateRoomForm({
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => { showOwnerNavigationSkeleton(); router.back(); }}
           disabled={submitting}
           className="rounded-xl border border-[#9d744f]/30 bg-white px-4 py-2 text-sm font-medium text-[#684324] hover:bg-[#f8ead7] disabled:opacity-50"
         >

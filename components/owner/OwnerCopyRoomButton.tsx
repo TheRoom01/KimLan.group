@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { showOwnerNavigationSkeleton } from "@/lib/owner/clientExperience";
+
 type CopyCandidate = { id: string; room_code?: string | null; room_type?: string | null; price?: number | null };
 
 export default function OwnerCopyRoomButton({
@@ -32,6 +34,7 @@ export default function OwnerCopyRoomButton({
   }, [open]);
 
   function copy(roomId: string) {
+    showOwnerNavigationSkeleton();
     router.push(`/owner/rooms/create?property_id=${propertyId}&copy_from=${roomId}`);
   }
 

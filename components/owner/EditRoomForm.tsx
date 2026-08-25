@@ -9,6 +9,7 @@ import MoneyInput from "@/components/owner/MoneyInput";
 
 import { readApiResponse } from "@/lib/api/client";
 import { formatZaloPhones } from "@/lib/owner/formatZaloPhones";
+import { runOwnerBackgroundTask, showOwnerNavigationSkeleton } from "@/lib/owner/clientExperience";
 import { prepareImagesForUpload } from "@/lib/media/uploadFileType";
 import {
   uploadRoomMediaFiles,
@@ -226,44 +227,39 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
       },
     };
 
-    try {
-      const response = await fetch(`/api/owner/rooms/${room.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      await readApiResponse<unknown>(response);
-
-      const orderedMedia=currentMedia.filter((media):media is RoomMedia&{id:string}=>Boolean(media.id));
-      if(orderedMedia.length>0){
-        await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/media`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:orderedMedia.map((media,index)=>({id:media.id,sort_order:index})),cover_id:orderedMedia.find(media=>media.type==="image")?.id??null})}));
-      }
-
-      if (files.length > 0) {
-        await uploadRoomMediaFiles({
-          roomId: room.id,
-          files,
-          startSortOrder: currentMedia.length,
-          coverAlreadyExists: currentMedia.some(
-            (media) => media.type === "image" && media.is_cover === true,
-          ),
-          onProgress: setUploadStatus,
-        });
-      }
-
-      router.push(`/owner/rooms/${room.id}`);
-      router.refresh();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Cập nhật phòng thất bại",
-      );
-    } finally {
-      setLoading(false);
-      setUploadStatus(null);
-    }
+    const orderedMedia = currentMedia.filter((media): media is RoomMedia & { id: string } => Boolean(media.id));
+    const filesToUpload = [...files];
+    showOwnerNavigationSkeleton();
+    runOwnerBackgroundTask({
+      successMessage: `Đã lưu thay đổi phòng ${String(payload.room_code || room.room_code || "")}`.trim(),
+      errorMessage: "Cập nhật phòng thất bại",
+      task: async () => {
+        await readApiResponse<unknown>(await fetch(`/api/owner/rooms/${room.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }));
+        if (orderedMedia.length > 0) {
+          await readApiResponse(await fetch(`/api/owner/rooms/${room.id}/media`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: orderedMedia.map((media, index) => ({ id: media.id, sort_order: index })),
+              cover_id: orderedMedia.find((media) => media.type === "image")?.id ?? null,
+            }),
+          }));
+        }
+        if (filesToUpload.length > 0) {
+          await uploadRoomMediaFiles({
+            roomId: room.id,
+            files: filesToUpload,
+            startSortOrder: currentMedia.length,
+            coverAlreadyExists: currentMedia.some((media) => media.type === "image" && media.is_cover === true),
+          });
+        }
+      },
+    });
+    router.push(`/owner/rooms/${room.id}`);
   }
 
   return (
@@ -562,7 +558,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => { showOwnerNavigationSkeleton(); router.back(); }}
           disabled={loading}
           className="rounded-xl border border-[#9d744f]/30 bg-white px-4 py-2 text-sm font-medium text-[#684324] hover:bg-[#f8ead7] disabled:opacity-50"
         >

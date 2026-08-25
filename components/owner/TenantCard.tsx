@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { type KeyboardEvent, type MouseEvent, useState } from "react";
 import { readApiResponse } from "@/lib/api/client";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
+import { showOwnerNavigationSkeleton } from "@/lib/owner/clientExperience";
 
 export type TenantCardData = {
   tenant: {
@@ -49,6 +50,7 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
     contract?.tenant_role === "representative";
 
   function openTenant() {
+    showOwnerNavigationSkeleton();
     router.push(detailHref);
   }
 
