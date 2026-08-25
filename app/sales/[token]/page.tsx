@@ -12,13 +12,13 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
 
   const title = `Tình trạng phòng trống - ${data.property.name}`;
   const description = `Link cập nhật tình trạng phòng trống Tòa nhà: ${data.property.full_address}`;
-  const image = data.property.cover_image || data.property.gallery_images[0] || data.rooms.flatMap((room) => room.media).find((media) => media.type === "image")?.url;
+  const image = `/sales/${encodeURIComponent(token)}/opengraph-image`;
   return {
     title,
     description,
     robots: { index: false, follow: false },
-    openGraph: { title, description, type: "website", images: image ? [{ url: image }] : undefined },
-    twitter: { card: "summary_large_image", title, description, images: image ? [image] : undefined },
+    openGraph: { title, description, type: "website", images: [{ url: image, width: 1200, height: 630, alt: `Tình trạng phòng - ${data.property.name}` }] },
+    twitter: { card: "summary_large_image", title, description, images: [image] },
   };
 }
 
