@@ -113,14 +113,14 @@ export default function SalesPortalManager({ propertyId, rooms, initialNotes }: 
     catch (error) { setMessage(error instanceof Error ? error.message : "Không thể lưu ghi chú"); } finally { setBusy(null); }
   }
 
-  return <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)] sm:p-6">
-    <div className="flex items-center gap-2"><Link2 size={21} className="text-[#744722]" /><div><h2 className="text-xl font-bold">Chia sẻ thông tin tòa nhà (cho Sale)</h2><p className="mt-1 text-sm text-[#80634a]">Mỗi link Sale có thể chia sẻ một bộ tài liệu riêng từ kho tài liệu tòa nhà.</p></div></div>
+  return <section className="min-w-0 max-w-full overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_10px_25px_rgba(92,61,34,0.06)] [overflow-wrap:anywhere] [&_input]:max-w-full [&_input]:min-w-0 [&_textarea]:max-w-full [&_textarea]:min-w-0 sm:p-6">
+    <div className="flex min-w-0 items-start gap-2"><Link2 size={21} className="mt-0.5 shrink-0 text-[#744722]" /><div className="min-w-0"><h2 className="break-words text-lg font-bold sm:text-xl">Chia sẻ thông tin tòa nhà (cho Sale)</h2><p className="mt-1 break-words text-sm text-[#80634a]">Mỗi link Sale có thể chia sẻ một bộ tài liệu riêng từ kho tài liệu tòa nhà.</p></div></div>
     {message ? <div className="mt-4 rounded-xl border border-[#d9bd99] bg-[#f8ead7] px-4 py-3 text-sm text-[#684324]">{message}</div> : null}
 
-    <div className="mt-5 grid gap-5 xl:grid-cols-2">
-      <div className="rounded-2xl border border-[#a9825f]/20 p-4">
+    <div className="mt-5 grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-2">
+      <div className="min-w-0 max-w-full rounded-2xl border border-[#a9825f]/20 p-3 sm:p-4">
         <h3 className="font-bold">① Link truy cập</h3>
-        <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_170px]"><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ví dụ: Đội Sale Quận 3" className="h-11 rounded-xl border border-[#aa825d]/30 bg-white px-3" /><input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-11 rounded-xl border border-[#aa825d]/30 bg-white px-3" /></div>
+        <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[minmax(0,1fr)_170px]"><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ví dụ: Đội Sale Quận 3" className="h-11 w-full min-w-0 rounded-xl border border-[#aa825d]/30 bg-white px-3" /><input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-[#aa825d]/30 bg-white px-3" /></div>
         <DocumentChoices title="Tài liệu chia sẻ trong link mới" documents={documents} selected={newLinkDocumentIds} onChange={setNewLinkDocumentIds} />
         <button type="button" onClick={() => void createLink()} disabled={busy === "link"} className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 font-semibold text-white disabled:opacity-50">{busy === "link" ? <Loader2 className="animate-spin" size={17} /> : <Link2 size={17} />}Tạo link</button>
         {latestUrl ? <div className="mt-3 flex min-w-0 items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"><Check size={16} /><span className="min-w-0 flex-1 truncate">{latestUrl}</span><button onClick={() => void navigator.clipboard.writeText(latestUrl)} aria-label="Sao chép"><Copy size={16} /></button><a href={latestUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /></a></div> : null}
@@ -135,7 +135,7 @@ export default function SalesPortalManager({ propertyId, rooms, initialNotes }: 
 }
 
 function DocumentChoices({ title, documents, selected, onChange }: { title: string; documents: PropertyDocument[]; selected: string[]; onChange: (ids: string[]) => void }) {
-  return <fieldset className="mt-3 rounded-xl border border-[#a9825f]/20 bg-white/60 p-3"><legend className="px-1 text-xs font-bold text-[#684324]">{title}</legend>{documents.length ? <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">{documents.map((document) => <label key={document.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 hover:bg-[#f8ead7]"><input type="checkbox" checked={selected.includes(document.id)} onChange={(event) => onChange(event.target.checked ? [...selected, document.id] : selected.filter((id) => id !== document.id))} className="h-4 w-4 accent-[#744722]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{document.title}</span></label>)}</div> : <p className="py-2 text-xs text-[#80634a]">Kho tài liệu tòa nhà đang trống.</p>}</fieldset>;
+  return <fieldset className="mt-3 min-w-0 max-w-full rounded-xl border border-[#a9825f]/20 bg-white/60 p-3"><legend className="max-w-full break-words px-1 text-xs font-bold text-[#684324]">{title}</legend>{documents.length ? <div className="mt-1 min-w-0 max-h-40 space-y-1 overflow-y-auto">{documents.map((document) => <label key={document.id} className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 py-2 hover:bg-[#f8ead7]"><input type="checkbox" checked={selected.includes(document.id)} onChange={(event) => onChange(event.target.checked ? [...selected, document.id] : selected.filter((id) => id !== document.id))} className="h-4 w-4 shrink-0 accent-[#744722]" /><span className="min-w-0 flex-1 truncate text-xs font-semibold">{document.title}</span></label>)}</div> : <p className="break-words py-2 text-xs text-[#80634a]">Kho tài liệu tòa nhà đang trống.</p>}</fieldset>;
 }
 
 function onlineDocumentTitle(url: URL) {
