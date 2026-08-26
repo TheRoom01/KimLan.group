@@ -230,7 +230,7 @@ async function buildCollageFileFromUrls(
 
   ctx.fillStyle = "rgba(255,255,255,0.94)";
   ctx.font = `700 ${Math.max(24, Math.round(tile * 0.06))}px system-ui, sans-serif`;
-  ctx.fillText("The Room", gap, 38);
+  ctx.fillText("The Room SG", gap, 38);
 
   ctx.fillStyle = "rgba(255,255,255,0.72)";
   ctx.font = `500 ${Math.max(14, Math.round(tile * 0.03))}px system-ui, sans-serif`;
@@ -267,7 +267,7 @@ async function buildCollageFileFromUrls(
 
   ctx.fillStyle = "rgba(255,255,255,0.78)";
   ctx.font = `500 ${Math.max(13, Math.round(tile * 0.028))}px system-ui, sans-serif`;
-  ctx.fillText("Chia sẻ từ The Room", gap, height - 32);
+  ctx.fillText("Chia sẻ từ The Room SG", gap, height - 32);
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(

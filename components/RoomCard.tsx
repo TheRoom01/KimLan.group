@@ -555,7 +555,7 @@ async function handleShareRoom(e: React.MouseEvent<HTMLButtonElement>) {
 
   const title = room.room_code
     ? `Phòng ${room.room_code}`
-    : "The Room";
+    : "The Room SG";
 
   try {
     if (navigator.share) {
@@ -1009,9 +1009,9 @@ return (
       className={`
         group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
-        bg-[rgba(156,127,73,0.5)]
+        bg-[rgba(160,101,46,0.31)]
         backdrop-blur-[34px]
-        backdrop-saturate-[185%]
+        backdrop-saturate-[155%]
         border border-[#D2B48C]/30
 
         shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]

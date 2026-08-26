@@ -33,7 +33,7 @@ const base =
   process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.pro";
 
 // ✅ mặc định (trước khi query DB)
-let title = "The Room";
+let title = "The Room SG";
 let desc = "Xem chi tiết phòng";
 
   let image = absUrl(base, "/hero.jpg"); // fallback

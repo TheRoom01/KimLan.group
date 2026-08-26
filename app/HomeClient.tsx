@@ -3254,7 +3254,7 @@ return (
 
             <div className="min-w-0 leading-tight text-[#E5C9A9] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
               <div className="truncate text-base font-semibold md:text-xl">
-                The Room
+                The Room SG
               </div>
               <div className="hidden text-xs text-[#C9AA8B] sm:block md:text-sm">
                 Cho thuê chung cư, căn hộ &amp; phòng trọ tại TP.HCM

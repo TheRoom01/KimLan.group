@@ -58,7 +58,7 @@ const linkClass =
       <div className="relative z-[2147483647] w-full max-w-[560px] max-h-[85vh] overflow-y-auto rounded-3xl border border-white/40 bg-[linear-gradient(rgba(255,255,255,0.045),rgba(255,255,255,0.015))] p-4 text-white backdrop-blur-[48px] shadow-[0_45px_140px_rgba(0,0,0,0.85),0_0_60px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.5)]">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold text-white">The Room</div>
+            <div className="text-lg font-semibold text-white">The Room SG</div>
 
             <div className="mt-1 space-y-1 text-sm text-white/85">
               <div>Cho thuê căn hộ dịch vụ - Phòng trọ - Chung cư</div>

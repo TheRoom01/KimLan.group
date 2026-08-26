@@ -106,7 +106,7 @@ export default function OwnerSidebar() {
             <span className="grid h-10 w-10 place-items-center overflow-hidden">
               <img
                 src="/logo.png"
-                alt="The Room"
+                alt="The Room SG"
                 className="h-10 w-10 object-contain"
               />
             </span>

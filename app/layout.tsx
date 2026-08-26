@@ -14,14 +14,14 @@ export const metadata: Metadata = {
   ),
 
   title: {
-    default: "The Room | Căn hộ dịch vụ - Kim Lân Group",
-    template: "%s | The Room",
+    default: "The Room SG | Căn hộ dịch vụ - Kim Lân Group",
+    template: "%s | The Room SG",
   },
 
   description:
     "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư và nhà cho thuê tại TP.HCM.",
 
-  applicationName: "The Room",
+  applicationName: "The Room SG",
 
   keywords: [
     "căn hộ dịch vụ",
@@ -30,6 +30,7 @@ export const metadata: Metadata = {
     "chung cư",
     "kim lân group",
     "the room",
+    "the room SG",
     "căn hộ dịch vụ tphcm",
     "phòng trọ tphcm",
     "thuê căn hộ",
@@ -69,9 +70,9 @@ export const metadata: Metadata = {
     type: "website",
     locale: "vi_VN",
     url: "/",
-    siteName: "The Room",
+    siteName: "The Room SG",
 
-    title: "The Room | Căn hộ dịch vụ - Kim Lân Group",
+    title: "The Room SG | Căn hộ dịch vụ - Kim Lân Group",
 
     description:
       "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư và nhà cho thuê tại TP.HCM.",
@@ -81,14 +82,14 @@ export const metadata: Metadata = {
         url: "/og-logo.jpg",
         width: 1200,
         height: 630,
-        alt: "The Room - Kim Lân Group",
+        alt: "The Room SG - Kim Lân Group",
       },
     ],
   },
 
   twitter: {
     card: "summary_large_image",
-    title: "The Room | Căn hộ dịch vụ",
+    title: "The Room SG | Căn hộ dịch vụ",
 
     description:
       "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư tại TP.HCM.",
@@ -162,7 +163,7 @@ export default function RootLayout({
               "@context": "https://schema.org",
               "@type": "Organization",
               name: "Kim Lân Group",
-              alternateName: "The Room",
+              alternateName: "The Room SG",
               url: "https://canhodichvu.pro",
               logo: "https://canhodichvu.pro/og-logo.jpg",
             }),
