@@ -2036,33 +2036,50 @@ const stopBackdropEvents = (e: any) => {
         onTouchStart={stopBackdropEvents}
       >
         <div style={modalBody}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            <h3 style={{ margin: 0 }}>
-              {isPending
-                ? 'Chỉnh sửa import Zalo'
-                : isEdit
-                  ? 'Chỉnh sửa phòng'
-                  : 'Thêm phòng mới'}
-            </h3>
+          <div style={modalStickyHeader}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              <h3 style={{ margin: 0 }}>
+                {isPending
+                  ? 'Chỉnh sửa import Zalo'
+                  : isEdit
+                    ? 'Chỉnh sửa phòng'
+                    : 'Thêm phòng mới'}
+              </h3>
 
-            {!isPending && !isEdit && !isClone && (
-              <button
-                type="button"
-                onClick={() => setShowAutoRead(true)}
-                style={btnAutoRead}
-                disabled={saving || uploading}
-              >
-                Auto read
-              </button>
-            )}
+              {!isPending && !isEdit && !isClone && (
+                <button
+                  type="button"
+                  onClick={() => setShowAutoRead(true)}
+                  style={btnAutoRead}
+                  disabled={saving || uploading}
+                >
+                  Auto read
+                </button>
+              )}
+            </div>
+
+            <div style={tabs}>
+              <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')}>
+                Thông tin
+              </TabButton>
+              <TabButton active={activeTab === 'fee'} onClick={() => setActiveTab('fee')}>
+                Chi phí
+              </TabButton>
+              <TabButton active={activeTab === 'amenity'} onClick={() => setActiveTab('amenity')}>
+                Tiện ích
+              </TabButton>
+              <TabButton active={activeTab === 'location'} onClick={() => setActiveTab('location')}>
+                Vị trí
+              </TabButton>
+            </div>
           </div>
 
           {errorMsg && <div style={errorBox}>Lỗi: {errorMsg}</div>}
@@ -2167,21 +2184,6 @@ const stopBackdropEvents = (e: any) => {
               </div>
             </div>
           )}
-
-          <div style={tabs}>
-            <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')}>
-              Thông tin
-            </TabButton>
-            <TabButton active={activeTab === 'fee'} onClick={() => setActiveTab('fee')}>
-              Chi phí
-            </TabButton>
-            <TabButton active={activeTab === 'amenity'} onClick={() => setActiveTab('amenity')}>
-              Tiện ích
-            </TabButton>
-            <TabButton active={activeTab === 'location'} onClick={() => setActiveTab('location')}>
-              Vị trí
-            </TabButton>
-          </div>
 
           {/* ===== TAB INFO ===== */}
           {activeTab === 'info' && (
@@ -2404,6 +2406,17 @@ const modalBody: CSSProperties = {
   minHeight: 0,
 }
 
+const modalStickyHeader: CSSProperties = {
+  position: 'sticky',
+  top: -20,
+  zIndex: 30,
+  margin: '-20px -20px 16px',
+  padding: '20px 20px 12px',
+  borderBottom: '1px solid #e5e7eb',
+  background: '#fff',
+  boxShadow: '0 4px 10px rgba(15, 23, 42, 0.04)',
+}
+
 const footerSticky: CSSProperties = {
   padding: 16,
   borderTop: '1px solid #e5e7eb',
@@ -2413,7 +2426,7 @@ const footerSticky: CSSProperties = {
   gap: 12,
 }
 
-const tabs: CSSProperties = { display: 'flex', gap: 8, marginBottom: 16 }
+const tabs: CSSProperties = { display: 'flex', gap: 8 }
 
 const errorBox: CSSProperties = {
   padding: 10,

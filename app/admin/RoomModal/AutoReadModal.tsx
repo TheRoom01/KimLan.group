@@ -2,6 +2,7 @@
 'use client'
 
 import { useMemo, useState, type CSSProperties } from 'react'
+import { extractContactPhones } from '@/lib/contactPhones'
 import type { RoomDetail, RoomForm } from './types'
 
 export type AutoReadCandidate = {
@@ -230,44 +231,25 @@ const firstMatch = (text: string, regexes: RegExp[]) => {
   return ''
 }
 
-const extractPhone = (text:string) => {
+const extractContactPhoneBlock = (text: string) => {
+  const contactLabel = /dan khach|lien he|sdt|so dt|dien thoai|phone|zalo/
+  const prioritizedLines = text
+    .split('\n')
+    .filter(line => contactLabel.test(stripAccent(line)))
 
-  const match = text.match(
-    /(?:\+?84|0)[\d\s.()-]{8,15}\d/g
-  )
-
-  if (!match) return ''
-
-  return match[0]
-    .replace(/[^\d]/g,'')
-    .replace(/^84/,'0')
-}
-const extractContactPhone = (text:string)=>{
-
-  const lines = text.split('\n')
-
-  for(const line of lines){
-
-    const s = stripAccent(line)
-
-    if(
-      /dan khach|lien he|sdt|so dt|dien thoai|phone|zalo/.test(s)
-    ){
-
-      const phone = line.match(
-        /(?:\+?84|0)[\d\s.()-]{8,15}\d/
-      )
-
-      if(phone){
-
-        return phone[0]
-          .replace(/[^\d]/g,'')
-          .replace(/^84/,'0')
-      }
+  // Ưu tiên thứ tự các số trên dòng liên hệ, sau đó bổ sung những số hợp
+  // lệ còn lại trong tin nhắn. Map theo dial để cùng một số chỉ xuất hiện
+  // một lần dù được viết lại theo dạng 0xxx hoặc +84xxx.
+  const unique = new Map<string, string>()
+  for (const source of [...prioritizedLines, text]) {
+    for (const phone of extractContactPhones(source)) {
+      if (!unique.has(phone.dial)) unique.set(phone.dial, phone.dial)
     }
   }
 
-  return extractPhone(text)
+  // Field zalo_phone là textarea và các nơi đọc dữ liệu đã hỗ trợ nhiều số;
+  // lưu mỗi số trên một dòng để dễ xem, sửa và bấm gọi.
+  return Array.from(unique.values()).join('\n')
 }
 
 const allMatches = (
@@ -760,7 +742,12 @@ function parseFees(text: string): Partial<RoomDetail> {
   const feeSegment = (line: string, label: RegExp) => {
     const flags = label.flags.includes('i') ? label.flags : `${label.flags}i`
     const match = new RegExp(
-      `${label.source}\\s*[:=\\-]?\\s*([^,;\\n]+)`,
+      // Chỉ nhận nhãn ở đầu dòng (sau bullet/emoji). Nếu chỉ kiểm tra từ
+      // khóa ở bất kỳ vị trí nào, các câu chính sách dài có thể làm số điện
+      // thoại hoặc mã phòng bị hiểu nhầm thành một khoản phí.
+      // Sau nhãn phải có dấu phân cách hoặc ít nhất một khoảng trắng.
+      // Điều này ngăn alias ngắn như "dv" khớp vào đầu một chuỗi/mã khác.
+      `^\\s*(?:[-+*•–—]\\s*)?${label.source}(?:\\s*[:=\\-]\\s*|\\s+)([^,;\\n]+)`,
       flags
     ).exec(line)
     return String(match?.[1] || '').trim()
@@ -768,7 +755,9 @@ function parseFees(text: string): Partial<RoomDetail> {
 
   const firstMoney = (segment: string) => {
     const match = segment.match(
-      /\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?/i
+      // Giữ trọn dạng viết tắt trước khi gọi money(): 3k8, 4k50,
+      // 3m2, 3tr5... Regex cũ dừng ở "3k" nên 3k8 thành 3.000đ.
+      /(?:\d{1,3}(?:[.,]\d{3})+|\d+\s*(?:(?:k|m|tr|triệu)\s*\d{0,3}|[.,]\d+\s*(?:k|m|tr|triệu)?|(?:k|m|tr|triệu))?)/i
     )
     return match ? money(match[0]) : 0
   }
@@ -793,13 +782,10 @@ function parseFees(text: string): Partial<RoomDetail> {
         otherNotes.push(line)
       } else {
         const segment = feeSegment(line, /(?:điện|dien|electric)/i)
-        const m = segment.match(
-          /(\d+(?:[.,]\d+)?\s*k(?:wh)?)/i
-        )
+        const parsedElectric = firstMoney(segment)
 
-        if (m) {
-          electric = money(m[1])
-        }
+        if (parsedElectric)
+          electric = parsedElectric
       }
 
     }
@@ -867,7 +853,10 @@ function parseFees(text: string): Partial<RoomDetail> {
       )
       const parsedService = firstMoney(segment)
 
-      if (parsedService)
+      // Phí dịch vụ dân dụng không thể là một số hàng trăm triệu. Giới hạn
+      // này chủ yếu loại số điện thoại như 0978.442.024 khi tin nhắn có dòng
+      // liên hệ bắt đầu bằng một alias ngắn trùng với "DV".
+      if (parsedService > 0 && parsedService <= 20_000_000)
         service = parsedService
 
       if (
@@ -899,16 +888,14 @@ function parseFees(text: string): Partial<RoomDetail> {
         parkingUnit = 'Miễn phí'
       }
 
-      const prices =
-        line.match(
-          /\d+(?:[.,]\d+)?\s*(?:k|tr|triệu)?/gi
-        ) || []
+      const segment = feeSegment(
+        line,
+        /(?:phí\s*(?:giữ\s*xe|gửi\s*xe|xe)|phi\s*(?:giu\s*xe|gui\s*xe|xe)|giữ\s*xe|gửi\s*xe|giu\s*xe|gui\s*xe|parking|xe)/i
+      )
+      const parsedParking = firstMoney(segment)
 
-      if (prices.length) {
-        parking = Math.max(
-          parking,
-          ...prices.map(money)
-        )
+      if (parsedParking) {
+        parking = parsedParking
 
         parkingUnit = 'chiếc/tháng'
       }
@@ -1128,7 +1115,7 @@ const sharedStatus: RoomForm['status'] =
     room_type: inferRoomType(text),
     status: sharedStatus,
     
-    zalo_phone: extractContactPhone(text),
+    zalo_phone: extractContactPhoneBlock(text),
 
     link_zalo: firstMatch(text, [
       /(https?:\/\/(?:zalo\.me|chat\.zalo\.me)\/[^\s]+)/i,
