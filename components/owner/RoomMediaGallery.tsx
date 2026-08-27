@@ -3,7 +3,7 @@
 import { DragEvent, useEffect, useState } from "react";
 import { GripVertical, ImageIcon, Save, Trash2 } from "lucide-react";
 import { readApiResponse } from "@/lib/api/client";
-import { useSwipeCarousel } from "@/components/media/useSwipeCarousel";
+import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarousel";
 
 type RoomMedia = {
   id: string;
@@ -156,7 +156,8 @@ export default function RoomMediaGallery({
 
   const activeIndex = Math.max(0, items.findIndex((item) => item.id === activeId));
   const activeItem = items[activeIndex] as RoomMedia;
-  const swipe = useSwipeCarousel({ count: items.length, index: activeIndex, onIndexChange: (nextIndex) => setActiveId(items[nextIndex]?.id ?? null), loop: true });
+  const swipe = useDirectSwipeCarousel({ count: items.length, index: activeIndex, onIndexChange: (nextIndex) => setActiveId(items[nextIndex]?.id ?? null), loop: false });
+  const fullscreenSwipe = useDirectSwipeCarousel({ count: items.length, index: activeIndex, onIndexChange: (nextIndex) => setActiveId(items[nextIndex]?.id ?? null), loop: false });
 
   useEffect(() => {
     if (items.length < 2) return;
@@ -217,10 +218,10 @@ export default function RoomMediaGallery({
       ) : null}
 
       <div className="min-w-0 touch-pan-y overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#2b1a10]" {...swipe.bind}>
-        <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (!fullscreen) swipe.onTransitionEnd(); }}>
+        <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (!fullscreen) swipe.onTransitionEnd(); }}>
           {swipe.visibleIndexes.map((mediaIndex, slot) => {
             const item = items[mediaIndex];
-            const isCurrent = items.length === 1 || slot === 1;
+            const isCurrent = mediaIndex === activeIndex;
             return <div key={`${item.id}-${slot}`} className="relative flex aspect-[4/3] max-h-[360px] w-full shrink-0 items-center justify-center bg-[#2b1a10]">
               {item.type === "video" ? <><video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="h-full w-full object-contain" />{isCurrent && items.length > 1 ? <div aria-hidden="true" className="absolute inset-x-0 top-0 bottom-14 z-10 cursor-grab touch-pan-y active:cursor-grabbing" /> : null}</> : <div role="button" tabIndex={isCurrent ? 0 : -1} aria-label="Xem media toàn màn hình" onClick={() => { if (!swipe.consumeClickSuppression()) setFullscreen(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setFullscreen(true); } }} className="block h-full w-full cursor-zoom-in"><img src={item.url} alt="Media phòng đang xem" draggable={false} className="h-full w-full object-contain" /></div>}
             </div>;
@@ -296,12 +297,12 @@ export default function RoomMediaGallery({
           </article>
         ))}
       </div>
-      {fullscreen ? <div className="fixed inset-0 z-[200] overflow-hidden bg-black/95 p-4" onClick={() => setFullscreen(false)} {...swipe.bind}>
-  <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (fullscreen) swipe.onTransitionEnd(); }} onClick={(event) => event.stopPropagation()}>
-    {swipe.visibleIndexes.map((mediaIndex, slot) => {
+      {fullscreen ? <div className="fixed inset-0 z-[200] overflow-hidden bg-black/95 p-4" onClick={() => setFullscreen(false)} {...fullscreenSwipe.bind}>
+  <div className={`flex h-full w-full will-change-transform ${fullscreenSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: fullscreenSwipe.transform }} onTransitionEnd={fullscreenSwipe.onTransitionEnd} onClick={(event) => event.stopPropagation()}>
+    {fullscreenSwipe.visibleIndexes.map((mediaIndex) => {
       const item = items[mediaIndex];
-      const isCurrent = items.length === 1 || slot === 1;
-      return <div key={`fullscreen-${item.id}-${slot}`} className="relative flex h-full w-full shrink-0 items-center justify-center">
+      const isCurrent = mediaIndex === activeIndex;
+      return <div key={`fullscreen-${item.id}`} className="relative flex h-full w-full shrink-0 items-center justify-center">
         {item.type === "image" ? <img src={item.url} alt={`Ảnh ${mediaIndex + 1}`} draggable={false} className="max-h-full max-w-full object-contain" /> : <><video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="max-h-full max-w-full" />{isCurrent && items.length > 1 ? <div aria-hidden="true" className="absolute inset-x-0 top-0 bottom-14 z-10 cursor-grab touch-none active:cursor-grabbing" /> : null}</>}
       </div>;
     })}
