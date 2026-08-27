@@ -422,7 +422,7 @@ export default function CreateRoomForm({
         <Field
           label="Thêm ảnh/video"
           htmlFor="media_files"
-          hint="Tối đa 20 file. Ảnh tối đa 15 MB; video tối đa 50 MB. Ảnh đầu tiên sẽ làm ảnh đại diện."
+          hint="Tối đa 20 file. Ảnh tối đa 15 MB; video không giới hạn dung lượng. Ảnh đầu tiên sẽ làm ảnh đại diện."
         >
           <input
             id="media_files"

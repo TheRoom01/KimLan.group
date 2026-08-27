@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Building2, CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileText, Info, MapPin, X } from "lucide-react";
+import { Building2, CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileText, Info, MapPin, Play, X } from "lucide-react";
 
 import type { SalesPortalData, SalesRoomStatus } from "@/lib/sales-portal/types";
 
@@ -71,31 +71,111 @@ export default function SalesPortalView({ data }: { data: SalesPortalData }) {
 }
 
 function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["rooms"][number]; expanded?: boolean }) {
-  const images = room.media.filter((item) => item.type === "image");
+  const mediaItems = useMemo(() => room.media.filter((item) => (item.type === "image" || item.type === "video") && item.url), [room.media]);
+  const coverUrl = useMemo(() => room.media.find((item) => item.type === "image" && item.is_cover)?.url || room.media.find((item) => item.type === "image")?.url || "", [room.media]);
   const [index, setIndex] = useState(0);
   const [dragX, setDragX] = useState(0);
-  const drag = useRef<{ id: number; startX: number } | null>(null);
-  const move = (direction: number) => setIndex((current) => (current + direction + images.length) % images.length);
-  const finishDrag = (pointerId: number) => {
-    if (drag.current?.id !== pointerId) return;
-    if (Math.abs(dragX) > 45) move(dragX < 0 ? 1 : -1);
-    drag.current = null;
+  const [slideDirection, setSlideDirection] = useState<-1 | 0 | 1>(0);
+  const [snappingBack, setSnappingBack] = useState(false);
+  const drag = useRef<{ id: number; startX: number; lastX: number; lastAt: number; velocity: number } | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const previousIndex = (index - 1 + mediaItems.length) % mediaItems.length;
+  const nextIndex = (index + 1) % mediaItems.length;
+
+  useEffect(() => {
+    if (mediaItems.length < 2) return;
+    [mediaItems[previousIndex], mediaItems[nextIndex]].filter((item) => item?.type === "image").forEach((item) => {
+      const image = new Image();
+      image.src = String(item?.url);
+      void image.decode?.().catch(() => undefined);
+    });
+  }, [mediaItems, nextIndex, previousIndex]);
+
+  const move = (direction: -1 | 1) => {
+    if (mediaItems.length < 2 || slideDirection !== 0 || snappingBack) return;
+    videoRef.current?.pause();
     setDragX(0);
+    setSlideDirection(direction);
   };
 
-  if (!images.length) return <div className={`relative grid place-items-center bg-[#ead9c2] text-[#98785b] ${expanded ? "min-h-56 sm:min-h-72" : "aspect-[16/10]"}`}><Building2 size={38} /><StatusBadge status={room.status} /></div>;
+  const finishDrag = (pointerId: number) => {
+    if (drag.current?.id !== pointerId) return;
+    const distance = drag.current.lastX - drag.current.startX;
+    const direction = distance < 0 ? 1 : -1;
+    const shouldMove = Math.abs(distance) > 45 || Math.abs(drag.current.velocity) > 0.35;
+    drag.current = null;
+    if (shouldMove) move(direction);
+    else if (Math.abs(distance) > 0.5) {
+      setSnappingBack(true);
+      setDragX(0);
+    } else {
+      setDragX(0);
+    }
+  };
 
-  return <div className={`group relative touch-pan-y select-none overflow-hidden bg-[#2f251f] cursor-grab active:cursor-grabbing ${expanded ? "flex max-h-[62dvh] min-h-56 items-center justify-center sm:min-h-72" : "aspect-[16/10]"}`} onPointerDown={(event) => { drag.current = { id: event.pointerId, startX: event.clientX }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (drag.current?.id === event.pointerId) setDragX(event.clientX - drag.current.startX); }} onPointerUp={(event) => finishDrag(event.pointerId)} onPointerCancel={(event) => finishDrag(event.pointerId)}>
-    <img src={images[index].url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${index + 1}`} draggable={false} className={expanded ? "block max-h-[62dvh] max-w-full object-contain transition-transform duration-150" : "h-full w-full object-cover transition-transform duration-150"} style={{ transform: `translateX(${dragX}px) scale(${dragX ? .985 : 1})` }} />
-    <StatusBadge status={room.status} />
-    {images.length > 1 ? <><button type="button" aria-label="Ảnh trước" onPointerDown={(event) => event.stopPropagation()} onClick={() => move(-1)} className="absolute left-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur transition hover:bg-black/65 group-hover:opacity-100 focus:opacity-100"><ChevronLeft size={18} /></button><button type="button" aria-label="Ảnh tiếp theo" onPointerDown={(event) => event.stopPropagation()} onClick={() => move(1)} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur transition hover:bg-black/65 group-hover:opacity-100 focus:opacity-100"><ChevronRight size={18} /></button><span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur">{index + 1}/{images.length}</span><div className="absolute bottom-3 left-1/2 flex max-w-[55%] -translate-x-1/2 gap-1">{images.map((image, imageIndex) => <button key={image.id} type="button" aria-label={`Xem ảnh ${imageIndex + 1}`} onPointerDown={(event) => event.stopPropagation()} onClick={() => setIndex(imageIndex)} className={`h-1.5 rounded-full transition-all ${imageIndex === index ? "w-5 bg-white" : "w-1.5 bg-white/60"}`} />)}</div></> : null}
+  const finishSlide = () => {
+    if (snappingBack) {
+      setSnappingBack(false);
+      return;
+    }
+    if (slideDirection === 0) return;
+    setIndex((current) => (current + slideDirection + mediaItems.length) % mediaItems.length);
+    setSlideDirection(0);
+  };
+
+  if (!mediaItems.length) return <div className={`relative grid place-items-center bg-[#ead9c2] text-[#98785b] ${expanded ? "min-h-56 sm:min-h-72" : "aspect-[16/10]"}`}><Building2 size={38} /><StatusBadge status={room.status} /></div>;
+
+  const trackTransform = slideDirection === 1
+    ? "translate3d(-200%,0,0)"
+    : slideDirection === -1
+      ? "translate3d(0,0,0)"
+      : `translate3d(calc(-100% + ${dragX}px),0,0)`;
+  const visibleIndexes = mediaItems.length > 1 ? [previousIndex, index, nextIndex] : [index];
+
+  return <div className="overflow-hidden bg-black">
+    <div
+      className={`group relative touch-pan-y select-none overflow-hidden bg-black ${mediaItems.length > 1 ? "cursor-grab active:cursor-grabbing" : ""} ${expanded ? "h-[clamp(260px,52dvh,520px)]" : "aspect-[16/10]"}`}
+      onPointerDown={(event) => {
+        if (mediaItems.length < 2 || slideDirection !== 0 || snappingBack) return;
+        drag.current = { id: event.pointerId, startX: event.clientX, lastX: event.clientX, lastAt: performance.now(), velocity: 0 };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (drag.current?.id !== event.pointerId || slideDirection !== 0) return;
+        const now = performance.now();
+        const elapsed = Math.max(1, now - drag.current.lastAt);
+        drag.current.velocity = (event.clientX - drag.current.lastX) / elapsed;
+        drag.current.lastX = event.clientX;
+        drag.current.lastAt = now;
+        setDragX(event.clientX - drag.current.startX);
+      }}
+      onPointerUp={(event) => finishDrag(event.pointerId)}
+      onPointerCancel={(event) => finishDrag(event.pointerId)}
+    >
+      <div
+        className={`flex h-full w-full will-change-transform ${slideDirection !== 0 || snappingBack ? "transition-transform duration-300 ease-out" : ""}`}
+        style={{ transform: mediaItems.length > 1 ? trackTransform : undefined }}
+        onTransitionEnd={finishSlide}
+      >
+        {visibleIndexes.map((mediaIndex, slot) => {
+          const item = mediaItems[mediaIndex];
+          const isCurrent = mediaItems.length === 1 || slot === 1;
+          return <div key={`${item.id}-${slot}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
+            {item.type === "video" ? isCurrent ? <video ref={videoRef} src={item.url} poster={coverUrl || undefined} controls playsInline preload="metadata" className="h-full w-full object-contain" onPointerDown={(event) => event.stopPropagation()} /> : <>{coverUrl ? <img src={coverUrl} alt="" draggable={false} className="h-full w-full object-contain" /> : null}<span className="pointer-events-none absolute grid h-14 w-14 place-items-center rounded-full bg-black/60 text-white backdrop-blur"><Play size={26} fill="currentColor" /></span></> : <img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} className={expanded ? "block max-h-full max-w-full object-contain" : "h-full w-full object-cover"} />}
+          </div>;
+        })}
+      </div>
+      <StatusBadge status={room.status} />
+      {mediaItems.length > 1 ? <><button type="button" aria-label="Media trước" onPointerDown={(event) => event.stopPropagation()} onClick={() => move(-1)} className="absolute left-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronLeft size={20} /></button><button type="button" aria-label="Media tiếp theo" onPointerDown={(event) => event.stopPropagation()} onClick={() => move(1)} className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronRight size={20} /></button><span className="absolute bottom-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">{index + 1}/{mediaItems.length}</span></> : null}
+    </div>
+    {expanded && mediaItems.length > 1 ? <div className="flex gap-2 overflow-x-auto bg-[#17120f] p-2 [scrollbar-color:#8b735f_#17120f] [scrollbar-width:thin]">{mediaItems.map((item, mediaIndex) => <button key={item.id} type="button" onClick={() => { if (slideDirection === 0 && !snappingBack) { videoRef.current?.pause(); setDragX(0); setIndex(mediaIndex); } }} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-black transition sm:h-16 sm:w-24 ${mediaIndex === index ? "border-white" : "border-transparent opacity-65 hover:opacity-100"}`} aria-label={`Xem ${item.type === "video" ? "video" : "ảnh"} ${mediaIndex + 1}`}>{item.type === "video" ? <>{coverUrl ? <img src={coverUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}<span className="absolute inset-0 grid place-items-center bg-black/20 text-white"><Play size={18} fill="currentColor" /></span></> : <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />}</button>)}</div> : null}
   </div>;
 }
 
 function SalesRoomModal({ room, onClose }: { room: SalesPortalData["rooms"][number]; onClose: () => void }) {
   const [downloading, setDownloading] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
-  const imageUrls = room.media.filter((item) => item.type === "image" && item.url).map((item) => item.url);
+  const downloadableMedia = room.media.filter((item) => item.url);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -105,27 +185,27 @@ function SalesRoomModal({ room, onClose }: { room: SalesPortalData["rooms"][numb
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", closeOnEscape); };
   }, [onClose]);
 
-  async function downloadImages() {
-    if (!imageUrls.length || downloading) return;
+  async function downloadMedia() {
+    if (!downloadableMedia.length || downloading) return;
     setDownloading(true);
-    setDownloadMessage(`Đang chuẩn bị 0/${imageUrls.length} ảnh...`);
+    setDownloadMessage(`Đang chuẩn bị 0/${downloadableMedia.length} media...`);
     try {
       const files: File[] = [];
-      for (let index = 0; index < imageUrls.length; index += 1) {
-        files.push(await salesRoomImageFile(imageUrls[index], room.room_code || room.id, index));
-        setDownloadMessage(`Đang chuẩn bị ${index + 1}/${imageUrls.length} ảnh...`);
+      for (let index = 0; index < downloadableMedia.length; index += 1) {
+        files.push(await salesRoomMediaFile(downloadableMedia[index], room.room_code || room.id, index));
+        setDownloadMessage(`Đang chuẩn bị ${index + 1}/${downloadableMedia.length} media...`);
       }
 
       const canShareFiles = typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files });
       if (canShareFiles) {
         try {
-          await navigator.share({ title: `Ảnh phòng ${room.room_code || ""}`, files });
-          setDownloadMessage("Đã mở bảng lưu/chia sẻ ảnh của thiết bị.");
+          await navigator.share({ title: `Media phòng ${room.room_code || ""}`, files });
+          setDownloadMessage("Đã mở bảng lưu/chia sẻ media của thiết bị.");
           return;
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") throw error;
-          // Một số trình duyệt báo có thể share file nhưng từ chối khi số ảnh
-          // quá lớn. Khi đó tiếp tục với phương án tải từng ảnh riêng biệt.
+          // Một số trình duyệt báo có thể share file nhưng từ chối khi số file
+          // hoặc dung lượng quá lớn. Khi đó tiếp tục tải từng file riêng biệt.
         }
       }
 
@@ -142,12 +222,12 @@ function SalesRoomModal({ room, onClose }: { room: SalesPortalData["rooms"][numb
           window.setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
         }, index * 180);
       });
-      setDownloadMessage(`Đang tải ${files.length} ảnh riêng biệt. Nếu trình duyệt hỏi, hãy cho phép tải nhiều tệp.`);
+      setDownloadMessage(`Đang tải ${files.length} file media. Nếu trình duyệt hỏi, hãy cho phép tải nhiều tệp.`);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        setDownloadMessage("Bạn đã đóng bảng lưu ảnh.");
+        setDownloadMessage("Bạn đã đóng bảng lưu media.");
       } else {
-        setDownloadMessage(error instanceof Error ? error.message : "Không thể tải ảnh phòng.");
+        setDownloadMessage(error instanceof Error ? error.message : "Không thể tải media của phòng.");
       }
     } finally {
       setDownloading(false);
@@ -158,7 +238,7 @@ function SalesRoomModal({ room, onClose }: { room: SalesPortalData["rooms"][numb
     <article className="max-h-[92dvh] w-full overflow-y-auto overscroll-contain rounded-t-[24px] bg-[#fff9ef] shadow-2xl sm:max-w-3xl sm:rounded-[24px]">
       <div className="sticky top-0 z-20 flex items-center justify-between border-b border-[#956b45]/20 bg-[#fff9ef]/95 px-4 py-3 backdrop-blur sm:px-5">
         <div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#997353]">Chi tiết phòng</p><h2 className="mt-0.5 text-xl font-bold">Phòng {room.room_code || "-"}</h2></div>
-        <div className="ml-3 flex shrink-0 items-center gap-2"><button type="button" onClick={() => void downloadImages()} disabled={downloading || !imageUrls.length} aria-label="Tải ảnh phòng về thiết bị" title={imageUrls.length ? `Tải ${imageUrls.length} ảnh về thiết bị` : "Phòng chưa có ảnh"} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#744722] px-3 text-xs font-bold text-white transition hover:bg-[#5f3518] disabled:cursor-not-allowed disabled:opacity-45">{downloading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Download size={16} />}<span className="hidden sm:inline">{downloading ? "Đang chuẩn bị" : "Tải ảnh"}</span></button><button type="button" onClick={onClose} aria-label="Đóng chi tiết phòng" className="grid h-9 w-9 place-items-center rounded-full bg-[#f2dfc6] text-[#684324]"><X size={19} /></button></div>
+        <div className="ml-3 flex shrink-0 items-center gap-2"><button type="button" onClick={() => void downloadMedia()} disabled={downloading || !downloadableMedia.length} aria-label="Tải toàn bộ media phòng về thiết bị" title={downloadableMedia.length ? `Tải ${downloadableMedia.length} file media về thiết bị` : "Phòng chưa có media"} className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#744722] px-3 text-xs font-bold text-white transition hover:bg-[#5f3518] disabled:cursor-not-allowed disabled:opacity-45">{downloading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Download size={16} />}<span className="hidden sm:inline">{downloading ? "Đang chuẩn bị" : "Tải media"}</span></button><button type="button" onClick={onClose} aria-label="Đóng chi tiết phòng" className="grid h-9 w-9 place-items-center rounded-full bg-[#f2dfc6] text-[#684324]"><X size={19} /></button></div>
       </div>
       <RoomImageGallery room={room} expanded />
       <div className="p-4 sm:p-5">
@@ -240,14 +320,29 @@ function InfoGroup({ title, children }: { title: string; children: React.ReactNo
 function Metric({ label, value, tone }: { label: string; value: number; tone: "green" | "amber" | "red" }) { const colors = { green: "bg-emerald-50 text-emerald-700", amber: "bg-amber-50 text-amber-700", red: "bg-red-50 text-red-700" }; return <div className={`rounded-2xl p-3 text-center ${colors[tone]}`}><p className="text-xl font-bold">{value}</p><p className="mt-1 text-[11px] font-semibold">{label}</p></div>; }
 function StatusBadge({ status }: { status: SalesRoomStatus }) { const cls = status === "Trống" ? "bg-emerald-600" : status === "Sắp trống" ? "bg-amber-500" : "bg-red-600"; return <span className={`absolute right-3 top-3 rounded-full px-3 py-1 text-xs font-bold text-white shadow ${cls}`}>{status}</span>; }
 function roomBadgeClass(status: SalesRoomStatus) { return status === "Trống" ? "border-emerald-700/35 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-emerald-900/15 hover:to-emerald-700" : status === "Sắp trống" ? "border-amber-600/35 bg-gradient-to-br from-amber-300 to-amber-400 text-amber-950 shadow-amber-900/15 hover:to-amber-500" : "border-red-700/35 bg-gradient-to-br from-red-500 to-red-600 text-white shadow-red-900/15 hover:to-red-700"; }
-  async function salesRoomImageFile(url: string, roomCode: string, index: number) {
-  const response = await fetch(`/api/share-image?url=${encodeURIComponent(url)}`, { cache: "force-cache" });
-  if (!response.ok) throw new Error(`Không thể tải ảnh ${index + 1}.`);
+async function salesRoomMediaFile(media: { type: string; url: string }, roomCode: string, index: number) {
+  const response = await fetch(`/api/share-image?url=${encodeURIComponent(media.url)}`, { cache: "force-cache" });
+  if (!response.ok) throw new Error(`Không thể tải media ${index + 1}.`);
   const blob = await response.blob();
   const mime = blob.type.toLowerCase();
-  const extension = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : mime.includes("gif") ? "gif" : "jpg";
+  const extension = mediaFileExtension(mime, media.url);
   const safeRoomCode = String(roomCode || "phong").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "phong";
-  return new File([blob], `phong-${safeRoomCode}-${String(index + 1).padStart(2, "0")}.${extension}`, { type: blob.type || "image/jpeg" });
+  const safeType = String(media.type || "media").toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "media";
+  return new File([blob], `phong-${safeRoomCode}-${safeType}-${String(index + 1).padStart(2, "0")}.${extension}`, { type: blob.type || "application/octet-stream" });
+}
+
+function mediaFileExtension(mime: string, url: string) {
+  const byMime: Record<string, string> = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic", "image/heif": "heif",
+    "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "video/x-msvideo": "avi", "video/x-matroska": "mkv",
+    "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/wav": "wav", "application/pdf": "pdf",
+  };
+  if (byMime[mime]) return byMime[mime];
+  try {
+    const extension = new URL(url).pathname.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (extension && extension.length <= 8) return extension;
+  } catch {}
+  return "bin";
 }
 function money(value: number | null) { return value == null ? "Liên hệ" : `${value.toLocaleString("vi-VN")}đ`; }
 function date(value: string) { return new Date(`${value}T00:00:00`).toLocaleDateString("vi-VN"); }

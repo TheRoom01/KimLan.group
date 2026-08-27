@@ -64,13 +64,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (isVideo && file.size > 50 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: "Video quá lớn. Giới hạn 50MB" },
-        { status: 400 },
-      );
-    }
-
     const allowFixedThumb = isImage && fixedName === "thumb.webp";
 
     if (allowFixedThumb && file.type !== "image/webp") {

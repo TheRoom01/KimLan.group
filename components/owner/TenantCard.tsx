@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, ImageIcon, KeyRound, Phone, Trash2, UserRound } from "lucide-react";
+import { Building2, ImageIcon, KeyRound, MessageCircle, Phone, Trash2, UserRound, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type KeyboardEvent, type MouseEvent, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { readApiResponse } from "@/lib/api/client";
 import { propertyDisplayAddress } from "@/lib/owner/propertyDisplayAddress";
 import { showOwnerNavigationSkeleton } from "@/lib/owner/clientExperience";
@@ -19,6 +20,7 @@ export type TenantCardData = {
   };
   active_contract?: {
     id?: string | null;
+    contract_type?: "lease" | "deposit" | string | null;
     tenant_role?: string | null;
     monthly_price?: number | null;
     room?: {
@@ -41,6 +43,7 @@ export type TenantCardData = {
 
 export default function TenantCard({ item }: { item: TenantCardData }) {
   const [deleting, setDeleting] = useState(false);
+  const [identityPreview, setIdentityPreview] = useState<{ url: string; label: string } | null>(null);
   const router = useRouter();
   const tenant = item.tenant;
   const contract = item.active_contract;
@@ -48,6 +51,21 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
   const isRepresentative =
     contract?.tenant_role === "Chủ hợp đồng" ||
     contract?.tenant_role === "representative";
+  const phoneDigits = tenant.phone?.replace(/\D/g, "") ?? "";
+
+  useEffect(() => {
+    if (!identityPreview) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setIdentityPreview(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [identityPreview]);
 
   function openTenant() {
     showOwnerNavigationSkeleton();
@@ -100,8 +118,8 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
       </button>
 
       <div className="grid grid-cols-2 gap-px bg-[#d8c0a4]">
-        <IdentityImage url={tenant.cccd_front_url} label="CCCD mặt trước" />
-        <IdentityImage url={tenant.cccd_back_url} label="CCCD mặt sau" />
+        <IdentityImage url={tenant.cccd_front_url} label="CCCD mặt trước" onOpen={(url, label) => setIdentityPreview({ url, label })} />
+        <IdentityImage url={tenant.cccd_back_url} label="CCCD mặt sau" onOpen={(url, label) => setIdentityPreview({ url, label })} />
       </div>
 
       <div className="min-w-0 p-4 sm:p-5">
@@ -113,10 +131,18 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
                 {isRepresentative ? "Đại diện" : "Ở cùng"}
               </span>
             </div>
-            <p className="mt-1 flex items-center gap-1.5 text-sm text-[#80634a]">
-              <Phone size={14} />
-              {tenant.phone || "Chưa có SĐT"}
-            </p>
+            {tenant.phone ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
+                <a href={`tel:${tenant.phone}`} onClick={keepCardClosed} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-1.5 text-[#80634a] transition hover:bg-[#f4e4cf] hover:text-[#5f391f]" aria-label={`Gọi ${tenant.phone}`}>
+                  <Phone size={14} /> {tenant.phone}
+                </a>
+                <a href={`https://zalo.me/${phoneDigits}`} target="_blank" rel="noreferrer" onClick={keepCardClosed} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#9b7655]/35 px-2.5 font-semibold text-[#744722] transition hover:bg-[#f4e4cf]" aria-label={`Liên hệ Zalo ${tenant.phone}`}>
+                  <MessageCircle size={14} /> Zalo
+                </a>
+              </div>
+            ) : (
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-[#80634a]"><Phone size={14} /> Chưa có SĐT</p>
+            )}
           </div>
           <UserRound size={20} className="shrink-0 text-[#9b7655]" />
         </div>
@@ -124,20 +150,7 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
         {contract ? (
           <div className="mt-4 grid gap-3 rounded-2xl border border-[#aa825d]/20 bg-[#f8ead7] p-3 text-sm text-[#74583e] sm:grid-cols-2">
             <div className="min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-[#8a6b50]">Tòa nhà</span>
-                {contract.id ? (
-                  <Link
-                    href={`/owner/contracts/${contract.id}`}
-                    onClick={keepCardClosed}
-                    aria-label="Mở hợp đồng thuê"
-                    title="Mở hợp đồng thuê"
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#744722] transition hover:bg-[#ead2b2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#744722]"
-                  >
-                    <KeyRound size={17} />
-                  </Link>
-                ) : null}
-              </div>
+              <span className="text-xs text-[#8a6b50]">Tòa nhà</span>
               {contract.property?.id ? (
                 <Link
                   href={`/owner/properties/${contract.property.id}`}
@@ -167,7 +180,21 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
             </div>
 
             <InfoValue label="Giá thuê" value={contract.monthly_price ? `${Number(contract.monthly_price).toLocaleString("vi-VN")}đ` : "-"} />
-            <InfoValue label="Số hợp đồng" value={String(item.contracts_count ?? 0)} />
+            <div>
+              {contract.id ? (
+                <Link
+                  href={`/owner/contracts/${contract.id}`}
+                  onClick={keepCardClosed}
+                  className="inline-flex min-h-8 items-center gap-1.5 font-bold text-[#4d3422] underline decoration-[#9b7655]/45 underline-offset-2 transition hover:text-[#744722] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#744722]"
+                  aria-label="Xem chi tiết hợp đồng"
+                >
+                  <KeyRound size={16} className="shrink-0" />
+                  Xem chi tiết Hợp đồng
+                </Link>
+              ) : (
+                <strong className="mt-0.5 block text-[#4d3422]">-</strong>
+              )}
+            </div>
           </div>
         ) : (
           <p className="mt-4 rounded-xl bg-[#f8ead7] p-3 text-sm text-[#80634a]">Chưa có hợp đồng đang hiệu lực.</p>
@@ -177,15 +204,27 @@ export default function TenantCard({ item }: { item: TenantCardData }) {
           <Building2 size={14} /> Bấm vào card để xem hồ sơ khách thuê
         </p>
       </div>
+      {identityPreview && typeof document !== "undefined" ? createPortal(
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black" role="dialog" aria-modal="true" aria-label={`Xem ${identityPreview.label}`} onClick={(event) => { event.stopPropagation(); setIdentityPreview(null); }}>
+          <img src={identityPreview.url} alt={identityPreview.label} className="h-full w-full object-contain" onClick={(event) => event.stopPropagation()} />
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/75 to-transparent p-4 text-white sm:p-6">
+            <strong className="text-sm sm:text-base">{identityPreview.label}</strong>
+            <button type="button" className="pointer-events-auto grid h-11 w-11 place-items-center rounded-full border border-white/35 bg-black/45 transition hover:bg-black/70" onClick={(event) => { event.stopPropagation(); setIdentityPreview(null); }} aria-label="Đóng ảnh CCCD"><X size={23} /></button>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
     </article>
   );
 }
 
-function IdentityImage({ url, label }: { url?: string | null; label: string }) {
+function IdentityImage({ url, label, onOpen }: { url?: string | null; label: string; onOpen: (url: string, label: string) => void }) {
   return (
     <div className="relative aspect-[1.58/1] min-w-0 overflow-hidden bg-[#eadbc8]">
       {url ? (
-        <img src={url} alt={label} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" />
+        <button type="button" className="h-full w-full cursor-zoom-in" onClick={(event) => { event.stopPropagation(); onOpen(url, label); }} aria-label={`Xem toàn màn hình ${label}`}>
+          <img src={url} alt={label} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" />
+        </button>
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-1.5 text-[#98785b]">
           <ImageIcon size={22} />

@@ -53,7 +53,7 @@ export default function PropertyImageCarousel({ images, title }: { images: strin
   }
 
   if (!images.length) {
-    return <div className="flex aspect-[16/10] h-full flex-col items-center justify-center gap-2 rounded-2xl bg-[#eadbc8] text-[#98785b]"><ImageIcon size={32} /><span className="text-sm">Chưa có ảnh tòa nhà</span></div>;
+    return <div className="flex aspect-[16/10] w-full min-w-0 max-w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl bg-[#eadbc8] text-[#98785b]"><ImageIcon size={32} /><span className="text-sm">Chưa có ảnh tòa nhà</span></div>;
   }
 
   return (

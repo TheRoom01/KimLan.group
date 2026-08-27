@@ -509,19 +509,32 @@ export function parseCreateOwnerRoomInput(
 
 }
 
-export type InvitePropertyManagerInput = {
+export type InvitePropertyMemberInput = {
+  role: "owner" | "manager";
   email: string | null;
   phone: string | null;
   invitee_name: string | null;
   expires_in_days: number;
 };
 
-export function parseInvitePropertyManagerInput(
+export function parseInvitePropertyMemberInput(
   body: JsonObject,
-): InvitePropertyManagerInput {
+): InvitePropertyMemberInput {
   const email = parseOptionalString(body.email, "Email", 320)?.toLowerCase() ?? null;
   const phoneRaw = parseOptionalString(body.phone, "Số điện thoại", 40);
   const phone = phoneRaw?.replace(/\D/g, "") || null;
+  const role =
+    body.role === "owner"
+      ? "owner"
+      : body.role === "manager" || body.role == null
+        ? "manager"
+        : null;
+
+  if (!role) {
+    throw new RequestValidationError("Vai trò lời mời không hợp lệ", {
+      field: "role",
+    });
+  }
 
   if (!email && !phone) {
     throw new RequestValidationError("Cần nhập email hoặc số điện thoại", {
@@ -551,6 +564,7 @@ export function parseInvitePropertyManagerInput(
   }
 
   return {
+    role,
     email,
     phone,
     invitee_name: parseOptionalString(body.invitee_name, "Tên người được mời", 200),

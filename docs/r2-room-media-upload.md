@@ -56,7 +56,7 @@ Omitting or changing a signed header can produce an R2 `403 SignatureDoesNotMatc
 ## Size limits
 
 - Images in Owner Portal: 15 MB per file.
-- Videos: 50 MB per file.
+- Videos: no application-level file-size limit (uploaded directly to R2 with a presigned URL).
 - Maximum selection in Owner Portal: 20 files.
 - The same-origin `/api/upload/r2` fallback is only appropriate for small files. Large videos must use direct presigned upload because serverless request payload limits are lower than the supported video size.
 

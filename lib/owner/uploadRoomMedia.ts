@@ -1,7 +1,6 @@
 import { readApiResponse } from "@/lib/api/client";
 import { mapWithConcurrency, resolveUploadContentType } from "@/lib/media/uploadFileType";
 
-export const MAX_ROOM_VIDEO_BYTES = 50 * 1024 * 1024;
 export const MAX_ROOM_IMAGE_BYTES = 15 * 1024 * 1024;
 export const MAX_ROOM_MEDIA_FILES = 20;
 
@@ -31,10 +30,6 @@ export function validateRoomMediaFiles(files: File[]) {
 
     if (!isImage && !isVideo) {
       throw new Error(`File ${file.name} không phải ảnh hoặc video`);
-    }
-
-    if (isVideo && file.size > MAX_ROOM_VIDEO_BYTES) {
-      throw new Error(`Video ${file.name} vượt giới hạn 50 MB`);
     }
 
     if (isImage && file.size > MAX_ROOM_IMAGE_BYTES) {

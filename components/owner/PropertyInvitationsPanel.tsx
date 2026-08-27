@@ -41,6 +41,7 @@ export default function PropertyInvitationsPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteRole, setInviteRole] = useState<"manager" | "owner">("manager");
 
   const loadInvitations = useCallback(async () => {
     setLoading(true);
@@ -88,6 +89,7 @@ export default function PropertyInvitationsPanel({
           },
           body: JSON.stringify({
             invitee_name: form.get("invitee_name"),
+            role: form.get("role"),
             email: form.get("email"),
             phone: form.get("phone"),
             expires_in_days: form.get("expires_in_days"),
@@ -104,7 +106,7 @@ export default function PropertyInvitationsPanel({
       formElement.reset();
       setInviteOpen(false);
       await loadInvitations();
-      setNotice("Đã tạo lời mời manager. Sao chép link bên dưới để gửi cho người nhận.");
+      setNotice(`Đã tạo lời mời ${inviteRole === "owner" ? "chủ nhà" : "manager"}. Sao chép link bên dưới để gửi cho người nhận.`);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -155,7 +157,7 @@ export default function PropertyInvitationsPanel({
   return (
     <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 text-[#432918] shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
       <div className="flex items-start justify-between gap-3">
-        <div><h2 className="text-xl font-bold">Quản lý manager</h2>
+        <div><h2 className="text-xl font-bold">Quản lý thành viên</h2>
         <p className="mt-1 text-sm text-[#80634a]">
           Người nhận phải đăng nhập bằng đúng email hoặc số điện thoại được mời để chấp nhận.
         </p></div>
@@ -168,7 +170,7 @@ export default function PropertyInvitationsPanel({
         onMouseDown={(event) => event.stopPropagation()}
         className="grid max-h-[90dvh] w-full max-w-xl gap-4 overflow-y-auto rounded-2xl border bg-[#fff9ef] p-4 shadow-2xl md:grid-cols-2"
       >
-        <div className="mb-4 flex items-center justify-between md:col-span-2"><h3 className="text-lg font-bold">Tạo lời mời manager</h3><button type="button" onClick={() => setInviteOpen(false)} className="rounded-lg px-3 py-1 text-sm">Đóng</button></div>
+        <div className="mb-4 flex items-center justify-between md:col-span-2"><h3 className="text-lg font-bold">Tạo lời mời thành viên</h3><button type="button" onClick={() => setInviteOpen(false)} className="rounded-lg px-3 py-1 text-sm">Đóng</button></div>
         <Field label="Tên người được mời" htmlFor="invitee_name">
           <input
             id="invitee_name"
@@ -176,6 +178,19 @@ export default function PropertyInvitationsPanel({
             className={INPUT_CLASS}
             maxLength={200}
           />
+        </Field>
+
+        <Field label="Vai trò" htmlFor="role">
+          <select
+            id="role"
+            name="role"
+            className={INPUT_CLASS}
+            value={inviteRole}
+            onChange={(event) => setInviteRole(event.target.value as "manager" | "owner")}
+          >
+            <option value="manager">Manager</option>
+            <option value="owner">Chủ nhà</option>
+          </select>
         </Field>
 
         <Field label="Email" htmlFor="email">
@@ -223,7 +238,7 @@ export default function PropertyInvitationsPanel({
             disabled={submitting}
             className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? "Đang tạo..." : "Tạo lời mời manager"}
+            {submitting ? "Đang tạo..." : `Tạo lời mời ${inviteRole === "owner" ? "chủ nhà" : "manager"}`}
           </button>
         </div>
       </form>
@@ -261,7 +276,7 @@ export default function PropertyInvitationsPanel({
           <p className="text-sm text-gray-500">Đang tải lời mời...</p>
         ) : invitations.length === 0 ? (
           <p className="rounded-xl border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-3 text-sm text-[#80634a]">
-            Chưa có lời mời manager.
+            Chưa có lời mời thành viên.
           </p>
         ) : (
           <div className="space-y-2">
@@ -285,6 +300,7 @@ export default function PropertyInvitationsPanel({
                           .join(" • ")}
                       </p>
                       <p className="mt-1 text-xs text-gray-500">
+                        Vai trò: {invitation.role === "owner" ? "Chủ nhà" : "Manager"} •{" "}
                         Hết hạn: {formatDateTime(invitation.expires_at)}
                       </p>
                     </div>

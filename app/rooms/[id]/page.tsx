@@ -299,6 +299,9 @@ export default function RoomDetailPage() {
   
   const [room, setRoom] = useState<any>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [mediaDragX, setMediaDragX] = useState(0);
+  const [mediaSlideDirection, setMediaSlideDirection] = useState<-1 | 0 | 1>(0);
+  const [mediaSnappingBack, setMediaSnappingBack] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [phoneModal, setPhoneModal] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
@@ -412,94 +415,98 @@ const canSeePrivateFields =
   const [downloadingImages, setDownloadingImages] = useState(false);
   const [downloadImagesMessage, setDownloadImagesMessage] = useState<string | null>(null);
   const mediaItemsLengthRef = useRef(0);
-  const viewerDragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const viewerDragArmedRef = useRef(false);
+  const mediaDragRef = useRef<{ id: number; startX: number; startY: number; lastX: number; lastAt: number; velocity: number } | null>(null);
+  const suppressMediaClickRef = useRef(false);
 
-    const touchStartXRef = useRef(0);
-
-  const onTouchStart = (e: any) => {
-    touchStartXRef.current = e.touches?.[0]?.clientX ?? 0;
-    showMediaControlsTemporarily();
-  };
-
-  const onTouchEnd = (e: any) => {
-    const endX = e.changedTouches?.[0]?.clientX ?? 0;
-    const count = mediaItemsLengthRef.current;
-    const startX = touchStartXRef.current;
-
-    if (!count) return;
-
-    const diffX = startX - endX;
-
-    if (Math.abs(diffX) > 50) {
-      showMediaControlsTemporarily();
-
-      if (diffX > 0 && activeIndex < count - 1) {
-        setActiveIndex((i: number) => i + 1);
-      }
-
-      if (diffX < 0 && activeIndex > 0) {
-        setActiveIndex((i: number) => i - 1);
-      }
+    function moveMedia(direction: -1 | 1) {
+      const count = mediaItemsLengthRef.current;
+      const targetIndex = activeIndex + direction;
+      if (count < 2 || targetIndex < 0 || targetIndex >= count || mediaSlideDirection !== 0 || mediaSnappingBack) return;
+      setMediaDragX(0);
+      setMediaSlideDirection(direction);
     }
-  };
 
     function goPrevMedia() {
-      setActiveIndex((i) => Math.max(i - 1, 0));
+      moveMedia(-1);
     }
 
     function goNextMedia() {
-      const count = mediaItemsLengthRef.current;
-      setActiveIndex((i) => Math.min(i + 1, Math.max(count - 1, 0)));
+      moveMedia(1);
     }
 
     function handleViewerPointerDown(e: any) {
-      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       if ((e.target as HTMLElement)?.closest?.("button")) return;
+      if (mediaItemsLengthRef.current < 2 || mediaSlideDirection !== 0 || mediaSnappingBack) return;
 
-      viewerDragStartRef.current = { x: e.clientX, y: e.clientY };
-      viewerDragArmedRef.current = true;
+      mediaDragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastAt: performance.now(), velocity: 0 };
+      suppressMediaClickRef.current = false;
+      showMediaControlsTemporarily();
 
       try {
         e.currentTarget.setPointerCapture?.(e.pointerId);
       } catch {}
     }
 
+    function handleViewerPointerMove(e: any) {
+      const drag = mediaDragRef.current;
+      if (!drag || drag.id !== e.pointerId || mediaSlideDirection !== 0) return;
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) return;
+      const now = performance.now();
+      drag.velocity = (e.clientX - drag.lastX) / Math.max(1, now - drag.lastAt);
+      drag.lastX = e.clientX;
+      drag.lastAt = now;
+      if (Math.abs(dx) > 5) suppressMediaClickRef.current = true;
+      const atStart = activeIndex === 0 && dx > 0;
+      const atEnd = activeIndex === mediaItemsLengthRef.current - 1 && dx < 0;
+      setMediaDragX(atStart || atEnd ? dx * 0.22 : dx);
+    }
+
     function handleViewerPointerUp(e: any) {
-      if (e.pointerType !== "mouse") return;
-      if (!viewerDragArmedRef.current || !viewerDragStartRef.current) return;
-
-      if ((e.target as HTMLElement)?.closest?.("button")) {
-        viewerDragArmedRef.current = false;
-        viewerDragStartRef.current = null;
-        return;
-      }
-
-      const dx = e.clientX - viewerDragStartRef.current.x;
-      const dy = e.clientY - viewerDragStartRef.current.y;
-
-      viewerDragArmedRef.current = false;
-      viewerDragStartRef.current = null;
+      const drag = mediaDragRef.current;
+      if (!drag || drag.id !== e.pointerId) return;
+      const dx = drag.lastX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      const direction: -1 | 1 = dx < 0 ? 1 : -1;
+      const targetIndex = activeIndex + direction;
+      const canMove = targetIndex >= 0 && targetIndex < mediaItemsLengthRef.current;
+      const shouldMove = canMove && Math.abs(dx) > Math.abs(dy) && (Math.abs(dx) > 45 || Math.abs(drag.velocity) > 0.35);
+      mediaDragRef.current = null;
 
       try {
         e.currentTarget.releasePointerCapture?.(e.pointerId);
       } catch {}
-
-      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
-
-      if (dx < 0) goNextMedia();
-      else goPrevMedia();
+      if (shouldMove) moveMedia(direction);
+      else if (Math.abs(dx) > 0.5) {
+        setMediaSnappingBack(true);
+        setMediaDragX(0);
+      } else {
+        setMediaDragX(0);
+      }
     }
 
     function handleViewerPointerCancel(e?: any) {
-      viewerDragArmedRef.current = false;
-      viewerDragStartRef.current = null;
+      mediaDragRef.current = null;
+      setMediaSnappingBack(suppressMediaClickRef.current);
+      setMediaDragX(0);
 
       try {
         if (e?.currentTarget?.releasePointerCapture && e?.pointerId != null) {
           e.currentTarget.releasePointerCapture(e.pointerId);
         }
       } catch {}
+    }
+
+    function finishMediaSlide() {
+      if (mediaSnappingBack) {
+        setMediaSnappingBack(false);
+        return;
+      }
+      if (mediaSlideDirection === 0) return;
+      setActiveIndex((index) => index + mediaSlideDirection);
+      setMediaSlideDirection(0);
     }
 
   
@@ -1065,6 +1072,27 @@ const activeItem = useMemo(() => {
   return mediaItems[safeIndex];
 }, [activeIndex, mediaItems]);
 
+const previousMediaIndex = Math.max(activeIndex - 1, 0);
+const nextMediaIndex = Math.min(activeIndex + 1, Math.max(mediaItems.length - 1, 0));
+const visibleMediaIndexes = mediaItems.length > 1
+  ? [previousMediaIndex, activeIndex, nextMediaIndex]
+  : [activeIndex];
+const mediaTrackTransform = mediaSlideDirection === 1
+  ? "translate3d(-200%,0,0)"
+  : mediaSlideDirection === -1
+    ? "translate3d(0,0,0)"
+    : `translate3d(calc(-100% + ${mediaDragX}px),0,0)`;
+
+useEffect(() => {
+  if (mediaItems.length < 2) return;
+  [mediaItems[previousMediaIndex], mediaItems[nextMediaIndex]].forEach((item) => {
+    if (!item || item.kind !== "image") return;
+    const image = new window.Image();
+    image.src = item.url;
+    void image.decode?.().catch(() => undefined);
+  });
+}, [mediaItems, nextMediaIndex, previousMediaIndex]);
+
 useEffect(() => {
   mediaItemsLengthRef.current = mediaItems.length;
 }, [mediaItems.length]);
@@ -1555,12 +1583,10 @@ return (
         <div
           className="relative w-full h-[clamp(300px,35dvh,350px)] md:h-[400px] rounded-[18px] overflow-hidden bg-black cursor-grab active:cursor-grabbing select-none"
           tabIndex={0}
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
           onPointerDown={handleViewerPointerDown}
+          onPointerMove={handleViewerPointerMove}
           onPointerUp={handleViewerPointerUp}
           onPointerCancel={handleViewerPointerCancel}
-          onPointerLeave={handleViewerPointerCancel}
           onKeyDown={(e) => {
             if (e.key === "ArrowLeft") {
               e.preventDefault();
@@ -1586,93 +1612,37 @@ return (
             }
           }}
           onClick={() => {
+            if (suppressMediaClickRef.current) {
+              suppressMediaClickRef.current = false;
+              return;
+            }
             if (activeItem?.kind !== "video") setViewerOpen(true);
           }}
+          style={{ touchAction: "pan-y" }}
         >
-          {activeItem ? (
-            activeItem.kind === "video" ? (
-              <div
-                className="relative w-full h-full"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  showOverlayAndMaybeHide();
-                }}
-              >
-                {showPlay && activeItem.thumb ? (
-                  <img
-                    src={activeItem.thumb}
-                    className="absolute inset-0 w-full h-full object-contain z-[1]"
-                  />
-                ) : null}
-
-                <video
-                  ref={videoRef}
-                  src={activeItem.url}
-                  controls
-                  preload="metadata"
-                  playsInline
-                  poster={activeItem.thumb || undefined}
-                  className="w-full h-full object-contain bg-black"
-                  onPlay={() => {
-                    setShowPlay(false);
-                    showOverlayAndMaybeHide();
-                  }}
-                  onPause={() => {
-                    setShowPlay(true);
-                    setOverlayVisible(true);
-                    clearOverlayTimer();
-                  }}
-                  onEnded={() => {
-                    setShowPlay(true);
-                    setOverlayVisible(true);
-                    clearOverlayTimer();
-                  }}
-                />
-
-                {(overlayVisible || showPlay) && (
-                  <button
-                    className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full
-                               bg-black/40 text-white text-2xl
-                               flex items-center justify-center
-                               border border-white/40 backdrop-blur"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const v = videoRef.current;
-                      if (!v) return;
-
-                      setOverlayVisible(true);
-                      clearOverlayTimer();
-
-                      if (v.paused) {
-                        v.play();
-                        setShowPlay(false);
-                        scheduleHideOverlay(1500);
-                      } else {
-                        v.pause();
-                        setShowPlay(true);
-                      }
-                    }}
-                    aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
-                    title={showPlay ? "Phát" : "Tạm dừng"}
-                  >
-                    {showPlay ? "▶" : "⏸"}
-                  </button>
+          <div
+            className={`flex h-full w-full will-change-transform ${mediaSlideDirection !== 0 || mediaSnappingBack ? "transition-transform duration-300 ease-out" : ""}`}
+            style={{ transform: mediaItems.length > 1 ? mediaTrackTransform : undefined }}
+            onTransitionEnd={() => { if (!viewerOpen) finishMediaSlide(); }}
+          >
+            {visibleMediaIndexes.map((mediaIndex, slot) => {
+              const item = mediaItems[mediaIndex];
+              const isCurrentSlide = mediaItems.length === 1 || slot === 1;
+              return <div key={`${item.kind}-${item.url}-${slot}`} className="relative h-full w-full shrink-0 bg-black">
+                {item.kind === "video" ? isCurrentSlide ? (
+                  <div className="relative w-full h-full" onClick={(e) => { e.stopPropagation(); showOverlayAndMaybeHide(); }}>
+                    {showPlay && item.thumb ? <img src={item.thumb} alt="" className="absolute inset-0 w-full h-full object-contain z-[1]" /> : null}
+                    <video ref={videoRef} src={item.url} controls preload="metadata" playsInline poster={item.thumb || undefined} className="w-full h-full object-contain bg-black" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
+                    {(overlayVisible || showPlay) && <button className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full bg-black/40 text-white text-2xl flex items-center justify-center border border-white/40 backdrop-blur" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button>}
+                  </div>
+                ) : (
+                  <img src={item.thumb || ""} alt="" className="h-full w-full object-contain bg-black" draggable={false} />
+                ) : (
+                  <img src={item.url} alt={room?.room_code || ""} className="w-full h-full object-contain bg-black" loading={isCurrentSlide ? "eager" : "lazy"} fetchPriority={isCurrentSlide ? "high" : "auto"} draggable={false} />
                 )}
-              </div>
-            ) : (
-              <img
-                src={activeItem.url}
-                alt={room?.room_code || ""}
-                className="w-full h-full object-contain bg-black"
-                loading="eager"
-                fetchPriority="high"
-              />
-            )
-          ) : (
-            <div className="flex items-center justify-center text-gray-500 h-full">
-              Chưa có hình ảnh
-            </div>
-          )}
+              </div>;
+            })}
+          </div>
 
           {activeItem?.kind === "image" && (
             <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
@@ -2407,83 +2377,27 @@ return (
   >
     <div
       className="relative flex h-full w-full items-center justify-center select-none cursor-grab active:cursor-grabbing"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
       onPointerDown={handleViewerPointerDown}
+      onPointerMove={handleViewerPointerMove}
       onPointerUp={handleViewerPointerUp}
       onPointerCancel={handleViewerPointerCancel}
-      onPointerLeave={handleViewerPointerCancel}
       onClick={(e) => e.stopPropagation()}
+      style={{ touchAction: "none" }}
     >
-      {activeItem?.kind === "video" ? (
-        <div className="relative h-full w-full">
-          <div
-            className="relative h-full w-full"
-            onClick={(e) => {
-              e.stopPropagation();
-              showOverlayAndMaybeHide();
-            }}
-          >
-            <video
-              ref={videoRef}
-              src={activeItem.url}
-              controls
-              playsInline
-              preload="none"
-              className="h-full w-full object-contain bg-black/40"
-              onPlay={() => {
-                setShowPlay(false);
-                showOverlayAndMaybeHide();
-              }}
-              onPause={() => {
-                setShowPlay(true);
-                setOverlayVisible(true);
-                clearOverlayTimer();
-              }}
-              onEnded={() => {
-                setShowPlay(true);
-                setOverlayVisible(true);
-                clearOverlayTimer();
-              }}
-            />
-
-            {(overlayVisible || showPlay) && (
-              <button
-                className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const v = videoRef.current;
-                  if (!v) return;
-
-                  setOverlayVisible(true);
-                  clearOverlayTimer();
-
-                  if (v.paused) {
-                    v.play();
-                    setShowPlay(false);
-                    scheduleHideOverlay(1500);
-                  } else {
-                    v.pause();
-                    setShowPlay(true);
-                  }
-                }}
-                aria-label={showPlay ? "Phát video" : "Tạm dừng video"}
-                title={showPlay ? "Phát" : "Tạm dừng"}
-              >
-                {showPlay ? "▶" : "⏸"}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <img
-          src={activeItem?.url || ""}
-          alt={room?.title || room?.room_code || ""}
-          className="h-full w-full object-contain select-none pointer-events-none"
-          draggable={false}
-          loading="lazy"
-        />
-      )}
+      <div className={`flex h-full w-full will-change-transform ${mediaSlideDirection !== 0 || mediaSnappingBack ? "transition-transform duration-300 ease-out" : ""}`} style={{ transform: mediaItems.length > 1 ? mediaTrackTransform : undefined }} onTransitionEnd={() => { if (viewerOpen) finishMediaSlide(); }}>
+        {visibleMediaIndexes.map((mediaIndex, slot) => {
+          const item = mediaItems[mediaIndex];
+          const isCurrentSlide = mediaItems.length === 1 || slot === 1;
+          return <div key={`viewer-${item.kind}-${item.url}-${slot}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
+            {item.kind === "video" ? isCurrentSlide ? (
+              <div className="relative h-full w-full" onClick={(e) => { e.stopPropagation(); showOverlayAndMaybeHide(); }}>
+                <video ref={videoRef} src={item.url} controls playsInline preload="none" className="h-full w-full object-contain bg-black/40" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
+                {(overlayVisible || showPlay) && <button className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button>}
+              </div>
+            ) : <img src={item.thumb || ""} alt="" className="h-full w-full object-contain" draggable={false} /> : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
+          </div>;
+        })}
+      </div>
 
       <button
         className="absolute right-4 top-4 z-[2147483647] flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-white/10 text-xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"

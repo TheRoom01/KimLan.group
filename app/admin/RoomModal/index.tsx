@@ -476,9 +476,6 @@ const handleUploadFiles = async (files: File[]) => {
   if (!okFiles.length) return
 
  // ===== VIDEO RULE (FRONTEND) =====
-const MAX_VIDEO_MB = 50
-const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024
-
 const MAX_VIDEOS_PER_ROOM = 2
 const MAX_VIDEO_SECONDS = 240 // < 4 phút
 
@@ -516,12 +513,6 @@ async function assertVideoDuration(file: File) {
   // Validate size/type trước khi upload
 for (const f of okFiles) {
   if (isUploadVideo(f)) {
-    // size (<= 20MB)
-    if (f.size > MAX_VIDEO_BYTES) {
-      alert(`Video quá lớn (>${MAX_VIDEO_MB}MB): ${f.name}`)
-      return
-    }
-
   // duration <= 2 phút
     try {
       await assertVideoDuration(f)

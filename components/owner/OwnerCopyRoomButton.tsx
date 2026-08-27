@@ -59,7 +59,7 @@ export default function OwnerCopyRoomButton({
   return (
     <>
       <button type="button" onClick={handleClick} className={className}>
-        <Copy size={16} /> Copy phòng
+        <Copy size={16} /> Nhân bản phòng
       </button>
       {open && typeof document !== "undefined" ? createPortal(
         <div

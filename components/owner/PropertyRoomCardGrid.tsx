@@ -29,7 +29,13 @@ type PropertyRoom = {
   tenants?: OwnerTenantReference[] | null;
 };
 
-export default function PropertyRoomCardGrid({ rooms }: { rooms: PropertyRoom[] }) {
+export default function PropertyRoomCardGrid({
+  rooms,
+  onRoomClick,
+}: {
+  rooms: PropertyRoom[];
+  onRoomClick?: (room: PropertyRoom) => void;
+}) {
   const router = useRouter();
   const [cardSizes, setCardSizes] = useState<OwnerRoomCardSizes>({});
 
@@ -52,10 +58,12 @@ export default function PropertyRoomCardGrid({ rooms }: { rooms: PropertyRoom[] 
   }, []);
 
   useEffect(() => {
-    rooms.forEach((room) => {
-      router.prefetch(`/owner/rooms/${room.id}`);
-    });
-  }, [rooms, router]);
+    if (!onRoomClick) {
+      rooms.forEach((room) => {
+        router.prefetch(`/owner/rooms/${room.id}`);
+      });
+    }
+  }, [onRoomClick, rooms, router]);
 
   return (
     <div className="mt-5 flex flex-wrap items-start gap-2.5">
@@ -75,7 +83,14 @@ export default function PropertyRoomCardGrid({ rooms }: { rooms: PropertyRoom[] 
               width={size.width}
               height={size.height}
               showDragHandle={false}
-              onToggle={() => { showOwnerNavigationSkeleton(); router.push(`/owner/rooms/${room.id}`); }}
+              onToggle={() => {
+                if (onRoomClick) {
+                  onRoomClick(room);
+                  return;
+                }
+                showOwnerNavigationSkeleton();
+                router.push(`/owner/rooms/${room.id}`);
+              }}
               onResize={() => undefined}
               onResizeEnd={() => undefined}
               onResizeDone={() => undefined}

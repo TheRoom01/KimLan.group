@@ -17,9 +17,11 @@ import {
 } from "lucide-react";
 
 import PropertyImageCarousel from "@/components/owner/PropertyImageCarousel";
+import PropertyContactActions from "@/components/owner/PropertyContactActions";
 import PropertyInvitationsPanel from "@/components/owner/PropertyInvitationsPanel";
 import PropertyRoomCandidates from "@/components/owner/PropertyRoomCandidates";
 import PropertyRoomCardGrid from "@/components/owner/PropertyRoomCardGrid";
+import ScrollChainArea from "@/components/owner/ScrollChainArea";
 import OwnerCopyRoomButton from "@/components/owner/OwnerCopyRoomButton";
 import SalesPortalManager from "@/components/owner/SalesPortalManager";
 import PropertyMembersPanel, {
@@ -198,30 +200,26 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
           ) : null}
         </div>
 
-        <aside className="flex min-h-0 min-w-0 max-w-full flex-col p-5 sm:p-6">
-          <h2 className="text-lg font-bold">Thông tin liên hệ</h2>
-          <div className="mt-4 max-h-[300px] space-y-2 overflow-y-auto overscroll-y-auto touch-pan-y pr-2 text-sm text-[#674b34] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
-            {phones.length ? phones.map((phone) => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-3 rounded-xl px-1 py-1.5 transition hover:bg-[#f8ead7] hover:text-[#744722]"><ContactIcon><Phone size={16} /></ContactIcon><span>{phone}</span></a>) : <ContactRow icon={<Phone size={16} />} text="Chưa cập nhật số điện thoại" />}
-            {accountUser.contact_email || ownerMember?.email ? <a href={`mailto:${accountUser.contact_email || ownerMember?.email}`} className="flex items-center gap-3 break-all hover:text-[#744722]"><ContactIcon><Mail size={16} /></ContactIcon><span>{accountUser.contact_email || ownerMember?.email}</span></a> : null}
-            {defaults.link_zalo ? <a href={normalizeExternalUrl(String(defaults.link_zalo))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-xl px-1 py-1.5 font-semibold text-[#744722] transition hover:bg-[#f8ead7]"><ContactIcon><ExternalLink size={16} /></ContactIcon><span className="break-all">Nhóm Zalo</span></a> : <ContactRow icon={<ExternalLink size={16} />} text="Chưa cập nhật link Zalo" />}
-            {ownerMembers.map((member, index) => <div key={member.id || index} className="rounded-xl bg-[#f8ead7]/60 px-3 py-2"><p className="text-xs text-[#9a7758]">Chủ tòa nhà {ownerMembers.length > 1 ? index + 1 : ""}</p><p className="mt-0.5 font-semibold text-[#4d3422]">{member.display_name || member.email || "Chưa cập nhật tên"}</p></div>)}
+        <aside className="min-h-0 min-w-0 max-w-full p-5 sm:p-6">
+          <div className="lg:hidden">
+            <PropertyContactActions
+              phones={phones}
+              email={accountUser.contact_email || ownerMember?.email}
+              zaloUrl={defaults.link_zalo ? normalizeExternalUrl(String(defaults.link_zalo)) : null}
+              owners={ownerMembers}
+            />
+          </div>
+          <div className="hidden min-h-0 flex-col lg:flex">
+            <h2 className="text-lg font-bold">Thông tin liên hệ</h2>
+            <div className="mt-4 max-h-[300px] space-y-2 overflow-y-auto overscroll-y-auto touch-pan-y pr-2 text-sm text-[#674b34] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
+              {phones.length ? phones.map((phone) => <a key={phone} href={`tel:${phone}`} className="flex items-center gap-3 rounded-xl px-1 py-1.5 transition hover:bg-[#f8ead7] hover:text-[#744722]"><ContactIcon><Phone size={16} /></ContactIcon><span>{phone}</span></a>) : <ContactRow icon={<Phone size={16} />} text="Chưa cập nhật số điện thoại" />}
+              {accountUser.contact_email || ownerMember?.email ? <a href={`mailto:${accountUser.contact_email || ownerMember?.email}`} className="flex items-center gap-3 rounded-xl px-1 py-1.5 break-all transition hover:bg-[#f8ead7] hover:text-[#744722]"><ContactIcon><Mail size={16} /></ContactIcon><span>{accountUser.contact_email || ownerMember?.email}</span></a> : null}
+              {ownerMembers.map((member, index) => <div key={member.id || index} className="rounded-xl bg-[#f8ead7]/60 px-3 py-2"><p className="text-xs text-[#9a7758]">Chủ tòa nhà {ownerMembers.length > 1 ? index + 1 : ""}</p><p className="mt-0.5 font-semibold text-[#4d3422]">{member.display_name || member.email || "Chưa cập nhật tên"}</p></div>)}
+            </div>
+            {defaults.link_zalo ? <a href={normalizeExternalUrl(String(defaults.link_zalo))} target="_blank" rel="noopener noreferrer" className="mt-3 flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[#9a704b]/40 bg-[#fffdf8] px-3 text-sm font-bold text-[#684324] transition hover:bg-[#f3e1c9]"><ExternalLink size={17} /><span>Nhóm Zalo</span></a> : null}
           </div>
         </aside>
       </section>
-
-      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)]">
-        <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
-          <h2 className="text-lg font-bold">Tiện ích</h2>
-          {amenities.length ? <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-3">{amenities.map(([key, label, Icon]) => <div key={key} className="flex items-center gap-3 rounded-xl bg-[#f8ead7] px-3 py-3 text-sm font-semibold text-[#65472f]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff9ef] text-[#744722]"><Icon size={17} /></span>{label}</div>)}</div> : <p className="mt-3 text-sm text-[#80634a]">Chưa cập nhật tiện ích chung.</p>}
-          {roomDetails.other_amenities ? <p className="mt-4 text-sm leading-6 text-[#80634a]">{roomDetails.other_amenities}</p> : null}
-        </section>
-        <section className="flex max-h-[275px] min-h-[180px] flex-col rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
-          <h2 className="shrink-0 text-lg font-bold">Chính sách</h2>
-          <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-y-auto touch-pan-y whitespace-pre-line pr-2 text-sm leading-7 text-[#6f5239] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
-            {defaults.chinh_sach || "Chưa cập nhật chính sách của tòa nhà."}
-          </div>
-        </section>
-      </div>
 
       <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -233,28 +231,45 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
         ) : <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 p-6 text-sm text-[#80634a]">Chưa có phòng trong tòa nhà này.</div>}
       </section>
 
+      <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.75fr)]">
+        <section className="flex max-h-[275px] min-h-[180px] flex-col rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
+          <h2 className="shrink-0 text-lg font-bold">Tiện ích</h2>
+          <ScrollChainArea className="mt-3 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-auto pr-2 [-webkit-overflow-scrolling:touch] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
+            {amenities.length ? <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">{amenities.map(([key, label, Icon]) => <div key={key} className="flex items-center gap-3 rounded-xl bg-[#f8ead7] px-3 py-3 text-sm font-semibold text-[#65472f]"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#fff9ef] text-[#744722]"><Icon size={17} /></span>{label}</div>)}</div> : <p className="text-sm text-[#80634a]">Chưa cập nhật tiện ích chung.</p>}
+            {roomDetails.other_amenities ? <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-[#80634a]">{roomDetails.other_amenities}</p> : null}
+          </ScrollChainArea>
+        </section>
+        <section className="flex max-h-[275px] min-h-[180px] flex-col rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-5 shadow-[0_10px_25px_rgba(92,61,34,0.06)]">
+          <h2 className="shrink-0 text-lg font-bold">Chính sách</h2>
+          <ScrollChainArea className="mt-3 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-auto whitespace-pre-line pr-2 text-sm leading-7 text-[#6f5239] [-webkit-overflow-scrolling:touch] [scrollbar-color:#b58f69_transparent] [scrollbar-width:thin]">
+            {defaults.chinh_sach || "Chưa cập nhật chính sách của tòa nhà."}
+          </ScrollChainArea>
+        </section>
+      </div>
+
       {canManage ? (
         <SalesPortalManager
           propertyId={property.id}
-          rooms={rooms.map((room) => ({
-            id: room.id,
-            room_code: room.room_code,
-            room_type: room.room_type,
-          }))}
+          rooms={rooms}
           initialNotes={initialSalesNotes}
+          documentColumnAfter={
+            <PropertyMembersPanel propertyId={property.id} currentUserId={user?.id} initialMembers={members} isOwner={isOwner} />
+          }
+          sharingColumnAfter={
+            canManage ? <PropertyInvitationsPanel propertyId={property.id} /> : null
+          }
         />
       ) : null}
 
       <PropertyRoomCandidates propertyId={property.id} isOwner={isOwner} />
-      <PropertyMembersPanel propertyId={property.id} currentUserId={user?.id} initialMembers={members} isOwner={isOwner} />
-      {canManage ? <PropertyInvitationsPanel propertyId={property.id} /> : null}
+      {!canManage ? <PropertyMembersPanel propertyId={property.id} currentUserId={user?.id} initialMembers={members} isOwner={isOwner} /> : null}
     </div>
   );
 }
 
+function Legend({ color, label }: { color: string; label: string }) { return <span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${color}`} />{label}</span>; }
 function ContactIcon({ children }: { children: React.ReactNode }) { return <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f8ead7] text-[#744722]">{children}</span>; }
 function ContactRow({ icon, text }: { icon: React.ReactNode; text: string }) { return <div className="flex items-center gap-3"><ContactIcon>{icon}</ContactIcon><span>{text}</span></div>; }
-function Legend({ color, label }: { color: string; label: string }) { return <span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${color}`} />{label}</span>; }
 
 function StatCard({ title, value, color = "text-[#4d3422]" }: { title: string; value: number; color?: string }) {
   return <div className="rounded-2xl bg-[#f8ead7] p-3 text-center"><p className={`text-xl font-bold ${color}`}>{value}</p><p className="mt-1 text-xs text-[#80634a]">{title}</p></div>;

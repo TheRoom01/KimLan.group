@@ -25,7 +25,7 @@ type PresignResult = {
 };
 
 const MAX_BYTES = 10 * 1024 * 1024;
-const INPUT = "w-full rounded-xl border border-[#aa825d]/30 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#744722]";
+const INPUT = "w-full rounded-xl !border !border-[#9a704b]/45 !bg-white px-3 py-2.5 text-sm text-[#432918] shadow-[inset_0_0_0_1px_rgba(154,112,75,0.04)] outline-none placeholder:text-[#a28368] focus:!border-[#744722] focus:!ring-2 focus:!ring-[#aa825d]/20";
 
 export default function TenantProfileEditor({ tenant, roomId }: { tenant: Tenant; roomId?: string | null }) {
   const router = useRouter();

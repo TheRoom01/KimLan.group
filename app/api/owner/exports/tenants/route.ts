@@ -7,7 +7,7 @@ export async function GET() {
   const tenants = (await getOwnerTenants()) as TenantCardData[];
   return csvResponse(
     `khach-hang-${new Date().toISOString().slice(0, 10)}.csv`,
-    ["Họ tên", "Số điện thoại", "CCCD", "Vai trò", "Tòa nhà", "Phòng", "Giá thuê/tháng", "Số hợp đồng"],
+    ["Họ tên", "Số điện thoại", "CCCD", "Vai trò", "Tòa nhà", "Phòng", "Giá thuê/tháng", "Loại hợp đồng"],
     tenants.flatMap((item) => item.tenant ? [[
       item.tenant.full_name,
       item.tenant.phone,
@@ -16,7 +16,7 @@ export async function GET() {
       propertyDisplayAddress(item.active_contract?.property),
       item.active_contract?.room?.room_code,
       item.active_contract?.monthly_price,
-      item.contracts_count ?? 0,
+      item.active_contract?.contract_type === "deposit" ? "HĐ đặt cọc" : item.active_contract?.contract_type === "lease" ? "HĐ thuê" : "",
     ]] : []),
   );
 }

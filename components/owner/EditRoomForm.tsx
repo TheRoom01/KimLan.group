@@ -512,7 +512,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
         <Field
           label="Thêm ảnh/video"
           htmlFor="media_files"
-          hint="Media hiện có được giữ nguyên. Ảnh tối đa 15 MB; video tối đa 50 MB."
+          hint="Media hiện có được giữ nguyên. Ảnh tối đa 15 MB; video không giới hạn dung lượng."
         >
           <input
             id="media_files"

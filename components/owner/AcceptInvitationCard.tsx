@@ -51,10 +51,10 @@ export default function AcceptInvitationCard({ token }: { token: string }) {
 
   return (
     <div className="rounded-2xl border bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-bold">Lời mời quản lý tòa nhà</h1>
+      <h1 className="text-2xl font-bold">Lời mời tham gia tòa nhà</h1>
       <p className="mt-3 text-gray-600">
-        Khi chấp nhận, tài khoản đang đăng nhập sẽ được thêm làm manager. Email
-        hoặc số điện thoại của tài khoản phải trùng với thông tin trên lời mời.
+        Khi chấp nhận, tài khoản đang đăng nhập sẽ được thêm theo vai trò ghi trong
+        lời mời. Email hoặc số điện thoại của tài khoản phải trùng với thông tin trên lời mời.
       </p>
 
       {error ? (

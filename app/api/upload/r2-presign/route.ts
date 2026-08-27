@@ -149,17 +149,6 @@ export async function POST(request: Request) {
       }
     }
 
-    if (isVideo) {
-      const maxVideoBytes = 50 * 1024 * 1024;
-
-      if (size > maxVideoBytes) {
-        return NextResponse.json(
-          { error: "Video quá lớn. Giới hạn 50MB" },
-          { status: 400 },
-        );
-      }
-    }
-
     const allowFixedThumb = !isVideo && fixedName === "thumb.webp";
 
     if (allowFixedThumb && contentType !== "image/webp") {

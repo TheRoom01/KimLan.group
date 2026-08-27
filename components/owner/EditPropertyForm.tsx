@@ -27,6 +27,7 @@ type EditableProperty = {
   default_room_data?: Record<string, any> | null;
   note?: string | null;
   approval_status?: string | null;
+  updated_at?: string | null;
 };
 
 const INPUT_CLASS =
@@ -102,8 +103,11 @@ export default function EditPropertyForm({
       const uploaded: string[] = [];
       for (const file of files) {
         const isVideo = file.type.startsWith("video/");
-        if ((!file.type.startsWith("image/") && !isVideo) || file.size > (isVideo ? 50 : 10) * 1024 * 1024) {
-          throw new Error("Ảnh tối đa 10 MB, video tối đa 50 MB.");
+        if (!file.type.startsWith("image/") && !isVideo) {
+          throw new Error("Chỉ hỗ trợ file ảnh hoặc video.");
+        }
+        if (!isVideo && file.size > 10 * 1024 * 1024) {
+          throw new Error("Ảnh tối đa 10 MB.");
         }
         uploaded.push(await uploadFile(file, property.id));
       }

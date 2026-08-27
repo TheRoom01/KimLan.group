@@ -6,7 +6,7 @@ import {
   mapUnknownError,
 } from "@/lib/api/response";
 import { parseUuid, readJsonObject } from "@/lib/api/validation";
-import { parseInvitePropertyManagerInput } from "@/lib/owner/validation";
+import { parseInvitePropertyMemberInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function getRequestContext(rawPropertyId: string) {
@@ -74,12 +74,13 @@ export async function POST(
     }
 
     const body = await readJsonObject(request);
-    const input = parseInvitePropertyManagerInput(body);
+    const input = parseInvitePropertyMemberInput(body);
 
     const { data, error } = await supabase.rpc(
-      "invite_owner_property_manager_v1",
+      "invite_owner_property_member_v2",
       {
         p_property_id: propertyId,
+        p_role: input.role,
         p_email: input.email,
         p_phone: input.phone,
         p_invitee_name: input.invitee_name,
