@@ -3,6 +3,7 @@
 import { DragEvent, useEffect, useState } from "react";
 import { GripVertical, ImageIcon, Save, Trash2 } from "lucide-react";
 import { readApiResponse } from "@/lib/api/client";
+import { useSwipeCarousel } from "@/components/media/useSwipeCarousel";
 
 type RoomMedia = {
   id: string;
@@ -39,20 +40,12 @@ export default function RoomMediaGallery({
   const [warning, setWarning] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(media?.[0]?.id ?? null);
   const [fullscreen, setFullscreen] = useState(false);
-  const [fullscreenIndex, setFullscreenIndex] = useState(0);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   useEffect(() => {
     setItems(media ?? []);
     setActiveId(media?.[0]?.id ?? null);
     setOrderDirty(false);
   }, [media]);
-
-  function changePreview(direction: number) {
-    const currentIndex = items.findIndex((item) => item.id === activeItem.id);
-    const nextIndex = (currentIndex + direction + items.length) % items.length;
-    setActiveId(items[nextIndex].id);
-  }
 
   function moveItem(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
@@ -161,6 +154,10 @@ export default function RoomMediaGallery({
     }
   }
 
+  const activeIndex = Math.max(0, items.findIndex((item) => item.id === activeId));
+  const activeItem = items[activeIndex] as RoomMedia;
+  const swipe = useSwipeCarousel({ count: items.length, index: activeIndex, onIndexChange: (nextIndex) => setActiveId(items[nextIndex]?.id ?? null), loop: true });
+
   if (items.length === 0) {
     return (
       <div className="rounded-[22px] border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-6 text-sm text-[#80634a]">
@@ -168,8 +165,6 @@ export default function RoomMediaGallery({
       </div>
     );
   }
-
-  const activeItem = items.find((item) => item.id === activeId) ?? items[0];
 
   return (
     <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_14px_35px_rgba(92,61,34,0.08)] sm:p-6">
@@ -209,20 +204,16 @@ export default function RoomMediaGallery({
         </div>
       ) : null}
 
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#2b1a10]" onTouchStart={(event) => setTouchStartX(event.touches[0].clientX)} onTouchEnd={(event) => {
-        if (touchStartX === null) return;
-        const diff = touchStartX - event.changedTouches[0].clientX;
-        if (diff > 50) changePreview(1);
-        if (diff < -50) changePreview(-1);
-        setTouchStartX(null);
-      }}>
-        {activeItem.type === "video" ? (
-          <video src={activeItem.url} controls preload="metadata" className="aspect-[4/3] max-h-[360px] w-full object-contain" />
-        ) : (
-          <button type="button" onClick={() => { setFullscreenIndex(items.findIndex((media) => media.id === activeItem.id)); setFullscreen(true); }} className="block w-full">
-            <img src={activeItem.url} alt="Media phòng đang xem" className="aspect-[4/3] max-h-[360px] w-full object-contain" />
-          </button>
-        )}
+      <div className="min-w-0 touch-pan-y overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#2b1a10]" {...swipe.bind}>
+        <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (!fullscreen) swipe.onTransitionEnd(); }}>
+          {swipe.visibleIndexes.map((mediaIndex, slot) => {
+            const item = items[mediaIndex];
+            const isCurrent = items.length === 1 || slot === 1;
+            return <div key={`${item.id}-${slot}`} className="flex aspect-[4/3] max-h-[360px] w-full shrink-0 items-center justify-center bg-[#2b1a10]">
+              {item.type === "video" ? <video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="h-full w-full object-contain" /> : <div role="button" tabIndex={isCurrent ? 0 : -1} aria-label="Xem media toàn màn hình" onClick={() => { if (!swipe.consumeClickSuppression()) setFullscreen(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setFullscreen(true); } }} className="block h-full w-full cursor-zoom-in"><img src={item.url} alt="Media phòng đang xem" draggable={false} className="h-full w-full object-contain" /></div>}
+            </div>;
+          })}
+        </div>
       </div>
 
       <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-2 touch-pan-x">
@@ -233,7 +224,7 @@ export default function RoomMediaGallery({
             onDragStart={() => canManage && setDraggedId(item.id)}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => canManage && handleDrop(event, item.id)}
-            onClick={() => setActiveId(item.id)}
+            onClick={() => swipe.jumpTo(index)}
             className={`relative w-24 shrink-0 snap-start overflow-hidden rounded-xl border-2 bg-[#f8ead7] transition ${
               draggedId === item.id
                 ? "border-[#744722] opacity-60"
@@ -293,19 +284,15 @@ export default function RoomMediaGallery({
           </article>
         ))}
       </div>
-      {fullscreen ? <div className="fixed inset-0 z-[200] bg-black/95 p-4" onClick={() => setFullscreen(false)}>
-  <div className="flex h-full snap-x snap-mandatory overflow-x-auto touch-pan-x" style={{ scrollSnapType: "x mandatory" }}>
-    {items.map((item, index) => (
-      item.type === "image" ? (
-        <div key={item.id} className="flex h-full w-full shrink-0 snap-center items-center justify-center">
-          <img src={item.url} alt={`Ảnh ${index + 1}`} className="max-h-full max-w-full object-contain" />
-        </div>
-      ) : (
-        <div key={item.id} className="flex h-full w-full shrink-0 snap-center items-center justify-center">
-          <video src={item.url} controls className="max-h-full max-w-full" />
-        </div>
-      )
-    ))}
+      {fullscreen ? <div className="fixed inset-0 z-[200] overflow-hidden bg-black/95 p-4" onClick={() => setFullscreen(false)} {...swipe.bind}>
+  <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (fullscreen) swipe.onTransitionEnd(); }} onClick={(event) => event.stopPropagation()}>
+    {swipe.visibleIndexes.map((mediaIndex, slot) => {
+      const item = items[mediaIndex];
+      const isCurrent = items.length === 1 || slot === 1;
+      return <div key={`fullscreen-${item.id}-${slot}`} className="flex h-full w-full shrink-0 items-center justify-center">
+        {item.type === "image" ? <img src={item.url} alt={`Ảnh ${mediaIndex + 1}`} draggable={false} className="max-h-full max-w-full object-contain" /> : <video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="max-h-full max-w-full" />}
+      </div>;
+    })}
   </div>
 
   <button type="button" onClick={(event) => { event.stopPropagation(); setFullscreen(false); }} className="absolute right-4 top-4 rounded-full bg-white/20 px-4 py-2 text-white">

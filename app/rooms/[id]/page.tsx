@@ -14,6 +14,7 @@ import {
 import { formatVietnameseWard } from "@/lib/formatWard";
 import { extractContactPhones } from "@/lib/contactPhones";
 import { loadRoomDetailFast } from "@/lib/roomDetailPrefetch";
+import { useSwipeCarousel } from "@/components/media/useSwipeCarousel";
 
 /* ================= Utils ================= */
 
@@ -299,9 +300,6 @@ export default function RoomDetailPage() {
   
   const [room, setRoom] = useState<any>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [mediaDragX, setMediaDragX] = useState(0);
-  const [mediaSlideDirection, setMediaSlideDirection] = useState<-1 | 0 | 1>(0);
-  const [mediaSnappingBack, setMediaSnappingBack] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [phoneModal, setPhoneModal] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
@@ -357,39 +355,6 @@ const canSeePrivateFields =
       };
     }, []);
 
-        useEffect(() => {
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (viewerOpen) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setViewerOpen(false);
-        return;
-      }
-
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        goPrevMedia();
-        return;
-      }
-
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        goNextMedia();
-        return;
-      }
-
-      return;
-    }
-
-    if (e.key === "Escape") {
-      handleCloseModal();
-    }
-  };
-
-  window.addEventListener("keydown", onKeyDown);
-  return () => window.removeEventListener("keydown", onKeyDown);
-}, [handleCloseModal, viewerOpen, goPrevMedia, goNextMedia]);
-
   function scheduleHideOverlay(ms = 1500) {
     clearOverlayTimer()
     overlayTimerRef.current = window.setTimeout(() => {
@@ -414,100 +379,6 @@ const canSeePrivateFields =
   
   const [downloadingImages, setDownloadingImages] = useState(false);
   const [downloadImagesMessage, setDownloadImagesMessage] = useState<string | null>(null);
-  const mediaItemsLengthRef = useRef(0);
-  const mediaDragRef = useRef<{ id: number; startX: number; startY: number; lastX: number; lastAt: number; velocity: number } | null>(null);
-  const suppressMediaClickRef = useRef(false);
-
-    function moveMedia(direction: -1 | 1) {
-      const count = mediaItemsLengthRef.current;
-      const targetIndex = activeIndex + direction;
-      if (count < 2 || targetIndex < 0 || targetIndex >= count || mediaSlideDirection !== 0 || mediaSnappingBack) return;
-      setMediaDragX(0);
-      setMediaSlideDirection(direction);
-    }
-
-    function goPrevMedia() {
-      moveMedia(-1);
-    }
-
-    function goNextMedia() {
-      moveMedia(1);
-    }
-
-    function handleViewerPointerDown(e: any) {
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      if ((e.target as HTMLElement)?.closest?.("button")) return;
-      if (mediaItemsLengthRef.current < 2 || mediaSlideDirection !== 0 || mediaSnappingBack) return;
-
-      mediaDragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastAt: performance.now(), velocity: 0 };
-      suppressMediaClickRef.current = false;
-      showMediaControlsTemporarily();
-
-      try {
-        e.currentTarget.setPointerCapture?.(e.pointerId);
-      } catch {}
-    }
-
-    function handleViewerPointerMove(e: any) {
-      const drag = mediaDragRef.current;
-      if (!drag || drag.id !== e.pointerId || mediaSlideDirection !== 0) return;
-      const dx = e.clientX - drag.startX;
-      const dy = e.clientY - drag.startY;
-      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) return;
-      const now = performance.now();
-      drag.velocity = (e.clientX - drag.lastX) / Math.max(1, now - drag.lastAt);
-      drag.lastX = e.clientX;
-      drag.lastAt = now;
-      if (Math.abs(dx) > 5) suppressMediaClickRef.current = true;
-      const atStart = activeIndex === 0 && dx > 0;
-      const atEnd = activeIndex === mediaItemsLengthRef.current - 1 && dx < 0;
-      setMediaDragX(atStart || atEnd ? dx * 0.22 : dx);
-    }
-
-    function handleViewerPointerUp(e: any) {
-      const drag = mediaDragRef.current;
-      if (!drag || drag.id !== e.pointerId) return;
-      const dx = drag.lastX - drag.startX;
-      const dy = e.clientY - drag.startY;
-      const direction: -1 | 1 = dx < 0 ? 1 : -1;
-      const targetIndex = activeIndex + direction;
-      const canMove = targetIndex >= 0 && targetIndex < mediaItemsLengthRef.current;
-      const shouldMove = canMove && Math.abs(dx) > Math.abs(dy) && (Math.abs(dx) > 45 || Math.abs(drag.velocity) > 0.35);
-      mediaDragRef.current = null;
-
-      try {
-        e.currentTarget.releasePointerCapture?.(e.pointerId);
-      } catch {}
-      if (shouldMove) moveMedia(direction);
-      else if (Math.abs(dx) > 0.5) {
-        setMediaSnappingBack(true);
-        setMediaDragX(0);
-      } else {
-        setMediaDragX(0);
-      }
-    }
-
-    function handleViewerPointerCancel(e?: any) {
-      mediaDragRef.current = null;
-      setMediaSnappingBack(suppressMediaClickRef.current);
-      setMediaDragX(0);
-
-      try {
-        if (e?.currentTarget?.releasePointerCapture && e?.pointerId != null) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      } catch {}
-    }
-
-    function finishMediaSlide() {
-      if (mediaSnappingBack) {
-        setMediaSnappingBack(false);
-        return;
-      }
-      if (mediaSlideDirection === 0) return;
-      setActiveIndex((index) => index + mediaSlideDirection);
-      setMediaSlideDirection(0);
-    }
 
   
 //=========== Màu modal chi tiết =========//
@@ -1074,14 +945,19 @@ const activeItem = useMemo(() => {
 
 const previousMediaIndex = Math.max(activeIndex - 1, 0);
 const nextMediaIndex = Math.min(activeIndex + 1, Math.max(mediaItems.length - 1, 0));
-const visibleMediaIndexes = mediaItems.length > 1
-  ? [previousMediaIndex, activeIndex, nextMediaIndex]
-  : [activeIndex];
-const mediaTrackTransform = mediaSlideDirection === 1
-  ? "translate3d(-200%,0,0)"
-  : mediaSlideDirection === -1
-    ? "translate3d(0,0,0)"
-    : `translate3d(calc(-100% + ${mediaDragX}px),0,0)`;
+const mediaSwipe = useSwipeCarousel({
+  count: mediaItems.length,
+  index: activeIndex,
+  onIndexChange: setActiveIndex,
+  loop: false,
+  onInteraction: () => {
+    videoRef.current?.pause();
+    showMediaControlsTemporarily();
+  },
+});
+
+function goPrevMedia() { mediaSwipe.move(-1); }
+function goNextMedia() { mediaSwipe.move(1); }
 
 useEffect(() => {
   if (mediaItems.length < 2) return;
@@ -1094,12 +970,18 @@ useEffect(() => {
 }, [mediaItems, nextMediaIndex, previousMediaIndex]);
 
 useEffect(() => {
-  mediaItemsLengthRef.current = mediaItems.length;
-}, [mediaItems.length]);
-
-useEffect(() => {
-  mediaItemsLengthRef.current = mediaItems.length;
-}, [mediaItems.length]);
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (viewerOpen) {
+      if (event.key === "Escape") { event.preventDefault(); setViewerOpen(false); }
+      else if (event.key === "ArrowLeft") { event.preventDefault(); mediaSwipe.move(-1); }
+      else if (event.key === "ArrowRight") { event.preventDefault(); mediaSwipe.move(1); }
+      return;
+    }
+    if (event.key === "Escape") handleCloseModal();
+  };
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
+}, [handleCloseModal, mediaSwipe.move, viewerOpen]);
 
 // ===== RENDER GUARD =====
 
@@ -1583,10 +1465,7 @@ return (
         <div
           className="relative w-full h-[clamp(300px,35dvh,350px)] md:h-[400px] rounded-[18px] overflow-hidden bg-black cursor-grab active:cursor-grabbing select-none"
           tabIndex={0}
-          onPointerDown={handleViewerPointerDown}
-          onPointerMove={handleViewerPointerMove}
-          onPointerUp={handleViewerPointerUp}
-          onPointerCancel={handleViewerPointerCancel}
+          {...mediaSwipe.bind}
           onKeyDown={(e) => {
             if (e.key === "ArrowLeft") {
               e.preventDefault();
@@ -1612,27 +1491,24 @@ return (
             }
           }}
           onClick={() => {
-            if (suppressMediaClickRef.current) {
-              suppressMediaClickRef.current = false;
-              return;
-            }
+            if (mediaSwipe.consumeClickSuppression()) return;
             if (activeItem?.kind !== "video") setViewerOpen(true);
           }}
           style={{ touchAction: "pan-y" }}
         >
           <div
-            className={`flex h-full w-full will-change-transform ${mediaSlideDirection !== 0 || mediaSnappingBack ? "transition-transform duration-300 ease-out" : ""}`}
-            style={{ transform: mediaItems.length > 1 ? mediaTrackTransform : undefined }}
-            onTransitionEnd={() => { if (!viewerOpen) finishMediaSlide(); }}
+            className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`}
+            style={{ transform: mediaSwipe.transform }}
+            onTransitionEnd={() => { if (!viewerOpen) mediaSwipe.onTransitionEnd(); }}
           >
-            {visibleMediaIndexes.map((mediaIndex, slot) => {
+            {mediaSwipe.visibleIndexes.map((mediaIndex, slot) => {
               const item = mediaItems[mediaIndex];
               const isCurrentSlide = mediaItems.length === 1 || slot === 1;
               return <div key={`${item.kind}-${item.url}-${slot}`} className="relative h-full w-full shrink-0 bg-black">
                 {item.kind === "video" ? isCurrentSlide ? (
                   <div className="relative w-full h-full" onClick={(e) => { e.stopPropagation(); showOverlayAndMaybeHide(); }}>
                     {showPlay && item.thumb ? <img src={item.thumb} alt="" className="absolute inset-0 w-full h-full object-contain z-[1]" /> : null}
-                    <video ref={videoRef} src={item.url} controls preload="metadata" playsInline poster={item.thumb || undefined} className="w-full h-full object-contain bg-black" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
+                    <video ref={videoRef} src={item.url} controls preload="metadata" playsInline poster={item.thumb || undefined} data-swipe-ignore="true" className="w-full h-full object-contain bg-black" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
                     {(overlayVisible || showPlay) && <button className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full bg-black/40 text-white text-2xl flex items-center justify-center border border-white/40 backdrop-blur" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button>}
                   </div>
                 ) : (
@@ -1659,7 +1535,7 @@ return (
               className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
               onClick={(e) => {
                 e.stopPropagation();
-                setActiveIndex((i) => i - 1);
+                mediaSwipe.move(-1);
               }}
             >
               ‹
@@ -1671,7 +1547,7 @@ return (
               className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
               onClick={(e) => {
                 e.stopPropagation();
-                setActiveIndex((i) => i + 1);
+                mediaSwipe.move(1);
               }}
             >
               ›
@@ -1709,7 +1585,7 @@ return (
                   ? "border-[#D7B08A] ring-2 ring-[#D7B08A]"
                   : "border-white/25",
               ].join(" ")}
-              onClick={() => setActiveIndex(idx)}
+              onClick={() => mediaSwipe.jumpTo(idx)}
               aria-label={`Xem ${it.kind === "video" ? "video" : "ảnh"} ${idx + 1}`}
             >
               {it.kind === "video" ? (
@@ -2377,21 +2253,18 @@ return (
   >
     <div
       className="relative flex h-full w-full items-center justify-center select-none cursor-grab active:cursor-grabbing"
-      onPointerDown={handleViewerPointerDown}
-      onPointerMove={handleViewerPointerMove}
-      onPointerUp={handleViewerPointerUp}
-      onPointerCancel={handleViewerPointerCancel}
+      {...mediaSwipe.bind}
       onClick={(e) => e.stopPropagation()}
       style={{ touchAction: "none" }}
     >
-      <div className={`flex h-full w-full will-change-transform ${mediaSlideDirection !== 0 || mediaSnappingBack ? "transition-transform duration-300 ease-out" : ""}`} style={{ transform: mediaItems.length > 1 ? mediaTrackTransform : undefined }} onTransitionEnd={() => { if (viewerOpen) finishMediaSlide(); }}>
-        {visibleMediaIndexes.map((mediaIndex, slot) => {
+      <div className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: mediaSwipe.transform }} onTransitionEnd={() => { if (viewerOpen) mediaSwipe.onTransitionEnd(); }}>
+        {mediaSwipe.visibleIndexes.map((mediaIndex, slot) => {
           const item = mediaItems[mediaIndex];
           const isCurrentSlide = mediaItems.length === 1 || slot === 1;
           return <div key={`viewer-${item.kind}-${item.url}-${slot}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
             {item.kind === "video" ? isCurrentSlide ? (
               <div className="relative h-full w-full" onClick={(e) => { e.stopPropagation(); showOverlayAndMaybeHide(); }}>
-                <video ref={videoRef} src={item.url} controls playsInline preload="none" className="h-full w-full object-contain bg-black/40" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
+                <video ref={videoRef} src={item.url} controls playsInline preload="none" data-swipe-ignore="true" className="h-full w-full object-contain bg-black/40" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
                 {(overlayVisible || showPlay) && <button className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button>}
               </div>
             ) : <img src={item.thumb || ""} alt="" className="h-full w-full object-contain" draggable={false} /> : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
