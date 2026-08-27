@@ -15,6 +15,7 @@ import { formatVietnameseWard } from "@/lib/formatWard";
 import { extractContactPhones } from "@/lib/contactPhones";
 import { loadRoomDetailFast } from "@/lib/roomDetailPrefetch";
 import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarousel";
+import RoomMediaVideo from "@/components/media/RoomMediaVideo";
 
 /* ================= Utils ================= */
 
@@ -319,20 +320,9 @@ const canSeePrivateFields =
     roomOwnerId === currentUserIdValue
   );
   
-  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const normalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const fullscreenVideoRef = useRef<HTMLVideoElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [showPlay, setShowPlay] = useState(true)
-
-  // overlay (nút giữa) auto-hide khi đang play
-  const [overlayVisible, setOverlayVisible] = useState(true)
-  const overlayTimerRef = useRef<number | null>(null)
-
-  function clearOverlayTimer() {
-    if (overlayTimerRef.current) {
-      window.clearTimeout(overlayTimerRef.current)
-      overlayTimerRef.current = null
-    }
-  }
 
   const router = useRouter();
 
@@ -353,24 +343,6 @@ const canSeePrivateFields =
         document.body.style.overflow = prevOverflow;
       };
     }, []);
-
-  function scheduleHideOverlay(ms = 1500) {
-    clearOverlayTimer()
-    overlayTimerRef.current = window.setTimeout(() => {
-      setOverlayVisible(false)
-    }, ms)
-  }
-
-  function showOverlayAndMaybeHide() {
-    setOverlayVisible(true)
-    const v = videoRef.current
-    if (v && !v.paused && !v.ended) scheduleHideOverlay(1500)
-  }
-
-  useEffect(() => {
-    return () => clearOverlayTimer()
-  }, [])
-
 
     const roomReqIdRef = useRef(0);
   const privateFieldsFetchedKeyRef = useRef("");
@@ -934,7 +906,7 @@ const mediaSwipe = useDirectSwipeCarousel({
   onIndexChange: setActiveIndex,
   loop: false,
   onInteraction: () => {
-    videoRef.current?.pause();
+    normalVideoRef.current?.pause();
     showMediaControlsTemporarily();
   },
 });
@@ -944,7 +916,7 @@ const fullscreenMediaSwipe = useDirectSwipeCarousel({
   onIndexChange: setActiveIndex,
   loop: false,
   onInteraction: () => {
-    videoRef.current?.pause();
+    fullscreenVideoRef.current?.pause();
     showMediaControlsTemporarily();
   },
 });
@@ -1503,11 +1475,7 @@ return (
               const isCurrentSlide = mediaIndex === activeIndex;
               return <div key={`${item.kind}-${item.url}-${slot}`} className="relative h-full w-full shrink-0 bg-black">
                 {item.kind === "video" ? (
-                  <div className="relative h-full w-full" onClick={(e) => { if (isCurrentSlide) { e.stopPropagation(); showOverlayAndMaybeHide(); } }}>
-                    <video ref={isCurrentSlide ? videoRef : undefined} src={item.url} controls={isCurrentSlide} preload={isCurrentSlide ? "metadata" : "none"} playsInline muted={!isCurrentSlide} data-swipe-ignore={isCurrentSlide ? "true" : undefined} className={`h-full w-full object-contain bg-black ${isCurrentSlide ? "" : "pointer-events-none"}`} onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
-                    {isCurrentSlide && mediaItems.length > 1 ? <div aria-hidden="true" className="absolute inset-x-0 top-0 bottom-14 z-[1] cursor-grab touch-pan-y active:cursor-grabbing" /> : null}
-                    {isCurrentSlide && (overlayVisible || showPlay) ? <button className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full bg-black/40 text-white text-2xl flex items-center justify-center border border-white/40 backdrop-blur" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button> : null}
-                  </div>
+                  <RoomMediaVideo ref={isCurrentSlide ? normalVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} className="h-full w-full object-contain bg-black" />
                 ) : (
                   <img src={item.url} alt={room?.room_code || ""} className="w-full h-full object-contain bg-black" loading={isCurrentSlide ? "eager" : "lazy"} fetchPriority={isCurrentSlide ? "high" : "auto"} draggable={false} />
                 )}
@@ -2255,11 +2223,7 @@ return (
           const isCurrentSlide = mediaIndex === activeIndex;
           return <div key={`viewer-${item.kind}-${item.url}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
             {item.kind === "video" ? (
-              <div className="relative h-full w-full" onClick={(e) => { if (isCurrentSlide) { e.stopPropagation(); showOverlayAndMaybeHide(); } }}>
-                <video ref={isCurrentSlide ? videoRef : undefined} src={item.url} controls={isCurrentSlide} playsInline muted={!isCurrentSlide} preload={isCurrentSlide ? "metadata" : "none"} data-swipe-ignore={isCurrentSlide ? "true" : undefined} className={`h-full w-full object-contain bg-black/40 ${isCurrentSlide ? "" : "pointer-events-none"}`} onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
-                {isCurrentSlide && mediaItems.length > 1 ? <div aria-hidden="true" className="absolute inset-x-0 top-0 bottom-14 z-[1] cursor-grab touch-none active:cursor-grabbing" /> : null}
-                {isCurrentSlide && (overlayVisible || showPlay) ? <button className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button> : null}
-              </div>
+              <RoomMediaVideo ref={isCurrentSlide ? fullscreenVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} fullscreen className="h-full w-full object-contain bg-black/40" />
             ) : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
           </div>;
         })}

@@ -99,6 +99,7 @@ export function useDirectSwipeCarousel({ count, index, onIndexChange, loop = fal
       drag.axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "horizontal" : "vertical";
     }
     if (drag.axis !== "horizontal") return;
+    if (event.cancelable) event.preventDefault();
     const now = performance.now();
     const instantVelocity = (event.clientX - drag.lastX) / Math.max(1, now - drag.lastAt);
     drag.velocityX = drag.velocityX * 0.65 + instantVelocity * 0.35;
