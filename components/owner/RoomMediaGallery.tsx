@@ -221,8 +221,8 @@ export default function RoomMediaGallery({
           {swipe.visibleIndexes.map((mediaIndex, slot) => {
             const item = items[mediaIndex];
             const isCurrent = items.length === 1 || slot === 1;
-            return <div key={`${item.id}-${slot}`} className="flex aspect-[4/3] max-h-[360px] w-full shrink-0 items-center justify-center bg-[#2b1a10]">
-              {item.type === "video" ? <video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="h-full w-full object-contain" /> : <div role="button" tabIndex={isCurrent ? 0 : -1} aria-label="Xem media toàn màn hình" onClick={() => { if (!swipe.consumeClickSuppression()) setFullscreen(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setFullscreen(true); } }} className="block h-full w-full cursor-zoom-in"><img src={item.url} alt="Media phòng đang xem" draggable={false} className="h-full w-full object-contain" /></div>}
+            return <div key={`${item.id}-${slot}`} className="relative flex aspect-[4/3] max-h-[360px] w-full shrink-0 items-center justify-center bg-[#2b1a10]">
+              {item.type === "video" ? <><video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="h-full w-full object-contain" />{isCurrent && items.length > 1 ? <div aria-hidden="true" className="absolute inset-x-0 top-0 bottom-14 z-10 cursor-grab touch-pan-y active:cursor-grabbing" /> : null}</> : <div role="button" tabIndex={isCurrent ? 0 : -1} aria-label="Xem media toàn màn hình" onClick={() => { if (!swipe.consumeClickSuppression()) setFullscreen(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setFullscreen(true); } }} className="block h-full w-full cursor-zoom-in"><img src={item.url} alt="Media phòng đang xem" draggable={false} className="h-full w-full object-contain" /></div>}
             </div>;
           })}
         </div>
@@ -301,8 +301,8 @@ export default function RoomMediaGallery({
     {swipe.visibleIndexes.map((mediaIndex, slot) => {
       const item = items[mediaIndex];
       const isCurrent = items.length === 1 || slot === 1;
-      return <div key={`fullscreen-${item.id}-${slot}`} className="flex h-full w-full shrink-0 items-center justify-center">
-        {item.type === "image" ? <img src={item.url} alt={`Ảnh ${mediaIndex + 1}`} draggable={false} className="max-h-full max-w-full object-contain" /> : <video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="max-h-full max-w-full" />}
+      return <div key={`fullscreen-${item.id}-${slot}`} className="relative flex h-full w-full shrink-0 items-center justify-center">
+        {item.type === "image" ? <img src={item.url} alt={`Ảnh ${mediaIndex + 1}`} draggable={false} className="max-h-full max-w-full object-contain" /> : <><video src={item.url} controls={isCurrent} preload={isCurrent ? "metadata" : "none"} data-swipe-ignore={isCurrent ? "true" : undefined} className="max-h-full max-w-full" />{isCurrent && items.length > 1 ? <div aria-hidden="true" className="absolute inset-x-0 top-0 bottom-14 z-10 cursor-grab touch-none active:cursor-grabbing" /> : null}</>}
       </div>;
     })}
   </div>
