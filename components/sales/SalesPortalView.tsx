@@ -73,22 +73,20 @@ export default function SalesPortalView({ data }: { data: SalesPortalData }) {
 
 function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["rooms"][number]; expanded?: boolean }) {
   const mediaItems = useMemo(() => room.media.filter((item) => (item.type === "image" || item.type === "video") && item.url), [room.media]);
-  const coverUrl = useMemo(() => room.media.find((item) => item.type === "image" && item.is_cover)?.url || room.media.find((item) => item.type === "image")?.url || "", [room.media]);
   const [index, setIndex] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const updatedText = formatTimeAgo(room.updated_at);
-  const previousIndex = (index - 1 + mediaItems.length) % mediaItems.length;
-  const nextIndex = (index + 1) % mediaItems.length;
   const swipe = useSwipeCarousel({ count: mediaItems.length, index, onIndexChange: setIndex, loop: true, onInteraction: () => videoRef.current?.pause() });
 
   useEffect(() => {
     if (mediaItems.length < 2) return;
-    [mediaItems[previousIndex], mediaItems[nextIndex]].filter((item) => item?.type === "image").forEach((item) => {
+    [-2, -1, 1, 2].map((offset) => mediaItems[(index + offset + mediaItems.length) % mediaItems.length]).filter((item) => item?.type === "image").forEach((item) => {
       const image = new Image();
       image.src = String(item?.url);
       void image.decode?.().catch(() => undefined);
     });
-  }, [mediaItems, nextIndex, previousIndex]);
+  }, [index, mediaItems]);
 
   if (!mediaItems.length) return <div className={`relative grid place-items-center bg-[#ead9c2] text-[#98785b] ${expanded ? "min-h-56 sm:min-h-72" : "aspect-[16/10]"}`}><Building2 size={38} /><StatusBadge status={room.status} /></div>;
 
@@ -98,15 +96,15 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
       {...swipe.bind}
     >
       <div
-        className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`}
+        className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`}
         style={{ transform: swipe.transform }}
-        onTransitionEnd={swipe.onTransitionEnd}
+        onTransitionEnd={() => { if (!fullscreen) swipe.onTransitionEnd(); }}
       >
         {swipe.visibleIndexes.map((mediaIndex, slot) => {
           const item = mediaItems[mediaIndex];
           const isCurrent = mediaItems.length === 1 || slot === 1;
           return <div key={`${item.id}-${slot}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
-            {item.type === "video" ? isCurrent ? <video ref={videoRef} src={item.url} poster={coverUrl || undefined} controls playsInline preload="metadata" data-swipe-ignore="true" className="h-full w-full object-contain" /> : <>{coverUrl ? <img src={coverUrl} alt="" draggable={false} className="h-full w-full object-contain" /> : null}<span className="pointer-events-none absolute grid h-14 w-14 place-items-center rounded-full bg-black/60 text-white backdrop-blur"><Play size={26} fill="currentColor" /></span></> : <img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} className={expanded ? "block max-h-full max-w-full object-contain" : "h-full w-full object-cover"} />}
+            {item.type === "video" ? isCurrent ? <video ref={videoRef} src={item.url} controls playsInline preload="metadata" data-swipe-ignore="true" className="h-full w-full object-contain" /> : <><video src={item.url} preload="metadata" playsInline muted className="pointer-events-none h-full w-full object-contain" /><span className="pointer-events-none absolute grid h-14 w-14 place-items-center rounded-full bg-black/60 text-white backdrop-blur"><Play size={26} fill="currentColor" /></span></> : <div role="button" tabIndex={isCurrent ? 0 : -1} aria-label="Xem media toàn màn hình" onClick={() => { if (!swipe.consumeClickSuppression()) setFullscreen(true); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setFullscreen(true); } }} className="h-full w-full cursor-zoom-in"><img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} className={expanded ? "block h-full w-full object-contain" : "h-full w-full object-cover"} /></div>}
           </div>;
         })}
       </div>
@@ -114,7 +112,19 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
       <StatusBadge status={room.status} />
       {mediaItems.length > 1 ? <><button type="button" data-swipe-ignore="true" aria-label="Media trước" onClick={() => swipe.move(-1)} className="absolute left-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronLeft size={20} /></button><button type="button" data-swipe-ignore="true" aria-label="Media tiếp theo" onClick={() => swipe.move(1)} className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronRight size={20} /></button><span className="absolute bottom-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">{index + 1}/{mediaItems.length}</span></> : null}
     </div>
-    {expanded && mediaItems.length > 1 ? <div className="flex gap-2 overflow-x-auto bg-[#17120f] p-2 [scrollbar-color:#8b735f_#17120f] [scrollbar-width:thin]">{mediaItems.map((item, mediaIndex) => <button key={item.id} type="button" onClick={() => swipe.jumpTo(mediaIndex)} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-black transition sm:h-16 sm:w-24 ${mediaIndex === index ? "border-white" : "border-transparent opacity-65 hover:opacity-100"}`} aria-label={`Xem ${item.type === "video" ? "video" : "ảnh"} ${mediaIndex + 1}`}>{item.type === "video" ? <>{coverUrl ? <img src={coverUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : null}<span className="absolute inset-0 grid place-items-center bg-black/20 text-white"><Play size={18} fill="currentColor" /></span></> : <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />}</button>)}</div> : null}
+    {expanded && mediaItems.length > 1 ? <div className="flex gap-2 overflow-x-auto bg-[#17120f] p-2 [scrollbar-color:#8b735f_#17120f] [scrollbar-width:thin]">{mediaItems.map((item, mediaIndex) => <button key={item.id} type="button" onClick={() => swipe.jumpTo(mediaIndex)} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-black transition sm:h-16 sm:w-24 ${mediaIndex === index ? "border-white" : "border-transparent opacity-65 hover:opacity-100"}`} aria-label={`Xem ${item.type === "video" ? "video" : "ảnh"} ${mediaIndex + 1}`}>{item.type === "video" ? <><video src={item.url} preload="metadata" playsInline muted className="pointer-events-none h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center bg-black/20 text-white"><Play size={18} fill="currentColor" /></span></> : <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />}</button>)}</div> : null}
+    {fullscreen ? <div className="fixed inset-0 z-[100] overflow-hidden bg-black/95 p-4" role="dialog" aria-modal="true" aria-label="Xem media phòng toàn màn hình" onClick={() => setFullscreen(false)} {...swipe.bind}>
+      <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (fullscreen) swipe.onTransitionEnd(); }} onClick={(event) => event.stopPropagation()}>
+        {swipe.visibleIndexes.map((mediaIndex, slot) => {
+          const item = mediaItems[mediaIndex];
+          const isCurrent = mediaItems.length === 1 || slot === 1;
+          return <div key={`fullscreen-${item.id}-${slot}`} className="flex h-full w-full shrink-0 items-center justify-center">
+            {item.type === "image" ? <img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} className="max-h-full max-w-full object-contain" /> : <video src={item.url} controls={isCurrent} playsInline muted={!isCurrent} preload="metadata" data-swipe-ignore={isCurrent ? "true" : undefined} className="max-h-full max-w-full" />}
+          </div>;
+        })}
+      </div>
+      <button type="button" onClick={(event) => { event.stopPropagation(); setFullscreen(false); }} className="absolute right-4 top-4 rounded-full bg-white/20 px-4 py-2 text-white">Đóng</button>
+    </div> : null}
   </div>;
 }
 

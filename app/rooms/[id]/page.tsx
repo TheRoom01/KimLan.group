@@ -48,7 +48,6 @@ function normalizeImageUrls(image_urls: any): string[] {
 type MediaItem = {
   kind: "video" | "image";
   url: string;
-  thumb?: string;
 };
 
 function normalizeVideoUrls(video_urls: any): string[] {
@@ -910,23 +909,9 @@ const videoUrls = useMemo(() => {
 
 
 const mediaItems: MediaItem[] = useMemo(() => {
-  const R2_BASE =
-    (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL ||
-      process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
-      "")?.replace(/\/$/, "") || "";
-
-  const r2Thumb =
-    R2_BASE && room?.id
-      ? `${R2_BASE}/rooms/${room.id}/images/thumb.webp`
-      : "";
-
-  const rpcThumb = String(room?.thumb_url ?? "").trim();
-  const thumb = rpcThumb || r2Thumb || "";
-
   const vids: MediaItem[] = videoUrls.map((url: string) => ({
     kind: "video",
     url,
-    thumb,
   }));
 
   const imgs: MediaItem[] = imageUrls.map((url: string) => ({
@@ -935,7 +920,7 @@ const mediaItems: MediaItem[] = useMemo(() => {
   }));
 
   return [...vids, ...imgs];
-}, [videoUrls, imageUrls, room?.id, room?.thumb_url]);
+}, [videoUrls, imageUrls]);
 
 const activeItem = useMemo(() => {
   if (!mediaItems.length) return null;
@@ -943,13 +928,11 @@ const activeItem = useMemo(() => {
   return mediaItems[safeIndex];
 }, [activeIndex, mediaItems]);
 
-const previousMediaIndex = Math.max(activeIndex - 1, 0);
-const nextMediaIndex = Math.min(activeIndex + 1, Math.max(mediaItems.length - 1, 0));
 const mediaSwipe = useSwipeCarousel({
   count: mediaItems.length,
   index: activeIndex,
   onIndexChange: setActiveIndex,
-  loop: false,
+  loop: true,
   onInteraction: () => {
     videoRef.current?.pause();
     showMediaControlsTemporarily();
@@ -961,13 +944,16 @@ function goNextMedia() { mediaSwipe.move(1); }
 
 useEffect(() => {
   if (mediaItems.length < 2) return;
-  [mediaItems[previousMediaIndex], mediaItems[nextMediaIndex]].forEach((item) => {
+  const preloadIndexes = [-2, -1, 1, 2].map(
+    (offset) => (activeIndex + offset + mediaItems.length) % mediaItems.length,
+  );
+  preloadIndexes.map((index) => mediaItems[index]).forEach((item) => {
     if (!item || item.kind !== "image") return;
     const image = new window.Image();
     image.src = item.url;
     void image.decode?.().catch(() => undefined);
   });
-}, [mediaItems, nextMediaIndex, previousMediaIndex]);
+}, [activeIndex, mediaItems]);
 
 useEffect(() => {
   const onKeyDown = (event: KeyboardEvent) => {
@@ -1497,7 +1483,7 @@ return (
           style={{ touchAction: "pan-y" }}
         >
           <div
-            className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`}
+            className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`}
             style={{ transform: mediaSwipe.transform }}
             onTransitionEnd={() => { if (!viewerOpen) mediaSwipe.onTransitionEnd(); }}
           >
@@ -1507,12 +1493,11 @@ return (
               return <div key={`${item.kind}-${item.url}-${slot}`} className="relative h-full w-full shrink-0 bg-black">
                 {item.kind === "video" ? isCurrentSlide ? (
                   <div className="relative w-full h-full" onClick={(e) => { e.stopPropagation(); showOverlayAndMaybeHide(); }}>
-                    {showPlay && item.thumb ? <img src={item.thumb} alt="" className="absolute inset-0 w-full h-full object-contain z-[1]" /> : null}
-                    <video ref={videoRef} src={item.url} controls preload="metadata" playsInline poster={item.thumb || undefined} data-swipe-ignore="true" className="w-full h-full object-contain bg-black" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
+                    <video ref={videoRef} src={item.url} controls preload="metadata" playsInline data-swipe-ignore="true" className="w-full h-full object-contain bg-black" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
                     {(overlayVisible || showPlay) && <button className="absolute inset-0 z-[2] m-auto w-16 h-16 rounded-full bg-black/40 text-white text-2xl flex items-center justify-center border border-white/40 backdrop-blur" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button>}
                   </div>
                 ) : (
-                  <img src={item.thumb || ""} alt="" className="h-full w-full object-contain bg-black" draggable={false} />
+                  <video src={item.url} preload="metadata" playsInline muted className="pointer-events-none h-full w-full object-contain bg-black" />
                 ) : (
                   <img src={item.url} alt={room?.room_code || ""} className="w-full h-full object-contain bg-black" loading={isCurrentSlide ? "eager" : "lazy"} fetchPriority={isCurrentSlide ? "high" : "auto"} draggable={false} />
                 )}
@@ -1530,7 +1515,7 @@ return (
             </div>
           )}
 
-          {mediaControlsVisible && activeIndex > 0 && (
+          {mediaControlsVisible && mediaItems.length > 1 && (
             <button
               className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
               onClick={(e) => {
@@ -1542,7 +1527,7 @@ return (
             </button>
           )}
 
-          {mediaControlsVisible && activeIndex < mediaItems.length - 1 && (
+          {mediaControlsVisible && mediaItems.length > 1 && (
             <button
               className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white text-2xl px-2 rounded-full"
               onClick={(e) => {
@@ -1590,10 +1575,7 @@ return (
             >
               {it.kind === "video" ? (
                 <>
-                  <img
-                    src={it.thumb || ""}
-                    className="w-full h-full object-cover"
-                  />
+                  <video src={it.url} preload="metadata" playsInline muted className="pointer-events-none h-full w-full object-cover" />
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="bg-black/50 text-white text-xs px-2 py-1 rounded">
                       ▶
@@ -2257,7 +2239,7 @@ return (
       onClick={(e) => e.stopPropagation()}
       style={{ touchAction: "none" }}
     >
-      <div className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: mediaSwipe.transform }} onTransitionEnd={() => { if (viewerOpen) mediaSwipe.onTransitionEnd(); }}>
+      <div className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`} style={{ transform: mediaSwipe.transform }} onTransitionEnd={() => { if (viewerOpen) mediaSwipe.onTransitionEnd(); }}>
         {mediaSwipe.visibleIndexes.map((mediaIndex, slot) => {
           const item = mediaItems[mediaIndex];
           const isCurrentSlide = mediaItems.length === 1 || slot === 1;
@@ -2267,7 +2249,7 @@ return (
                 <video ref={videoRef} src={item.url} controls playsInline preload="none" data-swipe-ignore="true" className="h-full w-full object-contain bg-black/40" onPlay={() => { setShowPlay(false); showOverlayAndMaybeHide(); }} onPause={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} onEnded={() => { setShowPlay(true); setOverlayVisible(true); clearOverlayTimer(); }} />
                 {(overlayVisible || showPlay) && <button className="absolute inset-0 m-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/35 bg-white/10 text-2xl text-white backdrop-blur-[24px] shadow-[0_18px_60px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.35)]" onClick={(e) => { e.stopPropagation(); const v = videoRef.current; if (!v) return; setOverlayVisible(true); clearOverlayTimer(); if (v.paused) { void v.play(); setShowPlay(false); scheduleHideOverlay(1500); } else { v.pause(); setShowPlay(true); } }} aria-label={showPlay ? "Phát video" : "Tạm dừng video"} title={showPlay ? "Phát" : "Tạm dừng"}>{showPlay ? "▶" : "⏸"}</button>}
               </div>
-            ) : <img src={item.thumb || ""} alt="" className="h-full w-full object-contain" draggable={false} /> : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
+            ) : <video src={item.url} preload="metadata" playsInline muted className="pointer-events-none h-full w-full object-contain bg-black" /> : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
           </div>;
         })}
       </div>
@@ -2279,7 +2261,7 @@ return (
         ✕
       </button>
 
-      {mediaControlsVisible && activeIndex > 0 && (
+      {mediaControlsVisible && mediaItems.length > 1 && (
         <button
           className="absolute left-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
           onClick={goPrevMedia}
@@ -2288,7 +2270,7 @@ return (
         </button>
       )}
 
-      {mediaControlsVisible && activeIndex < mediaItems.length - 1 && (
+      {mediaControlsVisible && mediaItems.length > 1 && (
         <button
           className="absolute right-4 z-[2147483647] flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-3xl text-white backdrop-blur-[24px] shadow-[0_14px_45px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.3)] hover:bg-white/18"
           onClick={goNextMedia}

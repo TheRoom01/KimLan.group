@@ -1,6 +1,6 @@
 "use client";
 
-import { type PointerEvent as ReactPointerEvent, useCallback, useMemo, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Direction = -1 | 1;
 
@@ -28,6 +28,26 @@ export function useSwipeCarousel({ count, index, onIndexChange, loop = true, onI
   const [snappingBack, setSnappingBack] = useState(false);
   const dragRef = useRef<DragState | null>(null);
   const suppressClickRef = useRef(false);
+  const dragFrameRef = useRef<number | null>(null);
+  const pendingDragXRef = useRef(0);
+
+  const cancelDragFrame = useCallback(() => {
+    if (dragFrameRef.current !== null) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+  }, []);
+
+  const scheduleDragX = useCallback((nextDragX: number) => {
+    pendingDragXRef.current = nextDragX;
+    if (dragFrameRef.current !== null) return;
+    dragFrameRef.current = requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      setDragX(pendingDragXRef.current);
+    });
+  }, []);
+
+  useEffect(() => cancelDragFrame, [cancelDragFrame]);
 
   const resolveIndex = useCallback((candidate: number) => {
     if (count <= 0) return 0;
@@ -43,10 +63,11 @@ export function useSwipeCarousel({ count, index, onIndexChange, loop = true, onI
   const move = useCallback((direction: Direction) => {
     if (!canMove(direction) || slideDirection !== 0 || snappingBack) return false;
     onInteraction?.();
+    cancelDragFrame();
     setDragX(0);
     setSlideDirection(direction);
     return true;
-  }, [canMove, onInteraction, slideDirection, snappingBack]);
+  }, [canMove, cancelDragFrame, onInteraction, slideDirection, snappingBack]);
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -82,8 +103,8 @@ export function useSwipeCarousel({ count, index, onIndexChange, loop = true, onI
     drag.lastAt = now;
     if (Math.abs(deltaX) > 5) suppressClickRef.current = true;
     const pullingPastEdge = !loop && ((index === 0 && deltaX > 0) || (index === count - 1 && deltaX < 0));
-    setDragX(pullingPastEdge ? deltaX * 0.22 : deltaX);
-  }, [count, index, loop, slideDirection]);
+    scheduleDragX(pullingPastEdge ? deltaX * 0.22 : deltaX);
+  }, [count, index, loop, scheduleDragX, slideDirection]);
 
   const finishDrag = useCallback((event: ReactPointerEvent<HTMLElement>, cancelled = false) => {
     const drag = dragRef.current;
@@ -95,6 +116,7 @@ export function useSwipeCarousel({ count, index, onIndexChange, loop = true, onI
     const distanceThreshold = Math.min(96, Math.max(45, width * 0.16));
     const shouldMove = !cancelled && drag.axis !== "vertical" && canMove(direction) && Math.abs(distance) > Math.abs(verticalDistance) && (Math.abs(distance) >= distanceThreshold || Math.abs(drag.velocityX) >= 0.35);
     dragRef.current = null;
+    cancelDragFrame();
     try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch {}
     if (shouldMove) {
       move(direction);
@@ -104,7 +126,7 @@ export function useSwipeCarousel({ count, index, onIndexChange, loop = true, onI
     } else {
       setDragX(0);
     }
-  }, [canMove, move]);
+  }, [canMove, cancelDragFrame, move]);
 
   const onPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => finishDrag(event), [finishDrag]);
   const onPointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => finishDrag(event, true), [finishDrag]);
@@ -122,9 +144,10 @@ export function useSwipeCarousel({ count, index, onIndexChange, loop = true, onI
   const jumpTo = useCallback((nextIndex: number) => {
     if (slideDirection !== 0 || snappingBack || count <= 0) return;
     onInteraction?.();
+    cancelDragFrame();
     setDragX(0);
     onIndexChange(resolveIndex(nextIndex));
-  }, [count, onIndexChange, onInteraction, resolveIndex, slideDirection, snappingBack]);
+  }, [cancelDragFrame, count, onIndexChange, onInteraction, resolveIndex, slideDirection, snappingBack]);
 
   const consumeClickSuppression = useCallback(() => {
     const suppressed = suppressClickRef.current;

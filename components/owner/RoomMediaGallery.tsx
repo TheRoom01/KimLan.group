@@ -158,6 +158,18 @@ export default function RoomMediaGallery({
   const activeItem = items[activeIndex] as RoomMedia;
   const swipe = useSwipeCarousel({ count: items.length, index: activeIndex, onIndexChange: (nextIndex) => setActiveId(items[nextIndex]?.id ?? null), loop: true });
 
+  useEffect(() => {
+    if (items.length < 2) return;
+    [-2, -1, 1, 2]
+      .map((offset) => items[(activeIndex + offset + items.length) % items.length])
+      .filter((item) => item?.type === "image")
+      .forEach((item) => {
+        const preload = new window.Image();
+        preload.src = item.url;
+        void preload.decode?.().catch(() => undefined);
+      });
+  }, [activeIndex, items]);
+
   if (items.length === 0) {
     return (
       <div className="rounded-[22px] border border-dashed border-[#a9825f]/35 bg-[#fff9ef] p-6 text-sm text-[#80634a]">
@@ -205,7 +217,7 @@ export default function RoomMediaGallery({
       ) : null}
 
       <div className="min-w-0 touch-pan-y overflow-hidden rounded-2xl border border-[#aa825d]/20 bg-[#2b1a10]" {...swipe.bind}>
-        <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (!fullscreen) swipe.onTransitionEnd(); }}>
+        <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (!fullscreen) swipe.onTransitionEnd(); }}>
           {swipe.visibleIndexes.map((mediaIndex, slot) => {
             const item = items[mediaIndex];
             const isCurrent = items.length === 1 || slot === 1;
@@ -285,7 +297,7 @@ export default function RoomMediaGallery({
         ))}
       </div>
       {fullscreen ? <div className="fixed inset-0 z-[200] overflow-hidden bg-black/95 p-4" onClick={() => setFullscreen(false)} {...swipe.bind}>
-  <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (fullscreen) swipe.onTransitionEnd(); }} onClick={(event) => event.stopPropagation()}>
+  <div className={`flex h-full w-full will-change-transform ${swipe.isAnimating ? "transition-transform duration-[420ms] ease-[cubic-bezier(.16,1,.3,1)]" : ""}`} style={{ transform: swipe.transform }} onTransitionEnd={() => { if (fullscreen) swipe.onTransitionEnd(); }} onClick={(event) => event.stopPropagation()}>
     {swipe.visibleIndexes.map((mediaIndex, slot) => {
       const item = items[mediaIndex];
       const isCurrent = items.length === 1 || slot === 1;
