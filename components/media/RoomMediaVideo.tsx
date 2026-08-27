@@ -9,24 +9,58 @@ type RoomMediaVideoProps = {
   swipeEnabled?: boolean;
   fullscreen?: boolean;
   className?: string;
+  onPlaybackChange?: (playing: boolean) => void;
 };
 
 const RoomMediaVideo = forwardRef<HTMLVideoElement, RoomMediaVideoProps>(function RoomMediaVideo(
-  { src, active, swipeEnabled = false, fullscreen = false, className = "h-full w-full object-contain" },
+  {
+    src,
+    active,
+    swipeEnabled = false,
+    fullscreen = false,
+    className = "h-full w-full object-contain",
+    onPlaybackChange,
+  },
   forwardedRef,
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playPendingRef = useRef(false);
+  const centerControlTimerRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [centerControlVisible, setCenterControlVisible] = useState(true);
 
   useImperativeHandle(forwardedRef, () => videoRef.current as HTMLVideoElement, []);
 
+  function clearCenterControlTimer() {
+    if (centerControlTimerRef.current === null) return;
+    window.clearTimeout(centerControlTimerRef.current);
+    centerControlTimerRef.current = null;
+  }
+
+  function handlePlaybackState(nextPlaying: boolean) {
+    clearCenterControlTimer();
+    setPlaying(nextPlaying);
+    setCenterControlVisible(true);
+    onPlaybackChange?.(nextPlaying);
+
+    if (nextPlaying) {
+      centerControlTimerRef.current = window.setTimeout(() => {
+        centerControlTimerRef.current = null;
+        setCenterControlVisible(false);
+      }, 1000);
+    }
+  }
+
   useEffect(() => {
     const video = videoRef.current;
+    clearCenterControlTimer();
     playPendingRef.current = false;
     setPlaying(false);
+    setCenterControlVisible(true);
     if (video && !active) video.pause();
   }, [active, src]);
+
+  useEffect(() => () => clearCenterControlTimer(), []);
 
   async function togglePlayback() {
     const video = videoRef.current;
@@ -62,10 +96,10 @@ const RoomMediaVideo = forwardRef<HTMLVideoElement, RoomMediaVideoProps>(functio
         preload="metadata"
         draggable={false}
         data-swipe-ignore={active ? "true" : undefined}
-        className={`${className} select-none ${active ? "" : "pointer-events-none"}`}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
+        className={`room-media-video ${className} select-none ${active ? "" : "pointer-events-none"}`}
+        onPlay={() => handlePlaybackState(true)}
+        onPause={() => handlePlaybackState(false)}
+        onEnded={() => handlePlaybackState(false)}
       />
 
       {active && swipeEnabled ? (
@@ -75,7 +109,7 @@ const RoomMediaVideo = forwardRef<HTMLVideoElement, RoomMediaVideoProps>(functio
         />
       ) : null}
 
-      {active ? (
+      {active && centerControlVisible ? (
         <button
           type="button"
           data-swipe-ignore="true"

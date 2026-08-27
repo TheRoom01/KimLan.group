@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Building2, CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileText, Info, MapPin, Maximize2, Play, X } from "lucide-react";
+import { Building2, CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileText, Info, MapPin, Play, X } from "lucide-react";
 
 import type { SalesPortalData, SalesRoomStatus } from "@/lib/sales-portal/types";
 import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarousel";
@@ -76,14 +76,41 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
   const mediaItems = useMemo(() => room.media.filter((item) => (item.type === "image" || item.type === "video") && item.url), [room.media]);
   const [index, setIndex] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
+  const [mediaControlsVisible, setMediaControlsVisible] = useState(true);
   const normalVideoRef = useRef<HTMLVideoElement | null>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaControlsTimerRef = useRef<number | null>(null);
   const updatedText = formatTimeAgo(room.updated_at);
-  const swipe = useDirectSwipeCarousel({ count: mediaItems.length, index, onIndexChange: setIndex, loop: false, onInteraction: () => normalVideoRef.current?.pause() });
-  const fullscreenSwipe = useDirectSwipeCarousel({ count: mediaItems.length, index, onIndexChange: setIndex, loop: false, onInteraction: () => fullscreenVideoRef.current?.pause() });
+
+  function showMediaControlsTemporarily() {
+    setMediaControlsVisible(true);
+    if (mediaControlsTimerRef.current) window.clearTimeout(mediaControlsTimerRef.current);
+    mediaControlsTimerRef.current = window.setTimeout(() => {
+      setMediaControlsVisible(false);
+      mediaControlsTimerRef.current = null;
+    }, 1000);
+  }
+
+  function handleMediaPlaybackChange(isPlaying: boolean) {
+    setMediaControlsVisible(true);
+    if (mediaControlsTimerRef.current) {
+      window.clearTimeout(mediaControlsTimerRef.current);
+      mediaControlsTimerRef.current = null;
+    }
+    if (isPlaying) {
+      mediaControlsTimerRef.current = window.setTimeout(() => {
+        setMediaControlsVisible(false);
+        mediaControlsTimerRef.current = null;
+      }, 1000);
+    }
+  }
+
+  const swipe = useDirectSwipeCarousel({ count: mediaItems.length, index, onIndexChange: setIndex, loop: false, onInteraction: () => { normalVideoRef.current?.pause(); showMediaControlsTemporarily(); } });
+  const fullscreenSwipe = useDirectSwipeCarousel({ count: mediaItems.length, index, onIndexChange: setIndex, loop: false, onInteraction: () => { fullscreenVideoRef.current?.pause(); showMediaControlsTemporarily(); } });
 
   function openFullscreen() {
     normalVideoRef.current?.pause();
+    showMediaControlsTemporarily();
     setFullscreen(true);
   }
 
@@ -112,6 +139,10 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
     };
   }, [fullscreen]);
 
+  useEffect(() => () => {
+    if (mediaControlsTimerRef.current) window.clearTimeout(mediaControlsTimerRef.current);
+  }, []);
+
   useEffect(() => {
     if (mediaItems.length < 2) return;
     [-2, -1, 1, 2].map((offset) => mediaItems[(index + offset + mediaItems.length) % mediaItems.length]).filter((item) => item?.type === "image").forEach((item) => {
@@ -137,14 +168,14 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
           const item = mediaItems[mediaIndex];
           const isCurrent = mediaIndex === index;
           return <div key={`${item.id}-${slot}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
-            {item.type === "video" ? <RoomMediaVideo ref={isCurrent ? normalVideoRef : undefined} src={item.url} active={isCurrent} swipeEnabled={mediaItems.length > 1} className="h-full w-full object-contain" /> : <div role="button" tabIndex={isCurrent ? 0 : -1} aria-label="Xem media toàn màn hình" onClick={() => { if (!swipe.consumeClickSuppression()) openFullscreen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openFullscreen(); } }} className="h-full w-full cursor-zoom-in"><img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} className={expanded ? "block h-full w-full object-contain" : "h-full w-full object-cover"} /></div>}
+            {item.type === "video" ? <RoomMediaVideo ref={isCurrent ? normalVideoRef : undefined} src={item.url} active={isCurrent} swipeEnabled={mediaItems.length > 1} onPlaybackChange={handleMediaPlaybackChange} className="h-full w-full object-contain" /> : <div role="button" tabIndex={isCurrent ? 0 : -1} aria-label="Xem media toàn màn hình" onClick={() => { if (!swipe.consumeClickSuppression()) openFullscreen(); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openFullscreen(); } }} className="h-full w-full cursor-zoom-in"><img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} className={expanded ? "block h-full w-full object-contain" : "h-full w-full object-cover"} /></div>}
           </div>;
         })}
       </div>
-      {updatedText ? <span className="pointer-events-none absolute left-3 top-3 z-20 max-w-[calc(100%-24px)] rounded-full border border-white/20 bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white/90 backdrop-blur-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.35)]">Đã cập nhật: {updatedText}</span> : null}
+      {updatedText ? <span className="pointer-events-none absolute left-3 top-3 z-20 max-w-[42%] truncate rounded-full border border-white/20 bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white/90 backdrop-blur-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.35)]">Đã cập nhật: {updatedText}</span> : null}
       <StatusBadge status={room.status} />
-      <button type="button" data-swipe-ignore="true" onClick={openFullscreen} aria-label="Xem media toàn màn hình" title="Toàn màn hình" className="absolute right-3 top-12 z-30 grid h-10 w-10 place-items-center rounded-full border border-white/25 bg-black/50 text-white shadow-lg backdrop-blur transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><Maximize2 size={19} /></button>
-      {mediaItems.length > 1 ? <><button type="button" data-swipe-ignore="true" aria-label="Media trước" onClick={() => swipe.move(-1)} className="absolute left-2 top-1/2 z-20 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronLeft size={20} /></button><button type="button" data-swipe-ignore="true" aria-label="Media tiếp theo" onClick={() => swipe.move(1)} className="absolute right-2 top-1/2 z-20 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronRight size={20} /></button><span className="absolute bottom-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">{index + 1}/{mediaItems.length}</span></> : null}
+      {mediaControlsVisible ? <span className="pointer-events-none absolute left-1/2 top-1 z-30 -translate-x-1/2 rounded bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">{index + 1} / {mediaItems.length}</span> : null}
+      {mediaControlsVisible && mediaItems.length > 1 ? <><button type="button" data-swipe-ignore="true" aria-label="Media trước" onClick={() => swipe.move(-1)} disabled={index === 0} className="absolute left-2 top-1/2 z-20 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 disabled:pointer-events-none disabled:opacity-25 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronLeft size={20} /></button><button type="button" data-swipe-ignore="true" aria-label="Media tiếp theo" onClick={() => swipe.move(1)} disabled={index === mediaItems.length - 1} className="absolute right-2 top-1/2 z-20 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 disabled:pointer-events-none disabled:opacity-25 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronRight size={20} /></button></> : null}
     </div>
     {expanded && mediaItems.length > 1 ? <div className="flex gap-2 overflow-x-auto bg-[#17120f] p-2 [scrollbar-color:#8b735f_#17120f] [scrollbar-width:thin]">{mediaItems.map((item, mediaIndex) => <button key={item.id} type="button" onClick={() => swipe.jumpTo(mediaIndex)} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-black transition sm:h-16 sm:w-24 ${mediaIndex === index ? "border-white" : "border-transparent opacity-65 hover:opacity-100"}`} aria-label={`Xem ${item.type === "video" ? "video" : "ảnh"} ${mediaIndex + 1}`}>{item.type === "video" ? <><video src={item.url} preload="metadata" playsInline muted className="pointer-events-none h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center bg-black/20 text-white"><Play size={18} fill="currentColor" /></span></> : <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />}</button>)}</div> : null}
     {fullscreen ? <div className="fixed inset-0 z-[2147483647] flex items-center justify-center overflow-hidden bg-black/95 backdrop-blur-[14px]" role="dialog" aria-modal="true" aria-label="Xem media phòng toàn màn hình" onClick={closeFullscreen}>
@@ -154,16 +185,16 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
           const item = mediaItems[mediaIndex];
           const isCurrent = mediaIndex === index;
           return <div key={`fullscreen-${item.id}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
-            {item.type === "image" ? <img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} loading={isCurrent ? "eager" : "lazy"} fetchPriority={isCurrent ? "high" : "auto"} className="h-full w-full select-none object-contain" /> : <RoomMediaVideo ref={isCurrent ? fullscreenVideoRef : undefined} src={item.url} active={isCurrent} swipeEnabled={mediaItems.length > 1} fullscreen className="h-full w-full object-contain" />}
+            {item.type === "image" ? <img src={item.url} alt={`Ảnh phòng ${room.room_code ?? ""} - ${mediaIndex + 1}`} draggable={false} loading={isCurrent ? "eager" : "lazy"} fetchPriority={isCurrent ? "high" : "auto"} className="h-full w-full select-none object-contain" /> : <RoomMediaVideo ref={isCurrent ? fullscreenVideoRef : undefined} src={item.url} active={isCurrent} swipeEnabled={mediaItems.length > 1} fullscreen onPlaybackChange={handleMediaPlaybackChange} className="h-full w-full object-contain" />}
           </div>;
         })}
       </div>
       <button type="button" data-swipe-ignore="true" onClick={closeFullscreen} aria-label="Đóng toàn màn hình" className="absolute right-4 top-4 z-30 grid h-11 w-11 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20"><X size={22} /></button>
-      {mediaItems.length > 1 ? <>
+      {mediaControlsVisible && mediaItems.length > 1 ? <>
         <button type="button" data-swipe-ignore="true" onClick={() => fullscreenSwipe.move(-1)} disabled={index === 0} aria-label="Media trước" className="absolute left-4 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20 disabled:pointer-events-none disabled:opacity-25"><ChevronLeft size={28} /></button>
         <button type="button" data-swipe-ignore="true" onClick={() => fullscreenSwipe.move(1)} disabled={index === mediaItems.length - 1} aria-label="Media tiếp theo" className="absolute right-4 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20 disabled:pointer-events-none disabled:opacity-25"><ChevronRight size={28} /></button>
-        <span className="pointer-events-none absolute bottom-5 left-1/2 z-30 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1.5 text-sm font-bold text-white backdrop-blur">{index + 1} / {mediaItems.length}</span>
       </> : null}
+      {mediaControlsVisible ? <span className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded bg-black/60 px-3 py-1.5 text-sm font-bold text-white backdrop-blur">{index + 1} / {mediaItems.length}</span> : null}
       </div>
     </div> : null}
   </div>;

@@ -566,6 +566,22 @@ function showMediaControlsTemporarily() {
   }, 1000);
 }
 
+function handleMediaPlaybackChange(isPlaying: boolean) {
+  setMediaControlsVisible(true);
+
+  if (mediaControlsTimerRef.current) {
+    window.clearTimeout(mediaControlsTimerRef.current);
+    mediaControlsTimerRef.current = null;
+  }
+
+  if (isPlaying) {
+    mediaControlsTimerRef.current = window.setTimeout(() => {
+      setMediaControlsVisible(false);
+      mediaControlsTimerRef.current = null;
+    }, 1000);
+  }
+}
+
 useEffect(() => {
   return () => {
     if (mediaControlsTimerRef.current) {
@@ -1450,7 +1466,10 @@ return (
 
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              if (activeItem?.kind !== "video") setViewerOpen(true);
+              if (activeItem?.kind !== "video") {
+                showMediaControlsTemporarily();
+                setViewerOpen(true);
+              }
               return;
             }
 
@@ -1461,7 +1480,10 @@ return (
           }}
           onClick={() => {
             if (mediaSwipe.consumeClickSuppression()) return;
-            if (activeItem?.kind !== "video") setViewerOpen(true);
+            if (activeItem?.kind !== "video") {
+              showMediaControlsTemporarily();
+              setViewerOpen(true);
+            }
           }}
           style={{ touchAction: "pan-y" }}
         >
@@ -1475,7 +1497,7 @@ return (
               const isCurrentSlide = mediaIndex === activeIndex;
               return <div key={`${item.kind}-${item.url}-${slot}`} className="relative h-full w-full shrink-0 bg-black">
                 {item.kind === "video" ? (
-                  <RoomMediaVideo ref={isCurrentSlide ? normalVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} className="h-full w-full object-contain bg-black" />
+                  <RoomMediaVideo ref={isCurrentSlide ? normalVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} onPlaybackChange={handleMediaPlaybackChange} className="h-full w-full object-contain bg-black" />
                 ) : (
                   <img src={item.url} alt={room?.room_code || ""} className="w-full h-full object-contain bg-black" loading={isCurrentSlide ? "eager" : "lazy"} fetchPriority={isCurrentSlide ? "high" : "auto"} draggable={false} />
                 )}
@@ -2223,7 +2245,7 @@ return (
           const isCurrentSlide = mediaIndex === activeIndex;
           return <div key={`viewer-${item.kind}-${item.url}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
             {item.kind === "video" ? (
-              <RoomMediaVideo ref={isCurrentSlide ? fullscreenVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} fullscreen className="h-full w-full object-contain bg-black/40" />
+              <RoomMediaVideo ref={isCurrentSlide ? fullscreenVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} fullscreen onPlaybackChange={handleMediaPlaybackChange} className="h-full w-full object-contain bg-black/40" />
             ) : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
           </div>;
         })}
@@ -2235,6 +2257,12 @@ return (
       >
         ✕
       </button>
+
+      {mediaControlsVisible && (
+        <span className="pointer-events-none absolute left-1/2 top-4 z-[2147483647] -translate-x-1/2 rounded bg-black/55 px-2.5 py-1 text-sm font-semibold text-white backdrop-blur">
+          {activeIndex + 1} / {mediaItems.length}
+        </span>
+      )}
 
       {mediaControlsVisible && mediaItems.length > 1 && (
         <button

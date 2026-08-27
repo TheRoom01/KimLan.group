@@ -436,3 +436,14 @@ input[type="radio"] {
     transition-duration: 0.01ms !important;
   }
 }
+/* Giữ thanh controls native nhưng bỏ nút Play phủ giữa video trên mobile.
+   RoomMediaVideo cung cấp một nút Play/Pause duy nhất, nhất quán giữa các gallery. */
+video.room-media-video::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+video.room-media-video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
