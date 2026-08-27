@@ -22,7 +22,7 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
   const [propertyResult, documentsResult, roomsResult, notesResult] = await Promise.all([
     supabase.from("properties").select("id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, note, default_room_data, lifecycle_status").eq("id", link.property_id).eq("lifecycle_status", "active").maybeSingle(),
     supabase.from("sales_portal_link_documents").select("property_documents(id, title, description, file_name, file_url, mime_type, size_bytes, sort_order, created_at)").eq("link_id", link.id),
-    supabase.from("rooms").select("id, room_code, room_type, price, description, chinh_sach, zalo_phone, status, lifecycle_status, room_details(*), room_media(id,type,url,is_cover,sort_order), rental_contracts(id,status,start_date,end_date,created_at)").eq("property_id", link.property_id).eq("lifecycle_status", "active").order("room_code"),
+    supabase.from("rooms").select("id, room_code, room_type, price, description, updated_at, chinh_sach, zalo_phone, status, lifecycle_status, room_details(*), room_media(id,type,url,is_cover,sort_order), rental_contracts(id,status,start_date,end_date,created_at)").eq("property_id", link.property_id).eq("lifecycle_status", "active").order("room_code"),
     supabase.from("sales_room_notes").select("room_id, note").eq("property_id", link.property_id),
   ]);
 
@@ -49,6 +49,7 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
       room_type: room.room_type,
       price: room.price == null ? null : Number(room.price),
       description: room.description,
+      updated_at: room.updated_at,
       status,
       available_at: status === "Sắp trống" ? contract?.end_date ?? null : null,
       sales_note: notes.get(room.id) ?? null,

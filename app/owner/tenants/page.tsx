@@ -1,9 +1,8 @@
 import { Users } from "lucide-react";
-import TenantCard, {
-  type TenantCardData,
-} from "@/components/owner/TenantCard";
+import type { TenantCardData } from "@/components/owner/TenantCard";
 import { getOwnerTenants } from "@/lib/owner/getOwnerTenants";
 import OwnerExportButton from "@/components/owner/OwnerExportButton";
+import TenantSearchList from "@/components/owner/TenantSearchList";
 
 export default async function TenantsPage() {
   const tenants = (await getOwnerTenants()) as TenantCardData[];
@@ -31,13 +30,7 @@ export default async function TenantsPage() {
           Chưa có khách thuê.
         </div>
       ) : (
-        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-          {tenants.map((item) =>
-            item.tenant ? (
-              <TenantCard key={item.tenant.id} item={item} />
-            ) : null,
-          )}
-        </div>
+        <TenantSearchList tenants={tenants} />
       )}
     </div>
   );

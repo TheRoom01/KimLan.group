@@ -79,6 +79,7 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
   const [snappingBack, setSnappingBack] = useState(false);
   const drag = useRef<{ id: number; startX: number; lastX: number; lastAt: number; velocity: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const updatedText = formatTimeAgo(room.updated_at);
   const previousIndex = (index - 1 + mediaItems.length) % mediaItems.length;
   const nextIndex = (index + 1) % mediaItems.length;
 
@@ -165,6 +166,7 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
           </div>;
         })}
       </div>
+      {updatedText ? <span className="pointer-events-none absolute left-3 top-3 z-20 max-w-[calc(100%-24px)] rounded-full border border-white/20 bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white/90 backdrop-blur-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.35)]">Đã cập nhật: {updatedText}</span> : null}
       <StatusBadge status={room.status} />
       {mediaItems.length > 1 ? <><button type="button" aria-label="Media trước" onPointerDown={(event) => event.stopPropagation()} onClick={() => move(-1)} className="absolute left-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronLeft size={20} /></button><button type="button" aria-label="Media tiếp theo" onPointerDown={(event) => event.stopPropagation()} onClick={() => move(1)} className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronRight size={20} /></button><span className="absolute bottom-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">{index + 1}/{mediaItems.length}</span></> : null}
     </div>
@@ -346,3 +348,17 @@ function mediaFileExtension(mime: string, url: string) {
 }
 function money(value: number | null) { return value == null ? "Liên hệ" : `${value.toLocaleString("vi-VN")}đ`; }
 function date(value: string) { return new Date(`${value}T00:00:00`).toLocaleDateString("vi-VN"); }
+function formatTimeAgo(value?: string | null) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const difference = Math.max(0, Date.now() - parsed.getTime());
+  const minutes = Math.floor(difference / 60000);
+  const hours = Math.floor(difference / 3600000);
+  const days = Math.floor(difference / 86400000);
+  if (minutes < 1) return "vừa cập nhật";
+  if (minutes < 60) return `${minutes} phút trước`;
+  if (hours < 24) return `${hours} giờ trước`;
+  if (days < 30) return `${days} ngày trước`;
+  return parsed.toLocaleDateString("vi-VN");
+}

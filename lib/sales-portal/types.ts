@@ -16,6 +16,7 @@ export type SalesPortalRoom = {
   room_type: string | null;
   price: number | null;
   description: string | null;
+  updated_at: string | null;
   status: SalesRoomStatus;
   available_at: string | null;
   sales_note: string | null;
