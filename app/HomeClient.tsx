@@ -6,14 +6,12 @@ import RoomList from "@/components/RoomList";
 import Pagination from "@/components/Pagination";
 import { fetchRooms, type UpdatedDescCursor } from "@/lib/fetchRooms";
 import { supabase } from "@/lib/supabase";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
 import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
-import { prefetchRoomDetail } from "@/lib/roomDetailPrefetch";
-import { flushSync } from "react-dom";
 
 type InitialProps = {
   initialRooms: any[];
@@ -76,9 +74,15 @@ function decodeCursor(raw: string | null): UrlCursor {
 
 const PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
 
+function hasExplicitPriceFilter(qs: string) {
+  const params = new URLSearchParams(qs.replace(/^\?/, ""));
+  return params.has(QS.min) || params.has(QS.max);
+}
+
 function makeFilterSigValue(args: {
   search: string;
   priceApplied: [number, number];
+  priceFilterActive?: boolean;
   selectedDistricts: string[];
   selectedRoomTypes: string[];
   moveFilter: "elevator" | "stairs" | null;
@@ -89,6 +93,7 @@ function makeFilterSigValue(args: {
 }) {
   return [
     args.search.trim(),
+    args.priceFilterActive ? "price:on" : "price:off",
     args.priceApplied[0],
     args.priceApplied[1],
     args.selectedDistricts.join(","),
@@ -223,7 +228,6 @@ const HomeClient = ({
 }: InitialProps) => {
 
   const pathname = usePathname();
-  const router = useRouter();
 
   useEffect(() => {
     document.documentElement.dataset.homeHydrated = "true";
@@ -272,6 +276,13 @@ const [vipAdminName, setVipAdminName] = useState<string | null>(null);
   
     const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
   const [priceApplied, setPriceApplied] = useState<[number, number]>(PRICE_DEFAULT);
+  const [priceFilterActive, setPriceFilterActive] = useState(false);
+  const setPriceAppliedFromUser = useCallback<
+    React.Dispatch<React.SetStateAction<[number, number]>>
+  >((next) => {
+    setPriceFilterActive(true);
+    setPriceApplied(next);
+  }, []);
   const didHardReloadRef = useRef(false);
   const [minPriceApplied, maxPriceApplied] = useMemo(() => {
     const a = priceApplied[0];
@@ -297,6 +308,7 @@ const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
  const armRestoredFilterSig = useCallback((next: {
   search: string;
   priceApplied: [number, number];
+  priceFilterActive?: boolean;
   selectedDistricts: string[];
   selectedRoomTypes: string[];
   moveFilter: "elevator" | "stairs" | null;
@@ -305,7 +317,15 @@ const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
   sortMode: SortMode;
   statusFilter: string | null;
 }) => {
-  const sig = makeFilterSigValue(next);
+  const restoredPriceFilterActive =
+    next.priceFilterActive ??
+    (typeof window !== "undefined" &&
+      hasExplicitPriceFilter(window.location.search));
+  setPriceFilterActive(restoredPriceFilterActive);
+  const sig = makeFilterSigValue({
+    ...next,
+    priceFilterActive: restoredPriceFilterActive,
+  });
   pendingRestoredFilterSigRef.current = sig;
   lastFilterSigRef.current = sig;
   prevAppliedSearchRef.current = next.search.trim();
@@ -330,6 +350,7 @@ const appliedSearch = useDebouncedValue(search, 250);
 const filterSig = useMemo(() => {
   return [
     appliedSearch.trim(),
+    priceFilterActive ? "price:on" : "price:off",
     minPriceApplied,
     maxPriceApplied,
     selectedDistricts.join(","),
@@ -342,6 +363,7 @@ const filterSig = useMemo(() => {
   ].join("|");
 }, [
   appliedSearch,
+  priceFilterActive,
   minPriceApplied,
   maxPriceApplied,
   selectedDistricts,
@@ -589,10 +611,8 @@ useEffect(() => {
       : null;
 
   // ✅ IMPORTANT: phân biệt "chưa fetch" (undefined) vs "đã fetch nhưng rỗng" ([])
-  const [pages, setPages] = useState<any[][]>(() =>
-    initialRooms?.length ? [initialRooms] : []
-  );
-  const pagesRef = useRef<any[][]>(initialRooms?.length ? [initialRooms] : []);
+  const [pages, setPages] = useState<any[][]>(() => [initialRooms ?? []]);
+  const pagesRef = useRef<any[][]>([initialRooms ?? []]);
   const [pageIndex, setPageIndex] = useState(0);
   const [displayPageIndex, setDisplayPageIndex] = useState(0);
   // ✅ luôn sync pageIndex/displayPageIndex mới nhất vào ref
@@ -613,11 +633,11 @@ useEffect(() => {
 
 
   const cursorsRef = useRef<(string | UpdatedDescCursor | null)[]>(
-    initialRooms?.length ? [null, initCursor] : [null]
+    [null, initCursor]
   );
 
   const [hasNext, setHasNext] = useState<boolean>(
-    initialRooms?.length ? Boolean(initCursor) : true
+    Boolean(initCursor)
   );
    const didHydrateOnceRef = useRef(false);
    const didApplyBackOnceRef = useRef(false);
@@ -636,8 +656,9 @@ useEffect(() => {
   const filtersVersionRef = useRef(0); // "đợt filter" để drop response cũ
   const pendingUrlFiltersRef = useRef<{
   search: string;
-  min: number;
-  max: number;
+  min?: number;
+  max?: number;
+  priceFilterActive: boolean;
   districts: string[];
   roomTypes: string[];
   move: "elevator" | "stairs" | null;
@@ -956,8 +977,8 @@ const syncPageToUrl = useCallback(
   (nextPageIndex: number) => {
     const nextQs = buildQs({
     q: appliedSearch.trim(),
-    min: minPriceApplied,
-    max: maxPriceApplied,
+    min: priceFilterActive ? minPriceApplied : undefined,
+    max: priceFilterActive ? maxPriceApplied : undefined,
     d: selectedDistricts,
     t: selectedRoomTypes,
     m: moveFilter,
@@ -973,6 +994,7 @@ const syncPageToUrl = useCallback(
   appliedSearch,
   minPriceApplied,
   maxPriceApplied,
+  priceFilterActive,
   selectedDistricts,
   selectedRoomTypes,
   moveFilter,
@@ -989,8 +1011,10 @@ const readUrlState = useCallback(() => {
   const sp = new URLSearchParams(window.location.search);
 
   const q = sp.get(QS.q) ?? "";
-  const min = Number(sp.get(QS.min) ?? "");
-  const max = Number(sp.get(QS.max) ?? "");
+  const minRaw = sp.get(QS.min);
+  const maxRaw = sp.get(QS.max);
+  const min = minRaw == null || minRaw.trim() === "" ? Number.NaN : Number(minRaw);
+  const max = maxRaw == null || maxRaw.trim() === "" ? Number.NaN : Number(maxRaw);
   const d = parseList(sp.get(QS.d));
   const t = parseList(sp.get(QS.t));
   const m = (sp.get(QS.m) as "elevator" | "stairs" | null) || null;
@@ -1016,6 +1040,7 @@ const readUrlState = useCallback(() => {
 
   const minVal = Number.isFinite(min) ? min : PRICE_DEFAULT[0];
   const maxVal = Number.isFinite(max) ? max : PRICE_DEFAULT[1];
+  const priceFilterActive = minRaw !== null || maxRaw !== null;
   const nextPage = Number.isFinite(p) && p >= 0 ? p : 0;
 
   const st = sp.get(QS.st) || null;
@@ -1026,6 +1051,7 @@ const readUrlState = useCallback(() => {
     q,
     minVal,
     maxVal,
+    priceFilterActive,
     d,
     t,
     m,
@@ -1618,8 +1644,8 @@ if ((!url.qs || url.qs.length === 0) && backHint?.qs) {
   });
 }
   
-   // ✅ Home mặc định "/" => KHÔNG restore cache cũ và KHÔNG tin tuyệt đối SSR list
-// Nếu initialRooms bị stale thì ép client fetch lại page 0
+// Home mặc định dùng luôn dữ liệu SSR. Cache/invalidation phía server chịu
+// trách nhiệm về độ mới; không xóa UI rồi gọi lại đúng RPC sau hydration.
 if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
   hydratingFromUrlRef.current = true;
 
@@ -1630,25 +1656,26 @@ if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
   setSearch("");
   setPriceDraft(PRICE_DEFAULT);
   setPriceApplied(PRICE_DEFAULT);
+  setPriceFilterActive(false);
   setSelectedDistricts([]);
   setSelectedRoomTypes([]);
   setMoveFilter(null);
   setSortMode("updated_desc");
   setStatusFilter(null);
 
-  pagesRef.current = [];
-  setPages([]);
+  pagesRef.current = [initialRooms ?? []];
+  setPages([initialRooms ?? []]);
 
-  cursorsRef.current = [null];
-  setHasNext(true);
+  cursorsRef.current = [null, initCursor];
+  setHasNext(Boolean(initCursor));
 
   setPageIndex(0);
   setDisplayPageIndex(0);
 
   setFetchError("");
   setLoading(false);
-  setShowSkeleton(true);
-  setTotal(null);
+  setShowSkeleton(false);
+  setTotal(typeof initialTotal === "number" ? initialTotal : null);
 
   // ❌ không force clean URL ở đây nữa
   // vì nếu flow back/hydrate bị lệch nhịp, dòng này sẽ kéo URL filtered về "/"
@@ -1657,10 +1684,6 @@ if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
     const el = scrollRef.current;
     if (el) el.scrollTop = 0;
     lastScrollTopRef.current = 0;
-  });
-
-  queueMicrotask(() => {
-    fetchPageRef.current(0);
   });
 
   finishHydrate();
@@ -1702,90 +1725,6 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   }
 } 
 
-// ✅ HARD RESET when reload (F5 / pull-to-refresh)
-// => quay về đúng trạng thái như lúc mở web lần đầu
-if (isReloadRef.current) {
-  hydratingFromUrlRef.current = true;
-
-  try {
-    filtersVersionRef.current += 1;
-
-     // ✅ reload là một phiên Home mới
-    // xóa back-hint cũ để tránh hydrate sau đó hiểu nhầm là back từ detail
-    try {
-      sessionStorage.removeItem(HOME_BACK_HINT_KEY);
-    } catch {}
-
-    setSearch("");
-    setPriceDraft(PRICE_DEFAULT);
-    setPriceApplied(PRICE_DEFAULT);
-    setSelectedDistricts([]);
-    setSelectedRoomTypes([]);
-    setMoveFilter(null);
-    setSortMode("updated_desc");
-    setStatusFilter(null);
-    setTotal(null);
-
-    const defaultSig = [
-      "",
-      PRICE_DEFAULT[0],
-      PRICE_DEFAULT[1],
-      "",
-      "",
-      "",
-      "updated_desc",
-      "",
-    ].join("|");
-
-    lastFilterSigRef.current = defaultSig;
-    prevAppliedSearchRef.current = "";
-    skipNextFilterEffectRef.current = true;
-
-    // reset pagination + list UI
-    pagesRef.current = [];
-    setPages([]);
-
-    cursorsRef.current = [null];
-    setHasNext(true);
-
-    setPageIndex(0);
-    setDisplayPageIndex(0);
-
-    setFetchError("");
-    setLoading(false);
-    setShowSkeleton(true);
-
-    pendingScrollTopRef.current = 0;
-
-    requestAnimationFrame(() => {
-      const el = scrollRef.current;
-      if (el) el.scrollTop = 0;
-      lastScrollTopRef.current = 0;
-    });
-
-    lastPageIndexRef.current = 0;
-    lastDisplayPageIndexRef.current = 0;
-
-    queueMicrotask(() => {
-      fetchPageRef.current(0);
-    });
-
-    // ✅ tạo lại persisted state mới cho "phiên sau reload"
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        persistSoon();
-      });
-    });
-
-    finishHydrate();
-    return;
-  } finally {
-    queueMicrotask(() => {
-      hydratingFromUrlRef.current = false;
-    });
-  }
-}
-
     // 2) try restore from sessionStorage (match qs)
   let restored: PersistState | null = null;
 
@@ -1811,6 +1750,7 @@ if (isReloadRef.current) {
     currentQs.length > 0 || isBackFromDetail;
 
   const match =
+    !isReloadRef.current &&
     !!restored &&
     ttlOk &&
     allowHeavyRestore &&
@@ -1891,7 +1831,9 @@ if (isReloadRef.current) {
   // ✅ URL rỗng khi mở Home mới thì cũng không restore lite,
   // để ưu tiên SSR initialRooms thay vì cache cũ
   const lite =
-    effectiveQs && (effectiveQs.length > 0 || isBackFromDetail)
+    !isReloadRef.current &&
+    effectiveQs &&
+    (effectiveQs.length > 0 || isBackFromDetail)
       ? readLiteForQs(effectiveQs)
       : null;
 
@@ -1990,19 +1932,20 @@ hydratingFromUrlRef.current = true;
 // ✅ snapshot URL filters để fetch dùng ngay (không phụ thuộc timing setState)
 pendingUrlFiltersRef.current = {
   search: url.q,
-  min: url.minVal,
-  max: url.maxVal,
+  min: url.priceFilterActive ? url.minVal : undefined,
+  max: url.priceFilterActive ? url.maxVal : undefined,
+  priceFilterActive: url.priceFilterActive,
   districts: url.d,
   roomTypes: url.t,
   move: url.m,
   pets: url.pet,
   terms: url.term,
   sort: url.s,
-  status: isReloadRef.current ? null : url.st,
+  status: url.st,
 };
 
 const urlPrice: [number, number] = [url.minVal, url.maxVal];
-const urlStatus = isReloadRef.current ? null : url.st;
+const urlStatus = url.st;
 const urlPets = url.pet ?? [];
 const urlTerms = url.term ?? ["long"];
 
@@ -2030,6 +1973,26 @@ armRestoredFilterSig({
 });
 
 const pageFromUrl = url.nextPage;
+
+// SSR đã tải đúng trang đầu theo query hiện tại. Dùng thẳng kết quả đó thay vì
+// xóa danh sách, hiện skeleton rồi gọi lại cùng một RPC sau hydration.
+if (pageFromUrl === 0 && !url.c) {
+  pagesRef.current = [initialRooms ?? []];
+  setPages([initialRooms ?? []]);
+
+  cursorsRef.current = [null, initCursor];
+  setHasNext(Boolean(initCursor));
+  setPageIndex(0);
+  setDisplayPageIndex(0);
+  setTotal(typeof initialTotal === "number" ? initialTotal : null);
+  setFetchError("");
+  setLoading(false);
+  setShowSkeleton(false);
+  pendingUrlFiltersRef.current = null;
+
+  finishHydrate();
+  return;
+}
 
 filtersVersionRef.current += 1;
 
@@ -2118,6 +2081,7 @@ useEffect(() => {
   const liteTerms = lite.termFilters ?? ["long"];
   const liteSort = lite.sortMode ?? "updated_desc";
   const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
+  const litePriceFilterActive = hasExplicitPriceFilter(effectiveQs);
 
   setSearch(liteSearch);
   setPriceDraft(litePrice);
@@ -2137,6 +2101,7 @@ useEffect(() => {
   armRestoredFilterSig({
     search: liteSearch,
     priceApplied: litePrice,
+    priceFilterActive: litePriceFilterActive,
     selectedDistricts: liteDistricts,
     selectedRoomTypes: liteTypes,
     moveFilter: liteMove,
@@ -2169,8 +2134,8 @@ useEffect(() => {
     // ✅ rebuild URL từ lite để chắc chắn URL khớp state
   const qsFromLite = buildQs({
   q: liteSearch,
-  min: litePrice[0],
-  max: litePrice[1],
+  min: litePriceFilterActive ? litePrice[0] : undefined,
+  max: litePriceFilterActive ? litePrice[1] : undefined,
   d: liteDistricts,
   t: liteTypes,
   m: liteMove,
@@ -2182,6 +2147,20 @@ useEffect(() => {
   c: (lite.currentCursor ?? null) as UrlCursor,
 });
     replaceUrlShallow(qsFromLite);
+
+    pendingUrlFiltersRef.current = {
+      search: liteSearch,
+      min: litePriceFilterActive ? litePrice[0] : undefined,
+      max: litePriceFilterActive ? litePrice[1] : undefined,
+      priceFilterActive: litePriceFilterActive,
+      districts: liteDistricts,
+      roomTypes: liteTypes,
+      move: liteMove,
+      pets: litePets,
+      terms: liteTerms,
+      sort: liteSort,
+      status: liteStatus,
+    };
 
     // ✅ fetch lại data theo filter đã restore
     queueMicrotask(() => {
@@ -2210,6 +2189,20 @@ const urlStatus = isReloadRef.current ? null : url.st;
 const urlPets = url.pet ?? [];
 const urlTerms = url.term ?? ["long"];
 
+pendingUrlFiltersRef.current = {
+  search: url.q,
+  min: url.priceFilterActive ? url.minVal : undefined,
+  max: url.priceFilterActive ? url.maxVal : undefined,
+  priceFilterActive: url.priceFilterActive,
+  districts: url.d,
+  roomTypes: url.t,
+  move: url.m,
+  pets: urlPets,
+  terms: urlTerms,
+  sort: url.s,
+  status: urlStatus,
+};
+
 setSearch(url.q);
 setPriceDraft(urlPrice);
 setPriceApplied(urlPrice);
@@ -2224,6 +2217,7 @@ setStatusFilter(urlStatus);
 armRestoredFilterSig({
   search: url.q,
   priceApplied: urlPrice,
+  priceFilterActive: url.priceFilterActive,
   selectedDistricts: url.d,
   selectedRoomTypes: url.t,
   moveFilter: url.m,
@@ -2360,8 +2354,12 @@ const res = await fetchRooms({
     ? (pending?.search ?? appliedSearch).trim()
     : undefined,
 
-  minPrice: pending?.min ?? minPriceApplied,
-  maxPrice: pending?.max ?? maxPriceApplied,
+  minPrice: (pending ? pending.priceFilterActive : priceFilterActive)
+    ? (pending?.min ?? minPriceApplied)
+    : undefined,
+  maxPrice: (pending ? pending.priceFilterActive : priceFilterActive)
+    ? (pending?.max ?? maxPriceApplied)
+    : undefined,
   sortMode: pending?.sort ?? sortMode,
   status: pending?.status ?? statusFilter,
 
@@ -2523,6 +2521,7 @@ if (targetIndex === pageIndexRef.current) {
       appliedSearch,
       minPriceApplied,
       maxPriceApplied,
+      priceFilterActive,
       sortMode,
       statusFilter,
       selectedDistricts,
@@ -2645,6 +2644,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     search: "",
     min: PRICE_DEFAULT[0],
     max: PRICE_DEFAULT[1],
+    priceFilterActive: false,
     districts: [] as string[],
     roomTypes: [] as string[],
     move: null,
@@ -2658,6 +2658,7 @@ const resetAllFiltersAndReload = useCallback(() => {
   armRestoredFilterSig({
     search: defaultFilters.search,
     priceApplied: [defaultFilters.min, defaultFilters.max],
+    priceFilterActive: false,
     selectedDistricts: defaultFilters.districts,
     selectedRoomTypes: defaultFilters.roomTypes,
     moveFilter: defaultFilters.move,
@@ -2670,6 +2671,7 @@ const resetAllFiltersAndReload = useCallback(() => {
   setSearch(defaultFilters.search);
   setPriceDraft([defaultFilters.min, defaultFilters.max]);
   setPriceApplied([defaultFilters.min, defaultFilters.max]);
+  setPriceFilterActive(false);
   setSelectedDistricts(defaultFilters.districts);
   setSelectedRoomTypes(defaultFilters.roomTypes);
   setMoveFilter(defaultFilters.move);
@@ -2686,8 +2688,8 @@ const resetAllFiltersAndReload = useCallback(() => {
 
   replaceUrlShallow(buildQs({
     q: defaultFilters.search,
-    min: defaultFilters.min,
-    max: defaultFilters.max,
+    min: undefined,
+    max: undefined,
     d: defaultFilters.districts,
     t: defaultFilters.roomTypes,
     m: defaultFilters.move,
@@ -2779,8 +2781,8 @@ useEffect(() => {
 
     const qsBack = buildQs({
       q: "",
-      min: priceApplied[0],
-      max: priceApplied[1],
+      min: priceFilterActive ? priceApplied[0] : undefined,
+      max: priceFilterActive ? priceApplied[1] : undefined,
       d: selectedDistricts,
       t: selectedRoomTypes,
       m: moveFilter,
@@ -2827,8 +2829,8 @@ useEffect(() => {
 
  const qs = buildQs({
   q: applied,
-  min: priceApplied[0],
-  max: priceApplied[1],
+  min: priceFilterActive ? priceApplied[0] : undefined,
+  max: priceFilterActive ? priceApplied[1] : undefined,
   d: selectedDistricts,
   t: selectedRoomTypes,
   m: moveFilter,
@@ -2867,7 +2869,7 @@ useEffect(() => {
 
     fetchPage(0);
     persistSoon();
-  }, 200);
+  }, 25);
 
   return () => {
     if (filterApplyTimerRef.current) {
@@ -2878,6 +2880,7 @@ useEffect(() => {
   filterSig,
   appliedSearch,
   priceApplied,
+  priceFilterActive,
   selectedDistricts,
   selectedRoomTypes,
   moveFilter,
@@ -2953,8 +2956,8 @@ saveScrollToHistory();
 
 const qs = buildQs({
   q: appliedSearch.trim(),
-  min: priceApplied[0],
-  max: priceApplied[1],
+  min: priceFilterActive ? priceApplied[0] : undefined,
+  max: priceFilterActive ? priceApplied[1] : undefined,
   d: selectedDistricts,
   t: selectedRoomTypes,
   m: moveFilter,
@@ -2977,6 +2980,7 @@ persistSoon();
   replaceUrlShallow,
   appliedSearch,
   priceApplied,
+  priceFilterActive,
   selectedDistricts,
   selectedRoomTypes,
   moveFilter,
@@ -3007,8 +3011,8 @@ saveScrollToHistory();
 
 const qs = buildQs({
   q: appliedSearch.trim(),
-  min: priceApplied[0],
-  max: priceApplied[1],
+  min: priceFilterActive ? priceApplied[0] : undefined,
+  max: priceFilterActive ? priceApplied[1] : undefined,
   d: selectedDistricts,
   t: selectedRoomTypes,
   m: moveFilter,
@@ -3030,6 +3034,7 @@ persistSoon();
   replaceUrlShallow,
     appliedSearch,
   priceApplied,
+  priceFilterActive,
   selectedDistricts,
   selectedRoomTypes,
   moveFilter,
@@ -3148,7 +3153,7 @@ useEffect(() => {
 
 const handleNavigateToRoom = useCallback((href: string) => {
   const encodedRoomId = href.match(/\/rooms\/([^/?#]+)/)?.[1] ?? "";
-  flushSync(() => setOpeningRoomId(decodeURIComponent(encodedRoomId)));
+  setOpeningRoomId(decodeURIComponent(encodedRoomId));
 
   try {
     const el = scrollRef.current;
@@ -3158,8 +3163,6 @@ const handleNavigateToRoom = useCallback((href: string) => {
     lastDisplayPageIndexRef.current = displayPageIndex;
 
     saveScrollToHistory();
-    writeBackSnapshotNow();
-
     const qsRaw = window.location.search.replace(/^\?/, "");
     const qsCanonical = canonicalQs(qsRaw);
 
@@ -3172,23 +3175,7 @@ const handleNavigateToRoom = useCallback((href: string) => {
     );
   } catch {}
 
-  const nextHref = (() => {
-    if (!href.includes("/rooms/")) return href;
-
-    const [pathPart, hashPart = ""] = href.split("#");
-    const [pathnamePart, queryPart = ""] = pathPart.split("?");
-
-    const sp = new URLSearchParams(queryPart);
-    sp.set("modal", "1");
-
-    const nextQs = sp.toString();
-    return `${pathnamePart}${nextQs ? `?${nextQs}` : ""}${hashPart ? `#${hashPart}` : ""}`;
-  })();
-
-  router.push(nextHref);
 }, [
-  router,
-  writeBackSnapshotNow,
   saveScrollToHistory,
   pageIndex,
   displayPageIndex,
@@ -3197,11 +3184,6 @@ const handleNavigateToRoom = useCallback((href: string) => {
 useEffect(() => {
   setOpeningRoomId(null);
 }, [pathname]);
-
-const handlePrefetchRoom = useCallback((href: string, roomId: string) => {
-  router.prefetch(href);
-  prefetchRoomDetail(roomId);
-}, [router]);
 
 // Contact truyền xuống RoomCard:
 // - Admin đăng nhập: giữ nguyên thông tin admin hiện tại.
@@ -3352,7 +3334,7 @@ return (
               priceDraft={priceDraft}
               priceApplied={priceApplied}
               setPriceDraft={setPriceDraft}
-              setPriceApplied={setPriceApplied}
+              setPriceApplied={setPriceAppliedFromUser}
               selectedDistricts={selectedDistricts}
               setSelectedDistricts={setSelectedDistricts}
               selectedRoomTypes={selectedRoomTypes}
@@ -3511,7 +3493,6 @@ return (
           goPrev={goPrev}
           goNext={goNext}
           onNavigate={handleNavigateToRoom}
-          onPrefetch={handlePrefetchRoom}
           openingRoomId={openingRoomId}
           isRefreshing={isRefreshing}
         />

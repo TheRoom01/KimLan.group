@@ -1,6 +1,7 @@
 import { apiError, apiSuccess, mapDatabaseError, mapUnknownError } from "@/lib/api/response";
 import { parseUuid, readJsonObject } from "@/lib/api/validation";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
+import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -48,6 +49,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { data, error } = await targetAuth.supabase.from("room_media").insert(rows)
       .select("id, room_id, type, provider, url, path, is_cover, sort_order, created_at");
     if (error) return mapDatabaseError(error);
+    invalidatePublicRoomCache(targetId);
     return apiSuccess(data ?? [], 201);
   } catch (error) { return mapUnknownError(error); }
 }

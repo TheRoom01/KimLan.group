@@ -3,7 +3,7 @@ import Script from "next/script";
 
 import "./globals.css";
 import "./room-share-visual-sync.css";
-import AuthControls from "@/components/AuthControls";
+import LazyAuthControls from "@/components/LazyAuthControls";
 import ClientErrorOverlay from './_debug/ClientErrorOverlay';
 import InstallPrompt from "@/components/pwa/InstallPrompt";
 import PwaRegister from "@/components/pwa/PwaRegister";
@@ -181,7 +181,7 @@ export default function RootLayout({
           />
         </noscript>
 
-        <AuthControls />
+        <LazyAuthControls />
         <PwaRegister />
         <InstallPrompt />
         {children}

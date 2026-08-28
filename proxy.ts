@@ -16,15 +16,23 @@ function randomToken(bytes = 32) {
   crypto.getRandomValues(buf);
   return base64UrlEncode(buf);
 }
-function parseValidRpcResult(v: any): boolean {
+function parseValidRpcResult(v: unknown): boolean {
   if (typeof v === "boolean") return v;
-  if (Array.isArray(v)) return !!v[0]?.valid;
-  if (v && typeof v === "object") return !!(v as any).valid;
+  if (Array.isArray(v)) {
+    const first = v[0];
+    return Boolean(first && typeof first === "object" && "valid" in first && first.valid);
+  }
+  if (v && typeof v === "object" && "valid" in v) return Boolean(v.valid);
   return false;
 }
-function parseRegisterStatus(v: any): string {
-  if (Array.isArray(v)) return String(v[0]?.status || "");
-  if (v && typeof v === "object") return String((v as any).status || "");
+function parseRegisterStatus(v: unknown): string {
+  if (Array.isArray(v)) {
+    const first = v[0];
+    return first && typeof first === "object" && "status" in first
+      ? String(first.status || "")
+      : "";
+  }
+  if (v && typeof v === "object" && "status" in v) return String(v.status || "");
   return "";
 }
 
@@ -36,7 +44,7 @@ async function sha256Base64Url(input: string) {
 
 export async function proxy(request: NextRequest) {
   // Create an initial response
-  let response = NextResponse.next();
+  let response = NextResponse.next({ request });
 
   // ✅ Guard ENV: thiếu thì fail-open (không crash middleware/proxy)
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -46,22 +54,34 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
+  const pathname = request.nextUrl.pathname;
+  const authIndependentPublicPath =
+    pathname === "/map" ||
+    pathname.startsWith("/sales/") ||
+    pathname.startsWith("/auth/");
+  if (authIndependentPublicPath) return response;
+
+  const hasAuthCookie = request.cookies
+    .getAll()
+    .some(({ name }) => name.startsWith("sb-") && name.includes("-auth-token"));
+  const hasBearerToken = request.headers.get("authorization")?.startsWith("Bearer ");
+
+  // Không có session thì không gọi Supabase Auth/Device trên mọi navigation public.
+  if (!hasAuthCookie && !hasBearerToken) return response;
+
   const supabase = createServerClient(url, key, {
     cookies: {
-      get(name: string) {
-        return request.cookies.get(name)?.value;
+      getAll() {
+        return request.cookies.getAll();
       },
-      set(name: string, value: string, options: any) {
-        response.cookies.set(name, value, options);
-      },
-      remove(name: string, options: any) {
-        // ✅ Xoá cookie đúng cách (maxAge: 0)
-        response.cookies.set({
-          name,
-          value: "",
-          ...options,
-          maxAge: 0,
-        });
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        );
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        );
       },
     },
   });
@@ -123,19 +143,21 @@ try {
   }
 
   // If not valid yet: treat as first-seen device -> register (may evict oldest)
-  let { data: reg1, error: eReg } = await supabase.rpc("register_device_session", {
+  const firstRegistration = await supabase.rpc("register_device_session", {
   p_device_id: deviceId,
   p_token_hash: tokenHash,
   p_device_fingerprint: fingerprint,
   p_max_devices: 2,
   p_evict_oldest: false,
 });
+  const reg1 = firstRegistration.data;
+  let eReg = firstRegistration.error;
  
 let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
 
   // ✅ nếu register bị trùng token_hash (23505)
   // -> deviceToken cũ đã tồn tại trong DB, rotate pp_device để lấy token_hash mới rồi retry 1 lần
-  if (eReg && (eReg as any).code === "23505") {
+  if (eReg && eReg.code === "23505") {
     deviceToken = randomToken(32);
     response.cookies.set(DEVICE_COOKIE, deviceToken, cookieOptions);
 
@@ -153,7 +175,7 @@ let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
     regStatus = !eReg ? parseRegisterStatus(retry.data) : "";
   }
 
-  if (eReg && (eReg as any).code !== "23505") {
+  if (eReg && eReg.code !== "23505") {
     throw eReg;
   }
 

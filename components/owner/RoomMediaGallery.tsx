@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, GripVertical, ImageIcon, Play, Save, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, GripVertical, ImageIcon, Maximize, Minimize, Play, Save, Trash2, X } from "lucide-react";
 import { readApiResponse } from "@/lib/api/client";
 import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarousel";
 import RoomMediaVideo from "@/components/media/RoomMediaVideo";
@@ -291,6 +291,7 @@ export default function RoomMediaGallery({
           })}
         </div>
         {mediaControlsVisible ? <span className="pointer-events-none absolute left-1/2 top-1 z-30 -translate-x-1/2 rounded bg-black/55 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur">{activeIndex + 1} / {items.length}</span> : null}
+        {activeItem.type === "video" ? <button type="button" data-swipe-ignore="true" onClick={(event) => { event.stopPropagation(); openFullscreen(); }} aria-label="Mở media toàn màn hình" title="Toàn màn hình" className="absolute right-3 top-3 z-30 grid h-10 w-10 place-items-center rounded-full border border-white/25 bg-black/50 text-white shadow-lg backdrop-blur transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><Maximize size={20} /></button> : null}
         {mediaControlsVisible && items.length > 1 ? <>
           <button type="button" data-swipe-ignore="true" onClick={() => swipe.move(-1)} disabled={activeIndex === 0} aria-label="Media trước" className="absolute left-3 top-1/2 z-30 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70 disabled:pointer-events-none disabled:opacity-25"><ChevronLeft size={22} /></button>
           <button type="button" data-swipe-ignore="true" onClick={() => swipe.move(1)} disabled={activeIndex === items.length - 1} aria-label="Media tiếp theo" className="absolute right-3 top-1/2 z-30 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70 disabled:pointer-events-none disabled:opacity-25"><ChevronRight size={22} /></button>
@@ -314,7 +315,7 @@ export default function RoomMediaGallery({
           >
             {item.type === "video" ? (
               <div className="relative h-20 w-full bg-[#2b1a10]">
-                <video src={item.url} muted playsInline preload="metadata" className="pointer-events-none h-full w-full object-cover" />
+                <video src={item.url} muted playsInline preload="none" className="pointer-events-none h-full w-full object-cover" />
                 <span className="pointer-events-none absolute inset-0 grid place-items-center text-white"><span className="grid h-8 w-8 place-items-center rounded-full bg-black/55"><Play size={15} fill="currentColor" /></span></span>
               </div>
             ) : (
@@ -378,6 +379,9 @@ export default function RoomMediaGallery({
 
   <button type="button" data-swipe-ignore="true" onClick={closeFullscreen} aria-label="Đóng toàn màn hình" className="absolute right-4 top-4 z-30 grid h-11 w-11 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20">
     <X size={22} />
+  </button>
+  <button type="button" data-swipe-ignore="true" onClick={closeFullscreen} aria-label="Thoát toàn màn hình" title="Thoát toàn màn hình" className="absolute right-4 top-16 z-30 grid h-11 w-11 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+    <Minimize size={21} />
   </button>
 
   {mediaControlsVisible && items.length > 1 ? <>

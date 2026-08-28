@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { KeyRound } from "lucide-react";
+import { Suspense } from "react";
 
 import ArchiveRoomButton from "@/components/owner/ArchiveRoomButton";
 import RoomMediaGallery from "@/components/owner/RoomMediaGallery";
 import RoomStatusControl from "@/components/owner/RoomStatusControl";
-import RoomStatusHistory from "@/components/owner/RoomStatusHistory";
+import RoomStatusHistorySection from "@/components/owner/RoomStatusHistorySection";
 import TenantRosterCard from "@/components/owner/TenantRosterCard";
 import { getRoomDetail } from "@/lib/owner/getRoomDetail";
-import { getRoomStatusLogs } from "@/lib/owner/getRoomStatusLogs";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function RoomDetailPage({
@@ -16,13 +16,15 @@ export default async function RoomDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const room = await getRoomDetail(id);
-  const statusLogs = await getRoomStatusLogs(id);
-  const supabase = await createSupabaseServerClient();
-
-  const { data: canManage } = await supabase.rpc("can_manage_room", {
-    p_room_id: room.id,
-  });
+  const supabasePromise = createSupabaseServerClient();
+  const canManagePromise = supabasePromise.then((supabase) =>
+    supabase.rpc("can_manage_room", { p_room_id: id }),
+  );
+  const [room, canManageResult] = await Promise.all([
+    getRoomDetail(id),
+    canManagePromise,
+  ]);
+  const canManage = canManageResult.data;
 
   const contract = room.contract;
   const tenants = room.tenants ?? (room.tenant ? [room.tenant] : []);
@@ -186,7 +188,9 @@ export default async function RoomDetailPage({
         )}
       </div>
 
-      <RoomStatusHistory logs={statusLogs} />
+      <Suspense fallback={<RoomStatusHistorySkeleton />}>
+        <RoomStatusHistorySection roomId={id} />
+      </Suspense>
     </div>
   );
 }
@@ -315,6 +319,15 @@ function InfoItem({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-sm text-[#80634a]">{label}</p>
       <p className="font-semibold text-[#4d3422]">{value}</p>
+    </div>
+  );
+}
+
+function RoomStatusHistorySkeleton() {
+  return (
+    <div className="rounded-xl border bg-white p-6" aria-busy="true">
+      <div className="h-6 w-44 animate-pulse rounded bg-[#eadbc8]" />
+      <div className="mt-5 h-16 animate-pulse rounded bg-[#f3e8da]" />
     </div>
   );
 }

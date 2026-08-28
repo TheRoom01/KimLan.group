@@ -1,18 +1,34 @@
 import type { Metadata } from "next";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getPublicRoomDetail } from "@/lib/rooms/publicCache";
 
 export const dynamic = "force-dynamic";
 
-function pickCoverUrl(rows?: any[]): string {
+type MetadataMedia = {
+  type?: unknown;
+  url?: unknown;
+  is_cover?: unknown;
+};
+
+type PublicRoomMetadata = {
+  room_code?: unknown;
+  room_type?: unknown;
+  price?: unknown;
+  address?: unknown;
+  ward?: unknown;
+  district?: unknown;
+  media?: MetadataMedia[] | null;
+};
+
+function pickCoverUrl(rows?: MetadataMedia[]): string {
   if (!Array.isArray(rows) || rows.length === 0) return "";
 
   // ưu tiên is_cover
   const cover = rows.find((r) => r && r.is_cover && r.url);
-  if (cover?.url) return cover.url;
+  if (cover?.url) return String(cover.url);
 
   // fallback: row đầu tiên đã được order sẵn từ query
   const first = rows.find((r) => r && r.url);
-  return first?.url || "";
+  return first?.url ? String(first.url) : "";
 }
 
 function absUrl(base: string, u: string) {
@@ -40,16 +56,11 @@ let desc = "Xem chi tiết phòng";
   const url = `${base.replace(/\/$/, "")}/rooms/${encodeURIComponent(id)}`;
 
   try {
-    const supabase = createSupabaseAdminClient();
-const { data } = await supabase
-  .from("rooms")
-  .select("room_code, room_type, price, address, ward, district, house_number")
-  .eq("id", id)
-  .maybeSingle();
+const data = (await getPublicRoomDetail(id)) as PublicRoomMetadata | null;
 
-const roomCode = (data as any)?.room_code ?? "";
-const roomType = (data as any)?.room_type ?? "";
-const price = (data as any)?.price;
+const roomCode = data?.room_code ?? "";
+const roomType = data?.room_type ?? "";
+const price = data?.price;
 
 // ✅ nếu không có room -> giữ fallback title/desc + image và thoát try
 if (!data) throw new Error("room_not_found");
@@ -66,32 +77,29 @@ const thumb = R2_BASE && id
 if (thumb) {
   image = absUrl(base, thumb);
 } else {
-  // ✅ 2) fallback cũ: lấy cover từ room_media
-const { data: mediaRows } = await supabase
-  .from("room_media")
-  .select("url,is_cover,sort_order,created_at")
-  .eq("room_id", id)
-  .eq("type", "image")
-  .order("sort_order", { ascending: true })
-  .order("created_at", { ascending: true });
-
-  const img = pickCoverUrl(mediaRows as any[]);
+  // Fallback dùng chính payload detail đã cache, không tạo thêm query media.
+  const mediaRows = Array.isArray(data.media)
+    ? data.media.filter(
+        (item) => String(item?.type ?? "").toLowerCase() === "image",
+      )
+    : [];
+  const img = pickCoverUrl(mediaRows);
   if (img) image = absUrl(base, img);
 }
 
     // ✅ Title preview theo format bạn yêu cầu
-  const formatVND = (v: any) => {
+  const formatVND = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? `${n.toLocaleString("vi-VN")} đ` : "";
 };
 
-const rawWard = String((data as any)?.ward || "").trim().replace(/^P\.?\s*/i, "");
+const rawWard = String(data.ward || "").trim().replace(/^P\.?\s*/i, "");
 const wardLabel = rawWard ? (/^\d+$/.test(rawWard) ? `P.${rawWard}` : `P. ${rawWard}`) : "";
 
 const addr = [
-  (data as any)?.address,
+  data.address,
   wardLabel,
-  (data as any)?.district,
+  data.district,
 ]
   .map((x) => String(x || "").trim())
   .filter(Boolean)

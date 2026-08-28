@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/getCurrentUser";
 
 function firstRelation(value: unknown): unknown {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -32,9 +33,7 @@ function contractPropertyId(value: unknown): string | null {
 
 export async function getOwnerDashboard() {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     throw new Error("Unauthorized");

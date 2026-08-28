@@ -19,8 +19,8 @@ export type FetchRoomsParams = {
   vipAccessTokenHash?: string | null;
 
   search?: string;
-  minPrice?: number;
-  maxPrice?: number;
+  minPrice?: number | null;
+  maxPrice?: number | null;
   districts?: string[];
   roomType?: string;
   roomTypes?: string[];
@@ -192,22 +192,30 @@ const expandRoomTypeLegacyValues = (roomTypes?: string[] | null) => {
 };
 
 const ANON_SESSION_KEY = "anon_session_id_v1";
+let anonSessionPromise: Promise<string | null> | null = null;
 
 async function getAnonSessionId(adminLevel?: 0 | 1 | 2) {
   if (adminLevel === 1 || adminLevel === 2) return null;
   if (typeof window === "undefined") return null;
 
-  const oldId = localStorage.getItem(ANON_SESSION_KEY);
+  // Một document chỉ đăng ký/khôi phục phiên anon một lần. Các lần đổi
+  // filter và phân trang dùng lại promise này, tránh thêm một RPC tuần tự.
+  if (!anonSessionPromise) {
+    anonSessionPromise = (async () => {
+      const oldId = localStorage.getItem(ANON_SESSION_KEY);
+      const { data, error } = await supabase.rpc("start_anon_session", {
+        p_session_id: oldId || null,
+      });
 
-  const { data, error } = await supabase.rpc("start_anon_session", {
-    p_session_id: oldId || null,
-  });
+      if (error || !data) return null;
 
-  if (error || !data) return null;
+      const id = String(data);
+      localStorage.setItem(ANON_SESSION_KEY, id);
+      return id;
+    })().catch(() => null);
+  }
 
-  const id = String(data);
-  localStorage.setItem(ANON_SESSION_KEY, id);
-  return id;
+  return anonSessionPromise;
 }
 
 export async function fetchRooms(
@@ -316,6 +324,18 @@ const pContractTerms =
         )
       )
     : null;
+const minPriceValue =
+  minPrice == null
+    ? null
+    : Number.isFinite(Number(minPrice))
+      ? Number(minPrice)
+      : null;
+const maxPriceValue =
+  maxPrice == null
+    ? null
+    : Number.isFinite(Number(maxPrice))
+      ? Number(maxPrice)
+      : null;
 const anonSessionId = await getAnonSessionId(adminLevel);
 if (params.vipAccessTokenHash) {
   console.log(
@@ -338,8 +358,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 
   // 3) filter/search
   p_search: normalizedSearch ? normalizedSearch : null,
-  p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
-  p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
+  p_min_price: minPriceValue,
+  p_max_price: maxPriceValue,
   p_districts: expandDistrictLegacyValues(districts) ?? null,
   p_room_types: expandRoomTypeLegacyValues(roomTypes) ?? null,
   p_move: pMove,

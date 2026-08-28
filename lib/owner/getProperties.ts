@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "../supabase/server";
+import { getCurrentUser } from "@/lib/auth/getCurrentUser";
 
 const UPCOMING_CONTRACT_DAYS = 30;
 const ACTIVE_CONTRACT_STATUSES = new Set(["active", "Đang hiệu lực"]);
@@ -38,9 +39,7 @@ function selectCurrentContract(contracts: ContractReference[] | null | undefined
 
 export async function getProperties() {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     throw new Error("Unauthorized");

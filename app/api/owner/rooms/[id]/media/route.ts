@@ -11,6 +11,7 @@ import {
   RequestValidationError,
 } from "@/lib/api/validation";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
+import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
 
 type MediaRow = {
   room_id: string;
@@ -163,6 +164,7 @@ export async function POST(
       .select("id, room_id, type, provider, url, path, is_cover, sort_order, created_at");
 
     if (error) return mapDatabaseError(error);
+    invalidatePublicRoomCache(roomId);
     return apiSuccess(data ?? [], 201);
   } catch (error) {
     return mapUnknownError(error);
@@ -253,6 +255,7 @@ export async function PATCH(
       .order("created_at", { ascending: true });
 
     if (error) return mapDatabaseError(error);
+    invalidatePublicRoomCache(roomId);
     return apiSuccess(data ?? []);
   } catch (error) {
     return mapUnknownError(error);

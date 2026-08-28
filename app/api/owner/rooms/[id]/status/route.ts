@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/validation";
 import { parseUpdateOwnerRoomStatusInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
 
 export async function PATCH(
   request: Request,
@@ -47,6 +48,7 @@ export async function PATCH(
     );
 
     if (error) return mapDatabaseError(error);
+    invalidatePublicRoomCache(roomId);
     return apiSuccess(data);
   } catch (error) {
     return mapUnknownError(error);

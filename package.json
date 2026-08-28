@@ -15,7 +15,8 @@
     "patch:zalo-reader-phase3": "node tools/zalo-reader/apply-phase3-24h-import-limit.mjs",
     "test:zalo-lookback": "tsx tools/zalo-reader/parsers/phase3-message-lookback-smoke-test.ts",
     "patch:zalo-reader-final": "node tools/zalo-reader/apply-final-building-room-architecture.mjs",
-    "map:geocode": "tsx tools/map/geocode-properties.ts"
+    "map:geocode": "tsx tools/map/geocode-properties.ts",
+    "test:performance": "node --test tools/performance/performance-regression-smoke-test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.975.0",

@@ -1937,6 +1937,19 @@ if (shouldPrune) {
       // ignore
     }
 
+// Đồng bộ cache RSC sau khi rooms + media đã ghi xong. Đây là request chỉ chạy
+// khi save, không nằm trên đường đọc danh sách/modal thông thường.
+try {
+  const revalidateResponse = await fetch(`/api/rooms/${roomId}/revalidate`, {
+    method: "POST",
+  })
+  if (!revalidateResponse.ok) {
+    console.warn("room cache revalidation failed", await revalidateResponse.text())
+  }
+} catch (error) {
+  console.warn("room cache revalidation failed", error)
+}
+
 // ✅ ĐÁNH DẤU HOME "DIRTY" ĐỂ BACK VỀ HOME KHÔNG RESTORE LIST CŨ (ảnh cũ)
 try {
   const stamp = String(Date.now());
@@ -1967,7 +1980,10 @@ void (async () => {
   if (error) {
     console.error('save_room_details_v1 failed:', error)
     alert(`Lưu chi tiết thất bại: ${error.message}`)
+    return
   }
+
+  void fetch(`/api/rooms/${roomId}/revalidate`, { method: "POST" }).catch(() => undefined)
 })()
 
   } catch (e: any) {

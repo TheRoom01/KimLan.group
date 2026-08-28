@@ -31,6 +31,7 @@ export type FetchRoomsParams = {
 
   // (server) vẫn có thể truyền sortMode nếu bạn muốn đồng bộ với client
   sortMode?: "updated_desc" | "price_asc" | "price_desc" | null;
+  anonSessionId?: string | null;
 };
 
 const pick = <T extends Record<string, any>, K extends readonly (keyof T)[]>(
@@ -144,6 +145,7 @@ export async function fetchRoomsServer(
   data: any[];
   nextCursor: string | UpdatedDescCursor | null;
   total?: number;
+  error?: string;
 }> {
   const {
     limit,
@@ -160,6 +162,7 @@ export async function fetchRoomsServer(
     contractTerms,
     status,
     sortMode,
+    anonSessionId,
   } = params;
 
   const effectiveRoomTypes =
@@ -232,6 +235,19 @@ const pContractTerms =
       )
     : null;
 
+const minPriceValue =
+  minPrice == null
+    ? null
+    : Number.isFinite(Number(minPrice))
+      ? Number(minPrice)
+      : null;
+const maxPriceValue =
+  maxPrice == null
+    ? null
+    : Number.isFinite(Number(maxPrice))
+      ? Number(maxPrice)
+      : null;
+
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: role,
@@ -242,8 +258,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 
   // 3) filter/search
   p_search: normalizeSearchKeyword(search) ? normalizeSearchKeyword(search) : null,
-  p_min_price: Number.isFinite(Number(minPrice)) ? Number(minPrice) : null,
-  p_max_price: Number.isFinite(Number(maxPrice)) ? Number(maxPrice) : null,
+  p_min_price: minPriceValue,
+  p_max_price: maxPriceValue,
   p_districts: Array.isArray(districts) && districts.length ? districts : null,
   p_room_types: Array.isArray(effectiveRoomTypes) && effectiveRoomTypes.length ? effectiveRoomTypes : null,
   p_move: pMove,
@@ -258,13 +274,18 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
 p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
 p_cursor_id: cursorId ? String(cursorId) : null,
-p_anon_session_id: null,
+p_anon_session_id: anonSessionId ?? null,
 
 });
 
   if (error) {
     console.error(error);
-    return { data: [], nextCursor: null, total: undefined };
+    return {
+      data: [],
+      nextCursor: null,
+      total: undefined,
+      error: error.message || "Không thể tải danh sách phòng",
+    };
   }
 
   // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null, total_count?: number }

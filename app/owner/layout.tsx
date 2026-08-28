@@ -3,18 +3,14 @@ import { ReactNode } from "react";
 import OwnerLayout from "@/components/owner/OwnerLayout";
 import OwnerLoginGate from "@/components/owner/OwnerLoginGate";
 import OwnerPlaceholderHints from "@/components/owner/OwnerPlaceholderHints";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/getCurrentUser";
 
 export default async function Layout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const supabase = await createSupabaseServerClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   /**
    * Không render các Server Component bên trong /owner khi chưa đăng nhập.

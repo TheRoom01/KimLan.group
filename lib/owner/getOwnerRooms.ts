@@ -5,6 +5,7 @@ import {
   type RoomStatus,
 } from "@/lib/owner/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/getCurrentUser";
 
 const UPCOMING_ROOM_DAYS = 30;
 
@@ -31,9 +32,7 @@ function contractPriority(status: ContractStatus | null): number {
 
 export async function getOwnerRooms() {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     throw new Error("Unauthorized");
@@ -88,31 +87,18 @@ export async function getOwnerRooms() {
         city,
         cover_image
       ),
-      room_media (
-        id,
-        type,
-        url,
-        path,
-        is_cover,
-        sort_order
-      ),
       rental_contracts (
         id,
         status,
         start_date,
         end_date,
-        monthly_price,
-        deposit_amount,
         created_at,
         contract_tenants (
           role,
           tenants (
             id,
             full_name,
-            phone,
-            cccd,
-            cccd_front_path,
-            cccd_back_path
+            phone
           )
         )
       )
@@ -165,20 +151,7 @@ export async function getOwnerRooms() {
           ? relation.tenants[0]
           : relation.tenants;
 
-        return tenant
-          ? {
-              ...tenant,
-              role: relation.role ?? null,
-              cccd_front_url: tenant.cccd_front_path
-                ? `/api/owner/tenants/${tenant.id}/identity-image?side=front`
-                : null,
-              cccd_back_url: tenant.cccd_back_path
-                ? `/api/owner/tenants/${tenant.id}/identity-image?side=back`
-                : null,
-              cccd_front_path: undefined,
-              cccd_back_path: undefined,
-            }
-          : null;
+        return tenant ? { ...tenant, role: relation.role ?? null } : null;
       })
       .filter(
         (candidate): candidate is NonNullable<typeof candidate> =>
@@ -192,15 +165,6 @@ export async function getOwnerRooms() {
     const property = Array.isArray(room.properties)
       ? room.properties[0]
       : room.properties;
-    const media = [...(room.room_media ?? [])].sort(
-      (left, right) =>
-        Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0),
-    );
-    const coverImage =
-      media.find((item) => item.type === "image" && item.is_cover)?.url ??
-      media.find((item) => item.type === "image")?.url ??
-      null;
-
     return {
       ...room,
       status: storedStatus,
@@ -209,8 +173,6 @@ export async function getOwnerRooms() {
       contract,
       tenant: tenant ? [tenant] : [],
       tenants,
-      media,
-      coverImage,
       property,
       membership_role: membershipRoleByProperty.get(String(room.property_id)) ?? "viewer",
       can_manage: ["owner", "manager"].includes(

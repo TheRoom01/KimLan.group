@@ -4,6 +4,7 @@ import { parseUuid, readJsonObject } from "@/lib/api/validation";
 import { parseUpdateOwnerRoomStatusInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -72,8 +73,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .select("*")
         .single();
       if (finalizeError) return mapDatabaseError(finalizeError);
+      invalidatePublicRoomCache(roomId);
       return apiSuccess({ ok: true, room: finalizedRoom, published: publishStatus === "published" });
     }
+    invalidatePublicRoomCache(roomId);
     return apiSuccess(data);
   } catch (error) {
     return mapUnknownError(error);

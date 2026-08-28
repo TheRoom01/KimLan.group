@@ -1,14 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import dynamic from "next/dynamic";
+import { Fragment, memo, useEffect, useMemo, useState } from "react";
 import { isRoomSaved, toggleSavedRoom } from "@/lib/savedRooms";
 import { createPortal } from "react-dom";
-import ShareRoomModal from "@/components/share/ShareRoomModal";
 import { supabase } from "@/lib/supabase";
 import { useRef } from "react";
 import { firstRoomActionUrl } from "@/lib/roomActionLinks";
 import { extractContactPhones } from "@/lib/contactPhones";
+
+const ShareRoomModal = dynamic(() => import("@/components/share/ShareRoomModal"));
 
 
 type Room = {
@@ -51,7 +54,6 @@ type RoomCardProps = {
   currentAdminName?: string | null;
   index?: number;
   onNavigate: (href: string) => void;
-  onPrefetch?: (href: string, roomId: string) => void;
   isOpening?: boolean;
 };
 
@@ -282,7 +284,7 @@ function getFullVideoUrls(roomData: any): string[] {
   );
 }
 
-export default function RoomCard({
+function RoomCard({
   room,
   adminLevel,
   currentUserId,
@@ -290,7 +292,6 @@ export default function RoomCard({
   currentAdminName,
   index = 0,
   onNavigate,
-  onPrefetch,
   isOpening = false,
 }: RoomCardProps) {
 
@@ -644,8 +645,8 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
   const toolbarRoomRef = useRef<Room | null>(null);
   const toolbarRoomRequestRef = useRef<Promise<Room | null> | null>(null);
   const zaloButtonRef = useRef<HTMLButtonElement>(null);
-  const zaloToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [zaloToast, setZaloToast] = useState<{
+    id: number;
     message: string;
     top: number;
     left: number;
@@ -769,24 +770,26 @@ async function openAdminShareModal(e: React.MouseEvent<HTMLButtonElement>) {
   function showZaloToast(message: string) {
     const rect = zaloButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    if (zaloToastTimerRef.current) clearTimeout(zaloToastTimerRef.current);
     setZaloToast({
+      id: Date.now(),
       message,
       top: rect.top - 8,
       left: rect.left + rect.width / 2,
     });
-    zaloToastTimerRef.current = setTimeout(() => {
-      setZaloToast(null);
-      zaloToastTimerRef.current = null;
-    }, 2200);
   }
 
-  useEffect(
-    () => () => {
-      if (zaloToastTimerRef.current) clearTimeout(zaloToastTimerRef.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    if (!zaloToast) return;
+
+    const toastId = zaloToast.id;
+    const timer = window.setTimeout(() => {
+      setZaloToast((current) =>
+        current?.id === toastId ? null : current,
+      );
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
+  }, [zaloToast]);
 
   async function openZaloFromToolbar(
     event: React.MouseEvent<HTMLButtonElement>,
@@ -982,28 +985,11 @@ const roomMetaLabelColor = "#fff6ec";
 const roomMetaValueColor = "#f8e9d8";
 const roomMetaDividerColor = "rgba(229,201,169,0.9)";
 
-console.log(room.updated_at, room);
-
 return (
   <>
    <div
-      className="block h-full cursor-pointer"
-      role="link"
-      tabIndex={0}
+      className="block h-full"
       aria-busy={isOpening}
-      onPointerEnter={() => onPrefetch?.(href, room.id)}
-      onPointerDown={() => onPrefetch?.(href, room.id)}
-      onFocus={() => onPrefetch?.(href, room.id)}
-      onClick={() => {
-        onNavigate(href);
-      }}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onNavigate(href);
-        }
-      }}
     >
     <div
       className={`
@@ -1024,6 +1010,23 @@ return (
         ${isOpening ? "scale-[0.992] border-[#F0D3AE]/60 bg-[rgba(202,151,86,0.62)] opacity-90" : ""}
       `}
     >
+      <Link
+        href={href}
+        aria-label={`Xem chi tiết phòng ${room.room_code || room.id}`}
+        className="absolute inset-0 z-10 cursor-pointer rounded-[18px]"
+        onClick={(event) => {
+          // Giữ nguyên hành vi mở tab mới/cửa sổ mới của trình duyệt.
+          if (
+            event.button === 0 &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.shiftKey &&
+            !event.altKey
+          ) {
+            onNavigate(href);
+          }
+        }}
+      />
   {/* glass layers */}
   <div
     className="
@@ -1148,8 +1151,8 @@ return (
                   fill
                   sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1536px) 25vw, 18vw"
                   className="object-cover object-[50%_40%]"
-                  priority={index < 6}
-                  loading={index < 6 ? "eager" : "lazy"}
+                  priority={index === 0}
+                  loading={index === 0 ? "eager" : "lazy"}
                   unoptimized
                   onError={() => {
                     setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));
@@ -1213,7 +1216,7 @@ return (
           </div>
 
           {updatedAt && (
-            <div className="absolute bottom-2 right-2 z-20 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold leading-none text-white/95 shadow backdrop-blur-md">
+            <div className="pointer-events-none absolute bottom-2 right-2 z-20 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold leading-none text-white/95 shadow backdrop-blur-md">
               Cập nhật: {formatTimeAgo(updatedAt)}
             </div>
           )}
@@ -1249,7 +1252,7 @@ return (
               {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
             </div>
             <div
-              className="min-w-0 flex-1 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              className="relative z-20 min-w-0 flex-1 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
               title={amenities.join(" · ") || "Tiện ích đang cập nhật"}
               onPointerDown={startAmenityDrag}
               onPointerMove={moveAmenityDrag}
@@ -1282,7 +1285,7 @@ return (
           </div>
 
           {isAdmin ? (
-            <div className="relative col-start-2 row-start-1 justify-self-end">
+            <div className="relative z-20 col-start-2 row-start-1 justify-self-end">
 
   <button
     ref={badgeRef}
@@ -1380,7 +1383,7 @@ return (
 
       {/* ADDRESS + DESCRIPTION + TOOLBAR */}
       <div className="px-3 pb-3">
-        <p className="line-clamp-2 font-semibold leading-6 text-white drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+        <p className="pointer-events-none relative z-20 line-clamp-2 font-semibold leading-6 text-white drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
               📍{adminLevel === 1 || adminLevel === 2
                 ? room.house_number
                   ? `${room.house_number} `
@@ -1393,8 +1396,11 @@ return (
               <button
                 type="button"
                 onClick={handleCopyAddress}
+                onPointerDown={(event) => event.stopPropagation()}
+                aria-label={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
                 title={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
                 className="
+                  pointer-events-auto relative z-30
                   !min-h-0 !h-[20px] !w-[20px]
                   ml-1 inline-flex align-[-2px]
                   items-center justify-center
@@ -1439,7 +1445,7 @@ return (
             ) : null}
           </div>
           <div
-            className="min-w-0 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="relative z-20 min-w-0 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             onPointerDown={startToolbarDrag}
             onPointerMove={moveToolbarDrag}
             onPointerUp={finishToolbarDrag}
@@ -1494,7 +1500,7 @@ return (
     </div>
   </div>
 
-    {(safeAdminLevel === 1 || safeAdminLevel === 2) && (
+    {(safeAdminLevel === 1 || safeAdminLevel === 2) && shareOpen && (
      <ShareRoomModal
       open={shareOpen}
       onClose={() => setShareOpen(false)}
@@ -1626,3 +1632,5 @@ return (
       )}
   </>
 );}
+
+export default memo(RoomCard);

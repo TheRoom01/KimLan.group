@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Building2, CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileText, Info, MapPin, Play, X } from "lucide-react";
+import { Building2, CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileText, Info, MapPin, Maximize, Minimize, Play, X } from "lucide-react";
 
 import type { SalesPortalData, SalesRoomStatus } from "@/lib/sales-portal/types";
 import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarousel";
@@ -14,6 +14,14 @@ const FILTERS: Array<{ value: "all" | SalesRoomStatus; label: string }> = [
   { value: "Đang thuê", label: "Đang thuê" },
 ];
 
+const SALES_ROOM_MODAL_HISTORY_KEY = "__kimlanSalesRoomModal";
+const SALES_MEDIA_FULLSCREEN_HISTORY_KEY = "__kimlanSalesMediaFullscreen";
+
+function browserHistoryState(): Record<string, unknown> {
+  const state = window.history.state;
+  return state && typeof state === "object" ? state as Record<string, unknown> : {};
+}
+
 export default function SalesPortalView({ data }: { data: SalesPortalData }) {
   const [filter, setFilter] = useState<"all" | SalesRoomStatus>("all");
   const [buildingInfoOpen, setBuildingInfoOpen] = useState(false);
@@ -22,6 +30,39 @@ export default function SalesPortalView({ data }: { data: SalesPortalData }) {
   const rooms = useMemo(() => filter === "all" ? data.rooms : data.rooms.filter((room) => room.status === filter), [data.rooms, filter]);
   const documentOrigins = useMemo(() => Array.from(new Set(data.documents.flatMap((document) => { try { return [new URL(document.file_url).origin]; } catch { return []; } }))), [data.documents]);
   const hero = data.property.cover_image || data.property.gallery_images[0];
+
+  function openRoomModal(room: SalesPortalData["rooms"][number]) {
+    window.history.pushState(
+      { ...browserHistoryState(), [SALES_ROOM_MODAL_HISTORY_KEY]: room.id },
+      "",
+      window.location.href,
+    );
+    setSelectedRoom(room);
+  }
+
+  function closeRoomModal() {
+    setSelectedRoom(null);
+    if (browserHistoryState()[SALES_ROOM_MODAL_HISTORY_KEY]) {
+      window.history.back();
+    }
+  }
+
+  useEffect(() => {
+    function syncRoomModalWithHistory(event: PopStateEvent) {
+      const state = event.state && typeof event.state === "object"
+        ? event.state as Record<string, unknown>
+        : {};
+      const roomId = state[SALES_ROOM_MODAL_HISTORY_KEY];
+      const room = typeof roomId === "string"
+        ? data.rooms.find((item) => item.id === roomId) ?? null
+        : null;
+
+      setSelectedRoom(room);
+    }
+
+    window.addEventListener("popstate", syncRoomModalWithHistory);
+    return () => window.removeEventListener("popstate", syncRoomModalWithHistory);
+  }, [data.rooms]);
 
   return (
     <main className="min-h-screen bg-[#f4eadc] pb-12 text-[#432918]">
@@ -62,12 +103,12 @@ export default function SalesPortalView({ data }: { data: SalesPortalData }) {
 
         <section className="rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold">Danh sách phòng</h2><p className="mt-1 text-sm text-[#80634a]">Chỉ hiển thị trạng thái phục vụ bán hàng.</p></div><div className="flex max-w-full gap-2 overflow-x-auto pb-1">{FILTERS.map((item) => <button key={item.value} type="button" onClick={() => setFilter(item.value)} className={`whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-bold transition ${filter === item.value ? "bg-[#744722] text-white" : "bg-[#f2dfc6] text-[#684324]"}`}>{item.label}</button>)}</div></div>
-          {rooms.length ? <div className="mt-5 flex flex-wrap gap-3">{rooms.map((room) => <button key={room.id} type="button" onClick={() => setSelectedRoom(room)} aria-label={`Mở chi tiết phòng ${room.room_code || "-"}, ${room.room_type || "chưa cập nhật dạng phòng"}`} className={`group min-w-[104px] rounded-2xl border px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#744722] focus-visible:ring-offset-2 ${roomBadgeClass(room.status)}`}><span className="block text-[15px] font-black leading-none tracking-tight">P. {room.room_code || "-"}</span><span className="mt-1.5 block max-w-[140px] truncate text-[11px] font-semibold leading-none opacity-80">{room.room_type || "Chưa phân loại"}</span></button>)}</div> : <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 px-5 py-10 text-center text-sm text-[#80634a]">Không có phòng phù hợp với bộ lọc.</div>}
+          {rooms.length ? <div className="mt-5 flex flex-wrap gap-3">{rooms.map((room) => <button key={room.id} type="button" onClick={() => openRoomModal(room)} aria-label={`Mở chi tiết phòng ${room.room_code || "-"}, ${room.room_type || "chưa cập nhật dạng phòng"}`} className={`group min-w-[104px] rounded-2xl border px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#744722] focus-visible:ring-offset-2 ${roomBadgeClass(room.status)}`}><span className="block text-[15px] font-black leading-none tracking-tight">P. {room.room_code || "-"}</span><span className="mt-1.5 block max-w-[140px] truncate text-[11px] font-semibold leading-none opacity-80">{room.room_type || "Chưa phân loại"}</span></button>)}</div> : <div className="mt-5 rounded-2xl border border-dashed border-[#a9825f]/35 px-5 py-10 text-center text-sm text-[#80634a]">Không có phòng phù hợp với bộ lọc.</div>}
         </section>
       </div>
       {buildingInfoOpen ? <BuildingInfoModal data={data} onClose={() => setBuildingInfoOpen(false)} /> : null}
       {documentsOpen ? <SalesDocumentsModal data={data} onClose={() => setDocumentsOpen(false)} /> : null}
-      {selectedRoom ? <SalesRoomModal room={selectedRoom} onClose={() => setSelectedRoom(null)} /> : null}
+      {selectedRoom ? <SalesRoomModal room={selectedRoom} onClose={closeRoomModal} /> : null}
     </main>
   );
 }
@@ -111,13 +152,38 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
   function openFullscreen() {
     normalVideoRef.current?.pause();
     showMediaControlsTemporarily();
+    if (browserHistoryState()[SALES_MEDIA_FULLSCREEN_HISTORY_KEY] !== room.id) {
+      window.history.pushState(
+        { ...browserHistoryState(), [SALES_MEDIA_FULLSCREEN_HISTORY_KEY]: room.id },
+        "",
+        window.location.href,
+      );
+    }
     setFullscreen(true);
   }
 
   function closeFullscreen() {
     fullscreenVideoRef.current?.pause();
     setFullscreen(false);
+    if (browserHistoryState()[SALES_MEDIA_FULLSCREEN_HISTORY_KEY] === room.id) {
+      window.history.back();
+    }
   }
+
+  useEffect(() => {
+    function syncFullscreenWithHistory(event: PopStateEvent) {
+      const state = event.state && typeof event.state === "object"
+        ? event.state as Record<string, unknown>
+        : {};
+      const shouldBeFullscreen = state[SALES_MEDIA_FULLSCREEN_HISTORY_KEY] === room.id;
+
+      if (!shouldBeFullscreen) fullscreenVideoRef.current?.pause();
+      setFullscreen(shouldBeFullscreen);
+    }
+
+    window.addEventListener("popstate", syncFullscreenWithHistory);
+    return () => window.removeEventListener("popstate", syncFullscreenWithHistory);
+  }, [room.id]);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -129,6 +195,9 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
       event.stopImmediatePropagation();
       fullscreenVideoRef.current?.pause();
       setFullscreen(false);
+      if (browserHistoryState()[SALES_MEDIA_FULLSCREEN_HISTORY_KEY] === room.id) {
+        window.history.back();
+      }
     };
 
     document.body.style.overflow = "hidden";
@@ -137,7 +206,7 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", closeOnEscape, true);
     };
-  }, [fullscreen]);
+  }, [fullscreen, room.id]);
 
   useEffect(() => () => {
     if (mediaControlsTimerRef.current) window.clearTimeout(mediaControlsTimerRef.current);
@@ -152,7 +221,7 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
     });
   }, [index, mediaItems]);
 
-  if (!mediaItems.length) return <div className={`relative grid place-items-center bg-[#ead9c2] text-[#98785b] ${expanded ? "min-h-56 sm:min-h-72" : "aspect-[16/10]"}`}><Building2 size={38} /><StatusBadge status={room.status} /></div>;
+  if (!mediaItems.length) return <div className={`relative grid place-items-center bg-[#ead9c2] text-[#98785b] ${expanded ? "min-h-56 sm:min-h-72" : "aspect-[16/10]"}`}><Building2 size={38} /></div>;
 
   return <div className="overflow-hidden bg-black">
     <div
@@ -172,12 +241,12 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
           </div>;
         })}
       </div>
-      {updatedText ? <span className="pointer-events-none absolute left-3 top-3 z-20 max-w-[42%] truncate rounded-full border border-white/20 bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white/90 backdrop-blur-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.35)]">Đã cập nhật: {updatedText}</span> : null}
-      <StatusBadge status={room.status} />
+      {updatedText ? <span className={`pointer-events-none absolute left-3 z-20 max-w-[58%] truncate rounded-full border border-white/20 bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white/90 backdrop-blur-[10px] shadow-[0_6px_20px_rgba(0,0,0,0.35)] ${mediaItems[index]?.type === "video" ? "bottom-16" : "bottom-3"}`}>Đã cập nhật: {updatedText}</span> : null}
       {mediaControlsVisible ? <span className="pointer-events-none absolute left-1/2 top-1 z-30 -translate-x-1/2 rounded bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">{index + 1} / {mediaItems.length}</span> : null}
+      {mediaItems[index]?.type === "video" ? <button type="button" data-swipe-ignore="true" onClick={(event) => { event.stopPropagation(); openFullscreen(); }} aria-label="Mở media toàn màn hình" title="Toàn màn hình" className="absolute right-3 top-16 z-30 grid h-10 w-10 place-items-center rounded-full border border-white/25 bg-black/50 text-white shadow-lg backdrop-blur transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><Maximize size={20} /></button> : null}
       {mediaControlsVisible && mediaItems.length > 1 ? <><button type="button" data-swipe-ignore="true" aria-label="Media trước" onClick={() => swipe.move(-1)} disabled={index === 0} className="absolute left-2 top-1/2 z-20 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 disabled:pointer-events-none disabled:opacity-25 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronLeft size={20} /></button><button type="button" data-swipe-ignore="true" aria-label="Media tiếp theo" onClick={() => swipe.move(1)} disabled={index === mediaItems.length - 1} className="absolute right-2 top-1/2 z-20 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white opacity-100 backdrop-blur transition hover:bg-black/70 disabled:pointer-events-none disabled:opacity-25 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"><ChevronRight size={20} /></button></> : null}
     </div>
-    {expanded && mediaItems.length > 1 ? <div className="flex gap-2 overflow-x-auto bg-[#17120f] p-2 [scrollbar-color:#8b735f_#17120f] [scrollbar-width:thin]">{mediaItems.map((item, mediaIndex) => <button key={item.id} type="button" onClick={() => swipe.jumpTo(mediaIndex)} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-black transition sm:h-16 sm:w-24 ${mediaIndex === index ? "border-white" : "border-transparent opacity-65 hover:opacity-100"}`} aria-label={`Xem ${item.type === "video" ? "video" : "ảnh"} ${mediaIndex + 1}`}>{item.type === "video" ? <><video src={item.url} preload="metadata" playsInline muted className="pointer-events-none h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center bg-black/20 text-white"><Play size={18} fill="currentColor" /></span></> : <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />}</button>)}</div> : null}
+    {expanded && mediaItems.length > 1 ? <div className="flex gap-2 overflow-x-auto bg-[#17120f] p-2 [scrollbar-color:#8b735f_#17120f] [scrollbar-width:thin]">{mediaItems.map((item, mediaIndex) => <button key={item.id} type="button" onClick={() => swipe.jumpTo(mediaIndex)} className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-black transition sm:h-16 sm:w-24 ${mediaIndex === index ? "border-white" : "border-transparent opacity-65 hover:opacity-100"}`} aria-label={`Xem ${item.type === "video" ? "video" : "ảnh"} ${mediaIndex + 1}`}>{item.type === "video" ? <><video src={item.url} preload="none" playsInline muted className="pointer-events-none h-full w-full object-cover" /><span className="absolute inset-0 grid place-items-center bg-black/20 text-white"><Play size={18} fill="currentColor" /></span></> : <img src={item.url} alt="" loading="lazy" className="h-full w-full object-cover" />}</button>)}</div> : null}
     {fullscreen ? <div className="fixed inset-0 z-[2147483647] flex items-center justify-center overflow-hidden bg-black/95 backdrop-blur-[14px]" role="dialog" aria-modal="true" aria-label="Xem media phòng toàn màn hình" onClick={closeFullscreen}>
       <div className="relative flex h-full w-full cursor-grab select-none items-center justify-center active:cursor-grabbing" {...fullscreenSwipe.bind} onClick={(event) => event.stopPropagation()} style={{ touchAction: "none" }}>
       <div className={`flex h-full w-full will-change-transform ${fullscreenSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: fullscreenSwipe.transform }} onTransitionEnd={fullscreenSwipe.onTransitionEnd}>
@@ -190,6 +259,7 @@ function RoomImageGallery({ room, expanded = false }: { room: SalesPortalData["r
         })}
       </div>
       <button type="button" data-swipe-ignore="true" onClick={closeFullscreen} aria-label="Đóng toàn màn hình" className="absolute right-4 top-4 z-30 grid h-11 w-11 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20"><X size={22} /></button>
+      <button type="button" data-swipe-ignore="true" onClick={closeFullscreen} aria-label="Thoát toàn màn hình" title="Thoát toàn màn hình" className="absolute right-4 top-16 z-30 grid h-11 w-11 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><Minimize size={21} /></button>
       {mediaControlsVisible && mediaItems.length > 1 ? <>
         <button type="button" data-swipe-ignore="true" onClick={() => fullscreenSwipe.move(-1)} disabled={index === 0} aria-label="Media trước" className="absolute left-4 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20 disabled:pointer-events-none disabled:opacity-25"><ChevronLeft size={28} /></button>
         <button type="button" data-swipe-ignore="true" onClick={() => fullscreenSwipe.move(1)} disabled={index === mediaItems.length - 1} aria-label="Media tiếp theo" className="absolute right-4 top-1/2 z-30 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-white/10 text-white shadow-lg backdrop-blur-[24px] transition hover:bg-white/20 disabled:pointer-events-none disabled:opacity-25"><ChevronRight size={28} /></button>
@@ -346,7 +416,6 @@ async function copyText(value: string) {
 function InfoGroup({ title, children }: { title: string; children: React.ReactNode }) { return <div><h3 className="mb-2 font-bold uppercase tracking-wide text-[#744722]">{title}</h3><div className="rounded-2xl bg-[#f8ead7] p-4">{children}</div></div>; }
 
 function Metric({ label, value, tone }: { label: string; value: number; tone: "green" | "amber" | "red" }) { const colors = { green: "bg-emerald-50 text-emerald-700", amber: "bg-amber-50 text-amber-700", red: "bg-red-50 text-red-700" }; return <div className={`rounded-2xl p-3 text-center ${colors[tone]}`}><p className="text-xl font-bold">{value}</p><p className="mt-1 text-[11px] font-semibold">{label}</p></div>; }
-function StatusBadge({ status }: { status: SalesRoomStatus }) { const cls = status === "Trống" ? "bg-emerald-600" : status === "Sắp trống" ? "bg-amber-500" : "bg-red-600"; return <span className={`absolute right-3 top-3 rounded-full px-3 py-1 text-xs font-bold text-white shadow ${cls}`}>{status}</span>; }
 function roomBadgeClass(status: SalesRoomStatus) { return status === "Trống" ? "border-emerald-700/35 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-emerald-900/15 hover:to-emerald-700" : status === "Sắp trống" ? "border-amber-600/35 bg-gradient-to-br from-amber-300 to-amber-400 text-amber-950 shadow-amber-900/15 hover:to-amber-500" : "border-red-700/35 bg-gradient-to-br from-red-500 to-red-600 text-white shadow-red-900/15 hover:to-red-700"; }
 async function salesRoomMediaFile(media: { type: string; url: string }, roomCode: string, index: number) {
   const response = await fetch(`/api/share-image?url=${encodeURIComponent(media.url)}`, { cache: "force-cache" });

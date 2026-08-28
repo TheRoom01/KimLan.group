@@ -13,6 +13,7 @@ import {
 import { parseCreateOwnerRoomInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
+import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
 
 const PUBLISH_STATUSES = new Set(["draft", "published", "hidden"]);
 
@@ -61,6 +62,7 @@ export async function PATCH(
     );
 
     if (error) return mapDatabaseError(error);
+    invalidatePublicRoomCache(roomId);
     return apiSuccess(data);
   } catch (error) {
     return mapUnknownError(error);
@@ -98,6 +100,7 @@ export async function DELETE(
     });
 
     if (error) return mapDatabaseError(error);
+    invalidatePublicRoomCache(roomId);
     return apiSuccess(data);
   } catch (error) {
     return mapUnknownError(error);

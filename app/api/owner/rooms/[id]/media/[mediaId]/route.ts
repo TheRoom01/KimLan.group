@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/response";
 import { parseUuid } from "@/lib/api/validation";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
+import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
 
 export const runtime = "nodejs";
 
@@ -151,6 +152,7 @@ export async function DELETE(
       }
     }
 
+    invalidatePublicRoomCache(roomId);
     return apiSuccess({
       deleted_media_id: mediaId,
       replacement_cover_id: replacementCoverId,

@@ -2,6 +2,8 @@ import HomeClient from "./HomeClient";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
 import ContactFAB from "@/components/ContactFAB";
+import { getCachedPublicRooms } from "@/lib/rooms/publicCache";
+import { cookies } from "next/headers";
 
 function firstString(v: string | string[] | undefined): string | null {
   if (typeof v === "string") return v;
@@ -20,9 +22,10 @@ function parseCsv(v: string | null): string[] | null {
   return arr.length ? arr : null;
 }
 
-function parseNumberSafe(v: string | null, fallback: number): number {
+function parseOptionalNumber(v: string | null): number | null {
+  if (v == null || v.trim() === "") return null;
   const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+  return Number.isFinite(n) ? n : null;
 }
 
 function parseSortMode(
@@ -41,36 +44,31 @@ export default async function HomePage({
 }) {
   const sp = (await searchParams) ?? {};
 
-  const supabase = await createSupabaseServerClient();
+  const cookieStore = await cookies();
+  const hasAuthCookie = cookieStore
+    .getAll()
+    .some(({ name }) => name.startsWith("sb-") && name.includes("-auth-token"));
+  const supabase = hasAuthCookie ? await createSupabaseServerClient() : null;
 
-  // 1) Resolve user + admin level on server
-  const { data: userRes } = await supabase.auth.getUser();
-  const user = userRes?.user ?? null;
+  // 1) Chỉ xác minh server khi request thực sự mang Supabase auth cookie.
+  const user = supabase
+    ? (await supabase.auth.getUser()).data.user ?? null
+    : null;
 
   let adminLevel: 0 | 1 | 2 = 0;
 
-  try {
-    const { data: lvlData } = await supabase.rpc("get_my_admin_level");
-    const lvl = Number(lvlData ?? 0);
-    adminLevel = (lvl === 2 ? 2 : lvl === 1 ? 1 : 0) as 0 | 1 | 2;
-  } catch {
-    adminLevel = 0;
-  }
-
-  // 2) Fetch filter options on server (optional but faster first paint)
-  let initialDistricts: string[] = [];
-  let initialRoomTypes: string[] = [];
-  try {
-    const { data } = await supabase.rpc("get_public_filters");
-    if (data) {
-      initialDistricts = (data as any).districts ?? [];
-      initialRoomTypes = (data as any).roomTypes ?? [];
+  // Khách công khai không cần trả thêm một RPC chỉ để nhận lại level 0.
+  if (user) {
+    try {
+      const { data: lvlData } = await supabase!.rpc("get_my_admin_level");
+      const lvl = Number(lvlData ?? 0);
+      adminLevel = (lvl === 2 ? 2 : lvl === 1 ? 1 : 0) as 0 | 1 | 2;
+    } catch {
+      adminLevel = 0;
     }
-  } catch {
-    // ignore
   }
 
-  // 3) Read filters from URL (SSR must match client URL state)
+  // 2) Read filters from URL (SSR must match client URL state)
   const qRaw = firstString(sp.q);
   const minRaw = firstString(sp.min);
   const maxRaw = firstString(sp.max);
@@ -84,8 +82,10 @@ export default async function HomePage({
 
   const search = qRaw ? decodeURIComponent(qRaw).trim() : null;
 
-  const minPrice = parseNumberSafe(minRaw, 3_000_000);
-  const maxPrice = parseNumberSafe(maxRaw, 30_000_000);
+  // Không có min/max trên URL nghĩa là chưa bật lọc giá. Gửi null để RPC
+  // trả cả phòng có giá lẫn phòng chưa có giá.
+  const minPrice = parseOptionalNumber(minRaw);
+  const maxPrice = parseOptionalNumber(maxRaw);
 
    const districts = parseCsv(dRaw);
   const roomTypes = parseCsv(rtRaw);
@@ -114,9 +114,9 @@ export default async function HomePage({
 
   const sortMode = parseSortMode(sRaw);
 
-  // 4) Fetch first page on server using URL-derived filters
+  // 3) Fetch first page on server using URL-derived filters
   const LIMIT = 20;
-   const res = await fetchRoomsServer(supabase, {
+  const fetchParams = {
     limit: LIMIT,
     cursor: null,
     adminLevel,
@@ -130,7 +130,11 @@ export default async function HomePage({
     contractTerms,
     status,
     sortMode,
-  });
+  } as const;
+
+  const res = user
+    ? await fetchRoomsServer(supabase!, fetchParams)
+    : await getCachedPublicRooms(fetchParams);
 
   return (
     <>

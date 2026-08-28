@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
 
 export async function PATCH(
   req: Request,
@@ -59,6 +60,8 @@ export async function PATCH(
         { status: error.code === "42501" ? 403 : 500 }
       );
     }
+
+    invalidatePublicRoomCache(roomId);
 
     return NextResponse.json({
       data: data?.[0] ?? {
