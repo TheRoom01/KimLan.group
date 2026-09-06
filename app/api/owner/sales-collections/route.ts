@@ -20,11 +20,15 @@ export async function GET() {
   } catch (error) { return mapUnknownError(error); }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request) { return saveCollection(request, false); }
+export async function PUT(request: Request) { return saveCollection(request, true); }
+
+async function saveCollection(request: Request, editing: boolean) {
   try {
     const db = await createSupabaseServerClient();
     const user = await getAuthenticatedUser(db);
     if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập", 401);
+    const collectionId = editing ? parseUuid(new URL(request.url).searchParams.get("id"), "id") : null;
     const body = await readJsonObject(request);
     const label = parseRequiredString(body.label, "Tên link", 120);
     const expiry = parseOptionalString(body.expires_at, "Ngày hết hạn", 50);
@@ -37,6 +41,14 @@ export async function POST(request: Request) {
     if (!links || links.length !== ids.length) return apiError("FORBIDDEN", "Bạn không có quyền chia sẻ một trong các tòa nhà", 403);
     if (links.some((link) => !link.public_token || link.revoked_at || (link.expires_at && Date.parse(link.expires_at) <= Date.now()))) throw new RequestValidationError("Có link đã hết hạn hoặc bị thu hồi. Vui lòng tải lại danh sách.");
     if (new Set(links.map((link) => link.property_id)).size !== links.length) throw new RequestValidationError("Mỗi tòa nhà chỉ được chọn một link");
+    if (collectionId) {
+      const { data, error: saveError } = await createSupabaseAdminClient().from("sales_portal_collections")
+        .update({ link_ids: ids }).eq("id", collectionId).eq("created_by", user.id)
+        .is("revoked_at", null).select(fields).maybeSingle();
+      if (saveError) return mapDatabaseError(saveError);
+      if (!data) return apiError("NOT_FOUND", "Link không tồn tại hoặc đã bị thu hồi", 404);
+      return apiSuccess(data);
+    }
     const token = createSalesPortalToken();
     const { data, error: saveError } = await createSupabaseAdminClient().from("sales_portal_collections").insert({
       label, link_ids: ids, created_by: user.id, expires_at: expiry || null,

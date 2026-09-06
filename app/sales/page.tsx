@@ -8,8 +8,19 @@ import SalesPortalView from "@/components/sales/SalesPortalView";
 import { getCollectionTokens } from "@/lib/sales-portal/getCollectionTokens";
 
 export const dynamic = "force-dynamic";
+const shareTitle = "Cập nhật phòng trống Hệ thống căn hộ";
 export const metadata: Metadata = {
-  title: "Danh sách tòa nhà",
+  title: { absolute: shareTitle },
+  openGraph: {
+    title: shareTitle,
+    type: "website",
+    images: [{ url: "/og-logo.jpg", width: 1200, height: 630, alt: shareTitle }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: shareTitle,
+    images: ["/og-logo.jpg"],
+  },
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };

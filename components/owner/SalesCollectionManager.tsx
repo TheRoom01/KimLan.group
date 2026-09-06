@@ -27,6 +27,7 @@ export default function SalesCollectionManager({ properties }: { properties: Pro
   const [message, setMessage] = useState("");
   const [url, setUrl] = useState("");
   const [view, setView] = useState<"list" | "create">("list");
+  const [editing, setEditing] = useState<SavedCollection | null>(null);
   const [collections, setCollections] = useState<SavedCollection[]>([]);
   const [loadingCollections, setLoadingCollections] = useState(false);
   useEffect(() => { if (dialog.current) dialog.current.scrollTop = 0; }, [view]);
@@ -71,10 +72,34 @@ export default function SalesCollectionManager({ properties }: { properties: Pro
   }
 
   function openCreate() {
+    setEditing(null); setLabel("Link đội Sale"); setExpiry("");
     touchedChoices.current.clear();
     setChoices(Object.fromEntries(Object.entries(links).map(([id, rows]) => [id, rows.find((link) => isActive(link))?.id ?? ""])));
     selectAll(true); setView("create");
     properties.forEach((property) => { void loadPropertyLinks(property.id, true); });
+  }
+
+  async function openEdit(collection: SavedCollection) {
+    setBusy(true); setMessage(""); setUrl("");
+    try {
+      const entries = await Promise.all(properties.map(async (property) => {
+        const rows = await readApiResponse<PortalLink[]>(await fetch(`/api/owner/properties/${property.id}/sales-portal`, { cache: "no-store" }));
+        return [property.id, rows] as const;
+      }));
+      const selectedIds: string[] = [];
+      const nextChoices: Record<string, string> = {};
+      for (const [id, rows] of entries) {
+        const current = rows.find((row) => collection.link_ids.includes(row.id));
+        if (current) { selectedIds.push(id); nextChoices[id] = current.id; }
+      }
+      if (Object.keys(nextChoices).length !== collection.link_ids.length) {
+        throw new Error("Không thể tải đầy đủ tòa nhà của link. Vui lòng tải lại hoặc kiểm tra quyền quản lý.");
+      }
+      touchedChoices.current = new Set(selectedIds);
+      setLinks(Object.fromEntries(entries)); setChoices(nextChoices); setSelected(selectedIds);
+      setLabel(collection.label); setExpiry(""); setEditing(collection); setView("create");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Không thể mở chỉnh sửa link"); }
+    finally { setBusy(false); }
   }
 
   async function revokeCollection(id: string) {
@@ -104,6 +129,9 @@ export default function SalesCollectionManager({ properties }: { properties: Pro
     try {
       for (const id of selected) {
         const existing = links[id]?.find((link) => link.id === choices[id]);
+        if (editing && choices[id] && (!existing?.public_token || !isActive(existing))) {
+          throw new Error("Có link tòa nhà đã hết hạn hoặc bị thu hồi. Vui lòng chọn link khác hoặc tạo link mới cho tòa nhà đó");
+        }
         if (existing?.public_token && isActive(existing)) { linkIds.push(existing.id); continue; }
         const result = await readApiResponse<{ path: string; id: string }>(await fetch(`/api/owner/properties/${id}/sales-portal`, {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -115,14 +143,14 @@ export default function SalesCollectionManager({ properties }: { properties: Pro
         setLinks((current) => ({ ...current, [id]: [link, ...(current[id] ?? [])] }));
         setChoices((current) => ({ ...current, [id]: link.id }));
       }
-      const saved = await readApiResponse<SavedCollection>(await fetch("/api/owner/sales-collections", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const saved = await readApiResponse<SavedCollection>(await fetch(editing ? `/api/owner/sales-collections?id=${encodeURIComponent(editing.id)}` : "/api/owner/sales-collections", {
+        method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: label.trim(), link_ids: linkIds, expires_at: expiry ? new Date(`${expiry}T23:59:59+07:00`).toISOString() : null }),
       }));
-      setCollections((current) => [saved, ...current]);
+      setCollections((current) => editing ? current.map((item) => item.id === saved.id ? saved : item) : [saved, ...current]);
       setView("list");
       setUrl(`${window.location.origin}/sales?collection=${saved.public_token}`);
-      setMessage("Đã tạo và lưu link chia sẻ.");
+      setMessage(editing ? "Đã cập nhật tòa nhà. Link chia sẻ được giữ nguyên." : "Đã tạo và lưu link chia sẻ.");
     } catch (error) { setMessage(`${error instanceof Error ? error.message : "Không thể tạo link"}. Các link đã tạo được giữ lại để thử tiếp.`); }
     finally { setBusy(false); }
   }
@@ -136,21 +164,21 @@ export default function SalesCollectionManager({ properties }: { properties: Pro
   return <>
     <button type="button" onClick={openSharing} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#744722]/30 bg-white px-4 py-2.5 text-sm font-semibold text-[#744722] hover:bg-[#f8ead7] sm:w-auto"><Link2 size={17} />Chia sẻ link cho Sale</button>
     <dialog ref={dialog} className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto rounded-2xl border border-[#d9bd99] bg-[#fff9ef] p-5 text-[#432918] shadow-2xl backdrop:bg-black/45" onCancel={(event) => { if (busy) event.preventDefault(); }}>
-      <div className="flex items-start justify-between gap-3"><h2 className="text-xl font-bold">{view === "list" ? "Link các tòa nhà của hệ thống" : "Chia sẻ nhiều tòa nhà cho Sale"}</h2><button type="button" aria-label="Đóng" disabled={busy} onClick={() => dialog.current?.close()} className="rounded-lg p-1"><X size={22} /></button></div>
+      <div className="flex items-start justify-between gap-3"><h2 className="text-xl font-bold">{view === "list" ? "Link các tòa nhà của hệ thống" : editing ? "Chỉnh sửa tòa nhà trong link" : "Chia sẻ nhiều tòa nhà cho Sale"}</h2><button type="button" aria-label="Đóng" disabled={busy} onClick={() => dialog.current?.close()} className="rounded-lg p-1"><X size={22} /></button></div>
       {view === "list" ? <>
         <p className="mt-2 text-sm text-[#80634a]">{collections.filter(isActive).length} link đang hoạt động</p>
         <section className="mt-5 rounded-2xl border border-[#d9bd99] bg-[#f8ead7] p-4"><h3 className="font-bold">Tạo link mới</h3><p className="mt-1 text-sm text-[#80634a]">Chọn tòa nhà và lưu một link để chia sẻ cho đội Sale.</p><button type="button" onClick={openCreate} disabled={busy || loadingCollections} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#744722] p-3 font-bold text-white disabled:opacity-50"><Plus size={18} />Tạo link mới</button></section>
         <div className="mb-3 mt-6 flex items-center justify-between gap-3"><div><h3 className="font-bold">Các link đã tạo</h3><p className="mt-1 text-xs text-[#80634a]">Link đã thu hồi hiển thị và có thể khôi phục trong 3 ngày.</p></div><button type="button" onClick={() => { setMessage(""); void loadCollections(); }} disabled={loadingCollections || busy} className="rounded-xl border border-[#d9bd99] bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50">Tải lại</button></div>
         {loadingCollections ? <p role="status" className="py-6 text-center text-sm">Đang tải các link đã lưu...</p> : <div className="space-y-3">{collections.filter((link) => isSalesLinkVisible(link)).map((link) => <article key={link.id} className="rounded-2xl border border-[#d9bd99]/60 bg-white p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h4 className="min-w-0 break-words font-bold">{link.label}</h4><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2 py-1 text-xs font-semibold ${isActive(link) ? "border-green-200 bg-green-50 text-green-700" : "border-gray-200 bg-gray-50 text-gray-600"}`}>{link.revoked_at ? "Đã thu hồi" : isActive(link) ? "Đang hoạt động" : "Đã hết hạn"}</span><button type="button" disabled={!isActive(link) || busy} onClick={() => void copy(`${window.location.origin}/sales?collection=${link.public_token}`)} className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 disabled:opacity-40">Copy</button>{!link.revoked_at ? <button type="button" disabled={busy} onClick={() => void revokeCollection(link.id)} className="rounded-lg border border-red-200 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-40">Thu hồi</button> : <button type="button" disabled={busy} onClick={() => void restoreCollection(link.id)} className="rounded-lg border border-[#d9bd99] bg-[#fff9ef] px-2 py-1 text-xs font-bold text-[#744722] disabled:opacity-40">Khôi phục link</button>}</div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h4 className="min-w-0 break-words font-bold">{link.label}</h4><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2 py-1 text-xs font-semibold ${isActive(link) ? "border-green-200 bg-green-50 text-green-700" : "border-gray-200 bg-gray-50 text-gray-600"}`}>{link.revoked_at ? "Đã thu hồi" : isActive(link) ? "Đang hoạt động" : "Đã hết hạn"}</span><button type="button" disabled={Boolean(link.revoked_at) || busy || loadingLinks > 0} onClick={() => void openEdit(link)} className="rounded-lg border border-[#d9bd99] bg-[#fff9ef] px-2 py-1 text-xs font-bold text-[#744722] disabled:opacity-40">Chỉnh sửa</button><button type="button" disabled={!isActive(link) || busy} onClick={() => void copy(`${window.location.origin}/sales?collection=${link.public_token}`)} className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 disabled:opacity-40">Copy</button>{!link.revoked_at ? <button type="button" disabled={busy} onClick={() => void revokeCollection(link.id)} className="rounded-lg border border-red-200 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-40">Thu hồi</button> : <button type="button" disabled={busy} onClick={() => void restoreCollection(link.id)} className="rounded-lg border border-[#d9bd99] bg-[#fff9ef] px-2 py-1 text-xs font-bold text-[#744722] disabled:opacity-40">Khôi phục link</button>}</div></div>
           <p className="mt-3 text-sm text-[#80634a]">{link.link_ids.length} tòa nhà</p><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><p className="text-xs text-[#80634a]">Ngày tạo</p><p className="mt-1 font-semibold">{formatDate(link.created_at)}</p></div><div><p className="text-xs text-[#80634a]">Ngày hết hạn</p><p className="mt-1 font-semibold">{formatDate(link.expires_at)}</p></div></div>
         </article>)}{!collections.length ? <p className="rounded-xl border border-dashed border-[#d9bd99] p-6 text-center text-sm text-[#80634a]">Chưa có link tổng hợp đã lưu. Bấm “Tạo link mới” để bắt đầu.</p> : null}</div>}
       </> : <>
       <button type="button" disabled={busy} onClick={() => { setView("list"); setMessage(""); setUrl(""); }} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold"><ArrowLeft size={16} />Các link đã tạo</button>
       <p className="mt-2 text-sm text-[#80634a]">Chọn tối đa {MAX_SHARED_BUILDINGS} tòa nhà để gộp vào một trang chia sẻ.</p>
       <fieldset disabled={busy} className="mt-4 space-y-3 disabled:opacity-60">
-        <label className="block text-sm font-semibold">Tên link mới<input maxLength={120} value={label} onChange={(e) => { setLabel(e.target.value); setUrl(""); }} className={`mt-1 ${inputClass}`} /></label>
-        <label className="block text-sm font-semibold">Ngày hết hạn cho link mới (không bắt buộc)<input type="date" value={expiry} onChange={(e) => { setExpiry(e.target.value); setUrl(""); }} className={`mt-1 ${inputClass}`} /></label>
+        {editing ? <p className="text-sm font-semibold">{editing.label} · Link chia sẻ được giữ nguyên sau khi lưu.</p> : <><label className="block text-sm font-semibold">Tên link mới<input maxLength={120} value={label} onChange={(e) => { setLabel(e.target.value); setUrl(""); }} className={`mt-1 ${inputClass}`} /></label>
+        <label className="block text-sm font-semibold">Ngày hết hạn cho link mới (không bắt buộc)<input type="date" value={expiry} onChange={(e) => { setExpiry(e.target.value); setUrl(""); }} className={`mt-1 ${inputClass}`} /></label></>}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d9bd99]/60 bg-[#f8ead7] px-3 py-2.5 text-sm font-semibold">
           <label className="flex cursor-pointer items-center gap-2">
             <input type="checkbox" checked={properties.length > 0 && selected.length === properties.length} ref={(input) => { if (input) input.indeterminate = selected.length > 0 && selected.length < properties.length; }} disabled={!properties.length} onChange={(event) => selectAll(event.target.checked)} className="h-4 w-4 accent-[#744722]" />
@@ -165,7 +193,7 @@ export default function SalesCollectionManager({ properties }: { properties: Pro
           {selected.includes(property.id) ? <select aria-label={`Link cho ${property.name}`} value={choices[property.id] ?? ""} onChange={(e) => { touchedChoices.current.add(property.id); setChoices((current) => ({ ...current, [property.id]: e.target.value })); setUrl(""); }} className={`mt-2 ${inputClass}`}><option value="">Tạo link mới</option>{(links[property.id] ?? []).map((link) => <option key={link.id} value={link.id}>{link.label} · {link.document_ids.length} tài liệu</option>)}</select> : null}
         </div>)}</div>
         {!properties.length ? <p className="text-sm">Chưa có tòa nhà để chia sẻ.</p> : null}
-        <button type="button" disabled={busy || loadingLinks > 0 || !selected.length || selected.length > MAX_SHARED_BUILDINGS || !label.trim()} onClick={() => void createCollection()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#744722] p-3 text-sm font-bold text-white disabled:opacity-50">{busy ? <Loader2 size={17} className="animate-spin" /> : <Link2 size={17} />}Tạo link ({selected.length} tòa nhà)</button>
+        <button type="button" disabled={busy || loadingLinks > 0 || !selected.length || selected.length > MAX_SHARED_BUILDINGS || !label.trim()} onClick={() => void createCollection()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#744722] p-3 text-sm font-bold text-white disabled:opacity-50">{busy ? <Loader2 size={17} className="animate-spin" /> : <Link2 size={17} />}{editing ? "Lưu thay đổi" : "Tạo link"} ({selected.length} tòa nhà)</button>
       </fieldset>
       </>}
       {message ? <p role="status" className="mt-4 text-sm">{message}</p> : null}
