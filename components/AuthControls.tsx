@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { trackVisitorEvent } from "@/lib/analytics/client";
 import { supabase } from "@/lib/supabase";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -504,6 +505,7 @@ const handleSendReset = async () => {
                 onClick={() => {
                   closeMenu();
                   router.push("/admin");
+                  trackVisitorEvent("admin_click");
                 }}
                 className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85
 hover:bg-white/10 hover:text-white rounded-xl transition-all"

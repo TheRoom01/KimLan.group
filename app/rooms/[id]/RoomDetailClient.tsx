@@ -1,6 +1,7 @@
 "use client";
 
 import { roomStatusLabel } from "@/lib/rooms/availability";
+import { trackVisitorEvent } from "@/lib/analytics/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from "react";
@@ -306,6 +307,9 @@ export default function RoomDetailClient({
 
   
   const [room, setRoom] = useState<any>(initialRoom);
+  useEffect(() => {
+    if (room?.id) trackVisitorEvent("room_view", room.id);
+  }, [room?.id]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [phoneModal, setPhoneModal] = useState<string | null>(null);

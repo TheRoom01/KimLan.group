@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FilterBar, { SortMode } from "@/components/FilterBar";
+import { trackVisitorEvent } from "@/lib/analytics/client";
 import RoomList from "@/components/RoomList";
 import Pagination from "@/components/Pagination";
 import { fetchRooms, type UpdatedDescCursor } from "@/lib/fetchRooms";
@@ -2744,6 +2745,7 @@ useEffect(() => {
 
   // ✅ không đổi filter thật sự -> không làm gì
   if (filterSig === lastFilterSigRef.current) return;
+  trackVisitorEvent("filter_use");
 
   // ====== Special logic for SEARCH baseline ======
   const prevApplied = prevAppliedSearchRef.current;

@@ -1,4 +1,5 @@
 "use client";
+import { trackVisitorEvent } from "@/lib/analytics/client";
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -802,6 +803,9 @@ export default function MapSearchClient() {
   }, [resultsPanelCollapsed]);
 
   const setParams = useCallback((updates: Record<string, string>) => {
+    if (Object.keys(updates).some(key => ["district", "roomType", "status", "minPrice", "maxPrice"].includes(key))) {
+      trackVisitorEvent("filter_use");
+    }
     const next = new URLSearchParams(queryStringRef.current);
     for (const [name, value] of Object.entries(updates)) {
       if (value) next.set(name, value);

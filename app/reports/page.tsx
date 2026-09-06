@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import VisitorReport from "./VisitorReport";
 
 function card(title: string, value: number) {
   return (
@@ -137,7 +138,9 @@ const reportTdLeft: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-export default async function ReportsPage() {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
+  const requestedDays = Number((await searchParams).days ?? 30);
+  const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 30;
   const supabase = await createSupabaseServerClient();
 
   const {
@@ -145,14 +148,14 @@ export default async function ReportsPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/auth");
+    redirect("/?auth=login");
   }
 
-  const { data: levelData } = await supabase.rpc("get_my_admin_level");
+  const { data: levelData, error: levelError } = await supabase.rpc("get_my_admin_level");
 
   const level = Number(levelData ?? 0);
 
-  if (level !== 1) {
+  if (levelError || level !== 1) {
     redirect("/admin");
   }
 
@@ -217,6 +220,7 @@ export default async function ReportsPage() {
       >
         Reports
       </h1>
+      <VisitorReport days={days} />
 
       <div
         style={{
