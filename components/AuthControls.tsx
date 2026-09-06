@@ -90,6 +90,21 @@ export default function AuthControls() {
   const [loadingDevices, setLoadingDevices] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reportsUserId, setReportsUserId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setReportsUserId(null);
+    if (menuOpen && user?.id) {
+      const userId = user.id;
+      void (async () => {
+        try {
+          const { data, error } = await supabase.rpc("get_my_admin_level");
+          if (!cancelled && !error && Number(data) === 1) setReportsUserId(userId);
+        } catch { /* Keep Reports hidden when permission lookup fails. */ }
+      })();
+    }
+    return () => { cancelled = true; };
+  }, [menuOpen, user]);
   const loginLockRef = useRef(false);
 
   const [changePwOpen, setChangePwOpen] = useState(false);
@@ -436,6 +451,7 @@ const handleSendReset = async () => {
   };
 
  const openMenu = () => {
+  setReportsUserId(null);
   updateMenuPos();
   setMenuOpen(true);
   fetchDevices();
@@ -512,6 +528,19 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
               >
                 Admin
               </button>
+
+              {user?.id && reportsUserId === user.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeMenu();
+                    router.push("/reports");
+                  }}
+                  className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                >
+                  Báo cáo
+                </button>
+              )}
 
               <a
                 href="https://canhodichvu.pro/admin/zalo-imports"
