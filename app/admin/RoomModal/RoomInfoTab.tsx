@@ -860,7 +860,7 @@ function Select({
 
   onClick={() => setOpen(v => !v)}
 >
-  <span>{statusColors ? "✓ " : ""}{displayValue || value || "Chọn..."}</span>
+  <span>{displayValue || value || "Chọn..."}</span>
   <span style={{ opacity: 0.7 }}>⌄</span>
 </button>
 
