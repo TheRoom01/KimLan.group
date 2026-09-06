@@ -1,5 +1,7 @@
 "use client";
 
+import { roomStatusLabel } from "@/lib/rooms/availability";
+import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Copy, Pencil, Trash2 } from "lucide-react";
 import RoomModal from "./RoomModal";
@@ -488,28 +490,32 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
 
       setStatusMenuOpen(false);
 
+      const availableFrom = status === "Sắp trống" ? await requestAvailabilityDate((selectedRoom as any).available_from) : null;
+      if (status === "Sắp trống" && availableFrom === null) return;
       const roomId = (selectedRoom as any).id;
       const previousStatus = (selectedRoom as any).status;
+      const previousDate = (selectedRoom as any).available_from;
 
       try {
         setRooms((prev) =>
           prev.map((r: any) =>
-            r.id === roomId ? { ...r, status } : r
+            r.id === roomId ? { ...r, status, available_from: availableFrom } : r
           )
         );
 
-        const res = await supabase.rpc("update_room_status", {
-          p_room_id: roomId,
-          p_status: status,
-        });
+        const res = await fetch(`/api/rooms/${roomId}/status`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, available_from: availableFrom }) });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "Cập nhật thất bại");
 
-        if (res.error) throw new Error(res.error.message);
+        setRooms((prev) => prev.map((r: any) => r.id === roomId
+          ? { ...r, status: result.data.status, available_from: result.data.available_from ?? null }
+          : r));
 
         notify("Đã cập nhật trạng thái");
       } catch (e: any) {
         setRooms((prev) =>
           prev.map((r: any) =>
-            r.id === roomId ? { ...r, status: previousStatus } : r
+            r.id === roomId ? { ...r, status: previousStatus, available_from: previousDate } : r
           )
         );
 
@@ -884,7 +890,7 @@ const openZaloUX = useCallback(
                       setStatusMenuOpen(true);
                     }}
                   >
-                    {(r as any).status ?? "Đang trống"}
+                    {roomStatusLabel((r as any).status, (r as any).available_from)}
                   </button>
                 )}
               </td>
@@ -1133,7 +1139,7 @@ const openZaloUX = useCallback(
       "
     >
       {ROOM_STATUSES.filter(
-        (s) => s !== (selectedRoom as any).status
+        (s) => s !== (selectedRoom as any).status || s === "Sắp trống"
       ).map((status, index, arr) => {
         const colorClass =
           status === "Đang trống"

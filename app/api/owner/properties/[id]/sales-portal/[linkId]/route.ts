@@ -2,6 +2,7 @@ import { getAuthenticatedUser } from "@/lib/api/auth";
 import { apiError, apiSuccess, mapDatabaseError, mapUnknownError } from "@/lib/api/response";
 import { parseUuid, readJsonObject, RequestValidationError } from "@/lib/api/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { revokedLinkCutoff } from "@/lib/sales-portal/linkLifecycle";
 
 async function authorizedContext(rawPropertyId: string, rawLinkId: string) {
   const propertyId = parseUuid(rawPropertyId, "property_id");
@@ -54,5 +55,20 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (error) return mapDatabaseError(error);
     if (!data) return apiError("NOT_FOUND", "Link không tồn tại hoặc đã được thu hồi", 404);
     return apiSuccess({ revoked: true });
+  } catch (error) { return mapUnknownError(error); }
+}
+
+export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string; linkId: string }> }) {
+  try {
+    const { id, linkId } = await params;
+    const ctx = await authorizedContext(id, linkId);
+    if ("error" in ctx) return ctx.error;
+    const { data, error } = await ctx.supabase.from("sales_portal_links")
+      .update({ revoked_at: null, updated_at: new Date().toISOString() })
+      .eq("id", ctx.linkId).eq("property_id", ctx.propertyId)
+      .gt("revoked_at", revokedLinkCutoff()).select("id").maybeSingle();
+    if (error) return mapDatabaseError(error);
+    if (!data) return apiError("NOT_FOUND", "Link không tồn tại hoặc đã quá 3 ngày khôi phục", 404);
+    return apiSuccess({ restored: true });
   } catch (error) { return mapUnknownError(error); }
 }

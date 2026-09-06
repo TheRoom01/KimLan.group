@@ -20,6 +20,7 @@ export type RoomForm = {
   district: string
   price: number
   status: RoomStatus
+  available_from?: string | null
   description: string
   media?: MediaItem[];
   link_zalo: string

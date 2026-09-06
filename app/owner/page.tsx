@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SalesCollectionManager from "@/components/owner/SalesCollectionManager";
 import {
   ArrowRight,
   Building2,
@@ -384,6 +385,8 @@ export default async function OwnerPage() {
             
           </div>
 
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SalesCollectionManager properties={propertyOverview.map(({ id, name, fullAddress }) => ({ id, name, fullAddress }))} />
           <Link
             href="/owner/properties/create"
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 py-2.5 text-sm font-semibold text-[#fff8eb] shadow-sm transition hover:bg-[#623817] sm:w-auto"
@@ -391,6 +394,7 @@ export default async function OwnerPage() {
             <Building2 size={17} />
             Thêm tòa nhà
           </Link>
+          </div>
         </div>
 
         <div className="grid min-w-0 grid-cols-2 gap-2 p-3 sm:gap-3 sm:p-4 xl:grid-cols-4">

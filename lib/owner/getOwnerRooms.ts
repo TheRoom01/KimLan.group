@@ -73,6 +73,8 @@ export async function getOwnerRooms() {
       room_type,
       price,
       status,
+      available_from,
+      status_source,
       publish_status,
       lifecycle_status,
       property_id,
@@ -134,7 +136,10 @@ export async function getOwnerRooms() {
 
     let displayStatus: RoomStatus = storedStatus;
 
-    if (contractStatus === "Đang hiệu lực") {
+    if (room.status_source === "owner" && storedStatus === "Đang trống") {
+      // A selected vacancy date has arrived; an old contract must not override it.
+      displayStatus = "Đang trống";
+    } else if (contractStatus === "Đang hiệu lực") {
       displayStatus =
         daysRemaining !== null &&
         daysRemaining >= 0 &&

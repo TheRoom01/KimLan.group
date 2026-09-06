@@ -1,5 +1,7 @@
 "use client";
 
+import { roomStatusLabel } from "@/lib/rooms/availability";
+import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -327,6 +329,7 @@ const safeAdminLevel: 0 | 1 | 2 =
 
 const [updatingStatus, setUpdatingStatus] = useState(false);
 
+const [currentAvailableFrom, setCurrentAvailableFrom] = useState<string | null>((room as any).available_from ?? null);
 const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   const currentUserIdValue = String(currentUserId ?? "").trim();
@@ -470,7 +473,8 @@ useEffect(() => {
 
 useEffect(() => {
   setCurrentStatus(normalizeStatus(room.status));
-}, [room.status]);
+  setCurrentAvailableFrom((room as any).available_from ?? null);
+}, [room.status, (room as any).available_from]);
 
   const mainSrc =
     mainErrorStage === 0
@@ -851,7 +855,7 @@ const otherStatuses = [
   "Đang trống",
   "Sắp trống",
   "Đã thuê",
-].filter((x) => x !== currentStatus);
+].filter((x) => x !== currentStatus || x === "Sắp trống");
 
 
 function handleToggleStatus(
@@ -945,6 +949,9 @@ useEffect(() => {
 async function updateRoomStatus(nextStatus: string) {
   if (updatingStatus) return;
 
+  setStatusMenuOpen(false);
+  const availableFrom = nextStatus === "Sắp trống" ? await requestAvailabilityDate(currentAvailableFrom) : null;
+  if (nextStatus === "Sắp trống" && availableFrom === null) return;
   const prevStatus = currentStatus;
 
   setStatusMenuOpen(false);
@@ -959,6 +966,7 @@ async function updateRoomStatus(nextStatus: string) {
       },
       body: JSON.stringify({
         status: nextStatus,
+        available_from: availableFrom,
       }),
     });
 
@@ -968,6 +976,7 @@ async function updateRoomStatus(nextStatus: string) {
       throw new Error(json.error);
     }
 
+    setCurrentAvailableFrom(json?.data?.available_from ?? null);
     setCurrentStatus(
       normalizeStatus(
         json?.data?.status ?? nextStatus
@@ -1294,7 +1303,7 @@ return (
     onClick={handleToggleStatus}
     className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} ${statusBadgeColorClass}`}
   >
-    {updatingStatus ? "Đang lưu..." : currentStatus}
+    {updatingStatus ? "Đang lưu..." : roomStatusLabel(currentStatus, currentAvailableFrom)}
   </button>
 
 {statusMenuOpen &&
@@ -1358,7 +1367,7 @@ return (
               <span
                 className={`h-2.5 w-2.5 rounded-full ${dotClass}`}
               />
-              {status}
+              {status === currentStatus ? "Đổi ngày trống" : status}
             </button>
 
             {index !== otherStatuses.length - 1 && (
@@ -1374,7 +1383,7 @@ return (
 </div>
           ) : (
             <span className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass} col-start-2 row-start-1 justify-self-end`}>
-              {currentStatus}
+              {roomStatusLabel(currentStatus, currentAvailableFrom)}
             </span>
           )}
 

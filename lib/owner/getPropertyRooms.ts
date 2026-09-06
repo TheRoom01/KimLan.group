@@ -12,6 +12,7 @@ export async function getPropertyRooms(propertyId: string) {
       room_type,
       price,
       status,
+      available_from,
 
       rental_contracts (
         id,

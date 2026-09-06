@@ -285,12 +285,13 @@ export async function POST(
 
     const updateStatus =
       await admin.supabaseUser.rpc(
-        "update_room_status",
+        roomPayload.available_from ? "update_room_status_admin_v2" : "update_room_status",
         {
           p_room_id:
             matchedRoomId,
           p_status:
             newStatus,
+          ...(roomPayload.available_from ? { p_available_from: roomPayload.available_from } : {}),
         }
       );
 

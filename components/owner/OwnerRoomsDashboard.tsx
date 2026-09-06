@@ -38,6 +38,7 @@ type OwnerRoom = {
   room_number?: string | null;
   room_type?: string | null;
   status?: string | null;
+  available_from?: string | null;
   displayStatus?: string | null;
   price?: number | null;
   property_id?: string | null;

@@ -57,6 +57,7 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const authIndependentPublicPath =
     pathname === "/map" ||
+    pathname === "/sales" ||
     pathname.startsWith("/sales/") ||
     pathname.startsWith("/auth/");
   if (authIndependentPublicPath) return response;

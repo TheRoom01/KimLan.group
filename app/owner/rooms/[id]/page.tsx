@@ -1,3 +1,4 @@
+import { roomStatusLabel } from "@/lib/rooms/availability";
 import Link from "next/link";
 import { KeyRound } from "lucide-react";
 import { Suspense } from "react";
@@ -111,11 +112,12 @@ export default async function RoomDetailPage({
               <div className="mt-3">
                 <RoomStatusControl
                   roomId={room.id}
-                  currentStatus={room.status}
+                  currentStatus={room.displayStatus}
+                  availableFrom={room.available_from ?? room.contract?.end_date}
                 />
               </div>
             ) : (
-              <p className="mt-1 font-semibold text-[#4d3422]">{room.displayStatus}</p>
+              <p className="mt-1 font-semibold text-[#4d3422]">{roomStatusLabel(room.displayStatus, room.available_from ?? room.contract?.end_date)}</p>
             )}
 
             {room.displayStatus === "Sắp trống" &&

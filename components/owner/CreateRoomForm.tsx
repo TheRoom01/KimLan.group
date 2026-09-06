@@ -1,5 +1,7 @@
 "use client";
 
+import RoomStatusField from "@/components/rooms/RoomStatusField";
+import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -100,6 +102,8 @@ export default function CreateRoomForm({
     setUploadStatus(null);
 
     const form = new FormData(event.currentTarget);
+    try { requireAvailabilityDate(form.get("status"), form.get("available_from")); }
+    catch { setError("Vui lòng chọn ngày trống cho phòng Sắp trống"); setSubmitting(false); hideOwnerNavigationSkeleton(); return; }
     const noPet = form.get("no_pet") === "on";
     const allowPet = form.get("allow_pet") === "on" && !noPet;
 
@@ -137,6 +141,7 @@ export default function CreateRoomForm({
     const payload = {
       room_code: form.get("room_code"),
       status: form.get("status"),
+      available_from: form.get("available_from"),
       room_type: form.get("room_type"),
       price: form.get("price"),
       description: form.get("description"),
@@ -206,7 +211,7 @@ export default function CreateRoomForm({
           await readApiResponse<unknown>(await fetch(`/api/owner/rooms/${roomId}/publish`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: payload.status }),
+            body: JSON.stringify({ status: payload.status, available_from: payload.available_from }),
           }));
         },
       });
@@ -259,7 +264,7 @@ export default function CreateRoomForm({
             />
           </Field>
 
-          <Field label="Trạng thái phòng" htmlFor="status"><select id="status" name="status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
+          <Field label="Trạng thái phòng" htmlFor="status"><RoomStatusField initialStatus={defaults.status} initialDate={defaults.available_from} className={INPUT_CLASS} /></Field>
           <Field label="Số nhà" htmlFor="house_number"><input id="house_number" name="house_number" className={INPUT_CLASS} placeholder="Ví dụ: 177/10/11" defaultValue={defaults.house_number ?? ""} /></Field>
           <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} placeholder="Nhập tên đường hoặc địa chỉ" defaultValue={defaults.address ?? ""} /></Field>
           <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} placeholder="Nhập phường / xã" defaultValue={defaults.ward ?? ""} /></Field>

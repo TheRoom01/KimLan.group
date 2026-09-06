@@ -28,6 +28,7 @@ export type SalesPortalData = {
   property: {
     id: string;
     code: string | null;
+    code_aliases?: string[];
     name: string;
     full_address: string;
     cover_image: string | null;

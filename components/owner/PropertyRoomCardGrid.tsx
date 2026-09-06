@@ -19,6 +19,7 @@ type PropertyRoom = {
   room_type?: string | null;
   price?: number | null;
   status?: string | null;
+  available_from?: string | null;
   displayStatus?: string | null;
   contract?: {
     id?: string | null;

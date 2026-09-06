@@ -1,5 +1,6 @@
 "use client";
 
+import { roomStatusLabel } from "@/lib/rooms/availability";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from "react";
@@ -2051,9 +2052,9 @@ return (
                     ? "bg-[rgba(234,179,8,0.18)] text-yellow-300 border border-yellow-400/30 backdrop-blur"
                     : "bg-[rgba(239,68,68,0.18)] text-red-300 border border-red-400/30 backdrop-blur",
                 ].join(" ")}
-                title={statusText}
+                title={roomStatusLabel(statusText, room?.available_from)}
               >
-                {statusText}
+                {roomStatusLabel(statusText, room?.available_from)}
               </span>
             )}
           </div>

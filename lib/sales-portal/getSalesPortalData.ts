@@ -20,9 +20,9 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
   if (!link || link.revoked_at || (link.expires_at && new Date(link.expires_at) <= now)) return null;
 
   const [propertyResult, documentsResult, roomsResult, notesResult] = await Promise.all([
-    supabase.from("properties").select("id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, note, default_room_data, lifecycle_status").eq("id", link.property_id).eq("lifecycle_status", "active").maybeSingle(),
+    supabase.from("properties").select("id, code, code_aliases, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, note, default_room_data, lifecycle_status").eq("id", link.property_id).eq("lifecycle_status", "active").maybeSingle(),
     supabase.from("sales_portal_link_documents").select("property_documents(id, title, description, file_name, file_url, mime_type, size_bytes, sort_order, created_at)").eq("link_id", link.id),
-    supabase.from("rooms").select("id, room_code, room_type, price, description, updated_at, chinh_sach, zalo_phone, status, lifecycle_status, room_media(id,type,url,is_cover,sort_order), rental_contracts(status,start_date,end_date,created_at)").eq("property_id", link.property_id).eq("lifecycle_status", "active").order("room_code"),
+    supabase.from("rooms").select("id, room_code, room_type, price, description, updated_at, chinh_sach, zalo_phone, status, available_from, status_source, lifecycle_status, room_media(id,type,url,is_cover,sort_order), rental_contracts(status,start_date,end_date,created_at)").eq("property_id", link.property_id).eq("lifecycle_status", "active").order("room_code"),
     supabase.from("sales_room_notes").select("room_id, note").eq("property_id", link.property_id),
   ]);
 
@@ -47,7 +47,8 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
       .filter((contract) => ACTIVE_CONTRACT_STATUSES.has(String(contract.status ?? "")))
       .sort((left, right) => contractPriority(left.status) - contractPriority(right.status) || String(right.start_date ?? right.created_at ?? "").localeCompare(String(left.start_date ?? left.created_at ?? "")));
     const contract = contracts[0];
-    const status = salesStatus(room.status, contract?.status, contract?.end_date);
+    const status = room.status_source === "owner" && room.status === "Đang trống"
+      ? "Trống" : salesStatus(room.status, contract?.status, contract?.end_date);
     return {
       id: room.id,
       room_code: room.room_code,
@@ -56,7 +57,7 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
       description: room.description,
       updated_at: room.updated_at,
       status,
-      available_at: status === "Sắp trống" ? contract?.end_date ?? null : null,
+      available_at: status === "Sắp trống" ? room.available_from ?? contract?.end_date ?? null : null,
       sales_note: notes.get(room.id) ?? null,
       room_details: null,
       media: [...(room.room_media ?? [])].sort((a, b) => Number(Boolean(b.is_cover)) - Number(Boolean(a.is_cover)) || Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)),
@@ -80,6 +81,7 @@ export const getSalesPortalData = cache(async function getSalesPortalData(token:
     property: {
       id: p.id,
       code: p.code,
+      code_aliases: Array.isArray(p.code_aliases) ? p.code_aliases.filter((value): value is string => typeof value === "string") : [],
       name: String(p.name || fullAddress || "Tòa nhà"),
       full_address: fullAddress,
       cover_image: p.cover_image,

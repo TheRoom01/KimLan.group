@@ -1,3 +1,4 @@
+import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
@@ -32,6 +33,10 @@ export async function PATCH(
       );
     }
 
+    let availableFrom: string | null;
+    try { availableFrom = requireAvailabilityDate(status, body?.available_from); }
+    catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+
     const supabase = await createSupabaseServerClient();
 
     const {
@@ -47,10 +52,11 @@ export async function PATCH(
     }
 
     const { data, error } = await supabase.rpc(
-      "update_room_status_admin_v1",
+      "update_room_status_admin_v2",
       {
         p_room_id: roomId,
         p_status: status,
+        p_available_from: availableFrom,
       }
     );
 
@@ -64,7 +70,7 @@ export async function PATCH(
     invalidatePublicRoomCache(roomId);
 
     return NextResponse.json({
-      data: data?.[0] ?? {
+      data: data ?? {
         id: roomId,
         status,
       },

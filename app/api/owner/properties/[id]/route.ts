@@ -103,6 +103,7 @@ export async function PATCH(
     const { data, error } = await supabase
       .from("properties")
       .update({
+        ...(input.status !== undefined ? { status: input.status } : {}),
         code: generatePropertyCode({
           houseNumber: input.house_number,
           address: input.address,
@@ -123,7 +124,7 @@ export async function PATCH(
       })
       .eq("id", propertyId)
       .select(
-        "id, code, name, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, default_room_data, note, approval_status, lifecycle_status, updated_at",
+        "id, code, name, status, house_number, address, ward, district, city, latitude, longitude, cover_image, gallery_images, google_maps_url, default_room_data, note, approval_status, lifecycle_status, updated_at",
       )
       .single();
 

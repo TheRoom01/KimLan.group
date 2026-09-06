@@ -1,5 +1,6 @@
 'use client'
 
+import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { useEffect, useState, useRef, type CSSProperties } from 'react'
 import type { Room, TabKey, RoomStatus } from '../../types/room'
 import type { RoomForm, RoomDetail } from './types'
@@ -1061,6 +1062,7 @@ const detailSample =
       district: pendingRoomPayload?.district ?? '',
       price: Number(pendingRoomPayload?.price ?? 0),
       status: normalizeStatus(pendingRoomPayload?.status ?? 'Trống'),
+      available_from: pendingRoomPayload?.available_from ?? null,
       description: pendingRoomPayload?.description ?? '',
       link_zalo: pendingRoomPayload?.link_zalo ?? '',
       google_maps_url: pendingRoomPayload?.google_maps_url ?? '',
@@ -1229,6 +1231,7 @@ const detailSample =
 
         price: room.price ?? prev.price,
         status: normalizeStatus(room.status ?? prev.status),
+        available_from: room.available_from ?? null,
 
         description: room.description ?? prev.description,
         link_zalo: canSeePrivateFields
@@ -1412,6 +1415,8 @@ const applyAutoReadCandidate = (
 
   /* ===== VALIDATE ===== */
   function validate(): string | null {
+    try { requireAvailabilityDate(normalizeStatus(roomForm.status), roomForm.available_from); }
+    catch { return "Vui lòng chọn ngày trống cho phòng Sắp trống"; }
     if (!roomForm.room_code.trim()) return 'Vui lòng nhập mã phòng.'
     if (
       !isPending &&
@@ -1555,6 +1560,7 @@ const applyAutoReadCandidate = (
       district: roomForm.district,
       price: roomForm.price,
       status: normalizeStatus(roomForm.status),
+      available_from: requireAvailabilityDate(normalizeStatus(roomForm.status), roomForm.available_from),
       description: roomForm.description,
       link_zalo: roomForm.link_zalo,
       google_maps_url: roomForm.google_maps_url,
@@ -1727,6 +1733,7 @@ const payload = {
   district: roomForm.district,
   price: roomForm.price,
   status: normalizeStatus(roomForm.status),
+      available_from: requireAvailabilityDate(normalizeStatus(roomForm.status), roomForm.available_from),
   description: roomForm.description,
   link_zalo: roomForm.link_zalo,
   google_maps_url: roomForm.google_maps_url,

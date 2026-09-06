@@ -1,3 +1,5 @@
+import { requireAvailabilityDate } from "@/lib/rooms/availability";
+
 import {
   assertDateRange,
   parseDate,
@@ -11,6 +13,12 @@ import {
   isRoomStatus,
   type RoomStatus,
 } from "@/lib/owner/types";
+import { isPropertyStatus, type PropertyStatus } from "@/lib/owner/propertyStatus";
+
+function parseRoomAvailability(status: unknown, value: unknown) {
+  try { return requireAvailabilityDate(status, value); }
+  catch { throw new RequestValidationError("Vui lòng chọn ngày trống hợp lệ", { field: "available_from" }); }
+}
 
 export type UpdateOwnerRoomInput = {
   room_type: string | null;
@@ -106,6 +114,7 @@ export function parseUpdateOwnerRoomInput(
 }
 
 export type UpdateOwnerRoomStatusInput = {
+  available_from: string | null;
 
   status: RoomStatus;
 
@@ -138,6 +147,7 @@ export function parseUpdateOwnerRoomStatusInput(
   return {
 
     status,
+    available_from: parseRoomAvailability(status, body.available_from),
 
     note:
       parseOptionalString(
@@ -257,6 +267,7 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
 }
 
 export type CreateOwnerPropertyInput = {
+  status?: PropertyStatus;
   code: string | null;
   name: string | null;
   house_number: string;
@@ -276,6 +287,9 @@ export type CreateOwnerPropertyInput = {
 export function parseCreateOwnerPropertyInput(
   body: JsonObject,
 ): CreateOwnerPropertyInput {
+  if (body.status !== undefined && !isPropertyStatus(body.status)) {
+    throw new RequestValidationError("Trạng thái tòa nhà không hợp lệ");
+  }
   const galleryImages = Array.isArray(body.gallery_images)
     ? body.gallery_images
         .map((value) => parseOptionalString(value, "Ảnh tòa nhà", 2000))
@@ -284,7 +298,8 @@ export function parseCreateOwnerPropertyInput(
     : [];
 
   return {
-    code: parseOptionalString(body.code, "Mã tòa nhà", 50),
+    ...(body.status !== undefined ? { status: body.status as PropertyStatus } : {}),
+    code: parseOptionalString(body.code, "Mã tòa nhà", 200),
     name: parseOptionalString(body.name, "Tên tòa nhà", 200),
     house_number: parseRequiredString(body.house_number, "Số nhà", 100),
     address: parseRequiredString(body.address, "Địa chỉ", 500),
@@ -394,6 +409,7 @@ function parseRoomDetails(value: unknown): JsonObject | null {
 }
 
 export type CreateOwnerRoomInput = {
+  available_from: string | null;
   status: RoomStatus;
 
   room_code: string;
@@ -429,6 +445,7 @@ export function parseCreateOwnerRoomInput(
 ): CreateOwnerRoomInput {
 
   return {
+    available_from: parseRoomAvailability(body.status, body.available_from),
     status: isRoomStatus(String(body.status ?? "")) ? (String(body.status) as RoomStatus) : "Đang trống",
 
     room_code:

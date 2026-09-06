@@ -1,11 +1,11 @@
-function compactPart(value: unknown) {
+function compactPart(value: unknown, separator = ".", houseNumber = false) {
   return String(value ?? "")
     .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/gi, "d")
-    .replace(/[^a-z0-9]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(houseNumber ? /[^a-z0-9/\-]+/gi : /[^a-z0-9]+/gi, separator)
+    .replace(/^[./-]+|[./-]+$/g, "")
     .toUpperCase();
 }
 
@@ -17,7 +17,7 @@ function districtCode(value: unknown) {
   const raw = String(value ?? "").trim();
   const number = raw.match(/\d+/)?.[0];
   if (number) return `Q${number}`;
-  return compactPart(raw).slice(0, 12);
+  return compactPart(raw);
 }
 
 export function generatePropertyCode(input: {
@@ -26,10 +26,10 @@ export function generatePropertyCode(input: {
   district?: unknown;
 }) {
   const parts = [
-    compactPart(input.houseNumber),
+    compactPart(input.houseNumber, "", true),
     streetCode(input.address),
     districtCode(input.district),
   ].filter(Boolean);
 
-  return parts.join(".").slice(0, 50) || null;
+  return parts.join("-").slice(0, 200) || null;
 }

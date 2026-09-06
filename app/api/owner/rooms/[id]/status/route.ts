@@ -39,10 +39,11 @@ export async function PATCH(
     const input = parseUpdateOwnerRoomStatusInput(body);
 
     const { data, error } = await supabase.rpc(
-      "update_owner_room_status_v1",
+      "update_owner_room_status_v2",
       {
         p_room_id: roomId,
         p_new_status: input.status,
+        p_available_from: input.available_from,
         p_note: input.note,
       },
     );

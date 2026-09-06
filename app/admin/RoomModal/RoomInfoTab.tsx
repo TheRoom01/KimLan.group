@@ -1,5 +1,7 @@
 'use client'
 
+import { roomStatusLabel } from "@/lib/rooms/availability";
+import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import type React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RoomForm } from './types'
@@ -324,12 +326,12 @@ useEffect(() => {
           "Đã thuê",
           "Sắp trống",
         ]}
-        onChange={(v: string) =>
-          onChange({
-            ...value,
-            status: v as RoomStatus,
-          })
-        }
+        displayValue={roomStatusLabel(value.status, value.available_from)}
+        onChange={async (v: string) => {
+          const date = v === "Sắp trống" ? await requestAvailabilityDate(value.available_from) : null;
+          if (v === "Sắp trống" && date === null) return;
+          onChange({ ...value, status: v as RoomStatus, available_from: date });
+        }}
       />
 
         <ReadOnly label="Ngày tạo" value={formatDate(updatedAt)} />
@@ -786,6 +788,7 @@ type SimpleSelectProps = {
   value: string
   options: string[]
   onChange: (v: string) => void
+  displayValue?: string
   statusColors?: boolean
 }
 
@@ -801,6 +804,7 @@ function Select({
   options,
   onChange,
   statusColors = false,
+  displayValue,
 }: SimpleSelectProps) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -856,7 +860,7 @@ function Select({
 
   onClick={() => setOpen(v => !v)}
 >
-  <span>{statusColors ? "✓ " : ""}{value || "Chọn..."}</span>
+  <span>{statusColors ? "✓ " : ""}{displayValue || value || "Chọn..."}</span>
   <span style={{ opacity: 0.7 }}>⌄</span>
 </button>
 
@@ -877,7 +881,7 @@ function Select({
             boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
           }}
         >
-          {options.filter((o) => !statusColors || o !== value).map((o) => {
+          {options.filter((o) => !statusColors || o !== value || o === "Sắp trống").map((o) => {
             const active = o === value
             return (
               <button

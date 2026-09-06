@@ -7,11 +7,13 @@ import { useRouter } from "next/navigation";
 import { readApiResponse } from "@/lib/api/client";
 import { buildGoogleMapsSearchUrl } from "@/lib/owner/googleMapsUrl";
 import { generatePropertyCode } from "@/lib/owner/propertyCode";
+import { PROPERTY_STATUSES } from "@/lib/owner/propertyStatus";
 import MoneyInput from "@/components/owner/MoneyInput";
 import LocationPicker from "@/components/map/LocationPicker";
 
 type EditableProperty = {
   id: string;
+  status?: string | null;
   code?: string | null;
   name?: string | null;
   house_number: string;
@@ -169,7 +171,8 @@ export default function EditPropertyForm({
           cover_image: gallery[0] ?? null,
           gallery_images: gallery,
           google_maps_url: form.get("google_maps_url"),
-          default_room_data: buildDefaultRoomData(form),
+        status: form.get("property_status"),
+        default_room_data: { ...buildDefaultRoomData(form), status: defaults.status ?? "Đang trống" },
           note: form.get("note"),
       };
       if (!property.id) {
@@ -303,7 +306,7 @@ export default function EditPropertyForm({
             addressQuery={[addressDraft.house_number, addressDraft.address, addressDraft.ward, addressDraft.district, addressDraft.city].filter(Boolean).join(", ")}
           />
         </div>
-        <Field label="Trạng thái mặc định" htmlFor="room_status"><select id="room_status" name="room_status" className={INPUT_CLASS} defaultValue={defaults.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
+            <Field label="Trạng thái tòa nhà" htmlFor="property_status"><select id="property_status" name="property_status" className={INPUT_CLASS} defaultValue={property.status ?? "Hoạt động"}>{PROPERTY_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select></Field>
         <Field label="Số điện thoại Zalo" htmlFor="zalo_phone"><textarea id="zalo_phone" name="zalo_phone" className={INPUT_CLASS} defaultValue={defaults.zalo_phone ?? ""} /></Field>
         <Field label="Link Zalo" htmlFor="link_zalo"><input id="link_zalo" name="link_zalo" className={INPUT_CLASS} defaultValue={defaults.link_zalo ?? ""} /></Field>
         <Field label="Mô tả mặc định" htmlFor="description"><textarea id="description" name="description" className={INPUT_CLASS} defaultValue={defaults.description ?? ""} /></Field>
@@ -441,7 +444,6 @@ function buildDefaultRoomData(form: FormData) {
   roomDetails.other_fee_note = form.get("other_fee_note") || null;
   roomDetails.other_amenities = form.get("other_amenities") || null;
   return {
-    status: form.get("room_status") || "Đang trống",
     description: form.get("description") || null,
     chinh_sach: form.get("chinh_sach") || null,
     link_zalo: form.get("link_zalo") || null,

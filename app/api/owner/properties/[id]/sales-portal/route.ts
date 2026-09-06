@@ -3,6 +3,7 @@ import { apiError, apiSuccess, mapDatabaseError, mapUnknownError } from "@/lib/a
 import { parseOptionalString, parseRequiredString, parseUuid, readJsonObject, RequestValidationError } from "@/lib/api/validation";
 import { createSalesPortalToken, hashSalesPortalToken } from "@/lib/sales-portal/token";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { revokedLinkCutoff } from "@/lib/sales-portal/linkLifecycle";
 
 function parseDocumentIds(value: unknown) {
   if (!Array.isArray(value)) throw new RequestValidationError("Danh sách tài liệu không hợp lệ");
@@ -25,7 +26,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const ctx = await context(id);
     if ("error" in ctx) return ctx.error;
-    const { data, error } = await ctx.supabase.from("sales_portal_links").select("id,label,public_token,expires_at,revoked_at,last_accessed_at,created_at,sales_portal_link_documents(document_id)").eq("property_id", ctx.propertyId).order("created_at", { ascending: false });
+    const { data, error } = await ctx.supabase.from("sales_portal_links").select("id,label,public_token,expires_at,revoked_at,last_accessed_at,created_at,sales_portal_link_documents(document_id)").eq("property_id", ctx.propertyId).or(`revoked_at.is.null,revoked_at.gt.${revokedLinkCutoff()}`).order("created_at", { ascending: false });
     if (error) return mapDatabaseError(error);
     return apiSuccess((data ?? []).map(({ sales_portal_link_documents: selections, ...link }) => ({
       ...link,

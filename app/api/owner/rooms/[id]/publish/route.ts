@@ -5,6 +5,7 @@ import { parseUpdateOwnerRoomStatusInput } from "@/lib/owner/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { invalidatePublicRoomCache } from "@/lib/rooms/cacheInvalidation";
+import { resolveRoomAvailability } from "@/lib/rooms/availability";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,7 +16,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!user) return apiError("UNAUTHENTICATED", "Bạn cần đăng nhập để xuất bản phòng", 401);
 
     const body = await readJsonObject(request);
-    const input = parseUpdateOwnerRoomStatusInput(body);
+    const parsed = parseUpdateOwnerRoomStatusInput(body);
+    const input = resolveRoomAvailability(parsed.status, parsed.available_from);
     const { data, error } = await supabase.rpc("finalize_owner_room_creation_v1", {
       p_room_id: roomId,
       p_status: input.status,
@@ -63,6 +65,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .from("rooms")
         .update({
           status: input.status,
+          available_from: input.available_from,
           lifecycle_status: "active",
           publish_status: publishStatus,
           ...(publishStatus === "published" ? { is_hidden: false } : {}),

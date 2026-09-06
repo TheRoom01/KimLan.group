@@ -1,5 +1,6 @@
 "use client";
 
+import { roomStatusLabel } from "@/lib/rooms/availability";
 import {
   CalendarDays,
   ChevronDown,
@@ -26,6 +27,7 @@ type RoomCardData = {
   room_type?: string | null;
   price?: number | null;
   status?: string | null;
+  available_from?: string | null;
   displayStatus?: string | null;
   contract?: {
     id?: string | null;
@@ -306,7 +308,7 @@ function stopEdgeResize(event: React.PointerEvent<HTMLDivElement>) {
                 <span
                   className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${badge}`}
                 >
-                  {status}
+                  {roomStatusLabel(status, room.available_from ?? room.contract?.end_date)}
                 </span>
               </div>
 
@@ -433,6 +435,7 @@ function stopEdgeResize(event: React.PointerEvent<HTMLDivElement>) {
           <span className="mt-1 block max-w-full truncate text-[11px] font-semibold opacity-70">
             {room.room_type || "Chưa phân loại"}
           </span>
+          {status === "Sắp trống" ? <span className="mt-1 block text-[10px] font-bold">{roomStatusLabel(status, room.available_from ?? room.contract?.end_date)}</span> : null}
         </button>
 
         {resizeMode ? (

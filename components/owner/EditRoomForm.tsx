@@ -1,5 +1,7 @@
 "use client";
 
+import RoomStatusField from "@/components/rooms/RoomStatusField";
+import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
@@ -42,6 +44,7 @@ type EditableRoom = {
   google_maps_url?: string | null;
   publish_status?: string | null;
   status?: string | null;
+  available_from?: string | null;
   house_number?: string | null;
   address?: string | null;
   ward?: string | null;
@@ -174,6 +177,8 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
     setUploadStatus(null);
 
     const form = new FormData(event.currentTarget);
+    try { requireAvailabilityDate(form.get("status"), form.get("available_from")); }
+    catch { setErrorMessage("Vui lòng chọn ngày trống cho phòng Sắp trống"); setLoading(false); return; }
     const noPet = form.get("no_pet") === "on";
     const allowPet = form.get("allow_pet") === "on" && !noPet;
 
@@ -188,6 +193,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
       google_maps_url: form.get("google_maps_url"),
       publish_status: form.get("publish_status"),
       status: form.get("status"),
+      available_from: form.get("available_from"),
       house_number: form.get("house_number"),
       address: form.get("address"),
       ward: form.get("ward"),
@@ -312,7 +318,7 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
               </select>
           </Field>
 
-          <Field label="Trạng thái phòng" htmlFor="status"><select id="status" name="status" className={INPUT_CLASS} defaultValue={room.status ?? "Đang trống"}><option>Đang trống</option><option>Sắp trống</option><option>Đã thuê</option></select></Field>
+          <Field label="Trạng thái phòng" htmlFor="status"><RoomStatusField initialStatus={room.status} initialDate={room.available_from} className={INPUT_CLASS} /></Field>
           <Field label="Số nhà" htmlFor="house_number"><input id="house_number" name="house_number" className={INPUT_CLASS} defaultValue={room.house_number ?? ""} /></Field>
           <Field label="Địa chỉ" htmlFor="address"><input id="address" name="address" className={INPUT_CLASS} defaultValue={room.address ?? ""} /></Field>
           <Field label="Phường" htmlFor="ward"><input id="ward" name="ward" className={INPUT_CLASS} defaultValue={room.ward ?? ""} /></Field>

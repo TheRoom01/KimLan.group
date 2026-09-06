@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { isSalesLinkVisible } from "@/lib/sales-portal/linkLifecycle";
 import { ArrowLeft, Check, Copy, ExternalLink, FilePlus2, FileText, Link2, Loader2, Save, StickyNote, Trash2, X } from "lucide-react";
 
 import { readApiResponse } from "@/lib/api/client";
@@ -51,6 +52,8 @@ export default function SalesPortalManager({
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const sharingDialog = useRef<HTMLDialogElement>(null);
+  const [createLinkOpen, setCreateLinkOpen] = useState(false);
   const [noteRoomsOpen, setNoteRoomsOpen] = useState(false);
   const [selectedNoteRoomId, setSelectedNoteRoomId] = useState<string | null>(null);
 
@@ -76,6 +79,7 @@ export default function SalesPortalManager({
       const url = withShareVersion(`${window.location.origin}${result.path}`);
       setLatestUrl(url); await navigator.clipboard.writeText(url).catch(() => undefined);
       setMessage("Đã tạo, sao chép link và lưu bộ tài liệu đã chọn.");
+      setCreateLinkOpen(false);
       await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Không thể tạo link"); } finally { setBusy(null); }
   }
@@ -92,6 +96,17 @@ export default function SalesPortalManager({
     setBusy(id); setMessage(null);
     try { await readApiResponse(await fetch(`/api/owner/properties/${propertyId}/sales-portal/${id}`, { method: "DELETE" })); if (latestUrl) setLatestUrl(null); await load(); }
     catch (error) { setMessage(error instanceof Error ? error.message : "Không thể thu hồi link"); } finally { setBusy(null); }
+  }
+
+  async function restoreLink(id: string) {
+    setBusy(id); setMessage(null);
+    try {
+      await readApiResponse(await fetch(`/api/owner/properties/${propertyId}/sales-portal/${id}`, { method: "PATCH" }));
+      const link = links.find((item) => item.id === id);
+      setMessage(link?.expires_at && Date.parse(link.expires_at) <= Date.now() ? "Đã khôi phục link. Link này đã hết hạn và không được tự gia hạn." : "Đã khôi phục link chia sẻ.");
+      await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Không thể khôi phục link"); }
+    finally { setBusy(null); }
   }
 
   async function copyPortalLink(link: PortalLink) {
@@ -161,23 +176,40 @@ export default function SalesPortalManager({
     </div>
 
     <div className="contents min-w-0 lg:order-2 lg:block lg:space-y-5">
-    <section className="order-2 min-w-0 max-w-full overflow-hidden rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 shadow-[0_10px_25px_rgba(92,61,34,0.06)] [overflow-wrap:anywhere] [&_input]:max-w-full [&_input]:min-w-0 sm:p-6">
-      <div className="flex min-w-0 items-center gap-2"><Link2 size={21} className="shrink-0 text-[#744722]" /><h2 className="min-w-0 flex-1 break-words text-lg font-bold sm:text-xl">Chia sẻ thông tin tòa nhà (cho Sale)</h2>{shareOpen ? <button type="button" onClick={() => setShareOpen(false)} className="rounded-lg p-1.5 text-[#684324] hover:bg-[#f8ead7]" aria-label="Thu gọn"><X size={19} /></button> : null}</div>
-      {!shareOpen ? <button type="button" onClick={() => { setMessage(null); setShareOpen(true); }} className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 font-bold text-white transition hover:bg-[#623817]"><Link2 size={17} />Tạo link chia sẻ</button> : null}
-
-      {shareOpen ? <>
-        <p className="mt-2 break-words text-sm text-[#80634a]">Mỗi link Sale có thể chia sẻ một bộ tài liệu riêng từ kho tài liệu tòa nhà.</p>
-        {message ? <div className="mt-4 rounded-xl border border-[#d9bd99] bg-[#f8ead7] px-4 py-3 text-sm text-[#684324]">{message}</div> : null}
-        <div className="mt-5 min-w-0 max-w-full rounded-2xl border border-[#a9825f]/20 p-3 sm:p-4">
-          <h3 className="font-bold">Link truy cập</h3>
-          <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[minmax(0,1fr)_170px]"><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ví dụ: Đội Sale Quận 3" className="h-11 w-full min-w-0 rounded-xl border border-[#aa825d]/30 bg-white px-3" /><input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className="h-11 w-full min-w-0 max-w-full rounded-xl border border-[#aa825d]/30 bg-white px-3" /></div>
+    <section className="order-2 min-w-0 rounded-[22px] border border-[#956b45]/25 bg-[#fff9ef] p-4 sm:p-6">
+      <div className="flex items-center gap-2"><Link2 size={21} className="shrink-0 text-[#744722]" /><h2 className="text-lg font-bold sm:text-xl">Chia sẻ thông tin tòa nhà (cho Sale)</h2></div>
+      <button type="button" onClick={() => { setMessage(null); setCreateLinkOpen(false); setShareOpen(true); sharingDialog.current?.showModal(); void load(); }} className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 font-bold text-white"><Link2 size={17} />Quản lý link chia sẻ</button>
+      <dialog ref={sharingDialog} onClose={() => { setShareOpen(false); setCreateLinkOpen(false); }} onCancel={(event) => { if (busy) event.preventDefault(); }} className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto rounded-2xl border border-[#d9bd99] bg-[#fff9ef] p-5 text-[#432918] shadow-2xl backdrop:bg-black/45">
+        <div className="flex items-start justify-between gap-3"><h2 className="text-xl font-bold">{createLinkOpen ? "Tạo link chia sẻ tòa nhà" : "Quản lý link chia sẻ cho Sale"}</h2><button type="button" disabled={Boolean(busy)} onClick={() => sharingDialog.current?.close()} aria-label="Đóng" className="rounded-lg p-1"><X size={22} /></button></div>
+        {message ? <p role="status" className="mt-4 rounded-xl bg-[#f8ead7] p-3 text-sm">{message}</p> : null}
+        {createLinkOpen ? <fieldset disabled={Boolean(busy)} className="mt-4 space-y-3">
+          <button type="button" onClick={() => setCreateLinkOpen(false)} className="inline-flex items-center gap-1 text-sm font-semibold"><ArrowLeft size={16} />Các link đã tạo</button>
+          <label className="block text-sm font-semibold">Tên link<input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={120} className="mt-1 h-11 w-full rounded-xl border border-[#aa825d]/30 bg-white px-3" /></label>
+          <label className="block text-sm font-semibold">Ngày hết hạn (không bắt buộc)<input type="date" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} className="mt-1 h-11 w-full rounded-xl border border-[#aa825d]/30 bg-white px-3" /></label>
           <DocumentChoices title="Tài liệu chia sẻ trong link mới" documents={documents} selected={newLinkDocumentIds} onChange={setNewLinkDocumentIds} />
-          <button type="button" onClick={() => void createLink()} disabled={busy === "link"} className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 font-semibold text-white disabled:opacity-50">{busy === "link" ? <Loader2 className="animate-spin" size={17} /> : <Link2 size={17} />}Tạo link</button>
-          {latestUrl ? <div className="mt-3 flex min-w-0 items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"><Check size={16} /><span className="min-w-0 flex-1 truncate">{latestUrl}</span><button onClick={() => void navigator.clipboard.writeText(latestUrl)} aria-label="Sao chép"><Copy size={16} /></button><a href={latestUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /></a></div> : null}
-          <div className="mt-4 space-y-3">{links.map((link) => <div key={link.id} className="rounded-xl bg-[#f8ead7] p-3 text-sm"><div className="flex items-center gap-2"><span className="min-w-0 flex-1"><strong className="block truncate">{link.label}</strong><span className="text-xs text-[#80634a]">{link.revoked_at ? "Đã thu hồi" : `${link.document_ids.length} tài liệu · ${link.expires_at ? `Hết hạn ${new Date(link.expires_at).toLocaleDateString("vi-VN")}` : "Không hết hạn"}`}</span></span>{!link.revoked_at ? <><button onClick={() => void copyPortalLink(link)} className="rounded-lg p-2 text-[#744722] hover:bg-white/70">{copiedLinkId === link.id ? <Check size={17} /> : <Copy size={17} />}</button><button onClick={() => void revokeLink(link.id)} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 size={17} /></button></> : null}</div>{!link.revoked_at ? <><DocumentChoices title="Tài liệu riêng của link này" documents={documents} selected={linkSelections[link.id] ?? []} onChange={(ids) => setLinkSelections((current) => ({ ...current, [link.id]: ids }))} /><button type="button" onClick={() => void saveLinkDocuments(link.id)} disabled={busy === `selection-${link.id}`} className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[#8f633e]/30 bg-white text-xs font-bold text-[#744722] disabled:opacity-50">{busy === `selection-${link.id}` ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}Lưu bộ tài liệu cho link</button></> : null}</div>)}</div>
-        </div>
-        <button type="button" onClick={() => { setMessage(null); setSelectedNoteRoomId(null); setNoteRoomsOpen(true); }} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#8f633e]/30 bg-[#fffaf2] px-4 font-bold text-[#744722] transition hover:bg-[#f8ead7]"><StickyNote size={18} /> Thêm ghi chú cho từng phòng</button>
-      </> : null}
+          <button type="button" onClick={() => void createLink()} disabled={!label.trim() || Boolean(busy)} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 font-bold text-white disabled:opacity-50">{busy === "link" ? <Loader2 size={17} className="animate-spin" /> : <Link2 size={17} />}Tạo link</button>
+        </fieldset> : <>
+          <p className="mt-2 text-sm text-[#80634a]">{links.filter((link) => !link.revoked_at && (!link.expires_at || Date.parse(link.expires_at) > Date.now())).length} link đang hoạt động</p>
+          <div className="mt-5 rounded-2xl border border-[#d9bd99] bg-[#f8ead7] p-4"><h3 className="font-bold">Tạo link mới</h3><p className="mt-1 text-sm text-[#80634a]">Chọn tài liệu riêng cho link chia sẻ tòa nhà.</p><button type="button" disabled={Boolean(busy)} onClick={() => { setMessage(null); setCreateLinkOpen(true); }} className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#744722] px-4 font-bold text-white"><Link2 size={17} />Tạo link mới</button></div>
+          <div className="mb-3 mt-6 flex items-center justify-between gap-3"><div><h3 className="font-bold">Các link đã tạo</h3><p className="mt-1 text-xs text-[#80634a]">Link đã thu hồi hiển thị và có thể khôi phục trong 3 ngày.</p></div><button type="button" disabled={Boolean(busy)} onClick={() => void load()} className="shrink-0 rounded-xl border border-[#d9bd99] bg-white px-3 py-2 text-sm font-semibold">Tải lại</button></div>
+          <div className="space-y-3">{links.filter((link) => isSalesLinkVisible(link)).map((link) => {
+            const active = !link.revoked_at && (!link.expires_at || Date.parse(link.expires_at) > Date.now());
+            return <article key={link.id} className="rounded-2xl border border-[#d9bd99]/60 bg-white p-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3"><h4 className="min-w-0 break-words font-bold">{link.label}</h4><div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${active ? "border-green-200 bg-green-50 text-green-700" : "border-gray-200 bg-gray-50 text-gray-600"}`}>{link.revoked_at ? "Đã thu hồi" : active ? "Đang hoạt động" : "Đã hết hạn"}</span>
+                <button type="button" disabled={!active || !link.public_token || Boolean(busy)} onClick={() => void copyPortalLink(link)} className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 disabled:opacity-40">{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>
+                {link.revoked_at ? <button type="button" disabled={Boolean(busy)} onClick={() => void restoreLink(link.id)} className="rounded-lg border border-[#d9bd99] bg-[#fff9ef] px-2 py-1 text-xs font-bold text-[#744722] disabled:opacity-40">Khôi phục link</button> : <button type="button" disabled={Boolean(busy)} onClick={() => void revokeLink(link.id)} className="rounded-lg border border-red-200 px-2 py-1 text-xs font-bold text-red-600 disabled:opacity-40">Thu hồi</button>}
+              </div></div>
+              <p className="mt-3 text-[#80634a]">{link.document_ids.length} tài liệu</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2"><div><p className="text-xs text-[#80634a]">Ngày tạo</p><p className="mt-1 font-semibold">{new Date(link.created_at).toLocaleString("vi-VN")}</p></div><div><p className="text-xs text-[#80634a]">Ngày hết hạn</p><p className="mt-1 font-semibold">{link.expires_at ? new Date(link.expires_at).toLocaleString("vi-VN") : "Không hết hạn"}</p></div></div>
+              {!link.revoked_at ? <details className="mt-4"><summary className="cursor-pointer font-semibold text-[#744722]">Tài liệu riêng của link</summary><DocumentChoices title="Chọn tài liệu chia sẻ" documents={documents} selected={linkSelections[link.id] ?? []} onChange={(ids) => setLinkSelections((current) => ({ ...current, [link.id]: ids }))} /><button type="button" onClick={() => void saveLinkDocuments(link.id)} disabled={Boolean(busy)} className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[#8f633e]/30 text-xs font-bold text-[#744722] disabled:opacity-50"><Save size={14} />Lưu bộ tài liệu cho link</button></details> : null}
+            </article>;
+          })}</div>
+          {!links.some((link) => isSalesLinkVisible(link)) ? <p className="rounded-xl border border-dashed border-[#d9bd99] p-6 text-center text-sm text-[#80634a]">Chưa có link chia sẻ.</p> : null}
+          <button type="button" onClick={() => { sharingDialog.current?.close(); setMessage(null); setSelectedNoteRoomId(null); setNoteRoomsOpen(true); }} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#8f633e]/30 px-4 font-bold text-[#744722]"><StickyNote size={18} />Thêm ghi chú cho từng phòng</button>
+        </>}
+        {latestUrl ? <div className="mt-3 flex min-w-0 items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"><Check size={16} /><span className="min-w-0 flex-1 truncate">{latestUrl}</span><button type="button" onClick={() => void navigator.clipboard.writeText(latestUrl)} aria-label="Sao chép"><Copy size={16} /></button><a href={latestUrl} target="_blank" rel="noreferrer" aria-label="Mở link"><ExternalLink size={16} /></a></div> : null}
+      </dialog>
     </section>
     <div className="order-4 min-w-0">{sharingColumnAfter}</div>
     </div>

@@ -40,6 +40,8 @@ export async function getRoomDetail(roomId: string) {
       room_type,
       price,
       status,
+      available_from,
+      status_source,
       description,
       chinh_sach,
       link_zalo,
@@ -153,7 +155,9 @@ export async function getRoomDetail(roomId: string) {
 
   let displayStatus: RoomStatus = storedStatus;
 
-  if (contractStatus === "Đang hiệu lực") {
+  if (data.status_source === "owner" && storedStatus === "Đang trống") {
+    displayStatus = "Đang trống";
+  } else if (contractStatus === "Đang hiệu lực") {
     displayStatus =
       daysRemaining !== null &&
       daysRemaining >= 0 &&

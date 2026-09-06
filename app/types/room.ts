@@ -14,6 +14,7 @@ export type Room = {
   district?: string | null;
   price?: number | null;
   status?: RoomStatus | null;
+  available_from?: string | null;
   created_at?: string | null;
   link_zalo?: string | null;
   google_maps_url?: string | null;
