@@ -16,7 +16,7 @@ function parseCsv(v: string | null): string[] | null {
 
   const arr = v
     .split(",")
-    .map((s) => decodeURIComponent(s).trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 
   return arr.length ? arr : null;
@@ -80,7 +80,7 @@ export default async function HomePage({
   const termRaw = firstString(sp.term);
   const sRaw = firstString(sp.s);
 
-  const search = qRaw ? decodeURIComponent(qRaw).trim() : null;
+  const search = qRaw ? qRaw.trim() : null;
 
   // Không có min/max trên URL nghĩa là chưa bật lọc giá. Gửi null để RPC
   // trả cả phòng có giá lẫn phòng chưa có giá.
@@ -90,7 +90,7 @@ export default async function HomePage({
    const districts = parseCsv(dRaw);
   const roomTypes = parseCsv(rtRaw);
 
-  const status = stRaw ? decodeURIComponent(stRaw) : null;
+  const status = stRaw ? stRaw : null;
 
   const move =
     mRaw === "elevator" || mRaw === "stairs"
@@ -110,7 +110,7 @@ export default async function HomePage({
     contractTermsRaw?.filter(
       (v): v is "short" | "long" =>
         v === "short" || v === "long"
-    ) ?? ["long"];
+    ) ?? [];
 
   const sortMode = parseSortMode(sRaw);
 
@@ -143,6 +143,7 @@ export default async function HomePage({
         initialNextCursor={res.nextCursor}
         initialAdminLevel={adminLevel}
         initialTotal={res.total ?? null}
+        initialError={res.error}
       />
 
       {false && <ContactFAB />}

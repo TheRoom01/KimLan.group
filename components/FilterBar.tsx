@@ -622,7 +622,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
                 onClick={() => {
                   setMoveFilter(null);
                   setPetFilters([]);
-                  setTermFilters(["long"]);
+                  setTermFilters([]);
                 }}
               >
                 Clear

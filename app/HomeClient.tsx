@@ -18,7 +18,8 @@ type InitialProps = {
   initialRooms: any[];
   initialNextCursor: string | UpdatedDescCursor | null;
   initialAdminLevel: 0 | 1 | 2;
-  initialTotal?: number | null; // ✅
+  initialTotal?: number | null;
+  initialError?: string;
 };
 
 const LIMIT = 20;
@@ -111,11 +112,11 @@ const HOME_BACK_HINT_KEY = "HOME_BACK_HINT_V1";
 const HOME_BACK_HINT_TTL = 15 * 60 * 1000; // 15 phút
 
 // ✅ BACK SNAPSHOT (cấu trúc logic cũ để giữ page/scroll khi back từ detail)
-const HOME_BACK_SNAPSHOT_KEY = "HOME_BACK_SNAPSHOT_V1";
+const HOME_BACK_SNAPSHOT_KEY = "HOME_BACK_SNAPSHOT_V2";
 const HOME_BACK_SNAPSHOT_TTL = 15 * 60 * 1000;
 
-const HOME_STATE_KEY = "HOME_STATE_V2"; // giữ nguyên
-const HOME_STATE_LITE_PREFIX = "HOME_STATE_LITE_V1::"; // ✅ per-qS key
+const HOME_STATE_KEY = "HOME_STATE_V3"; // giữ nguyên
+const HOME_STATE_LITE_PREFIX = "HOME_STATE_LITE_V2::"; // ✅ per-qS key
 const HOME_STATE_LITE_TTL = 30 * 60 * 1000; // 30 phút (đồng bộ V2)
 // ✅ nếu có thay đổi dữ liệu quan trọng từ tab khác (/admin) thì Home bỏ restore cache cũ
 const HOME_DIRTY_KEY = "HOME_DIRTY_V1";
@@ -226,6 +227,7 @@ const HomeClient = ({
   initialNextCursor,
   initialAdminLevel,
   initialTotal,
+  initialError = "",
 }: InitialProps) => {
 
   const pathname = usePathname();
@@ -645,7 +647,7 @@ useEffect(() => {
     const [loading, setLoading] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [fetchError, setFetchError] = useState<string>("");
+  const [fetchError, setFetchError] = useState<string>(initialError);
   const fetchPageRef = useRef<(targetIndex: number) => void>(() => {});
  const isReloadRef = useRef<boolean>(false);
 
@@ -1146,7 +1148,7 @@ const debugSetItem = useCallback((key: string, value: string) => {
 
   const liteKeyForQs = useCallback((qsRaw: string) => {
   const c = canonicalQs(qsRaw || "");
-  return `HOME_STATE_LITE_V1::${c}`;
+  return `${HOME_STATE_LITE_PREFIX}${c}`;
 }, []);
 
 const writeLiteNow = useCallback(() => {
@@ -1276,6 +1278,7 @@ const readBackSnapshot = useCallback((): BackSnapshot | null => {
     const ttlOk =
       !!parsed?.ts && Date.now() - parsed.ts < HOME_BACK_SNAPSHOT_TTL;
     if (!ttlOk) return null;
+    if (canonicalQs(parsed.qs || "") !== canonicalQs(window.location.search)) return null;
 
     return parsed;
   } catch {
@@ -1510,7 +1513,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
     setSelectedRoomTypes(snap.selectedRoomTypes ?? []);
     setMoveFilter(snap.moveFilter ?? null);
     setPetFilters(snap.petFilters ?? []);
-    setTermFilters(snap.termFilters ?? ["long"]);
+    setTermFilters(snap.termFilters ?? []);
     setSortMode(snap.sortMode ?? "updated_desc");
     setTotal(typeof snap.total === "number" ? snap.total : null);
     setStatusFilter(snap.statusFilter ?? null);
@@ -1522,7 +1525,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
       selectedRoomTypes: snap.selectedRoomTypes ?? [],
       moveFilter: snap.moveFilter ?? null,
       petFilters: snap.petFilters ?? [],
-      termFilters: snap.termFilters ?? ["long"],
+      termFilters: snap.termFilters ?? [],
       sortMode: snap.sortMode ?? "updated_desc",
       statusFilter: snap.statusFilter ?? null,
     });
@@ -1673,7 +1676,7 @@ if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
   setPageIndex(0);
   setDisplayPageIndex(0);
 
-  setFetchError("");
+  setFetchError(initialError);
   setLoading(false);
   setShowSkeleton(false);
   setTotal(typeof initialTotal === "number" ? initialTotal : null);
@@ -1703,7 +1706,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
       sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
       sessionStorage.removeItem(HOME_STATE_KEY);
 
-      // clear all HOME_STATE_LITE_V1::*
+      // clear all HOME_STATE_LITE_V2::*
       for (let i = sessionStorage.length - 1; i >= 0; i--) {
         const k = sessionStorage.key(i) || "";
         if (k.startsWith(HOME_STATE_LITE_PREFIX)) sessionStorage.removeItem(k);
@@ -1744,11 +1747,10 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   const restoredQs = canonicalQs(restored?.qs || "");
 
   // ✅ Quan trọng:
-  // - URL rỗng ("/") thì KHÔNG restore full HOME_STATE_V2
+  // - URL rỗng ("/") thì KHÔNG restore full HOME_STATE_V3
   // - tránh mở web lần đầu bị render lại pages stale từ sessionStorage
   // - default Home nên ưu tiên SSR initialRooms
-  const allowHeavyRestore =
-    currentQs.length > 0 || isBackFromDetail;
+  const allowHeavyRestore = isBackFromDetail;
 
   const match =
     !isReloadRef.current &&
@@ -1770,7 +1772,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   const restoredTypes = rest.selectedRoomTypes ?? [];
   const restoredMove = rest.moveFilter ?? null;
   const restoredPets = rest.petFilters ?? [];
-  const restoredTerms = rest.termFilters ?? ["long"];
+  const restoredTerms = rest.termFilters ?? [];
   const restoredSort = rest.sortMode ?? "updated_desc";
 
   setSearch(restoredSearch);
@@ -1834,7 +1836,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   const lite =
     !isReloadRef.current &&
     effectiveQs &&
-    (effectiveQs.length > 0 || isBackFromDetail)
+    isBackFromDetail
       ? readLiteForQs(effectiveQs)
       : null;
 
@@ -1847,7 +1849,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     const liteTypes = lite.selectedRoomTypes ?? [];
     const liteMove = lite.moveFilter ?? null;
     const litePets = lite.petFilters ?? [];
-    const liteTerms = lite.termFilters ?? ["long"];
+    const liteTerms = lite.termFilters ?? [];
     const liteSort = lite.sortMode ?? "updated_desc";
     const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
 
@@ -1948,7 +1950,7 @@ pendingUrlFiltersRef.current = {
 const urlPrice: [number, number] = [url.minVal, url.maxVal];
 const urlStatus = url.st;
 const urlPets = url.pet ?? [];
-const urlTerms = url.term ?? ["long"];
+const urlTerms = url.term ?? [];
 
 setSearch(url.q);
 setPriceDraft(urlPrice);
@@ -1986,7 +1988,7 @@ if (pageFromUrl === 0 && !url.c) {
   setPageIndex(0);
   setDisplayPageIndex(0);
   setTotal(typeof initialTotal === "number" ? initialTotal : null);
-  setFetchError("");
+  setFetchError(initialError);
   setLoading(false);
   setShowSkeleton(false);
   pendingUrlFiltersRef.current = null;
@@ -2079,7 +2081,7 @@ useEffect(() => {
   const liteTypes = lite.selectedRoomTypes ?? [];
   const liteMove = lite.moveFilter ?? null;
   const litePets = lite.petFilters ?? [];
-  const liteTerms = lite.termFilters ?? ["long"];
+  const liteTerms = lite.termFilters ?? [];
   const liteSort = lite.sortMode ?? "updated_desc";
   const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
   const litePriceFilterActive = hasExplicitPriceFilter(effectiveQs);
@@ -2188,7 +2190,7 @@ hydratingFromUrlRef.current = true;
 const urlPrice: [number, number] = [url.minVal, url.maxVal];
 const urlStatus = isReloadRef.current ? null : url.st;
 const urlPets = url.pet ?? [];
-const urlTerms = url.term ?? ["long"];
+const urlTerms = url.term ?? [];
 
 pendingUrlFiltersRef.current = {
   search: url.q,
@@ -2299,7 +2301,7 @@ queueMicrotask(() => {
   return;
 }
 
-    const reqKey = `${lastFilterSigRef.current ?? ""}::${targetIndex}`;
+    const reqKey = `${myVersion}::${lastFilterSigRef.current ?? ""}::${targetIndex}`;
 
     if (inFlightRef.current[reqKey]) {
       console.log("[fetchPage] skip: inFlight", { reqKey });
@@ -2383,13 +2385,11 @@ const res = await fetchRooms({
     : undefined,
 });
 
-// ✅ sau lần fetch đầu tiên theo URL snapshot thì clear để các fetch sau dùng state bình thường
-if (pendingUrlFiltersRef.current && targetIndex === pageIndexRef.current) {
-  pendingUrlFiltersRef.current = null;
-}
-    
-       // ✅ drop nếu version đã đổi sau khi request bắt đầu
+// A stale response must not consume the next search's URL snapshot.
       if (myVersion !== filtersVersionRef.current) return;
+      if (pendingUrlFiltersRef.current === pending && targetIndex === pageIndexRef.current) {
+        pendingUrlFiltersRef.current = null;
+      }
       if (typeof res.total === "number") setTotal(res.total);
 
       // dedup theo id
@@ -2481,7 +2481,7 @@ if (targetIndex === pageIndexRef.current) {
         const nextIdx = targetIndex + 1;
 
         const notFetchedYet = pagesRef.current[nextIdx] === undefined;
-       const nextReqKey = `${lastFilterSigRef.current ?? ""}::${nextIdx}`;
+       const nextReqKey = `${myVersion}::${lastFilterSigRef.current ?? ""}::${nextIdx}`;
         const notInFlight = !inFlightRef.current[nextReqKey];
 
         if (notFetchedYet && notInFlight) {
@@ -2500,7 +2500,7 @@ if (targetIndex === pageIndexRef.current) {
       }
 
     } catch (e: any) {
-      if (isVisible) {
+      if (myVersion === filtersVersionRef.current && targetIndex === pageIndexRef.current) {
         setFetchError(e?.message ?? "Tải dữ liệu thất bại");
         setLoading(false);
         setShowSkeleton(false);
@@ -2509,7 +2509,7 @@ if (targetIndex === pageIndexRef.current) {
     } finally {
       inFlightRef.current[reqKey] = false;
 
-      if (isVisible) {
+      if (myVersion === filtersVersionRef.current && targetIndex === pageIndexRef.current) {
         setLoading(false);
         setShowSkeleton(false);
         setIsRefreshing(false);
@@ -2619,17 +2619,6 @@ useEffect(() => {
     };
 }, [persistSoon, saveScrollToHistory]);
 
-type BaselineState = {
-  pages: any[][];
-  cursors: typeof cursorsRef.current;
-  pageIndex: number;
-  displayPageIndex: number;
-  scrollTop: number;
-  hasNext: boolean;
-};
-
-const preSearchBaselineRef = useRef<BaselineState | null>(null);
-
 const resetAllFiltersAndReload = useCallback(() => {
   if (filterApplyTimerRef.current) {
     window.clearTimeout(filterApplyTimerRef.current);
@@ -2638,7 +2627,6 @@ const resetAllFiltersAndReload = useCallback(() => {
 
   // Reset toàn bộ phải luôn tải dữ liệu mặc định mới, không khôi phục cache
   // của danh sách trước khi người dùng bắt đầu tìm kiếm.
-  preSearchBaselineRef.current = null;
   filtersVersionRef.current += 1;
 
   const defaultFilters = {
@@ -2650,7 +2638,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     roomTypes: [] as string[],
     move: null,
     pets: [] as ("cat" | "dog" | "nopet")[],
-    terms: ["long"] as ("short" | "long")[],
+    terms: [] as ("short" | "long")[],
     sort: "updated_desc" as SortMode,
     status: null,
   };
@@ -2716,6 +2704,18 @@ const resetAllFiltersAndReload = useCallback(() => {
   queueMicrotask(() => fetchPageRef.current(0));
 }, [armRestoredFilterSig, buildQs, replaceUrlShallow, resetPagination]);
 
+// User input supersedes a pending URL/cache restoration immediately, even
+// while the debounced search value is still catching up.
+const setSearchFromInput = useCallback<React.Dispatch<React.SetStateAction<string>>>((value) => {
+  if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
+  pendingRestoredFilterSigRef.current = null;
+  pendingUrlFiltersRef.current = null;
+  skipNextFilterEffectRef.current = false;
+  hydratingFromUrlRef.current = false;
+  filtersVersionRef.current += 1;
+  setSearch(value);
+}, []);
+
 // ================== FILTER CHANGE ==================
 useEffect(() => {
 
@@ -2747,84 +2747,9 @@ useEffect(() => {
   if (filterSig === lastFilterSigRef.current) return;
   trackVisitorEvent("filter_use");
 
-  // ====== Special logic for SEARCH baseline ======
-  const prevApplied = prevAppliedSearchRef.current;
-  const searchBecameNonEmpty = prevApplied === "" && applied !== "";
-  const searchBecameEmpty = prevApplied !== "" && applied === "";
-
-  // cập nhật applied search hiện tại
+  // Clearing or changing search uses the current filters, never a pre-search list.
   prevAppliedSearchRef.current = applied;
-
-  // ✅ Khi bắt đầu search: lưu baseline (list/scroll/page trước search)
-  if (searchBecameNonEmpty) {
-    const el = scrollRef.current;
-    preSearchBaselineRef.current = {
-      pages: pagesRef.current,
-      cursors: cursorsRef.current,
-      pageIndex: pageIndexRef.current,
-      displayPageIndex: displayPageIndex,
-      scrollTop: el ? el.scrollTop : 0,
-      hasNext: hasNext,
-    };
-  }
-
-  // ✅ Khi xoá search: restore baseline (quay lại đúng UI trước search), KHÔNG reset/fetch
-  if (searchBecameEmpty && preSearchBaselineRef.current) {
-    const base = preSearchBaselineRef.current;
-
-    pagesRef.current = base.pages;
-    setPages(base.pages);
-
-    cursorsRef.current = base.cursors;
-    setHasNext(base.hasNext);
-
-    setPageIndex(base.pageIndex);
-    setDisplayPageIndex(base.displayPageIndex);
-
-    const qsBack = buildQs({
-      q: "",
-      min: priceFilterActive ? priceApplied[0] : undefined,
-      max: priceFilterActive ? priceApplied[1] : undefined,
-      d: selectedDistricts,
-      t: selectedRoomTypes,
-      m: moveFilter,
-      pet: petFilters,
-      term: termFilters,
-      s: sortMode,
-      st: statusFilter,
-      p: base.pageIndex,
-      c: (base.cursors[base.pageIndex] ?? null) as UrlCursor,
-    });
-
-    preSearchBaselineRef.current = null;
-
-    armRestoredFilterSig({
-  search: "",
-  priceApplied,
-  selectedDistricts,
-  selectedRoomTypes,
-  moveFilter,
-  petFilters,
-  termFilters,
-  sortMode,
-  statusFilter,
-});
-
-    replaceUrlShallow(qsBack);
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const el = scrollRef.current;
-        if (el) {
-          el.scrollTop = base.scrollTop;
-          lastScrollTopRef.current = base.scrollTop;
-        }
-      });
-    });
-
-    persistSoon();
-    return;
-  }
+  pendingUrlFiltersRef.current = null;
 
   // ====== Normal filter change flow (debounced) ======
   filtersVersionRef.current += 1;
@@ -3332,7 +3257,7 @@ return (
               roomTypes={roomTypes}
               loading={loading}
               search={search}
-              setSearch={setSearch}
+              setSearch={setSearchFromInput}
               priceDraft={priceDraft}
               priceApplied={priceApplied}
               setPriceDraft={setPriceDraft}

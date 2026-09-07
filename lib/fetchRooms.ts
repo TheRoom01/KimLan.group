@@ -1,3 +1,4 @@
+import { normalizeSearchKeyword } from "@/lib/rooms/search";
 import { supabase } from "./supabase";
 
 export type UpdatedDescCursor = {
@@ -147,30 +148,6 @@ const expandDistrictLegacyValues = (districts?: string[] | null) => {
 
 
 
-const normalizeSearchKeyword = (value?: string | null) => {
-  const normalized = String(value ?? "")
-    .normalize("NFC")
-
-    // ✅ Chuẩn hoá phường khi user search:
-    // "P.13", "p13", "Phường 13", "phuong 13" -> "13"
-    // "P.13", "p13", "Phường 13" -> "13"
-    .replace(/\b(phường|phuong|p\.?|p)\s*(\d{1,3})\b/gi, "$2")
-
-    // "P. Bến Thành", "Phường Bến Thành", "phuong Ben Thanh" -> "Bến Thành"
-    .replace(/\b(phường|phuong|p\.?|p)\s+(?=\S)/gi, "")
-
-    .replace(/\.{2,}/g, " ")
-    .replace(/[…,，。]+/g, " ")
-    // Keep "/" because it is meaningful inside Vietnamese house numbers
-    // (for example: "463B/63").
-    .replace(/[|;:\\()[\]{}"'“”‘’`~!@#$%^&*_+=<>?]+/g, " ")
-    .replace(/[-–—]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLocaleLowerCase("vi-VN");
-
-  return normalized.length >= 3 ? normalized : "";
-};
 
 const expandRoomTypeLegacyValues = (roomTypes?: string[] | null) => {
   if (!roomTypes || roomTypes.length === 0) return null;
@@ -393,7 +370,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 
   if (error) {
     console.error(error);
-    return { data: [], nextCursor: null, total: undefined };
+    throw new Error(error.message || "Không thể tải danh sách phòng");
   }
 
   // RPC return: { data: jsonb[], nextCursor: jsonb | uuid | null, total_count?: number }
