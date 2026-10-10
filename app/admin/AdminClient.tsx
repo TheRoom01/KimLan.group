@@ -1371,25 +1371,35 @@ const openZaloUX = useCallback(
         </div>
       )}
       
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            right: 16,
-            bottom: 16,
-            zIndex: 1000,
-            background: "#111827",
-            color: "#fff",
-            padding: "10px 12px",
-            borderRadius: 10,
-            fontSize: 13,
-            boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-            maxWidth: 360,
-          }}
-        >
-          {toast}
-        </div>
-      )}
+      
+{toast && (
+  <div
+    role="status"
+    aria-live="polite"
+    style={{
+      position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+      zIndex: 10000,
+      background: "rgba(17, 24, 39, 0.94)",
+      color: "#fff",
+      padding: "12px 18px",
+      borderRadius: 14,
+      fontSize: 14,
+      lineHeight: 1.5,
+      boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+      width: "max-content",
+      maxWidth: "calc(100vw - 32px)",
+      boxSizing: "border-box",
+      overflowWrap: "anywhere",
+      textAlign: "center",
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
+      pointerEvents: "none",
+    }}
+  >
+    {toast}
+  </div>
+)}
+
        </main>
   );
 }

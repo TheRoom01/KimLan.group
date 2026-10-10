@@ -1707,7 +1707,8 @@ const applyAutoReadCandidate = (
     return
   }
 
-  let backgroundNewSave = false
+  let backgroundSave = false
+
   try {
     setSaving(true)
     setErrorMsg(null)
@@ -1787,11 +1788,16 @@ const payload = {
       }
     }
 
-    if (isNew) {
-      backgroundNewSave = true
-      onClose()
-      onNotify?.('Đang lưu phòng mới trong nền...')
-    }
+    // Đóng modal ngay sau khi hoàn tất kiểm tra cần thiết.
+// Việc lưu dữ liệu chính thức tiếp tục chạy ở nền.
+backgroundSave = true
+onClose()
+
+onNotify?.(
+  isNew
+    ? 'Đang lưu phòng mới...'
+    : 'Đang lưu thay đổi phòng...'
+)
 
 // ✅ nếu đã upload trước khi lưu, reuse draft id để room_id khớp folder media
 const desiredId =
@@ -1971,30 +1977,60 @@ try {
   localStorage.setItem("HOME_DIRTY_V1", stamp);
 } catch {}
 
-    // ✅ UX: đóng modal ngay, update list ngay
-    setSaving(false)
-    onClose()
-       onNotify?.('Đã lưu phòng. Đang lưu chi tiết...')
-    void onSaved(updatedRoom, { isNew, reloadPropertyRooms: wardChanged })
-    
-// ✅ Lưu chi tiết qua RPC (chuẩn Supabase, bypass RLS)
+    // Modal đã đóng từ trước.
+// Cập nhật danh sách sau khi dữ liệu phòng và media đã được xử lý.
+void onSaved(updatedRoom, {
+  isNew,
+  reloadPropertyRooms: wardChanged,
+})
+
+// Lưu chi tiết ở nền và chỉ thông báo thành công khi RPC hoàn tất.
 void (async () => {
-  const { error } = await supabase.rpc('save_room_details_v1', {
-    p_room_id: roomId,
-    p_payload: detailForm, // detailForm có thể là object thường, supabase sẽ gửi json
-  })
+  try {
+    const { error } = await supabase.rpc('save_room_details_v1', {
+      p_room_id: roomId,
+      p_payload: detailForm,
+    })
 
-  if (error) {
-    console.error('save_room_details_v1 failed:', error)
-    alert(`Lưu chi tiết thất bại: ${error.message}`)
-    return
+    if (error) {
+      throw error
+    }
+
+    // Làm mới cache sau khi lưu chi tiết.
+    try {
+      const response = await fetch(
+        `/api/rooms/${roomId}/revalidate`,
+        { method: 'POST' }
+      )
+
+      if (!response.ok) {
+        console.warn(
+          'Room cache revalidation failed after saving details:',
+          response.status
+        )
+      }
+    } catch (cacheError) {
+      // Lỗi cache không có nghĩa dữ liệu đã lưu bị mất.
+      console.warn(
+        'Room cache revalidation failed after saving details:',
+        cacheError
+      )
+    }
+
+    onNotify?.('Đã lưu phòng và chi tiết thành công.')
+  } catch (e: any) {
+    console.error('save_room_details_v1 failed:', e)
+
+    onNotify?.(
+      `Phòng đã lưu nhưng chi tiết lưu thất bại: ${
+        e?.message ?? 'Không rõ lỗi'
+      }`
+    )
   }
-
-  void fetch(`/api/rooms/${roomId}/revalidate`, { method: "POST" }).catch(() => undefined)
 })()
 
   } catch (e: any) {
-    if (!backgroundNewSave && e?.message === "PROPERTY_MATCH_REQUIRED" && e?.details) {
+    if (!backgroundSave && e?.message === "PROPERTY_MATCH_REQUIRED" && e?.details) {
       try {
         const candidates = JSON.parse(e.details) as PropertyCandidate[]
 
@@ -2017,11 +2053,11 @@ void (async () => {
         ? 'Vui lòng nhập đủ Số nhà, tên đường và Quận/Huyện.'
         : e?.message ?? 'Không rõ lỗi'
 
-    if (backgroundNewSave) {
-      onNotify?.(`Lưu phòng mới thất bại: ${saveError}`)
-    } else {
-      setErrorMsg(saveError)
-    }
+    if (backgroundSave) {
+  onNotify?.(`Lưu phòng thất bại: ${saveError}`)
+} else {
+  setErrorMsg(saveError)
+}
   } finally {
     setSaving((s) => (s ? false : s))
   }
