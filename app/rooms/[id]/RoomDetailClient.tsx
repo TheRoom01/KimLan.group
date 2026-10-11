@@ -754,11 +754,7 @@ useEffect(() => {
   const fetchKey = `${room.id}:${currentUserIdValue}:${adminLevel}`;
   if (privateFieldsFetchedKeyRef.current === fetchKey) return;
 
-  const hasAny =
-    String(room?.link_zalo ?? "").trim() &&
-    String(room?.zalo_phone ?? "").trim() &&
-    String(room?.google_maps_url ?? "").trim();
-  if (hasAny) return;
+ 
   privateFieldsFetchedKeyRef.current = fetchKey;
 
   let cancelled = false;
@@ -767,7 +763,7 @@ useEffect(() => {
     try {
       const { data, error } = await supabase
         .from("rooms")
-        .select("link_zalo, zalo_phone, google_maps_url, is_hidden")
+        .select("link_zalo, zalo_phone, google_maps_url, chinh_sach, is_hidden")
         .eq("id", room.id)
         .maybeSingle();
 
@@ -778,15 +774,18 @@ useEffect(() => {
       const link_zalo = String((data as any)?.link_zalo ?? "").trim() || null;
       const zalo_phone = String((data as any)?.zalo_phone ?? "").trim() || null;
       const google_maps_url =
-        String((data as any)?.google_maps_url ?? "").trim() || null;
+      String((data as any)?.google_maps_url ?? "").trim() || null;
+      const chinh_sach =
+      String((data as any)?.chinh_sach ?? "").trim() || null;
 
-      if (link_zalo || zalo_phone || google_maps_url) {
+      if (link_zalo || zalo_phone || google_maps_url || chinh_sach) {
         setRoom((prev: any) =>
           prev
             ? {
                 ...prev,
                 link_zalo: prev?.link_zalo ?? link_zalo,
                 zalo_phone: prev?.zalo_phone ?? zalo_phone,
+                chinh_sach: prev?.chinh_sach ?? chinh_sach,
                 google_maps_url:
                   prev?.google_maps_url ?? google_maps_url,
               }
@@ -1272,9 +1271,18 @@ const amenitiesCopyText = [
   .filter(Boolean)
   .join("\n");
 
-const policyCopyText = room?.chinh_sach?.trim()
-  ? room.chinh_sach.trim()
-  : "";
+
+const policyText = [
+  room?.chinh_sach,
+  detail?.chinh_sach,
+  room?.policy,
+  detail?.policy,
+].find(
+  (value) =>
+    typeof value === "string" && value.trim().length > 0
+)?.trim() ?? "";
+
+const policyCopyText = policyText;
 
 async function downloadRoomImagesToDevice() {
   if (!imageUrls.length || downloadingImages) return;
@@ -2433,7 +2441,7 @@ return (
           touchAction: "auto",
         }}
       >
-        {room?.chinh_sach?.trim() ? room.chinh_sach : "Chưa có chính sách"}
+        {policyText || "Chưa có chính sách"}
       </div>
     </div>
   </div>
