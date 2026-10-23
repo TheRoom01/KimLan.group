@@ -3130,7 +3130,7 @@ const roomContactName = currentUserId
 
 // ================== RENDER ==================
 return (
-  <div className="relative flex h-screen flex-col overflow-hidden bg-[#FFF8DC] text-[#3f2f24]">
+  <div className="home-redesign relative flex h-screen flex-col overflow-hidden bg-[#FFF8DC] text-[#3f2f24]">
     {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
     <div className="fixed inset-0 z-0 pointer-events-none">
       <img
@@ -3148,7 +3148,8 @@ return (
       className="relative z-10 flex-1 overflow-y-auto pb-32 bg-transparent"
     >
            <header
-        className="
+        data-home-header="true"
+        className="home-header
           relative z-50
           border-b border-[#E5C9A9]/20
           bg-[rgba(45,27,20,0.48)]
@@ -3156,7 +3157,7 @@ return (
           shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]
         "
       >
-        <div className="grid w-full max-w-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
+        <div className="home-header-inner grid w-full max-w-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
           {/* LEFT: LOGO + TITLE */}
           <div className="flex min-w-0 items-center gap-2 md:gap-3">
             <LogoIntroButton logoSrc="/logo-ui.webp" />
@@ -3205,7 +3206,7 @@ return (
         rel="noopener noreferrer"
         aria-label="Phòng đã lưu"
         title="Phòng đã lưu"
-        className="
+        className="home-saved-link
           flex h-[34px] min-w-[118px] items-center justify-center
           rounded-2xl border border-[#E5C9A9]/25
           bg-[rgba(45,27,20,0.55)]
@@ -3217,14 +3218,15 @@ return (
           hover:bg-[rgba(255,255,255,0.08)]
         "
       >
-        ★ Phòng đã lưu
+        <span className="home-saved-star">★</span>
+        <span className="home-saved-label"> Phòng đã lưu</span>
       </a>
       </div>
         </div>
       </header>
 
      {/* FILTER BAR */}
-      <div className="relative z-[900]">
+      <div className="home-filter-shell relative z-[900]">
         <div className="w-full max-w-none px-0.5 pt-0.5 sm:px-3 lg:px-4">
           <div
             className="
@@ -3427,7 +3429,7 @@ return (
     </div>
 
     <div
-      className="
+      className="home-pagination
         fixed inset-x-0 bottom-0 z-[950]
         border-t border-white/25
         bg-[linear-gradient(rgba(255,255,255,0.08),rgba(255,255,255,0.03))]

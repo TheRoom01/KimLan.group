@@ -1389,6 +1389,7 @@ async function homeRoomImageFile(url: string, roomCode: string, index: number) {
 return (
   <div
       data-room-detail-modal="true"
+      data-home-detail="true"
       className="
         fixed inset-0 z-[99999]
         flex items-end justify-center

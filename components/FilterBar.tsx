@@ -108,13 +108,22 @@ const FilterBar = ({
   setSortMode,
   statusFilter,
   setStatusFilter,
-  total,
   loading = false,
   onResetAll,
 }: FilterBarProps) => {
   const [openFilter, setOpenFilter] = useState<"district" | "roomType" | "amenities" | "sort" | null>(null);
  const [minInput, setMinInput] = useState(formatMoneyInput(priceDraft[0]));
 const [maxInput, setMaxInput] = useState(formatMoneyInput(priceDraft[1]));
+const [isMobileViewport, setIsMobileViewport] = useState(false);
+const [focusedPriceField, setFocusedPriceField] = useState<"min" | "max" | null>(null);
+
+useEffect(() => {
+  const media = window.matchMedia("(max-width: 640px)");
+  const updateViewport = () => setIsMobileViewport(media.matches);
+  updateViewport();
+  media.addEventListener("change", updateViewport);
+  return () => media.removeEventListener("change", updateViewport);
+}, []);
 
 useEffect(() => {
   setMinInput(formatMoneyInput(priceDraft[0]));
@@ -149,6 +158,11 @@ const [compactFilterText, setCompactFilterText] = useState(false);
   const digits = raw.replace(/\D/g, "");
   if (!digits) return "";
   return Number(digits).toLocaleString("vi-VN");
+};
+
+const formatMobilePriceField = (raw: string) => {
+  const amount = parseMoneyInput(raw) / 1_000_000;
+  return `${amount.toLocaleString("vi-VN")} triệu/tháng`;
 };
   
   const span = PRICE_MAX - PRICE_MIN;
@@ -377,13 +391,13 @@ const toggleStatus = (value: RoomStatusFilter) => {
   };
 
  return (
-  <section className="w-full max-w-[1240px] mx-auto px-4 md:px-6 py-5 space-y-5">
+  <section className="home-filter w-full max-w-[1440px] mx-auto px-4 md:px-6 py-5 space-y-5">
     {/* Search */}
     <div className="relative">
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Tìm theo tên đường..."
+        placeholder="Tìm theo từ khóa, tên đường hoặc khu vực..."
         className="w-full h-[46px] rounded-2xl border border-white/40 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
       />
 
@@ -410,8 +424,8 @@ const toggleStatus = (value: RoomStatusFilter) => {
     )}
 
     {/* HÀNG NÚT */}
-<div ref={filterRowRef} className="flex items-center justify-between gap-2">
-  <div ref={filterButtonsRef} className="flex flex-nowrap items-center gap-2">
+  <div ref={filterRowRef} className="home-filter-row flex items-center justify-between gap-2">
+  <div ref={filterButtonsRef} className="home-filter-buttons flex flex-nowrap items-center gap-2">
     {/* QUẬN */}
     <div className="relative z-[1500]">
       <button
@@ -438,7 +452,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
           ref={(el) => {
             if (openFilter === "district") openPanelRef.current = el;
           }}
-          className="absolute left-0 mt-3 z-[9999] w-[210px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.0015)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3"
+          className="home-filter-panel absolute left-0 mt-3 z-[9999] w-[210px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.0015)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -513,7 +527,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
           ref={(el) => {
             if (openFilter === "roomType") openPanelRef.current = el;
           }}
-          className="absolute right-0 mt-3 z-[9999] w-fit min-w-[190px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.005)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3 space-y-2"
+          className="home-filter-panel absolute right-0 mt-3 z-[9999] w-fit min-w-[190px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.005)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3 space-y-2"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -589,7 +603,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
             ref={(el) => {
               if (openFilter === "amenities") openPanelRef.current = el;
             }}
-            className="
+            className="home-filter-panel
               relative z-10
 
               w-[60%] max-w-[350px]
@@ -779,7 +793,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
         ref={(el) => {
           if (openFilter === "sort") openPanelRef.current = el;
         }}
-        className="absolute right-0 mt-3 z-[9999] w-fit min-w-[200px] rounded-3xl border border-white/40 bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))] text-white backdrop-blur-[48px] shadow-[0_40px_140px_rgba(0,0,0,0.85),0_0_60px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.5)] p-3 space-y-2"
+        className="home-filter-panel absolute right-0 mt-3 z-[9999] w-fit min-w-[200px] rounded-3xl border border-white/40 bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))] text-white backdrop-blur-[48px] shadow-[0_40px_140px_rgba(0,0,0,0.85),0_0_60px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.5)] p-3 space-y-2"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
@@ -855,8 +869,8 @@ const toggleStatus = (value: RoomStatusFilter) => {
 </div>
 
     {/* PRICE */}
-    <div className="w-full space-y-3">
-      <div className="flex w-full items-end justify-between gap-2">
+    <div className="home-price-range w-full space-y-3">
+      <div className="home-price-range-controls flex w-full items-end justify-between gap-2">
         <div className="w-fit shrink-0">
           <div className="mb-1 text-xs text-[#EAD8C0]/90">
             {formatMillionLabel(priceApplied[0])}
@@ -864,7 +878,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
 
           <input
             inputMode="numeric"
-            value={minInput}
+            value={isMobileViewport && focusedPriceField !== "min" ? formatMobilePriceField(minInput) : minInput}
             onChange={(e) => {
               const rawText = e.target.value.replace(/\D/g, "");
               setMinInput(rawText);
@@ -875,6 +889,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
               setPriceDraft([rawNumber, priceDraft[1]]);
             }}
             onFocus={() => {
+              setFocusedPriceField("min");
               setMinInput((prev) => prev.replace(/\D/g, ""));
             }}
             onBlur={() => {
@@ -890,8 +905,9 @@ const toggleStatus = (value: RoomStatusFilter) => {
               setPriceDraft([safeRaw, priceDraft[1]]);
               setPriceApplied([appliedMin, priceApplied[1]]);
               setMinInput(formatMoneyDisplay(String(safeRaw)));
+              setFocusedPriceField(null);
             }}
-            className="w-[120px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.19)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[34px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.33)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
+            className="home-price-input-min w-[120px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.19)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[34px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.33)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
             placeholder="3000000"
           />
         </div>
@@ -921,7 +937,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
 
           <input
             inputMode="numeric"
-            value={maxInput}
+            value={isMobileViewport && focusedPriceField !== "max" ? formatMobilePriceField(maxInput) : maxInput}
             onChange={(e) => {
               const rawText = e.target.value.replace(/\D/g, "");
               setMaxInput(rawText);
@@ -932,6 +948,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
               setPriceDraft([priceDraft[0], rawNumber]);
             }}
             onFocus={() => {
+              setFocusedPriceField("max");
               setMaxInput((prev) => prev.replace(/\D/g, ""));
             }}
             onBlur={() => {
@@ -947,8 +964,9 @@ const toggleStatus = (value: RoomStatusFilter) => {
               setPriceDraft([priceDraft[0], safeRaw]);
               setPriceApplied([priceApplied[0], appliedMax]);
               setMaxInput(formatMoneyDisplay(String(safeRaw)));
+              setFocusedPriceField(null);
             }}
-           className="ml-auto w-[128px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.08)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[28px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.12)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
+           className="home-price-input-max ml-auto w-[128px] rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.08)] px-[9px] py-[7px] text-center text-sm font-semibold text-[#FFF6E8] outline-none backdrop-blur-[28px] whitespace-nowrap shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.12)] hover:border-white/40 focus:ring-2 focus:ring-white/20"
             placeholder="30000000"
           />
         </div>

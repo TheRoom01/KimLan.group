@@ -57,7 +57,7 @@ export default function SavedRoomsPage() {
   }, [savedRooms, page]);
 
   return (
-    <main className="min-h-screen overflow-y-auto bg-[#120B08] px-4 py-6 text-white">
+    <main className="saved-redesign min-h-screen overflow-y-auto bg-[#120B08] px-4 py-6 text-white">
       <div className="mx-auto w-full max-w-[1240px]">
         <div className="sticky top-0 z-50 mb-5 flex items-center justify-between gap-3 border-b border-white/10 bg-[#120B08]/80 py-3 backdrop-blur-[24px]">
           <div>

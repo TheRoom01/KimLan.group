@@ -471,3 +471,573 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
   display: none !important;
   -webkit-appearance: none;
 }
+
+/* Public rental search layout refinements. */
+.home-redesign [data-home-header="true"] {
+  position: sticky;
+  top: 0;
+}
+
+.home-redesign .home-header-inner {
+  max-width: 1600px;
+  margin-inline: auto;
+}
+
+.home-redesign .home-filter-shell {
+  z-index: 40;
+}
+
+.home-filter {
+  margin-top: 12px;
+  padding: clamp(16px, 2.4vw, 28px);
+  border-radius: 22px;
+}
+
+.home-filter .home-eyebrow {
+  margin: 0 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.home-filter .home-title {
+  margin: 0;
+  font-size: clamp(20px, 2.2vw, 28px);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.home-filter .home-result-count {
+  margin: 0 0 2px;
+  font-size: 13px;
+}
+
+.home-filter > .relative > input {
+  height: 50px;
+  border-radius: 13px;
+}
+
+.home-filter .home-filter-buttons > div > button {
+  min-height: 38px !important;
+}
+
+.home-room-list {
+  max-width: 1600px;
+  margin-inline: auto;
+  padding-top: 12px;
+}
+
+.home-room-list > .grid {
+  column-gap: clamp(14px, 1.5vw, 22px) !important;
+  row-gap: clamp(18px, 1.8vw, 26px) !important;
+}
+
+.home-room-card {
+  border-radius: 16px !important;
+}
+
+.home-room-content {
+  row-gap: 8px !important;
+  padding: 14px 14px 10px !important;
+}
+
+.home-room-price {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}
+
+.home-room-footer {
+  padding-inline: 14px !important;
+  padding-bottom: 14px !important;
+}
+
+.home-room-address {
+  font-size: 16.8px;
+}
+
+.home-room-card .ai-admin-button {
+  box-sizing: border-box;
+  min-height: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  width: 40px !important;
+  aspect-ratio: 1;
+  border-radius: 50% !important;
+}
+
+.home-room-card .ai-admin-button > span:last-child {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0;
+  border-radius: 50%;
+}
+
+.home-room-card .ai-admin-button > span:last-child > span:first-child {
+  font-size: 15.6px !important;
+}
+
+.home-room-card .home-room-title {
+  font-size: 15.6px !important;
+}
+
+.home-room-card .home-room-title .font-semibold {
+  font-size: 18px !important;
+}
+
+.home-room-card .home-room-price {
+  font-size: 24px !important;
+}
+
+.home-room-card .home-room-content .flex.w-max.items-center {
+  font-size: 15.6px !important;
+}
+
+.home-room-card .home-room-description {
+  font-size: 16.8px !important;
+}
+
+.home-room-card .home-room-gallery > .absolute.bottom-2.right-2 {
+  font-size: 13.2px !important;
+}
+
+.home-room-card .home-room-toolbar button {
+  font-size: 13.2px !important;
+}
+
+.home-room-card .home-room-save {
+  width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+}
+
+.home-room-card .home-room-content {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.home-room-card .home-room-meta {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.home-room-card .home-room-price-amenities-row {
+  display: contents;
+}
+
+.home-room-card .home-room-price {
+  grid-column: 1;
+  grid-row: 1;
+  white-space: nowrap;
+}
+
+.home-room-card .home-room-amenities {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.home-room-card .home-room-content :is(button, span).rounded-full.border {
+  transform: scale(0.69);
+  transform-origin: right center;
+}
+
+[data-home-detail="true"] > div:first-child {
+  border-radius: 22px 22px 0 0 !important;
+}
+
+@media (min-width: 641px) {
+  [data-home-detail="true"] {
+    align-items: center !important;
+    padding: 24px !important;
+  }
+
+  [data-home-detail="true"] > div:first-child {
+    height: min(88vh, 900px) !important;
+    border-width: 1px !important;
+    border-color: rgba(255, 233, 214, 0.14) !important;
+    border-radius: 22px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-redesign [data-home-header="true"] {
+    z-index: 100;
+  }
+
+  .home-redesign .home-header-inner {
+    padding: 8px 12px;
+  }
+
+  .home-filter {
+    margin-top: 8px;
+    padding: 16px 13px;
+    border-radius: 16px;
+  }
+
+  .home-filter .home-result-count {
+    font-size: 12px;
+  }
+
+  .home-filter .home-filter-row {
+    justify-content: flex-start;
+  }
+
+  .home-filter .home-filter-buttons {
+    flex-wrap: wrap !important;
+    gap: 7px;
+  }
+
+  .home-filter .home-filter-buttons > div > button {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding-block: 4px !important;
+    font-size: 12px !important;
+  }
+
+  .home-filter .home-filter-row > div:last-child > button {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding-block: 4px !important;
+    font-size: 12px !important;
+  }
+
+  .home-redesign .home-filter .home-price-range-controls > div > button {
+    min-height: 28px;
+    padding-block: 4px;
+    font-size: 11px;
+  }
+
+  .home-redesign .home-price-range-controls input {
+    padding-inline: 3px !important;
+    font-size: 11px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-save {
+    width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-save svg {
+    width: 15px !important;
+    height: 15px !important;
+  }
+
+  .home-redesign .home-room-card .ai-admin-button {
+    min-width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    width: 30px !important;
+  }
+
+  .home-redesign .home-room-card .ai-admin-button > span:last-child {
+    width: 100%;
+    justify-content: center;
+    padding-inline: 0;
+    font-size: 11px !important;
+  }
+
+  .home-redesign .home-room-card .ai-admin-button > span:last-child > span:first-child {
+    font-size: 13px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-content :is(button, span).rounded-full.border {
+    min-width: 70px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    padding-inline: 5px !important;
+    font-size: 10px !important;
+  }
+
+  .home-redesign .home-filter > .relative > input {
+    height: 35px !important;
+    min-height: 35px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-gallery > .absolute.bottom-2.right-2 {
+    padding: 3px 6px;
+    font-size: 12px;
+  }
+
+  .home-redesign .home-room-card .home-room-content {
+    row-gap: 6px !important;
+    grid-template-columns: max-content minmax(70px, 1fr);
+    column-gap: 4px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-title {
+    font-size: 13.2px !important;
+    line-height: 1.35 !important;
+  }
+
+  .home-redesign .home-room-card .home-room-title .font-semibold {
+    font-size: 14.4px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-price {
+    font-size: 18px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap;
+  }
+
+  .home-redesign .home-room-card .home-room-content .flex.w-max.items-center {
+    font-size: 13.2px !important;
+    line-height: 1.3;
+  }
+
+  .home-redesign .home-room-card .home-room-content .flex.w-max.items-center > span > span {
+    padding-inline: 3px;
+  }
+
+  .home-redesign .home-room-card .home-room-address {
+    font-size: 14.4px !important;
+    line-height: 1.4 !important;
+  }
+
+  .home-redesign .home-room-card .home-room-description {
+    font-size: 16.8px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-address > button {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-address > button svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-footer .home-room-toolbar > div.flex.w-max.min-w-full > button {
+    height: 30px !important;
+    padding-inline: 5px !important;
+    font-size: 12px !important;
+  }
+
+  .home-redesign .home-room-card .home-room-footer .home-room-toolbar > div.flex.w-max.min-w-full > button > span:first-child {
+    width: 14px;
+    height: 14px;
+  }
+
+  .home-redesign .home-room-card .home-room-footer .home-room-toolbar > div.flex.w-max.min-w-full > button svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .home-redesign .home-room-card .home-room-footer .text-red-400 {
+    font-size: 14.4px !important;
+    line-height: 1.35 !important;
+  }
+
+  .home-redesign .home-room-card .home-room-gallery > .absolute.bottom-2.right-2 {
+    font-size: 12px !important;
+  }
+
+  .home-filter .home-filter-panel {
+    max-height: 72vh;
+    overflow-y: auto;
+  }
+
+  .home-filter > div.fixed .home-filter-panel {
+    width: min(92vw, 440px);
+    max-width: min(92vw, 440px);
+  }
+
+  .home-room-list {
+    padding-inline: 12px !important;
+  }
+
+  .home-room-card {
+    border-radius: 14px !important;
+  }
+
+  .home-room-content {
+    padding: 12px 12px 8px !important;
+  }
+
+  .home-room-footer {
+    padding-inline: 12px !important;
+    padding-bottom: 12px !important;
+  }
+
+  [data-home-detail="true"] {
+    padding-top: 8px !important;
+  }
+
+  [data-home-detail="true"] > div:first-child {
+    height: calc(100dvh - 8px) !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+}
+
+@media (min-width: 641px) {
+  .home-room-footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(132px, 48%);
+    align-items: center;
+    column-gap: 8px;
+  }
+
+  .home-room-footer > .home-room-address {
+    grid-column: 1 / -1;
+  }
+
+  .home-room-footer > .mt-1 {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .home-room-footer > .home-room-toolbar {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-room-card,
+  .home-room-card .ai-admin-gradient-border__track::before {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Layout-only refinements for the public room search page. */
+.home-redesign .home-header-inner {
+  width: 100%;
+  max-width: 1760px;
+  margin-inline: auto;
+  padding-inline: clamp(12px, 2.2vw, 36px);
+}
+
+.home-redesign .home-filter-shell {
+  width: 100%;
+  max-width: 1800px;
+  margin-inline: auto;
+  padding-inline: clamp(8px, 1.2vw, 20px);
+}
+
+.home-redesign .home-filter {
+  width: 100%;
+  max-width: 1760px;
+  padding-inline: clamp(16px, 2vw, 32px);
+}
+
+.home-redesign .home-filter > :not([hidden]) ~ :not([hidden]) {
+  margin-block-start: 12px;
+}
+
+.home-redesign .home-room-list {
+  max-width: 1800px;
+  padding-inline: clamp(12px, 1.5vw, 28px) !important;
+}
+
+.home-redesign .home-room-list > .grid {
+  column-gap: clamp(16px, 1.25vw, 22px) !important;
+  row-gap: clamp(18px, 1.5vw, 24px) !important;
+}
+
+@media (min-width: 1024px) {
+  .home-redesign .home-header-inner {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: clamp(16px, 2vw, 28px);
+    padding-block: 12px;
+  }
+
+  .home-redesign .home-header-inner > :nth-child(3) {
+    grid-column: 3;
+    grid-row: 1;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-redesign .home-filter-shell {
+    padding-inline: 8px;
+  }
+
+  .home-redesign .home-filter {
+    padding-inline: 13px;
+  }
+
+  .home-redesign .home-filter > :not([hidden]) ~ :not([hidden]) {
+    margin-block-start: 10px;
+  }
+}
+
+/* Responsive layout refinements: keep the RoomCard internals untouched. */
+@media (min-width: 641px) {
+  .home-redesign .home-room-list > .grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)) !important;
+    column-gap: clamp(12px, 1.2vw, 16px) !important;
+    row-gap: clamp(24px, 2vw, 32px) !important;
+  }
+}
+
+@media (min-width: 390px) and (max-width: 640px) {
+  .home-redesign .home-room-list > .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 8px !important;
+    row-gap: 14px !important;
+  }
+
+  .home-redesign .home-price-range-controls input {
+    width: clamp(104px, 28vw, 112px) !important;
+  }
+}
+
+@media (max-width: 389px) {
+  .home-redesign .home-room-list > .grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    column-gap: 0 !important;
+    row-gap: 16px !important;
+  }
+
+  .home-redesign .home-price-range-controls input {
+    width: 96px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-redesign .home-filter {
+    padding-block: 12px;
+  }
+
+  .home-redesign .home-filter > :not([hidden]) ~ :not([hidden]) {
+    margin-block-start: 8px;
+  }
+
+  .home-redesign .home-filter .home-filter-buttons {
+    gap: 6px;
+  }
+
+  .home-redesign .home-price-range > :not([hidden]) ~ :not([hidden]) {
+    margin-block-start: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-redesign .home-header-inner {
+    position: relative;
+  }
+
+  .home-redesign .home-header-inner .home-saved-link {
+    position: absolute;
+    top: 8px;
+    right: 138px;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 16px;
+  }
+
+  .home-redesign .home-saved-label {
+    display: none;
+  }
+}

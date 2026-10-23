@@ -1002,7 +1002,7 @@ return (
     >
     <div
       className={`
-        group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
+        home-room-card group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
         bg-[rgba(160,101,46,0.31)]
         backdrop-blur-[34px]
@@ -1038,7 +1038,7 @@ return (
       />
   {/* glass layers */}
   <div
-    className="
+      className="home-room-decoration
       pointer-events-none absolute inset-0 rounded-[18px]
       bg-[radial-gradient(circle_at_30%_18%,rgba(150,121,87,0.47),transparent_52%)]
       opacity-34
@@ -1046,7 +1046,7 @@ return (
   />
 
   <div
-    className="
+      className="home-room-decoration
       pointer-events-none absolute inset-0 rounded-[18px]
       bg-gradient-to-br from-[#DEB887]/10 via-transparent to-transparent
       opacity-28
@@ -1066,7 +1066,7 @@ return (
           setAnimating(true);
           setTimeout(() => setAnimating(false), 300);
         }}
-        className={`
+        className={`home-room-save
           absolute right-2 top-2 z-30
           flex items-center justify-center
 
@@ -1112,11 +1112,12 @@ return (
           setAdminPhone(contactPhones.map((phone) => phone.dial).join("|"));
         }}
         title={contactName}
+        aria-label="Liên hệ"
         className="
           ai-admin-button ai-admin-gradient-border
           !absolute left-2 top-1 z-30
 
-          !min-h-0 !h-[25px]
+          !min-h-0 h-10
           rounded-full p-[1px]
 
           transition-all duration-50
@@ -1140,13 +1141,12 @@ return (
           "
         >
           <span className="text-[12px] leading-none">☎️</span>
-          <span className="leading-none">Admin</span>
         </span>
       </button>
     )}
 
        {/* IMAGE */}
-        <div className="relative aspect-[1.45/1] w-full overflow-hidden bg-black/20">
+        <div className="home-room-gallery relative aspect-[1.45/1] w-full overflow-hidden bg-black/20">
           <div className="grid h-full grid-cols-[60%_40%] gap-1">
             <div className="relative w-full h-full overflow-hidden">
               {room.has_video && mainErrorStage >= 1 && room.video_url ? (
@@ -1232,10 +1232,10 @@ return (
         </div>
 
      {/* CONTENT */}
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(92px,45%)] items-center gap-x-2 gap-y-2 p-3">
-        <div className="min-w-0">
+      <div className="home-room-content grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(92px,45%)] items-center gap-x-2 gap-y-2 p-3">
+        <div className="home-room-meta min-w-0">
           <h3
-            className="min-w-0 truncate whitespace-nowrap text-[13px] font-medium leading-5"
+            className="home-room-title min-w-0 truncate whitespace-nowrap text-[13px] font-medium leading-5"
             style={{ color: roomMetaLabelColor }}
           >
             {room.room_code && (
@@ -1256,12 +1256,12 @@ return (
         </div>
 
         <div className="contents">
-          <div className="col-span-2 row-start-2 flex min-w-0 items-center gap-2">
-            <div className="shrink-0 text-[18px] font-semibold text-[#60A5FA]">
+          <div className="home-room-price-amenities-row col-span-2 row-start-2 flex min-w-0 items-center gap-2">
+            <div className="home-room-price shrink-0 text-[18px] font-semibold text-[#60A5FA]">
               {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
             </div>
             <div
-              className="relative z-20 min-w-0 flex-1 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              className="home-room-amenities relative z-20 min-w-0 flex-1 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
               title={amenities.join(" · ") || "Tiện ích đang cập nhật"}
               onPointerDown={startAmenityDrag}
               onPointerMove={moveAmenityDrag}
@@ -1391,8 +1391,8 @@ return (
       </div>
 
       {/* ADDRESS + DESCRIPTION + TOOLBAR */}
-      <div className="px-3 pb-3">
-        <p className="pointer-events-none relative z-20 line-clamp-2 font-semibold leading-6 text-white drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+      <div className="home-room-footer px-3 pb-3">
+        <p className="home-room-address pointer-events-none relative z-20 line-clamp-2 font-semibold leading-6 text-white drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
               📍{adminLevel === 1 || adminLevel === 2
                 ? room.house_number
                   ? `${room.house_number} `
@@ -1441,11 +1441,11 @@ return (
               </button>
         </p>
 
-        <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(132px,48%)] items-center gap-2">
+        <div className="mt-1 min-w-0">
           <div className="min-w-0 overflow-hidden">
             {room.description ? (
               <div
-                className="max-w-full truncate text-[14px] font-semibold leading-5 text-red-400"
+                className="home-room-description max-w-full truncate text-[14px] font-semibold leading-5 text-red-400"
                 title={String(room.description).trim()}
               >
                 {String(room.description).split(/\r?\n/)[0]?.trim()}
@@ -1453,8 +1453,9 @@ return (
               </div>
             ) : null}
           </div>
-          <div
-            className="relative z-20 min-w-0 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        </div>
+        <div
+            className="home-room-toolbar relative z-20 mt-1 min-w-0 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             onPointerDown={startToolbarDrag}
             onPointerMove={moveToolbarDrag}
             onPointerUp={finishToolbarDrag}
@@ -1503,7 +1504,6 @@ return (
                 icon={<MapPinIcon />}
               />
             </div>
-          </div>
         </div>
       </div>
     </div>

@@ -54,7 +54,7 @@ const RoomList = ({
   const showInitialSkeleton = showSkeleton && !hasRooms;
 
   return (
-    <main className="relative z-0 w-full max-w-none px-2 sm:px-3 lg:px-4 pb-36 pt-2">
+    <main className="home-room-list relative z-0 w-full max-w-none px-2 sm:px-3 lg:px-4 pb-36 pt-2">
       {isRefreshing && hasRooms && (
         <div className="mb-3 rounded-[15px] border border-[rgba(197,165,130,0.16)] bg-[rgba(45,27,20,0.35)] px-4 py-2 text-sm text-[#A0856E] backdrop-blur-[20px]">
           Đang cập nhật danh sách...
