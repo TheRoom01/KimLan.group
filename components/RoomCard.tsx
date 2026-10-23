@@ -301,7 +301,7 @@ function RoomCard({
   const videos = getFullVideoUrls(room);
   const showImages = images.slice(0, 3);
 
-  const FALLBACK = "/no-image.png";
+  const FALLBACK = "/no-image.webp";
 
   const safeSrc = (src?: string | null) => {
     const s = (src ?? "").trim();
@@ -1158,11 +1158,10 @@ return (
                   src={mainSrc}
                   alt={room.room_type ?? "Hình phòng"}
                   fill
-                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1536px) 25vw, 18vw"
+                  sizes="(max-width: 440px) 60vw, 264px"
                   className="object-cover object-[50%_40%]"
                   priority={index === 0}
                   loading={index === 0 ? "eager" : "lazy"}
-                  unoptimized
                   onError={() => {
                     setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));
                   }}
@@ -1192,9 +1191,8 @@ return (
                         : "Hình phòng"
                     }
                     fill
-                    sizes="(max-width: 640px) 40vw, (max-width: 1024px) 20vw, (max-width: 1536px) 10vw, 8vw"
+                    sizes="(max-width: 440px) 20vw, 88px"
                     className="object-cover"
-                    unoptimized
                     onError={() => setSub1Ok(false)}
                   />
                 </div>
@@ -1206,9 +1204,8 @@ return (
                     src={sub2Src}
                     alt={room.room_type ?? "Hình phòng"}
                     fill
-                    sizes="(max-width: 640px) 40vw, (max-width: 1024px) 20vw, (max-width: 1536px) 10vw, 8vw"
+                    sizes="(max-width: 440px) 20vw, 88px"
                     className="object-cover"
-                    unoptimized
                     onError={() => setSub2Ok(false)}
                   />
 

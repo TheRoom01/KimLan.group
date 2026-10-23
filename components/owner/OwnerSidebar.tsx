@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Building2,
@@ -104,9 +105,11 @@ export default function OwnerSidebar() {
             className="flex shrink-0 items-center gap-2 rounded-xl px-1 py-2 font-semibold tracking-tight"
           >
             <span className="grid h-10 w-10 place-items-center overflow-hidden">
-              <img
-                src="/logo.png"
+              <Image
+                src="/logo-ui.webp"
                 alt="The Room SG"
+                width={40}
+                height={40}
                 className="h-10 w-10 object-contain"
               />
             </span>

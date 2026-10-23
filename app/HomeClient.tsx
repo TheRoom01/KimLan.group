@@ -3159,7 +3159,7 @@ return (
         <div className="grid w-full max-w-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
           {/* LEFT: LOGO + TITLE */}
           <div className="flex min-w-0 items-center gap-2 md:gap-3">
-            <LogoIntroButton logoSrc="/logo.png" />
+            <LogoIntroButton logoSrc="/logo-ui.webp" />
 
             <div className="min-w-0 leading-tight text-[#E5C9A9] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
               <div className="truncate text-base font-semibold md:text-xl">

@@ -53,6 +53,10 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       ...dynamicPatterns,
+      // Current public room media hosts verified from Supabase room_media.
+      { protocol: 'https' as const, hostname: 'pub-199f69de3cc14666947ff30edf3886a7.r2.dev', pathname: '/**' },
+      { protocol: 'https' as const, hostname: 'cdn.canhodichvu.pro', pathname: '/**' },
+      { protocol: 'https' as const, hostname: 'scjzycloubqarxxvqohu.supabase.co', pathname: '/**' },
 
       // (tuỳ chọn) nếu sau này đổi bucket/account mà không muốn sửa code:
       // {

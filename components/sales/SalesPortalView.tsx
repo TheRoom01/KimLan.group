@@ -1,6 +1,7 @@
 "use client";
 
 import { roomStatusLabel } from "@/lib/rooms/availability";
+import NextImage from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Building2, CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, FileText, Info, MapPin, Maximize, Minimize, Play, X } from "lucide-react";
 
@@ -70,7 +71,7 @@ export default function SalesPortalView({ data }: { data: SalesPortalData }) {
       {documentOrigins.map((origin) => <link key={origin} rel="preconnect" href={origin} crossOrigin="anonymous" />)}
       <header className="sticky top-0 z-30 border-b border-[#6f4526]/20 bg-[#704522]/95 text-[#fff6e8] shadow-lg backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center gap-3 px-4 sm:px-6">
-          <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white/10"><img src="/logo.png" alt="KimLan" className="h-9 w-9 object-contain" /></span>
+          <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl bg-white/10"><NextImage src="/logo-ui.webp" alt="KimLan" width={36} height={36} className="h-9 w-9 object-contain" /></span>
           <div><p className="font-bold">Trang thông tin cho Sales</p><p className="text-xs text-[#f0d9bf]">Dữ liệu cập nhật trực tiếp từ chủ nhà</p></div>
         </div>
       </header>
