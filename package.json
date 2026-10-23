@@ -6,7 +6,7 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "zalo-reader": "tsx tools/zalo-reader/zalo-reader.ts",
     "test:zalo-parser": "tsx tools/zalo-reader/parsers/semantic-parser-smoke-test.ts",
     "patch:zalo-parser-phase1": "node tools/zalo-reader/apply-phase1-parser-wiring.mjs",

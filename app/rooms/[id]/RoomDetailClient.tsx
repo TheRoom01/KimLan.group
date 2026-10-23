@@ -299,9 +299,17 @@ function publicHouseNumber(value?: string | null) {
 export default function RoomDetailClient({
   roomId,
   initialRoom,
+  initialUserId,
+  initialAdminLevel,
+  initialAuthResolved,
+  privateDetailLoaded,
 }: {
   roomId: string;
   initialRoom: any;
+  initialUserId: string | null;
+  initialAdminLevel: 0 | 1 | 2;
+  initialAuthResolved: boolean;
+  privateDetailLoaded: boolean;
 }) {
   const id = roomId;
 
@@ -316,8 +324,13 @@ export default function RoomDetailClient({
   const searchParams = useSearchParams();
   const isModal = searchParams.get("modal") === "1";
 
-  const [user, setUser] = useState<any>(null);
-  const [adminLevel, setAdminLevel] = useState(0);
+  const [user, setUser] = useState<any>(
+    initialUserId ? { id: initialUserId } : null,
+  );
+  const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
+  const activeRoomIdRef = useRef(roomId);
+  activeRoomIdRef.current = roomId;
+  const authUserIdRef = useRef(initialUserId);
 
 const currentUserIdValue = String(user?.id ?? "").trim();
 const roomOwnerId = String(room?.owner_id ?? "").trim();
@@ -353,7 +366,11 @@ const canSeePrivateFields =
       };
     }, []);
 
-  const privateFieldsFetchedKeyRef = useRef("");
+  const privateFieldsFetchedKeyRef = useRef(
+    privateDetailLoaded
+      ? `${roomId}:${initialUserId ?? ""}:${initialAdminLevel}`
+      : "",
+  );
   
   const [downloadingImages, setDownloadingImages] = useState(false);
   const [downloadImagesMessage, setDownloadImagesMessage] = useState<string | null>(null);
@@ -376,19 +393,48 @@ const canSeePrivateFields =
 };
 
 useEffect(() => {
-  const init = async () => {
-    const { data } = await supabase.auth.getUser();
-    setUser(data?.user ?? null);
+  let mounted = true;
+
+  const applyAuthUser = (nextUser: any) => {
+    if (!mounted) return;
+
+    const nextUserId = String(nextUser?.id ?? "").trim() || null;
+    if (authUserIdRef.current !== nextUserId) {
+      authUserIdRef.current = nextUserId;
+      privateFieldsFetchedKeyRef.current = "";
+      setAdminLevel(0);
+      setRoom((previous: any) =>
+        previous
+          ? {
+              ...previous,
+              house_number: null,
+              owner_id: null,
+              link_zalo: null,
+              zalo_phone: null,
+              chinh_sach: null,
+            }
+          : previous,
+      );
+    }
+
+    setUser(nextUserId ? { id: nextUserId } : null);
   };
 
-  init();
+  if (!initialAuthResolved) {
+    void supabase.auth.getUser().then(({ data }) => {
+      applyAuthUser(data?.user ?? null);
+    });
+  }
 
   const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-    setUser(session?.user ?? null);
+    applyAuthUser(session?.user ?? null);
   });
 
-  return () => sub?.subscription?.unsubscribe?.();
-}, []);
+  return () => {
+    mounted = false;
+    sub?.subscription?.unsubscribe?.();
+  };
+}, [initialAuthResolved]);
 
 useEffect(() => {
   setShowOpenBrowserBar(detectInAppBrowser());
@@ -678,37 +724,19 @@ async function copyText(text: string) {
 }
 
 
-  useEffect(() => {
-  const checkAdmin = async () => {
-    if (!user?.id) {
-      setAdminLevel(0);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.rpc("get_my_admin_level");
-      if (error) throw error;
-
-      const rawLevel = Number(data ?? 0);
-      const level: 0 | 1 | 2 =
-        rawLevel === 1 || rawLevel === 2 ? rawLevel : 0;
-
-      setAdminLevel(level);
-    } catch (e) {
-      console.error("checkAdmin exception:", e);
-      setAdminLevel(0);
-    }
-  };
-
-  checkAdmin();
-}, [user?.id]);
-
-
 useEffect(() => {
   setRoom(initialRoom);
   setActiveIndex(0);
-  privateFieldsFetchedKeyRef.current = "";
-}, [initialRoom, roomId]);
+  privateFieldsFetchedKeyRef.current = privateDetailLoaded
+    ? `${roomId}:${initialUserId ?? ""}:${initialAdminLevel}`
+    : "";
+}, [
+  initialRoom,
+  roomId,
+  initialUserId,
+  initialAdminLevel,
+  privateDetailLoaded,
+]);
 
 // Luôn phân giải qua endpoint để ưu tiên tọa độ tòa nhà trước link thủ công.
 useEffect(() => {
@@ -746,68 +774,88 @@ useEffect(() => {
     room?.details ??
     {}) as any;
 
-// ✅ Patch 4: nếu RPC không trả link_zalo / zalo_phone cho admin => fallback đọc thẳng từ rooms
+// Role verification and detail retrieval run together after the user identity is
+// known. The detail RPC enforces its own role and ownership checks in the DB.
 useEffect(() => {
-  if (!canSeePrivateFields) return;
-  if (!room?.id) return;
+  const requestRoomId = roomId;
+  const requestUserId = currentUserIdValue;
+  if (!requestUserId || !requestRoomId) {
+    setAdminLevel(0);
+    return;
+  }
 
-  const fetchKey = `${room.id}:${currentUserIdValue}:${adminLevel}`;
-  if (privateFieldsFetchedKeyRef.current === fetchKey) return;
+  if (initialAuthResolved && requestUserId === initialUserId) {
+    if (initialAdminLevel === 0 || privateDetailLoaded) return;
+  }
 
- 
-  privateFieldsFetchedKeyRef.current = fetchKey;
+  const fetchKey = `${requestRoomId}:${requestUserId}`;
+  if (privateFieldsFetchedKeyRef.current.startsWith(`${fetchKey}:`)) return;
+  privateFieldsFetchedKeyRef.current = `${fetchKey}:pending`;
 
   let cancelled = false;
 
-  (async () => {
-    try {
-      const { data, error } = await supabase
-        .from("rooms")
-        .select("link_zalo, zalo_phone, google_maps_url, chinh_sach, is_hidden")
-        .eq("id", room.id)
-        .maybeSingle();
-
-      if (cancelled) return;
-      if (error) return;
-      if ((data as any)?.is_hidden) return;
-
-      const link_zalo = String((data as any)?.link_zalo ?? "").trim() || null;
-      const zalo_phone = String((data as any)?.zalo_phone ?? "").trim() || null;
-      const google_maps_url =
-      String((data as any)?.google_maps_url ?? "").trim() || null;
-      const chinh_sach =
-      String((data as any)?.chinh_sach ?? "").trim() || null;
-
-      if (link_zalo || zalo_phone || google_maps_url || chinh_sach) {
-        setRoom((prev: any) =>
-          prev
-            ? {
-                ...prev,
-                link_zalo: prev?.link_zalo ?? link_zalo,
-                zalo_phone: prev?.zalo_phone ?? zalo_phone,
-                chinh_sach: prev?.chinh_sach ?? chinh_sach,
-                google_maps_url:
-                  prev?.google_maps_url ?? google_maps_url,
-              }
-            : prev
-        );
+  void Promise.all([
+    supabase.rpc("get_my_admin_level"),
+    supabase.rpc("fetch_room_detail_full_v1", {
+      p_id: requestRoomId,
+      p_role: 0,
+    }),
+  ])
+    .then(([roleResult, detailResult]) => {
+      if (
+        cancelled ||
+        activeRoomIdRef.current !== requestRoomId ||
+        authUserIdRef.current !== requestUserId
+      ) {
+        return;
       }
-    } catch {
-      // ignore
-    }
-  })();
+
+      const rawLevel = Number(roleResult.data ?? 0);
+      const verifiedLevel: 0 | 1 | 2 =
+        !roleResult.error && (rawLevel === 1 || rawLevel === 2)
+          ? rawLevel
+          : 0;
+      const authorizedRoom = detailResult.data as any;
+
+      if (
+        verifiedLevel !== 0 &&
+        !detailResult.error &&
+        authorizedRoom &&
+        String(authorizedRoom.id ?? "") === requestRoomId
+      ) {
+        privateFieldsFetchedKeyRef.current =
+          `${fetchKey}:${verifiedLevel}`;
+        setRoom(authorizedRoom);
+        setAdminLevel(verifiedLevel);
+        return;
+      }
+
+      privateFieldsFetchedKeyRef.current = `${fetchKey}:denied`;
+      setAdminLevel(0);
+    })
+    .catch(() => {
+      if (
+        cancelled ||
+        activeRoomIdRef.current !== requestRoomId ||
+        authUserIdRef.current !== requestUserId
+      ) {
+        return;
+      }
+
+      privateFieldsFetchedKeyRef.current = `${fetchKey}:failed`;
+      setAdminLevel(0);
+    });
 
   return () => {
     cancelled = true;
   };
 }, [
-  canSeePrivateFields,
-  adminLevel,
   currentUserIdValue,
-  room?.id,
-  room?.link_zalo,
-  room?.zalo_phone,
-  room?.google_maps_url,
+  roomId,
+  initialAuthResolved,
+  initialUserId,
+  initialAdminLevel,
+  privateDetailLoaded,
 ]);
 
  const imageUrls = useMemo<string[]>(() => {

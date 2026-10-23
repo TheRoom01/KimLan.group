@@ -1125,8 +1125,12 @@ return (
         "
       >
         <span
+          aria-hidden="true"
+          className="ai-admin-gradient-border__track"
+        />
+        <span
           className="
-            flex h-full items-center gap-1
+            relative z-10 flex h-full items-center gap-1
             rounded-full
             bg-[#141516]/75
             px-1
@@ -1160,7 +1164,6 @@ return (
                   fill
                   sizes="(max-width: 440px) 60vw, 264px"
                   className="object-cover object-[50%_40%]"
-                  priority={index === 0}
                   loading={index === 0 ? "eager" : "lazy"}
                   onError={() => {
                     setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));

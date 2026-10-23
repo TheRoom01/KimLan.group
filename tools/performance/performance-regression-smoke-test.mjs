@@ -30,7 +30,7 @@ test("Home keeps SSR data and does not repeat retired public RPCs", async () => 
   assert.match(serverFetcher, /minPrice == null/);
 });
 
-test("public room detail is server loaded and cache tagged", async () => {
+test("room detail is role-aware server loaded with a secure client fallback", async () => {
   const [page, client, cache, video] = await Promise.all([
     read("app/rooms/[id]/page.tsx"),
     read("app/rooms/[id]/RoomDetailClient.tsx"),
@@ -39,8 +39,16 @@ test("public room detail is server loaded and cache tagged", async () => {
   ]);
 
   assert.doesNotMatch(page, /^"use client"/);
-  assert.match(page, /getPublicRoomDetail/);
-  assert.doesNotMatch(client, /fetch_room_detail_full_v1|loadRoomDetailFast/);
+  assert.match(page, /getRoomDetailForRender/);
+  assert.match(page, /privateDetailLoaded/);
+  assert.match(cache, /getRoomDetailForRender = cache/);
+  assert.match(cache, /auth\.getClaims\(\)/);
+  assert.match(cache, /get_my_admin_level/);
+  assert.match(cache, /fetch_room_detail_full_v1/);
+  assert.match(cache, /getPublicRoomDetail\(id\)/);
+  assert.match(client, /fetch_room_detail_full_v1/);
+  assert.match(client, /activeRoomIdRef\.current !== requestRoomId/);
+  assert.doesNotMatch(client, /\.from\("rooms"\)/);
   assert.match(cache, /revalidate: 60/);
   assert.match(cache, /tags: \[publicRoomCacheTag\(id\)\]/);
   assert.match(video, /controlsList="nofullscreen"/);

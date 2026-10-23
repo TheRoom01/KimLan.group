@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getPublicRoomDetail } from "@/lib/rooms/publicCache";
+import { getRoomDetailForRender } from "@/lib/rooms/publicCache";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +56,8 @@ let desc = "Xem chi tiết phòng";
   const url = `${base.replace(/\/$/, "")}/rooms/${encodeURIComponent(id)}`;
 
   try {
-const data = (await getPublicRoomDetail(id)) as PublicRoomMetadata | null;
+const detail = await getRoomDetailForRender(id);
+const data = detail.room as PublicRoomMetadata | null;
 
 const roomCode = data?.room_code ?? "";
 const roomType = data?.room_type ?? "";
