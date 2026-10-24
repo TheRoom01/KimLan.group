@@ -3193,14 +3193,6 @@ return (
      {/* MAP + SAVED */}
       <div className="col-span-2 flex items-center justify-between gap-2">
       <a
-        href="/map"
-        aria-label="Tìm phòng trên bản đồ"
-        title="Tìm phòng trên bản đồ"
-        className="flex h-[34px] min-w-[118px] items-center justify-center rounded-2xl border border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.55)] px-4 text-[12px] font-semibold text-[#E5C9A9] backdrop-blur-[20px] shadow-[0_10px_26px_rgba(0,0,0,0.35)] transition hover:bg-[rgba(255,255,255,0.08)]"
-      >
-        📍 Tìm bằng bản đồ
-      </a>
-      <a
         href="/saved"
         target="_blank"
         rel="noopener noreferrer"

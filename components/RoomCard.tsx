@@ -120,7 +120,7 @@ function ToolbarButton({
         event.stopPropagation();
         if (!disabled) onClick(event);
       }}
-      className={`inline-flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap px-2 text-[11px] font-semibold text-white transition ${
+      className={`inline-flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap px-2 text-[10px] font-semibold text-white transition ${
         disabled
           ? "cursor-not-allowed opacity-45"
           : "hover:text-white/75 active:scale-[0.97]"
@@ -460,6 +460,9 @@ const contactName = isLoggedAdmin
 const [saved, setSaved] = useState(false);
 const [animating, setAnimating] = useState(false);
 const [copiedAddress, setCopiedAddress] = useState(false);
+const addressTextRef = useRef<HTMLSpanElement | null>(null);
+const addressCopyOffsetRef = useRef<HTMLButtonElement | null>(null);
+const [addressCopyLeft, setAddressCopyLeft] = useState(0);
 
 const [shareOpen, setShareOpen] = useState(false);
 const [shareRoomData, setShareRoomData] = useState<any>(room);
@@ -519,6 +522,63 @@ useEffect(() => {
   ]
     .filter(Boolean)
     .join(", ");
+
+  useEffect(() => {
+    const textElement = addressTextRef.current;
+    const button = addressCopyOffsetRef.current;
+    const container = textElement?.parentElement;
+    if (!textElement || !button || !container) return;
+
+    const updateCopyPosition = () => {
+      const textNodes: Text[] = [];
+      const walker = document.createTreeWalker(textElement, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        textNodes.push(node as Text);
+        node = walker.nextNode();
+      }
+
+      let lastLineTop = -Infinity;
+      let lastLineRight = 0;
+      let hasHiddenCharacters = false;
+      const textBottom = textElement.getBoundingClientRect().bottom;
+      for (const textNode of textNodes) {
+        for (let index = 0; index < textNode.length; index += 1) {
+          const range = document.createRange();
+          range.setStart(textNode, index);
+          range.setEnd(textNode, index + 1);
+          const rect = range.getBoundingClientRect();
+          if (!rect.width) continue;
+          if (rect.bottom > textBottom + 1) {
+            hasHiddenCharacters = true;
+            continue;
+          }
+          if (rect.top > lastLineTop + 1) {
+            lastLineTop = rect.top;
+            lastLineRight = rect.right;
+          } else if (Math.abs(rect.top - lastLineTop) <= 1) {
+            lastLineRight = Math.max(lastLineRight, rect.right);
+          }
+        }
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const textRect = textElement.getBoundingClientRect();
+      const isClamped = hasHiddenCharacters || textElement.scrollHeight > textElement.clientHeight + 1;
+      const endX = isClamped ? textRect.right - 24 : lastLineRight + 3;
+      const left = Math.max(0, Math.min(endX - containerRect.left, container.clientWidth - button.offsetWidth));
+      setAddressCopyLeft(left);
+    };
+
+    updateCopyPosition();
+    const observer = new ResizeObserver(updateCopyPosition);
+    observer.observe(container);
+    window.addEventListener("resize", updateCopyPosition);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateCopyPosition);
+    };
+  }, [fullAddressText]);
 
     async function handleCopyAddress(
       e: React.MouseEvent<HTMLButtonElement>
@@ -1392,7 +1452,19 @@ return (
 
       {/* ADDRESS + DESCRIPTION + TOOLBAR */}
       <div className="home-room-footer px-3 pb-3">
-        <p className="home-room-address pointer-events-none relative z-20 line-clamp-2 font-semibold leading-6 text-white drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+        <p className="home-room-address pointer-events-none relative z-20 font-semibold leading-6 text-white drop-shadow-[0_1px_6px_rgba(255,255,255,0.25)]">
+          <span
+            ref={addressTextRef}
+            className="pr-6"
+            style={{
+              display: "-webkit-box",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: 2,
+              overflow: "hidden",
+              lineHeight: 1.4,
+              maxHeight: "2.8em",
+            }}
+          >
               📍{adminLevel === 1 || adminLevel === 2
                 ? room.house_number
                   ? `${room.house_number} `
@@ -1401,17 +1473,19 @@ return (
               {address}
               {ward && `, P. ${ward}`}
               {district && `, ${district}`}
+          </span>
 
               <button
+                ref={addressCopyOffsetRef}
                 type="button"
                 onClick={handleCopyAddress}
                 onPointerDown={(event) => event.stopPropagation()}
                 aria-label={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
                 title={copiedAddress ? "Đã copy địa chỉ" : "Copy địa chỉ"}
                 className="
-                  pointer-events-auto relative z-30
+                  pointer-events-auto absolute bottom-0 z-30
                   !min-h-0 !h-[20px] !w-[20px]
-                  ml-1 inline-flex align-[-2px]
+                  inline-flex
                   items-center justify-center
                   rounded-[3px]
                   bg-white/10
@@ -1421,6 +1495,7 @@ return (
                   hover:bg-white/20 hover:text-white
                   active:scale-90
                 "
+                style={{ left: addressCopyLeft }}
               >
                 {copiedAddress ? (
                   <span className="text-[10px] leading-none text-green-300">✓</span>

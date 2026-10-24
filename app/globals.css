@@ -1021,6 +1021,18 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 }
 
 @media (max-width: 640px) {
+  .home-filter .home-room-type-panel {
+    position: fixed;
+    top: 20vh;
+    left: 50%;
+    right: auto;
+    width: max-content;
+    min-width: 190px;
+    max-width: 92vw;
+    margin-top: 0;
+    transform: translateX(-50%);
+  }
+
   .home-redesign .home-header-inner {
     position: relative;
   }
