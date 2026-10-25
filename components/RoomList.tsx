@@ -26,6 +26,10 @@ type RoomListProps = {
   onNavigate: (href: string) => void;
   openingRoomId?: string | null;
   isRefreshing?: boolean;
+  title?: string;
+  emptyMessage?: string;
+  emptyAction?: React.ReactNode;
+  stableCardWidth?: boolean;
 };
 
 const RoomList = ({
@@ -39,6 +43,10 @@ const RoomList = ({
   onNavigate,
   openingRoomId = null,
   isRefreshing = false,
+  title = "Phòng phù hợp",
+  emptyMessage = "Không có phòng phù hợp.",
+  emptyAction,
+  stableCardWidth = false,
 }: RoomListProps) => {
   if (fetchError) {
     return (
@@ -58,7 +66,7 @@ const RoomList = ({
       <div id="phong" className="mx-auto mb-3 flex max-w-[1800px] items-end justify-between gap-3 px-1 sm:px-2">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#c9a46a]">The Room SG</p>
-          <h2 className="mt-0.5 text-lg font-semibold text-[#f3e7d6] sm:text-xl">Phòng phù hợp</h2>
+          <h2 className="mt-0.5 text-lg font-semibold text-[#f3e7d6] sm:text-xl">{title}</h2>
         </div>
         {!fetchError && !showInitialSkeleton ? <span className="shrink-0 text-xs text-[#c8b7a5]">{hasRooms ? `${roomsToRender.length} phòng trên trang này` : "Thay đổi bộ lọc để tìm thêm phòng"}</span> : null}
       </div>
@@ -69,13 +77,13 @@ const RoomList = ({
       )}
 
       {showInitialSkeleton ? (
-        <div className="grid w-full" style={ROOM_GRID_STYLE}>
+        <div className={`grid w-full${stableCardWidth ? " home-room-grid-stable" : ""}`} style={ROOM_GRID_STYLE}>
           {Array.from({ length: 12 }).map((_, i) => (
             <RoomCardSkeleton key={i} />
           ))}
         </div>
       ) : hasRooms ? (
-        <div className="grid w-full" style={ROOM_GRID_STYLE}>
+        <div className={`grid w-full${stableCardWidth ? " home-room-grid-stable" : ""}`} style={ROOM_GRID_STYLE}>
           {roomsToRender.map((room, index) => (
             <RoomCard
               key={room.id}
@@ -92,7 +100,8 @@ const RoomList = ({
         </div>
       ) : (
         <div className="rounded-[15px] border border-[rgba(197,165,130,0.16)] bg-[rgba(45,27,20,0.35)] px-4 py-5 text-center text-sm text-[#E5C9A9] backdrop-blur-[20px]">
-          Không có phòng phù hợp.
+          <div>{emptyMessage}</div>
+          {emptyAction ? <div className="mt-3">{emptyAction}</div> : null}
         </div>
       )}
     </main>

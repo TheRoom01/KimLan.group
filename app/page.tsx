@@ -80,6 +80,7 @@ export default async function HomePage({
   const petRaw = firstString(sp.pet);
   const termRaw = firstString(sp.term);
   const sRaw = firstString(sp.s);
+  const savedView = firstString(sp.view) === "saved";
 
   const search = qRaw ? qRaw.trim() : null;
 
@@ -134,9 +135,11 @@ export default async function HomePage({
     sortMode,
   } as const;
 
-  const res = user
-    ? await fetchRoomsServer(supabase!, fetchParams)
-    : await getCachedPublicRooms(fetchParams);
+  const res = savedView
+    ? { data: [], nextCursor: null, total: 0, error: "" }
+    : user
+      ? await fetchRoomsServer(supabase!, fetchParams)
+      : await getCachedPublicRooms(fetchParams);
 
   return (
     <>
@@ -146,6 +149,7 @@ export default async function HomePage({
         initialAdminLevel={adminLevel}
         initialTotal={res.total ?? null}
         initialError={res.error}
+        initialSavedView={savedView}
       />
 
       {false && <ContactFAB />}

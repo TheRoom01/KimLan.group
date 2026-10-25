@@ -1029,6 +1029,13 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
   }
 }
 
+@media (min-width: 641px) {
+  .home-redesign .home-room-list > .home-room-grid-stable {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 410px)) !important;
+    justify-content: flex-start !important;
+  }
+}
+
 @media (max-width: 640px) {
   .home-redesign .home-filter {
     padding-block: 12px;

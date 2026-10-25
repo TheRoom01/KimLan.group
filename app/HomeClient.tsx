@@ -15,6 +15,8 @@ import AnonymousLockModal from "@/components/AnonymousLockModal";
 import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import AdminNotificationCenter from "@/components/admin/AdminNotificationCenter";
 import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
+import { getSavedRoomIds } from "@/lib/savedRooms";
+import { normalizeSearchKeyword } from "@/lib/rooms/search";
 
 type InitialProps = {
   initialRooms: any[];
@@ -22,9 +24,11 @@ type InitialProps = {
   initialAdminLevel: 0 | 1 | 2;
   initialTotal?: number | null;
   initialError?: string;
+  initialSavedView?: boolean;
 };
 
 const LIMIT = 20;
+const ANON_LISTING_LOCK_ENABLED = false;
 
 const QS = {
   q: "q",
@@ -233,9 +237,82 @@ const HomeClient = ({
   initialAdminLevel,
   initialTotal,
   initialError = "",
+  initialSavedView = false,
 }: InitialProps) => {
 
   const pathname = usePathname();
+  const [isSavedView, setIsSavedView] = useState(initialSavedView);
+  const [savedRoomIds, setSavedRoomIds] = useState<string[]>([]);
+  const [savedRooms, setSavedRooms] = useState<any[]>([]);
+  const [savedRoomsLoading, setSavedRoomsLoading] = useState(false);
+  const [savedRoomsError, setSavedRoomsError] = useState("");
+  const savedLoadVersionRef = useRef(0);
+
+  useEffect(() => {
+    const refreshSavedRooms = async () => {
+      const ids = Array.from(new Set(getSavedRoomIds().map(String)));
+      setSavedRoomIds(ids);
+      const savedIdSet = new Set(ids);
+      setSavedRooms((current) => current.filter((room) => savedIdSet.has(String(room.id))));
+      const version = ++savedLoadVersionRef.current;
+      setSavedRoomsError("");
+      if (!ids.length) {
+        setSavedRooms([]);
+        setSavedRoomsLoading(false);
+        return;
+      }
+      if (!isSavedView) return;
+
+      setSavedRoomsLoading(true);
+      try {
+        const batches: string[][] = [];
+        for (let offset = 0; offset < ids.length; offset += 50) batches.push(ids.slice(offset, offset + 50));
+        const loaded: any[] = [];
+        for (let offset = 0; offset < batches.length; offset += 3) {
+          const results = await Promise.all(batches.slice(offset, offset + 3).map(async (batch) => {
+            const response = await fetch(`/api/saved-rooms?ids=${encodeURIComponent(batch.join(","))}`, { cache: "no-store" });
+            if (!response.ok) throw new Error("Không thể tải phòng đã lưu.");
+            const json = await response.json();
+            return Array.isArray(json.data) ? json.data : [];
+          }));
+          loaded.push(...results.flat());
+          if (version !== savedLoadVersionRef.current) return;
+        }
+        const byId = new Map(loaded.map((room) => [String(room.id), room]));
+        let cachedById = new Map<string, any>();
+        try {
+          const rawCache = sessionStorage.getItem("saved_rooms_cache");
+          const cachedRooms = rawCache ? JSON.parse(rawCache) : [];
+          if (Array.isArray(cachedRooms)) cachedById = new Map(cachedRooms.filter((room) => room?.id).map((room) => [String(room.id), room]));
+        } catch {}
+        setSavedRooms(ids.map((id) => {
+          const loadedRoom = byId.get(id);
+          const cachedRoom = cachedById.get(id);
+          return loadedRoom ? { ...cachedRoom, ...loadedRoom, room_detail: loadedRoom.room_detail ?? cachedRoom?.room_detail } : null;
+        }).filter(Boolean));
+      } catch {
+        if (version === savedLoadVersionRef.current) {
+          setSavedRooms([]);
+          setSavedRoomsError("Không thể tải phòng đã lưu. Vui lòng thử lại.");
+        }
+      } finally {
+        if (version === savedLoadVersionRef.current) setSavedRoomsLoading(false);
+      }
+    };
+
+    const onSavedChange = () => { void refreshSavedRooms(); };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "saved_room_ids") onSavedChange();
+    };
+    void refreshSavedRooms();
+    window.addEventListener("saved-rooms-changed", onSavedChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      savedLoadVersionRef.current += 1;
+      window.removeEventListener("saved-rooms-changed", onSavedChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [isSavedView]);
 
   useEffect(() => {
     document.documentElement.dataset.homeHydrated = "true";
@@ -873,6 +950,92 @@ const persistBlockedRef = useRef(false);
     () => pages[displayPageIndex] ?? [],
     [pages, displayPageIndex]
   );
+
+  const savedFilteredRooms = useMemo(() => {
+    const query = normalizeSearchKeyword(appliedSearch);
+      const needle = query;
+    const filtered = savedRooms.filter((room) => {
+      const detailText = (() => {
+        try { return typeof room.room_detail === "string" ? room.room_detail : JSON.stringify(room.room_detail ?? {}); }
+        catch { return ""; }
+      })();
+      const searchableText = normalizeSearchKeyword([
+        room.room_code, room.room_type, room.address, room.ward, room.district,
+        room.description, detailText,
+      ].filter(Boolean).join(" "));
+      if (needle && !searchableText.includes(needle)) return false;
+
+      const price = Number(room.price ?? room.price_month ?? room.monthly_price);
+      if (priceFilterActive && (!Number.isFinite(price) || price < minPriceApplied || price > maxPriceApplied)) return false;
+      const district = String(room.district ?? "").trim();
+      if (selectedDistricts.length && !selectedDistricts.some((selected) => {
+        const numericDistrict = selected.match(/\d+/)?.[0];
+        return district === selected || (numericDistrict !== undefined && district === numericDistrict);
+      })) return false;
+      if (selectedRoomTypes.length && !selectedRoomTypes.some((type) => {
+        const roomType = String(room.room_type ?? "").trim();
+        return roomType === type || (type === "1 Phòng ngủ" && roomType === "1PN") || (type === "2 Phòng ngủ" && roomType === "2PN");
+      })) return false;
+      if (statusFilter && !statusFilter.split(",").includes(String(room.status ?? ""))) return false;
+      if (badgeFilter && !Array.isArray(room.badges) || (badgeFilter && !room.badges.includes(badgeFilter))) return false;
+
+      const details = room.room_detail && typeof room.room_detail === "object" ? room.room_detail : {};
+      if (moveFilter === "elevator" && details.has_elevator !== true) return false;
+      if (moveFilter === "stairs" && details.has_stairs !== true) return false;
+      if (petFilters.length) {
+        const allowed = petFilters.some((pet) => pet === "cat"
+          ? room.allow_cat === true
+          : pet === "dog"
+            ? room.allow_dog === true
+            : room.no_pet === true);
+        if (!allowed) return false;
+      }
+      if (termFilters.length) {
+        const terms = termFilters.some((term) => term === "short"
+          ? room.short_term === true
+          : room.long_term !== false);
+        if (!terms) return false;
+      }
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      if (sortMode === "price_asc" || sortMode === "price_desc") {
+        const pa = Number(a.price ?? a.price_month ?? a.monthly_price);
+        const pb = Number(b.price ?? b.price_month ?? b.monthly_price);
+        const aHasPrice = Number.isFinite(pa);
+        const bHasPrice = Number.isFinite(pb);
+        if (aHasPrice !== bHasPrice) return aHasPrice ? -1 : 1;
+        if (!aHasPrice || !bHasPrice) return 0;
+        return sortMode === "price_asc" ? pa - pb : pb - pa;
+      }
+      return String(b.updated_at ?? b.created_at ?? "").localeCompare(String(a.updated_at ?? a.created_at ?? ""));
+    });
+  }, [savedRooms, appliedSearch, priceFilterActive, minPriceApplied, maxPriceApplied, selectedDistricts,
+    selectedRoomTypes, statusFilter, badgeFilter, moveFilter, petFilters, termFilters, sortMode]);
+
+  const savedPageCount = Math.max(1, Math.ceil(savedFilteredRooms.length / LIMIT));
+  const savedPageIndex = Math.min(pageIndex, savedPageCount - 1);
+  const savedPageRooms = useMemo(() =>
+    savedFilteredRooms.slice(savedPageIndex * LIMIT, (savedPageIndex + 1) * LIMIT),
+    [savedFilteredRooms, savedPageIndex]
+  );
+  const visibleRooms = isSavedView ? savedPageRooms : roomsToRender;
+  const visibleHasNext = isSavedView ? savedPageIndex + 1 < savedPageCount : hasNext;
+
+  useEffect(() => {
+    if (!isSavedView) return;
+    if (pageIndex !== savedPageIndex) {
+      setPageIndex(savedPageIndex);
+      setDisplayPageIndex(savedPageIndex);
+      pageIndexRef.current = savedPageIndex;
+      const params = new URLSearchParams(window.location.search);
+      params.set(QS.p, String(savedPageIndex));
+      params.delete(QS.c);
+      window.history.replaceState(window.history.state, "", `${pathname}?${params.toString()}`);
+    }
+    setTotal(savedFilteredRooms.length);
+  }, [isSavedView, pageIndex, savedPageIndex, savedFilteredRooms.length, pathname]);
 
   // ================== SAVED ==================
  useEffect(() => {
@@ -2078,6 +2241,11 @@ useEffect(() => {
   // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
+    const savedInUrl = new URLSearchParams(window.location.search).get("view") === "saved";
+    if (savedInUrl !== isSavedView) {
+      window.location.reload();
+      return;
+    }
    if (didApplyBackOnceRef.current) return;
 
     persistBlockedRef.current = true;
@@ -2304,11 +2472,17 @@ queueMicrotask(() => {
   resetPagination,
   endHydrationAfterTwoFrames,
   readLiteForQs,
+  isSavedView,
 ]);
 
   // ================== FETCH PAGE ==================
   const fetchPage = useCallback(
   async (targetIndex: number) => {
+    if (isSavedView) {
+      setLoading(false);
+      setShowSkeleton(false);
+      return;
+    }
     const myVersion = filtersVersionRef.current;
 
     if (pagesRef.current[targetIndex] !== undefined) {
@@ -2570,6 +2744,7 @@ if (targetIndex === pageIndexRef.current) {
       sortMode,
       statusFilter,
       badgeFilter,
+      isSavedView,
       selectedDistricts,
       selectedRoomTypes,
       moveFilter,
@@ -2800,6 +2975,33 @@ useEffect(() => {
   prevAppliedSearchRef.current = applied;
   pendingUrlFiltersRef.current = null;
 
+  if (isSavedView) {
+    if (filterApplyTimerRef.current) window.clearTimeout(filterApplyTimerRef.current);
+    lastFilterSigRef.current = filterSig;
+    setPageIndex(0);
+    setDisplayPageIndex(0);
+    pageIndexRef.current = 0;
+    replaceUrlShallow(buildQs({
+      q: applied,
+      min: priceFilterActive ? minPriceApplied : undefined,
+      max: priceFilterActive ? maxPriceApplied : undefined,
+      d: selectedDistricts,
+      t: selectedRoomTypes,
+      m: moveFilter,
+      pet: petFilters,
+      term: termFilters,
+      s: sortMode,
+      st: statusFilter,
+      badge: badgeFilter,
+      p: 0,
+      c: null,
+    }));
+    requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    });
+    return;
+  }
+
   // ====== Normal filter change flow (debounced) ======
   filtersVersionRef.current += 1;
 
@@ -2864,8 +3066,9 @@ useEffect(() => {
   sortMode,
   statusFilter,
   badgeFilter,
-  buildQs,
+  isSavedView,
   replaceUrlShallow,
+  buildQs,
   resetPagination,
   persistSoon,
   fetchPage,
@@ -3110,7 +3313,7 @@ useEffect(() => {
 
  // ================== Khóa Anon ==================
 useEffect(() => {
-  if (isLoggedIn || hasVipAccess) {
+  if (!ANON_LISTING_LOCK_ENABLED || isLoggedIn || hasVipAccess) {
     setIsAnonLocked(false);
 
     if (lockTimerRef.current) {
@@ -3194,6 +3397,37 @@ const roomContactName = currentUserId
     ? vipAdminName
     : null;
 
+const toggleSavedView = () => {
+  const next = !isSavedView;
+  filtersVersionRef.current += 1;
+  const params = new URLSearchParams(window.location.search);
+  if (next) params.set("view", "saved");
+  else params.delete("view");
+  params.set(QS.p, "0");
+  params.delete(QS.c);
+  const url = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+  window.history.pushState(window.history.state, "", url);
+  setIsSavedView(next);
+  setFetchError("");
+  pageIndexRef.current = 0;
+  resetPagination(0);
+  setTotal(next ? savedFilteredRooms.length : null);
+};
+
+const goToSavedPage = (nextPage: number) => {
+  const target = Math.max(0, Math.min(savedPageCount - 1, nextPage));
+  setPageIndex(target);
+  setDisplayPageIndex(target);
+  pageIndexRef.current = target;
+  const params = new URLSearchParams(window.location.search);
+  params.set(QS.p, String(target));
+  params.delete(QS.c);
+  replaceUrlShallow(params.toString());
+};
+
+const handleGoNext = isSavedView ? () => goToSavedPage(savedPageIndex + 1) : goNext;
+const handleGoPrev = isSavedView ? () => goToSavedPage(savedPageIndex - 1) : goPrev;
+
 // ================== RENDER ==================
 return (
   <div className="home-redesign relative flex h-screen flex-col overflow-hidden bg-[#241206] text-[#F3E7D6]">
@@ -3241,17 +3475,18 @@ return (
 
     {/* RIGHT: ACCOUNT */}
         <div className="relative z-[3000] flex shrink-0 items-center gap-2 whitespace-nowrap">
-          <a
-            href="/saved"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Phòng đã lưu"
+          <button
+            type="button"
+            onClick={toggleSavedView}
+            aria-pressed={isSavedView}
+            aria-label={`Phòng đã lưu · ${savedRoomIds.length}`}
             title="Phòng đã lưu"
-            className="home-saved-link flex h-[34px] min-w-[34px] shrink-0 items-center justify-center rounded-full border border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.55)] px-0 text-base font-semibold text-[#E5C9A9] backdrop-blur-[20px] shadow-[0_10px_26px_rgba(0,0,0,0.35)] transition hover:bg-[rgba(255,255,255,0.08)] md:min-w-[118px] md:rounded-2xl md:px-4 md:text-xs"
+            className={`home-saved-link flex h-[34px] min-w-[34px] shrink-0 items-center justify-center rounded-full border px-0 text-base font-semibold backdrop-blur-[20px] shadow-[0_10px_26px_rgba(0,0,0,0.35)] transition md:min-w-[150px] md:rounded-2xl md:px-3 md:text-xs ${isSavedView ? "border-[#E5C9A9]/70 bg-[rgba(201,164,106,0.25)] text-[#FFE8C6]" : "border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.55)] text-[#E5C9A9] hover:bg-[rgba(255,255,255,0.08)]"}`}
           >
             <span className="home-saved-star">★</span>
-            <span className="home-saved-label"> Phòng đã lưu</span>
-          </a>
+            <span className="home-saved-count text-[10px] md:hidden">{savedRoomIds.length}</span>
+            <span className="home-saved-label"> Phòng đã lưu · {savedRoomIds.length}</span>
+          </button>
           {/* ACCOUNT */}
           <div
             id="auth-anchor"
@@ -3445,21 +3680,33 @@ return (
       )}
       
         <RoomList
-          fetchError={fetchError}
-          showSkeleton={showSkeleton}
-          roomsToRender={roomsToRender}
+          fetchError={isSavedView ? savedRoomsError : fetchError}
+          showSkeleton={isSavedView ? savedRoomsLoading : showSkeleton}
+          roomsToRender={visibleRooms}
           adminLevel={adminLevel}
           currentUserId={currentUserId}
           currentAdminPhone={roomContactPhone}
           currentAdminName={roomContactName}
           pageIndex={pageIndex}
           loading={loading}
-          hasNext={hasNext}
-          goPrev={goPrev}
-          goNext={goNext}
+          hasNext={visibleHasNext}
+          goPrev={handleGoPrev}
+          goNext={handleGoNext}
           onNavigate={handleNavigateToRoom}
           openingRoomId={openingRoomId}
           isRefreshing={isRefreshing}
+          title={isSavedView ? "Phòng đã lưu" : "Phòng phù hợp"}
+          stableCardWidth={isSavedView}
+          emptyMessage={isSavedView && savedRoomIds.length === 0
+            ? "Bạn chưa lưu phòng nào."
+            : isSavedView
+              ? "Không có phòng phù hợp với bộ lọc."
+              : "Không có phòng phù hợp."}
+          emptyAction={isSavedView && savedRoomIds.length === 0 ? (
+            <button type="button" onClick={toggleSavedView} className="rounded-xl border border-[#E5C9A9]/30 bg-white/10 px-4 py-2 text-sm font-semibold text-[#FFE8C6] hover:bg-white/15">
+              Xem tất cả phòng
+            </button>
+          ) : null}
         />
      
     </div>
@@ -3474,9 +3721,9 @@ return (
       "
     >
       <Pagination
-        goNext={goNext}
-        goPrev={goPrev}
-        hasNext={hasNext}
+        goNext={handleGoNext}
+        goPrev={handleGoPrev}
+        hasNext={visibleHasNext}
         loading={loading}
         total={typeof total === "number" ? total : undefined}
       />

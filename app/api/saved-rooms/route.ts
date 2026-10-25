@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { attachRoomBadges } from "@/lib/roomBadges";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const ids = searchParams
+    const ids = Array.from(new Set(searchParams
       .get("ids")
       ?.split(",")
       .map((id) => id.trim())
-      .filter(Boolean);
+      .filter(Boolean) ?? [])).slice(0, 50);
 
     if (!ids || ids.length === 0) {
       return NextResponse.json({ data: [] });
@@ -34,6 +35,13 @@ export async function GET(req: Request) {
       .select("room_id,type,url,created_at")
       .in("room_id", ids)
       .order("created_at", { ascending: true });
+
+    const { data: detailRows, error: detailError } = await supabase
+      .from("room_details")
+      .select("*")
+      .in("room_id", ids);
+
+    const detailsMap = new Map((detailError ? [] : detailRows ?? []).map((detail) => [String(detail.room_id), detail]));
 
     if (mediaError) {
       return NextResponse.json(
@@ -65,6 +73,7 @@ export async function GET(req: Request) {
 
       roomMap.set(room.id, {
         ...room,
+        room_detail: detailsMap.get(String(room.id)) ?? null,
         image_urls: images.slice(0, 3),
         image_count: images.length,
         has_video: Boolean(video),
@@ -75,7 +84,7 @@ export async function GET(req: Request) {
 
     const finalRooms = ids.map((id) => roomMap.get(id)).filter(Boolean);
 
-    return NextResponse.json({ data: finalRooms });
+    return NextResponse.json({ data: await attachRoomBadges(supabase, finalRooms) });
   } catch (err: any) {
     return NextResponse.json(
       {

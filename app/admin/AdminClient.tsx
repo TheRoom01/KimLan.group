@@ -4,7 +4,7 @@ import { normalizeSearchKeyword } from "@/lib/rooms/search";
 import { roomStatusLabel } from "@/lib/rooms/availability";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Copy, Pencil, Trash2 } from "lucide-react";
+import { Copy, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import RoomModal from "./RoomModal";
 import VipLinkManager from "./VipLinkManager";
 import type { Room, TabKey } from "@/app/types/room";
@@ -596,7 +596,7 @@ const openZaloUX = useCallback(
         <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.2fr)",
+              gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1fr) minmax(100px, 0.75fr) 40px",
               alignItems: "center",
               gap: 6,
               width: "100%",
@@ -606,20 +606,15 @@ const openZaloUX = useCallback(
             {(adminLevel === 1 || adminLevel === 2) && (
               <VipLinkManager buttonStyle={compactActionBtn} />
             )}
-            <button
-              style={{ ...compactActionBtn, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5 }}
-              onClick={() => {
-                const code = window.prompt("Nhập mã phòng muốn sao chép:")?.trim().toLocaleLowerCase("vi-VN");
-                if (!code) return;
-                const source = rooms.find((room) => String(room.room_code || "").trim().toLocaleLowerCase("vi-VN") === code);
-                if (!source) return notify("Không tìm thấy mã phòng trong danh sách hiện tại.");
-                setCopyChoiceSource(source);
-              }}
+            <a
+              href="/admin/room-inquiries"
+              style={{ ...compactActionBtn, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, textDecoration: "none" }}
             >
-              <Copy size={16} /> Copy phòng
-            </button>
+              Tư vấn / xem phòng
+              {roomConsultNewCount > 0 ? <span style={{ minWidth: 22, borderRadius: 999, padding: "2px 7px", background: "#b91c1c", color: "white", textAlign: "center", fontSize: 11 }}>{roomConsultNewCount > 99 ? "99+" : roomConsultNewCount}</span> : null}
+            </a>
             <button
-              style={{ ...addBtn, width: "100%", minWidth: 0, fontWeight: 700, fontSize: "clamp(10px, 3vw, 13px)", overflow: "hidden", textOverflow: "ellipsis" }}
+              style={{ ...addBtn, width: "100%", minWidth: 0, padding: "8px 8px", fontWeight: 700, fontSize: "clamp(10px, 3vw, 13px)", overflow: "hidden", textOverflow: "ellipsis" }}
               onClick={() => {
                 setEditingRoom(null);
                 setActiveTab("info");
@@ -628,14 +623,21 @@ const openZaloUX = useCallback(
             >
               + Thêm phòng
             </button>
+            <button
+              type="button"
+              aria-label="Tải lại danh sách phòng"
+              title="Tải lại danh sách phòng"
+              onClick={() => {
+                cacheRef.current.clear();
+                cursorMapRef.current.clear();
+                void loadRooms(page, debouncedSearch, { useCache: false });
+              }}
+              disabled={loading}
+              style={{ ...compactActionBtn, width: 40, height: 38, minHeight: 38, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", borderColor: "#c9a46a", background: "#fff8ed", color: "#5b351b", opacity: loading ? 0.6 : 1 }}
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : undefined} />
+            </button>
           </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 10 }}>
-        <a href="/admin/room-inquiries" style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #c9a46a", borderRadius: 12, padding: "9px 13px", background: "#fff8ed", color: "#5b351b", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
-          Tư vấn / xem phòng
-          {roomConsultNewCount > 0 ? <span style={{ minWidth: 22, borderRadius: 999, padding: "2px 7px", background: "#b91c1c", color: "white", textAlign: "center", fontSize: 11 }}>{roomConsultNewCount > 99 ? "99+" : roomConsultNewCount}</span> : null}
-        </a>
       </div>
 
       {errorMsg && <div style={{ ...errorBox, marginTop: 10 }}>{errorMsg}</div>}
