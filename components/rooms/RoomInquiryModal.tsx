@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { readApiResponse } from "@/lib/api/client";
-import OwnerRegistrationCaptcha from "@/components/owner/OwnerRegistrationCaptcha";
+import RoomInquiryTurnstile, { type RoomInquiryTurnstileHandle } from "@/components/rooms/RoomInquiryTurnstile";
 
 type Props = {
   open: boolean;
@@ -48,14 +48,14 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
   const [preferredTime, setPreferredTime] = useState("");
   const [notes, setNotes] = useState("");
   const [website, setWebsite] = useState("");
-  const [captchaToken, setCaptchaToken] = useState("");
-  const [captchaResetKey, setCaptchaResetKey] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState<"idle" | "verifying" | "submitting" | "success">("idle");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const turnstileRef = useRef<RoomInquiryTurnstileHandle>(null);
+  const submissionInProgressRef = useRef(false);
+  const submitting = submissionStatus === "verifying" || submissionStatus === "submitting";
+  const succeeded = submissionStatus === "success";
   const requestKey = useMemo(createRequestKey, []);
-  const handleCaptchaToken = useCallback((token: string) => setCaptchaToken(token), []);
-
   useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (!open) return;
@@ -78,11 +78,17 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
       setError("Vui lòng chọn ngày muốn xem phòng.");
       return;
     }
-    setSubmitting(true);
+    if (submissionInProgressRef.current) return;
+    submissionInProgressRef.current = true;
+    setSubmissionStatus("verifying");
     try {
+      const captchaToken = await turnstileRef.current?.execute();
+      if (!captchaToken) throw new Error("Chưa lấy được mã xác minh. Vui lòng thử lại.");
+      setSubmissionStatus("submitting");
       const result = await readApiResponse<SubmitResult>(await fetch("/api/room-consult-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(30_000),
         body: JSON.stringify({
           request_key: requestKey,
           room_id: room.id,
@@ -96,15 +102,16 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
           captcha_token: captchaToken,
         }),
       }));
-      setSuccess(result.duplicate
+      setSubmissionStatus("success");
+      setSuccessMessage(result.duplicate
         ? "Yêu cầu này đã được gửi gần đây. Bộ phận phụ trách sẽ liên hệ với bạn."
         : "Yêu cầu đã được lưu và gửi đến bộ phận phụ trách. Chúng tôi sẽ liên hệ với bạn sớm.");
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Không gửi được yêu cầu. Vui lòng thử lại.");
-      setCaptchaToken("");
-      setCaptchaResetKey((current) => current + 1);
+      turnstileRef.current?.reset();
+      setSubmissionStatus("idle");
     } finally {
-      setSubmitting(false);
+      submissionInProgressRef.current = false;
     }
   }
 
@@ -130,11 +137,11 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
             <a href={room.href} target="_blank" rel="noreferrer" className="self-start text-xs font-semibold text-[#E7C58F] underline underline-offset-2">Chi tiết</a>
           </div>
 
-          {success ? (
+          {succeeded ? (
             <div role="status" aria-live="polite" className="rounded-2xl border border-emerald-300/25 bg-emerald-950/35 p-5 text-center">
               <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-emerald-400/15 text-xl text-emerald-200">✓</span>
               <p className="mt-3 font-semibold">Đã nhận yêu cầu</p>
-              <p className="mt-1 text-sm leading-6 text-emerald-100/80">{success}</p>
+              <p className="mt-1 text-sm leading-6 text-emerald-100/80">{successMessage}</p>
               <button type="button" onClick={onClose} className="mt-4 min-h-11 rounded-xl bg-[#C9A46A] px-5 font-bold text-[#241206]">Đóng</button>
             </div>
           ) : (
@@ -160,11 +167,11 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
               <label className="text-sm font-medium">Ghi chú tùy chọn<textarea className={`${inputClass} min-h-[88px] resize-y`} value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} rows={3} placeholder="Thời gian tiện liên hệ hoặc yêu cầu thêm" /></label>
               <label className="sr-only" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} /></label>
 
-              <OwnerRegistrationCaptcha key={captchaResetKey} onToken={handleCaptchaToken} />
+              <RoomInquiryTurnstile ref={turnstileRef} />
 
               {error ? <p role="alert" className="rounded-xl border border-red-300/20 bg-red-950/35 px-3.5 py-3 text-sm text-red-200">{error}</p> : null}
               <div className="sticky bottom-0 -mx-5 -mb-5 border-t border-white/10 bg-[#2D1B14]/95 px-5 py-4 backdrop-blur-sm sm:-mx-6 sm:-mb-6 sm:px-6">
-                <button type="submit" disabled={submitting || !captchaToken} className="min-h-12 w-full rounded-xl bg-[#C9A46A] px-5 font-bold text-[#241206] transition hover:bg-[#D9B77F] disabled:cursor-wait disabled:opacity-60">{submitting ? "Đang gửi yêu cầu…" : "Gửi yêu cầu"}</button>
+                <button type="submit" disabled={submitting} className="min-h-12 w-full rounded-xl bg-[#C9A46A] px-5 font-bold text-[#241206] transition hover:bg-[#D9B77F] disabled:cursor-wait disabled:opacity-60">{submissionStatus === "verifying" ? "Đang xác minh…" : submissionStatus === "submitting" ? "Đang gửi yêu cầu…" : "Gửi yêu cầu"}</button>
                 <p className="mt-2 text-center text-[11px] leading-4 text-[#D8C7B5]">Thông tin sẽ được gửi đến người phụ trách phòng này.</p>
               </div>
             </form>

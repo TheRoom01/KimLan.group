@@ -12,10 +12,17 @@ declare global {
           callback: (token: string) => void;
           "expired-callback": () => void;
           "error-callback": () => void;
-          theme: "light";
+          "timeout-callback"?: () => void;
+          theme: "light" | "dark";
+          execution?: "render" | "execute";
+          appearance?: "always" | "execute" | "interaction-only";
+          action?: string;
+          retry?: "auto" | "never";
         },
       ) => string;
       remove: (widgetId: string) => void;
+      execute: (widgetId: string) => void;
+      reset: (widgetId: string) => void;
     };
   }
 }

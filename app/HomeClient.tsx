@@ -2569,6 +2569,7 @@ if (targetIndex === pageIndexRef.current) {
       priceFilterActive,
       sortMode,
       statusFilter,
+      badgeFilter,
       selectedDistricts,
       selectedRoomTypes,
       moveFilter,

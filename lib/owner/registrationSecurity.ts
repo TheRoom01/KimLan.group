@@ -18,7 +18,12 @@ export function hashRegistrationIdentifier(value: string) {
   return crypto.createHmac("sha256", secret).update(value).digest("hex");
 }
 
-export async function verifyTurnstileToken(token: string, ip: string, expectedHostname?: string) {
+export async function verifyTurnstileToken(
+  token: string,
+  ip: string,
+  expectedHostname?: string,
+  expectedAction?: string,
+) {
   const secret =
     process.env.TURNSTILE_SECRET_KEY ||
     (process.env.NODE_ENV !== "production"
@@ -34,12 +39,14 @@ export async function verifyTurnstileToken(token: string, ip: string, expectedHo
   try {
     const response = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      { method: "POST", body },
+      { method: "POST", body, signal: AbortSignal.timeout(10_000) },
     );
     if (!response.ok) return false;
 
-    const result = (await response.json()) as { success?: boolean; hostname?: string };
-    return result.success === true && (!expectedHostname || result.hostname === expectedHostname);
+    const result = (await response.json()) as { success?: boolean; hostname?: string; action?: string };
+    return result.success === true &&
+      (!expectedHostname || result.hostname === expectedHostname) &&
+      (!expectedAction || result.action === expectedAction);
   } catch {
     return false;
   }

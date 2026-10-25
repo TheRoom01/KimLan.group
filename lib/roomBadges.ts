@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const ROOM_BADGES = [
-  { id: "budget_friendly", label: "Phòng giá rẻ", className: "border-emerald-300/50 bg-emerald-950/70 text-emerald-100" },
+  { id: "budget_friendly", label: "Giá tốt", className: "border-emerald-300/50 bg-emerald-950/70 text-emerald-100" },
   { id: "new_listing", label: "Nhà mới", className: "border-sky-300/50 bg-sky-950/70 text-sky-100" },
   { id: "featured", label: "Phòng đẹp", className: "border-pink-200/70 bg-pink-700/85 text-pink-50" },
   { id: "exclusive", label: "Độc quyền", className: "border-violet-300/50 bg-violet-950/75 text-violet-100" },

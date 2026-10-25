@@ -51,10 +51,11 @@ export async function POST(request: Request) {
     if (viewingDateRaw < todayInVietnam) return apiError("INVALID_INPUT", "Ngày xem phòng không thể ở quá khứ", 400);
   }
   if (preferredTime.length > 80 || notes.length > 2000) return apiError("INVALID_INPUT", "Ghi chú hoặc khung giờ quá dài", 400);
-  if (!captchaToken || captchaToken.length > 4096 || !(await verifyTurnstileToken(
+  if (!captchaToken || captchaToken.length > 2048 || !(await verifyTurnstileToken(
     captchaToken,
     getRegistrationClientIp(request),
     new URL(request.url).hostname,
+    "room_consult_request",
   ))) {
     return apiError("INVALID_INPUT", "Vui lòng xác minh CAPTCHA rồi thử lại.", 400);
   }
