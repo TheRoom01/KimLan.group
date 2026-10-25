@@ -2,6 +2,7 @@
 
 import { Bell, Building2, FileText, KeyRound, Loader2, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { repairNotificationText } from "@/lib/notifications/repairMojibake";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { readApiResponse } from "@/lib/api/client";
@@ -206,24 +207,15 @@ function NotificationRow({ item, onOpen, onDelete }: { item: NotificationItem; o
     <div className="absolute inset-y-0 left-0 flex w-24 items-center justify-center gap-1 text-xs font-bold"><Trash2 size={16} /> Xóa</div>
     <button type="button" onClick={() => { if (!dragged.current) void onOpen(item); dragged.current = false; }} onPointerDown={(event) => { startX.current = event.clientX; dragged.current = false; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (startX.current === null) return; const next = Math.max(0, Math.min(120, event.clientX - startX.current)); if (next > 5) dragged.current = true; setOffset(next); }} onPointerUp={() => { const shouldDelete = offset >= 85; startX.current = null; setOffset(0); if (shouldDelete) void onDelete(item); }} onPointerCancel={() => { startX.current = null; setOffset(0); }} style={{ transform: `translateX(${offset}px)`, touchAction: "pan-y" }} className={`flex w-full items-start gap-3 p-4 text-left transition-colors ${item.is_read ? "bg-[#fff9ef]" : "bg-[#f8ead7]"}`}>
       <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl ${item.is_read ? "bg-[#eadbc8] text-[#80634a]" : "bg-[#744722] text-white"}`}><Icon size={17} /></span>
-      <span className="min-w-0 flex-1"><span className="flex items-start gap-2"><span className="min-w-0 flex-1 text-sm font-bold text-[#4d3422]">{repairVietnameseMojibake(item.title)}</span>{!item.is_read ? <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" /> : null}</span>{item.message ? <span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#80634a]">{repairVietnameseMojibake(item.message)}</span> : null}<span className="mt-1.5 block text-[11px] font-medium text-[#9a7758]">{relativeTime(item.created_at)}</span></span>
+      <span className="min-w-0 flex-1"><span className="flex items-start gap-2"><span className="min-w-0 flex-1 text-sm font-bold text-[#4d3422]">{repairNotificationText(item.title)}</span>{!item.is_read ? <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" /> : null}</span>{item.message ? <span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#80634a]">{repairNotificationText(item.message)}</span> : null}<span className="mt-1.5 block text-[11px] font-medium text-[#9a7758]">{relativeTime(item.created_at)}</span></span>
     </button>
   </div>;
 }
 
-function repairVietnameseMojibake(value: string) {
-  if (!/[ÃÄ]|á[\u0080-\u00bf]/.test(value)) return value;
-  const codePoints = Array.from(value, (character) => character.charCodeAt(0));
-  if (codePoints.some((codePoint) => codePoint > 255)) return value;
-
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(codePoints));
-  } catch {
-    return value;
-  }
-}
-
 function notificationHref(item: NotificationItem) {
+  if (item.reference_type === "room_consult_request" && item.reference_id) {
+    return `/owner/room-inquiries?request=${encodeURIComponent(item.reference_id)}`;
+  }
   if (item.reference_type === "property_join_request" && item.reference_id) {
     return `/owner/properties?request=${encodeURIComponent(item.reference_id)}`;
   }

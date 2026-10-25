@@ -12,8 +12,10 @@ import { supabase } from "@/lib/supabase";
 import { useRef } from "react";
 import { firstRoomActionUrl } from "@/lib/roomActionLinks";
 import { extractContactPhones } from "@/lib/contactPhones";
+import { ROOM_BADGES, normalizeRoomBadges } from "@/lib/roomBadges";
 
 const ShareRoomModal = dynamic(() => import("@/components/share/ShareRoomModal"));
+const RoomInquiryModal = dynamic(() => import("@/components/rooms/RoomInquiryModal"), { ssr: false });
 
 
 type Room = {
@@ -46,6 +48,7 @@ type Room = {
   creator_admin_name?: string | null;
   room_detail?: Record<string, unknown> | Record<string, unknown>[] | null;
   room_details?: Record<string, unknown> | Record<string, unknown>[] | null;
+  badges?: string[] | null;
 };
 
 type RoomCardProps = {
@@ -465,6 +468,7 @@ const addressCopyOffsetRef = useRef<HTMLButtonElement | null>(null);
 const [addressCopyLeft, setAddressCopyLeft] = useState(0);
 
 const [shareOpen, setShareOpen] = useState(false);
+const [inquiryOpen, setInquiryOpen] = useState(false);
 const [shareRoomData, setShareRoomData] = useState<any>(room);
 const [shareImages, setShareImages] = useState<string[]>(images);
 const [shareVideos, setShareVideos] = useState<string[]>(videos);
@@ -1053,6 +1057,7 @@ async function updateRoomStatus(nextStatus: string) {
 const roomMetaLabelColor = "#fff6ec";
 const roomMetaValueColor = "#f8e9d8";
 const roomMetaDividerColor = "rgba(229,201,169,0.9)";
+const visibleRoomBadges = normalizeRoomBadges(room.badges);
 
 return (
   <>
@@ -1064,9 +1069,9 @@ return (
       className={`
         home-room-card group relative z-0 flex h-full min-w-0 flex-col overflow-hidden rounded-[18px]
 
-        bg-[rgba(160,101,46,0.31)]
+        bg-[rgba(202,138,78,0.41)]
         backdrop-blur-[34px]
-        backdrop-saturate-[155%]
+        backdrop-saturate-[85%]
         border border-[#D2B48C]/30
 
         shadow-[0_22px_70px_rgba(34,19,11,0.50),inset_0_1px_0_rgba(222,184,135,0.15)]
@@ -1100,7 +1105,7 @@ return (
   <div
       className="home-room-decoration
       pointer-events-none absolute inset-0 rounded-[18px]
-      bg-[radial-gradient(circle_at_30%_18%,rgba(150,121,87,0.47),transparent_52%)]
+      bg-[radial-gradient(circle_at_30%_18%,rgba(250,210,163,0.71),transparent_52%)]
       opacity-34
     "
   />
@@ -1112,7 +1117,6 @@ return (
       opacity-28
     "
   />
-
      {/* SAVE BUTTON */}
         <button
         type="button"
@@ -1162,51 +1166,20 @@ return (
       </button>
       
 
-    {/* ADMIN BUTTON */}
-    {contactPhones.length > 0 && (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setAdminPhone(contactPhones.map((phone) => phone.dial).join("|"));
-        }}
-        title={contactName}
-        aria-label="Liên hệ"
-        className="
-          ai-admin-button ai-admin-gradient-border
-          !absolute left-2 top-1 z-30
-
-          !min-h-0 h-10
-          rounded-full p-[1px]
-
-          transition-all duration-50
-          hover:scale-[1.05]
-          active:scale-[0.95]
-        "
-      >
-        <span
-          aria-hidden="true"
-          className="ai-admin-gradient-border__track"
-        />
-        <span
-          className="
-            relative z-10 flex h-full items-center gap-1
-            rounded-full
-            bg-[#141516]/75
-            px-1
-            !text-[14px] font-bold text-white
-            leading-none
-            backdrop-blur-[20px]
-          "
-        >
-          <span className="text-[12px] leading-none">☎️</span>
-        </span>
-      </button>
-    )}
-
        {/* IMAGE */}
         <div className="home-room-gallery relative aspect-[1.45/1] w-full overflow-hidden bg-black/20">
+          {visibleRoomBadges.length > 0 && (
+            <div className="absolute left-2 top-2 z-30 flex max-w-[75%] flex-wrap items-center gap-1.5" aria-label="Nhãn phòng">
+              {visibleRoomBadges.map((id) => {
+                const badge = ROOM_BADGES.find((item) => item.id === id);
+                return badge ? (
+                  <span key={id} className={`max-w-full truncate rounded-full border px-2 py-0.5 text-[10px] font-bold leading-4 shadow-sm ${badge.className}`}>
+                    {badge.label}
+                  </span>
+                ) : null;
+              })}
+            </div>
+          )}
           <div className="grid h-full grid-cols-[60%_40%] gap-1">
             <div className="relative w-full h-full overflow-hidden">
               {room.has_video && mainErrorStage >= 1 && room.video_url ? (
@@ -1308,7 +1281,7 @@ return (
               </>
             )}
 
-            <span>Dạng: </span>
+            
             <span className="font-semibold" style={{ color: roomMetaValueColor }}>
               {room.room_type}
             </span>
@@ -1529,6 +1502,38 @@ return (
             ) : null}
           </div>
         </div>
+        <div className="relative z-20 mt-3 flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setInquiryOpen(true);
+          }}
+          className="inline-flex min-h-[31px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-2.5 text-[10px] font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
+        >
+          <span aria-hidden="true">✦</span> Đặt lịch
+        </button>
+        {contactPhones.length > 0 && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setAdminPhone(contactPhones.map((phone) => phone.dial).join("|"));
+            }}
+            title={contactName}
+            aria-label="Liên hệ"
+            className="ai-admin-button ai-admin-gradient-border relative z-20 shrink-0 rounded-full p-[1px] transition-all duration-50 hover:scale-[1.05] active:scale-[0.95]"
+          >
+            <span aria-hidden="true" className="ai-admin-gradient-border__track" />
+            <span className="relative z-10 flex h-full items-center justify-center rounded-full bg-[#141516]/75 px-1 text-[14px] font-bold leading-none text-white backdrop-blur-[20px]">
+              <span className="text-[12px] leading-none">☎️</span>
+            </span>
+          </button>
+        )}
+        </div>
         <div
             className="home-room-toolbar relative z-20 mt-1 min-w-0 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             onPointerDown={startToolbarDrag}
@@ -1602,6 +1607,22 @@ return (
       }
     />
       )}
+
+    {inquiryOpen && (
+      <RoomInquiryModal
+        open={inquiryOpen}
+        onClose={() => setInquiryOpen(false)}
+        room={{
+          id: room.id,
+          code: room.room_code || room.id.slice(0, 8),
+          type: String(room.room_type ?? "Phòng cho thuê"),
+          address: fullAddressText || "Địa chỉ đang cập nhật",
+          price: Number.isFinite(Number(price)) ? Number(price) : null,
+          image: mainSrc && mainSrc !== FALLBACK ? mainSrc : null,
+          href,
+        }}
+      />
+    )}
 
     {zaloToast &&
       typeof document !== "undefined" &&

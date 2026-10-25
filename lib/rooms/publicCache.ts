@@ -10,6 +10,7 @@ import {
   type FetchRoomsParams,
 } from "@/lib/fetchRoomsServer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { attachRoomBadges } from "@/lib/roomBadges";
 
 export const PUBLIC_ROOMS_CACHE_TAG = "public-rooms-v1";
 
@@ -44,7 +45,8 @@ export const getPublicRoomDetail = cache(async (roomId: string) => {
       });
 
       if (error) throw new Error(error.message);
-      return data ?? null;
+      if (!data || typeof data !== "object") return data ?? null;
+      return (await attachRoomBadges(supabase, [data as Record<string, any>]))[0] ?? data;
     },
     ["public-room-detail-v1", id],
     {
@@ -94,8 +96,9 @@ export const getRoomDetailForRender = cache(async (roomId: string) => {
         });
 
         if (!error && data) {
+          const room = (await attachRoomBadges(supabase, [data as Record<string, any>]))[0] ?? data;
           return {
-            room: data,
+            room,
             initialUserId: userId,
             initialAdminLevel: adminLevel,
             initialAuthResolved: true,

@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, type CSSProperties } from 'react'
 import type { Room, TabKey, RoomStatus } from '../../types/room'
 import type { RoomForm, RoomDetail } from './types'
 import { supabase } from '@/lib/supabase'
+import { normalizeRoomBadges, type RoomBadge } from '@/lib/roomBadges'
 
 import TabButton from './TabButton'
 import RoomInfoTab from './RoomInfoTab'
@@ -193,6 +194,7 @@ export default function RoomModal({
     // media optional in RoomForm (tùy bạn đã khai báo chưa)
     media: [],
     chinh_sach: '',
+    badges: [],
     
   })
  
@@ -286,6 +288,7 @@ const [buildingLocationError, setBuildingLocationError] = useState<string | null
 
   // ✅ NEW: draft room id cho flow "thêm mới + upload ngay"
   const draftRoomIdRef = useRef<string>("");
+  const initialRoomBadgesRef = useRef<RoomBadge[]>([]);
 
     // ✅ NEW: nhớ danh sách media ban đầu để biết user có thật sự đổi ảnh không
   const initialMediaSigRef = useRef<string>("");
@@ -1024,6 +1027,7 @@ const detailSample =
   setBuildingLocationError(null)
 
     if (isPending) {
+    initialRoomBadgesRef.current = []
     draftRoomIdRef.current = `zalo-pending-${String(pendingId || '').trim()}`
     initialCoverUrlRef.current = ''
 
@@ -1069,6 +1073,7 @@ const detailSample =
       zalo_phone: pendingRoomPayload?.zalo_phone ?? '',
       media: [...pendingImageMedia, ...pendingVideoMedia],
       chinh_sach: pendingRoomPayload?.chinh_sach ?? '',
+      badges: [],
     })
 
     initialPendingImageIdsRef.current = pendingImageMedia
@@ -1098,6 +1103,7 @@ const detailSample =
   // NEW / CLONE
   // ======================
   if (isNew || isCloneMode) {
+    initialRoomBadgesRef.current = []
     draftRoomIdRef.current = genDraftId()
     initialCoverUrlRef.current = ""
 
@@ -1122,6 +1128,8 @@ const detailSample =
       media: isCloneMode ? (base.media ?? []) : [],
 
       chinh_sach: base.chinh_sach ?? "",
+      // Không sao chép badge sang phòng mới nếu thao tác clone không chủ ý yêu cầu.
+      badges: [],
     })
 
     const detail =
@@ -1144,6 +1152,10 @@ const detailSample =
   // EDIT ONLY (QUAN TRỌNG: RETURN NGAY)
   // ======================
   if (!isEdit) return
+
+  const fallbackBadges = normalizeRoomBadges((base as any).badges)
+  initialRoomBadgesRef.current = fallbackBadges
+  setRoomForm((prev) => ({ ...prev, badges: fallbackBadges }))
 
   void (async () => {
     try {
@@ -1174,6 +1186,13 @@ const detailSample =
       }
 
       const room = (data ?? {}) as any
+      const roomBadgesResult = await supabase.rpc("get_room_badges_v1", {
+        p_room_ids: [base.id],
+      })
+      const loadedBadges = roomBadgesResult.error
+        ? fallbackBadges
+        : normalizeRoomBadges((roomBadgesResult.data as Array<{ room_id: string; badges: unknown }> | null)?.find((row) => row.room_id === base.id)?.badges)
+      initialRoomBadgesRef.current = loadedBadges
       if (locationResult.error) {
         setBuildingLocationError(locationResult.error.message)
       } else {
@@ -1244,6 +1263,7 @@ const detailSample =
         chinh_sach:
           sharedFields?.chinh_sach ?? room.chinh_sach ?? prev.chinh_sach,
         media: nextMedia,
+        badges: loadedBadges,
       }))
 
       const detail =
@@ -1821,6 +1841,21 @@ updatedRoom = up.data as Room
 roomId = String((updatedRoom as any)?.id || '').trim()
 
 if (!roomId || !updatedRoom) throw new Error('Không lấy được dữ liệu phòng sau khi lưu.')
+
+const selectedBadges = normalizeRoomBadges(roomForm.badges)
+const previousBadges = initialRoomBadgesRef.current
+const badgesChanged =
+  selectedBadges.length !== previousBadges.length ||
+  selectedBadges.some((badge, index) => badge !== previousBadges[index])
+if (badgesChanged) {
+  const badgeSave = await supabase.rpc("admin_set_room_badges_v1", {
+    p_room_id: roomId,
+    p_badges: selectedBadges,
+  })
+  if (badgeSave.error) throw badgeSave.error
+  initialRoomBadgesRef.current = selectedBadges
+}
+updatedRoom = { ...updatedRoom, badges: selectedBadges } as Room
 
 const sharedSync = await supabase.rpc('sync_room_shared_property_fields_v1', {
   p_room_id: roomId,

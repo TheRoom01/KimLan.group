@@ -1,4 +1,5 @@
 import { normalizeSearchKeyword } from "@/lib/rooms/search";
+import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type UpdatedDescCursor = {
@@ -29,6 +30,7 @@ export type FetchRoomsParams = {
 
   // ✅ NEW: lọc 1 status (null | "Trống" | "Đã thuê")
   status?: string | null;
+  badge?: RoomBadge | null;
 
   // (server) vẫn có thể truyền sortMode nếu bạn muốn đồng bộ với client
   sortMode?: "updated_desc" | "price_asc" | "price_desc" | null;
@@ -58,6 +60,7 @@ const ADMIN_L1_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "badges",
   "video_url",
   "thumb_url",
   "created_at",
@@ -82,6 +85,7 @@ const PUBLIC_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "badges",
   "video_url",
   "thumb_url",
   "created_at",
@@ -103,6 +107,7 @@ const ADMIN_L2_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "badges",
   "video_url",
   "thumb_url",
   "created_at",
@@ -142,6 +147,7 @@ export async function fetchRoomsServer(
     petPolicies,
     contractTerms,
     status,
+    badge,
     sortMode,
     anonSessionId,
   } = params;
@@ -248,7 +254,12 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_contract_terms: pContractTerms,
 
   // 4) statuses
-  p_statuses: status ? [String(status)] : null,
+  p_statuses: status || badge
+    ? [
+        ...(status ? String(status).split(",").map((value) => value.trim()).filter(Boolean) : []),
+        ...(badge ? [`__badge:${badge}`] : []),
+      ]
+    : null,
 
   // 5) sort + keyset cursor (updated_desc cần 2 khóa)
   p_sort: sortMode ?? "updated_desc",
@@ -274,7 +285,7 @@ p_anon_session_id: anonSessionId ?? null,
 
   // ✅ Cách A: DB/RPC đã tự tính quyền theo auth.uid() rồi,
 // nên không dựa vào adminLevel (tránh bug vừa login vẫn anon)
-const projected = rows;
+const projected = await attachRoomBadges(supabase, rows);
  const rawNext = (data as any)?.nextCursor ?? null;
 
  const nextCursor: string | UpdatedDescCursor | null =

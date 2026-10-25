@@ -397,7 +397,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Tìm theo từ khóa, tên đường hoặc khu vực..."
+        placeholder="Tìm theo tên đường, phường, quận..."
         className="w-full h-[46px] rounded-2xl border border-white/40 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
       />
 
@@ -415,7 +415,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
     </div>
 
     {/* Overlay bắt click-outside */}
-    {openFilter !== null && openFilter !== "amenities" && (
+    {openFilter !== null && (
       <div
         className="fixed inset-0 z-[1000] bg-black/25 backdrop-blur-[1px]"
         onClick={closeAllFilters}
@@ -535,7 +535,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
           ref={(el) => {
             if (openFilter === "roomType") openPanelRef.current = el;
           }}
-          className="home-filter-panel home-room-type-panel absolute right-0 mt-3 z-[9999] w-fit min-w-[190px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.005)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3 space-y-2"
+          className="home-filter-panel home-room-type-panel absolute left-0 top-full mt-3 z-[9999] w-max min-w-[190px] max-w-[min(92vw,320px)] max-h-[min(72dvh,520px)] overflow-y-auto rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.005)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3 space-y-2"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -601,38 +601,13 @@ const toggleStatus = (value: RoomStatusFilter) => {
 
       {openFilter === "amenities" && (
         <div
-          className="fixed inset-0 z-[1200] flex items-center justify-center p-3 sm:p-4"
-          onPointerDown={closeAllFilters}
-          onClick={closeAllFilters}
+          className="home-filter-panel absolute left-0 top-full mt-3 z-[9999] w-max min-w-[260px] max-w-[min(92vw,340px)] max-h-[min(72dvh,520px)] overflow-y-auto rounded-3xl border border-white/25 bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))] text-white backdrop-blur-[24px] shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] p-3"
+          ref={(el) => {
+            if (openFilter === "amenities") openPanelRef.current = el;
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
-
-          <div
-            ref={(el) => {
-              if (openFilter === "amenities") openPanelRef.current = el;
-            }}
-            className="home-filter-panel
-              relative z-10
-
-              w-[60%] max-w-[350px]
-              max-h-[50vh]
-              overflow-y-auto
-
-              rounded-2xl
-              border border-white/25
-
-              bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))]
-              text-white
-
-              backdrop-blur-[24px]
-
-              shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.35)]
-
-              p-3
-            "
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="text-[15px] font-semibold text-white">
                 Tiện Nghi
@@ -651,7 +626,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2">
               <div className="space-y-1.5">
                 <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
                   Di chuyển
@@ -770,7 +745,6 @@ const toggleStatus = (value: RoomStatusFilter) => {
                 Xong
               </button>
             </div>
-          </div>
         </div>
       )}
     </div>

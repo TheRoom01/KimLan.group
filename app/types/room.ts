@@ -1,4 +1,5 @@
 import type { RoomStatus } from "@/lib/owner/types";
+import type { RoomBadge } from "@/lib/roomBadges";
 
 export type { RoomStatus } from "@/lib/owner/types";
 
@@ -7,6 +8,7 @@ export type TabKey = "info" | "fee" | "amenity" | "location";
 export type Room = {
   id: string;
   property_id?: string | null;
+  badges?: RoomBadge[];
   room_code: string;
   house_number?: string | null;
   address?: string | null;

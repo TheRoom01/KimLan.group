@@ -10,6 +10,7 @@ import VipLinkManager from "./VipLinkManager";
 import type { Room, TabKey } from "@/app/types/room";
 import { supabase } from "@/lib/supabase";
 import { createPortal } from "react-dom";
+import { attachRoomBadges, ROOM_BADGES } from "@/lib/roomBadges";
 
 const PAGE_SIZE = 20;
 
@@ -18,9 +19,10 @@ type AdminClientProps = {
   initialRooms: Room[];
   initialTotal: number;
   report?: string | null;
+  roomConsultNewCount?: number;
 };
 
-export default function AdminClient({ initialRooms, initialTotal, report, }: AdminClientProps) {
+export default function AdminClient({ initialRooms, initialTotal, report, roomConsultNewCount = 0, }: AdminClientProps) {
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(1);
@@ -341,7 +343,7 @@ if (res.error) {
 }
 
 const payload: any = res.data ?? {};
-const rows = (payload.data ?? []) as Room[];
+const rows = await attachRoomBadges(supabase, (payload.data ?? []) as Room[]);
 const nextTotal = (payload.total_count ?? payload.total ?? 0) as number;
 
 // admin offset-based => không dùng cursor map
@@ -629,6 +631,13 @@ const openZaloUX = useCallback(
           </div>
       </div>
 
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 10 }}>
+        <a href="/admin/room-inquiries" style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #c9a46a", borderRadius: 12, padding: "9px 13px", background: "#fff8ed", color: "#5b351b", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+          Tư vấn / xem phòng
+          {roomConsultNewCount > 0 ? <span style={{ minWidth: 22, borderRadius: 999, padding: "2px 7px", background: "#b91c1c", color: "white", textAlign: "center", fontSize: 11 }}>{roomConsultNewCount > 99 ? "99+" : roomConsultNewCount}</span> : null}
+        </a>
+      </div>
+
       {errorMsg && <div style={{ ...errorBox, marginTop: 10 }}>{errorMsg}</div>}
       <div style={{ ...searchWrap, maxWidth: "none", marginTop: 10 }}>
         <input
@@ -815,6 +824,18 @@ const openZaloUX = useCallback(
                 }}
               >
                 <b>{(r as any).room_code ?? "-"}</b>
+                {Array.isArray((r as any).badges) && (r as any).badges.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 4, marginTop: 4 }}>
+                    {(r as any).badges.map((badgeId: string) => {
+                      const badgeMeta = ROOM_BADGES.find((item) => item.id === badgeId);
+                      return badgeMeta ? (
+                        <span key={badgeId} style={{ border: "1px solid #c49a62", borderRadius: 999, background: "#f7ead7", color: "#684324", padding: "2px 6px", fontSize: 10, fontWeight: 700 }}>
+                          {badgeMeta.label}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
               </td>
 
               <td

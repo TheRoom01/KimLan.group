@@ -17,6 +17,7 @@ import { formatVietnameseWard } from "@/lib/formatWard";
 import { extractContactPhones } from "@/lib/contactPhones";
 import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarousel";
 import RoomMediaVideo from "@/components/media/RoomMediaVideo";
+import { ROOM_BADGES, normalizeRoomBadges } from "@/lib/roomBadges";
 
 const ShareRoomModal = dynamic(() => import("@/components/share/ShareRoomModal"));
 
@@ -2118,6 +2119,19 @@ return (
             )}
           </div>
         </div>
+
+        {normalizeRoomBadges(room?.badges).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1" aria-label="Nhãn phòng">
+            {normalizeRoomBadges(room?.badges).slice(0, 3).map((badgeId) => {
+              const badge = ROOM_BADGES.find((item) => item.id === badgeId);
+              return badge ? (
+                <span key={badgeId} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold shadow-sm ${badge.className}`}>
+                  {badge.label}
+                </span>
+              ) : null;
+            })}
+          </div>
+        )}
 
         <div className="mt-2 flex items-center gap-2">
           <span className="font-medium text-[#F4E7D6]">Giá:</span>

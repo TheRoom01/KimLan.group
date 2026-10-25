@@ -75,6 +75,7 @@ export default async function HomePage({
    const dRaw = firstString(sp.d);
   const rtRaw = firstString(sp.t) ?? firstString(sp.rt);
   const stRaw = firstString(sp.st);
+  const badgeRaw = firstString(sp.badge);
   const mRaw = firstString(sp.m);
   const petRaw = firstString(sp.pet);
   const termRaw = firstString(sp.term);
@@ -129,6 +130,7 @@ export default async function HomePage({
     petPolicies,
     contractTerms,
     status,
+    badge: badgeRaw === "budget_friendly" || badgeRaw === "new_listing" || badgeRaw === "featured" || badgeRaw === "exclusive" ? badgeRaw : null,
     sortMode,
   } as const;
 

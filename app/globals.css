@@ -905,6 +905,27 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 }
 
 /* Layout-only refinements for the public room search page. */
+.home-redesign {
+  background-color: #241206;
+  color: #f3e7d6;
+}
+
+.home-discovery button:focus-visible,
+.home-filter button:focus-visible,
+.home-filter input:focus-visible,
+.home-filter textarea:focus-visible {
+  outline: 2px solid #c9a46a;
+  outline-offset: 2px;
+}
+
+.home-advanced-panel {
+  overscroll-behavior: contain;
+}
+
+.home-filter-row > div:last-child {
+  max-width: 100%;
+}
+
 .home-redesign .home-header-inner {
   width: 100%;
   max-width: 1760px;
@@ -941,21 +962,27 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 
 @media (min-width: 1024px) {
   .home-redesign .home-header-inner {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     column-gap: clamp(16px, 2vw, 28px);
     padding-block: 12px;
   }
-
-  .home-redesign .home-header-inner > :nth-child(3) {
-    grid-column: 3;
-    grid-row: 1;
-    justify-content: flex-end;
-    gap: 10px;
-  }
 }
 
 @media (max-width: 640px) {
+  .home-discovery {
+    padding-inline: 12px;
+    padding-top: 8px;
+  }
+
+  .home-filter .home-filter-row > div:last-child {
+    gap: 6px;
+  }
+
+  .home-filter .home-filter-row > div:last-child > button {
+    padding-inline: 8px;
+  }
+
   .home-redesign .home-filter-shell {
     padding-inline: 8px;
   }
@@ -1021,34 +1048,6 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 }
 
 @media (max-width: 640px) {
-  .home-filter .home-room-type-panel {
-    position: fixed;
-    top: 20vh;
-    left: 50%;
-    right: auto;
-    width: max-content;
-    min-width: 190px;
-    max-width: 92vw;
-    margin-top: 0;
-    transform: translateX(-50%);
-  }
-
-  .home-redesign .home-header-inner {
-    position: relative;
-  }
-
-  .home-redesign .home-header-inner .home-saved-link {
-    position: absolute;
-    top: 8px;
-    right: 138px;
-    width: 34px;
-    min-width: 34px;
-    height: 34px;
-    padding: 0;
-    border-radius: 50%;
-    font-size: 16px;
-  }
-
   .home-redesign .home-saved-label {
     display: none;
   }

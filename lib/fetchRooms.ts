@@ -1,4 +1,5 @@
 import { normalizeSearchKeyword } from "@/lib/rooms/search";
+import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import { supabase } from "./supabase";
 
 export type UpdatedDescCursor = {
@@ -31,6 +32,7 @@ export type FetchRoomsParams = {
   sortMode?: "updated_desc" | "price_asc" | "price_desc";
   status?: string | null;
   currentUserId?: string | null;
+  badge?: RoomBadge | null;
 };
 
 /**
@@ -62,6 +64,7 @@ const ADMIN_L1_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "badges",
   "video_url",
   "thumb_url",
   "created_at",
@@ -86,6 +89,7 @@ const PUBLIC_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "badges",
   "video_url",
   "thumb_url",
   "created_at",
@@ -107,6 +111,7 @@ const ADMIN_L2_KEYS = [
   "image_urls",
   "image_count",
   "has_video",
+  "badges",
   "video_url",
   "thumb_url",
   "created_at",
@@ -221,6 +226,7 @@ export async function fetchRooms(
     sortMode,
     status,
     currentUserId,
+    badge,
   } = params;
 
   const effectiveRoomTypes =
@@ -348,11 +354,13 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 
   // 4) statuses
   p_statuses:
-  typeof status === "string"
+  typeof status === "string" || badge
     ? Array.from(
         new Set(
-          status
-            .split(",")
+          [
+            ...(typeof status === "string" ? status.split(",") : []),
+            ...(badge ? [`__badge:${badge}`] : []),
+          ]
             .map((value) => value.trim())
             .filter(Boolean)
         )
@@ -380,7 +388,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 // - Admin L1: xem tất cả
 // - Admin L2: chỉ xem phòng của chính mình
 // - Public/Anon: không xem
-const projected = rows.map((row) => {
+  const projected = rows.map((row) => {
   const rowOwnerId = String((row as any)?.owner_id ?? "").trim();
   const userId = String(currentUserId ?? "").trim();
 
@@ -402,6 +410,7 @@ const projected = rows.map((row) => {
     zalo_phone: null,
   };
 });
+const roomsWithBadges = await attachRoomBadges(supabase, projected);
 
   // ✅ nextCursor phải lấy đúng từ RPC:
   // - updated_desc => object {updated_at,id}
@@ -432,5 +441,5 @@ const projected = rows.map((row) => {
       ? Number(rawTotal)
       : undefined;
 
-  return { data: projected, nextCursor, total };
+  return { data: roomsWithBadges, nextCursor, total };
 }

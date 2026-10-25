@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import AdminClient from "./AdminClient";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { attachRoomBadges } from "@/lib/roomBadges";
 
 const PAGE_SIZE = 20;
 
@@ -57,14 +58,19 @@ export default async function AdminPage({
     return <AdminClient initialRooms={[]} initialTotal={0} />;
   }
 
-  const rooms = ((rpcData as any)?.data ?? []) as any[];
+  const rooms = await attachRoomBadges(supabase, ((rpcData as any)?.data ?? []) as any[]);
   const total = Number((rpcData as any)?.total_count ?? (rpcData as any)?.total ?? 0);
+  const { count: roomConsultNewCount, error: roomConsultCountError } = await supabase
+    .from("room_consult_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "new");
   
   return (
   <AdminClient
     initialRooms={rooms}
     initialTotal={total}
     report={report ?? null}
+    roomConsultNewCount={roomConsultCountError ? 0 : roomConsultNewCount ?? 0}
   />
 );
 }

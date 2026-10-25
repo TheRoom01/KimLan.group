@@ -13,6 +13,8 @@ import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
 import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import AdminNotificationCenter from "@/components/admin/AdminNotificationCenter";
+import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 
 type InitialProps = {
   initialRooms: any[];
@@ -35,6 +37,7 @@ const QS = {
   term: "term",
   s: "s",
   st: "st",
+  badge: "badge",
   p: "p",
   c: "c", // ✅ cursor
 } as const;
@@ -92,6 +95,7 @@ function makeFilterSigValue(args: {
   termFilters: ("short" | "long")[];
   sortMode: SortMode;
   statusFilter: string | null;
+  badgeFilter?: RoomBadge | null;
 }) {
   return [
     args.search.trim(),
@@ -105,6 +109,7 @@ function makeFilterSigValue(args: {
     args.termFilters.join(","),
     args.sortMode,
     args.statusFilter ?? "",
+    args.badgeFilter ?? "",
   ].join("|");
 }
 
@@ -246,6 +251,7 @@ const HomeClient = ({
   const listQsRef = useRef<string>("");        // qs ổn định của list
   const didRestoreFromStorageRef = useRef(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [badgeFilter, setBadgeFilter] = useState<RoomBadge | null>(null);
   const [total, setTotal] = useState<number | null>(
     typeof initialTotal === "number" ? initialTotal : null
   );
@@ -319,6 +325,7 @@ const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
   termFilters: ("short" | "long")[];
   sortMode: SortMode;
   statusFilter: string | null;
+  badgeFilter?: RoomBadge | null;
 }) => {
   const restoredPriceFilterActive =
     next.priceFilterActive ??
@@ -329,6 +336,7 @@ const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
     ...next,
     priceFilterActive: restoredPriceFilterActive,
   });
+  setBadgeFilter(next.badgeFilter ?? null);
   pendingRestoredFilterSigRef.current = sig;
   lastFilterSigRef.current = sig;
   prevAppliedSearchRef.current = next.search.trim();
@@ -363,6 +371,7 @@ const filterSig = useMemo(() => {
     termFilters.join(","),
     sortMode,
     statusFilter ?? "",
+    badgeFilter ?? "",
   ].join("|");
 }, [
   appliedSearch,
@@ -376,6 +385,7 @@ const filterSig = useMemo(() => {
   termFilters,
   sortMode,
   statusFilter,
+  badgeFilter,
 ]);
 
 // ================== VIP State ==================
@@ -669,6 +679,7 @@ useEffect(() => {
   terms: ("short" | "long")[];
   sort: SortMode;
   status: string | null;
+  badge: RoomBadge | null;
 } | null>(null);
 
 const pageIndexRef = useRef(0);
@@ -903,6 +914,7 @@ const persistBlockedRef = useRef(false);
     term?: ("short" | "long")[];
     s?: SortMode;
     st?: string | null;
+    badge?: RoomBadge | null;
     p?: number;
     c?: UrlCursor; // ✅ thêm cursor
   }) => {
@@ -925,6 +937,7 @@ const persistBlockedRef = useRef(false);
 
     // ✅ URLSearchParams tự encode
     setOrDel(QS.st, next.st ? next.st : null);
+    if (next.badge !== undefined) setOrDel(QS.badge, next.badge);
 
     setOrDel(QS.p, typeof next.p === "number" ? String(next.p) : null);
 
@@ -989,6 +1002,7 @@ const syncPageToUrl = useCallback(
     term: termFilters,
     s: sortMode,
     st: statusFilter,
+    badge: badgeFilter,
     p: nextPageIndex,
   });
     replaceUrlShallow(nextQs);
@@ -1005,6 +1019,7 @@ const syncPageToUrl = useCallback(
   termFilters,
   sortMode,
   statusFilter,
+  badgeFilter,
   buildQs,
   replaceUrlShallow,
 ]
@@ -1047,6 +1062,8 @@ const readUrlState = useCallback(() => {
   const nextPage = Number.isFinite(p) && p >= 0 ? p : 0;
 
   const st = sp.get(QS.st) || null;
+  const badgeValue = sp.get(QS.badge);
+  const badge = ROOM_BADGES.some((item) => item.id === badgeValue) ? badgeValue as RoomBadge : null;
   const qs = canonicalQs(sp.toString());
 
   return {
@@ -1062,6 +1079,7 @@ const readUrlState = useCallback(() => {
     term: normalizedTerm,
     s,
     st,
+    badge,
     nextPage,
     c,
   };
@@ -1517,6 +1535,9 @@ const endHydrationAfterTwoFrames = useCallback(() => {
     setSortMode(snap.sortMode ?? "updated_desc");
     setTotal(typeof snap.total === "number" ? snap.total : null);
     setStatusFilter(snap.statusFilter ?? null);
+    const snapBadgeValue = new URLSearchParams(snap.qs ?? "").get(QS.badge);
+    const snapBadge = ROOM_BADGES.some((item) => item.id === snapBadgeValue) ? snapBadgeValue as RoomBadge : null;
+    setBadgeFilter(snapBadge);
 
       armRestoredFilterSig({
       search: snap.search ?? "",
@@ -1528,6 +1549,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
       termFilters: snap.termFilters ?? [],
       sortMode: snap.sortMode ?? "updated_desc",
       statusFilter: snap.statusFilter ?? null,
+      badgeFilter: snapBadge,
     });
 
       // ================== CACHE ==================
@@ -1788,6 +1810,9 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
 
   const restoredStatus = !isReloadRef.current ? rest.statusFilter ?? null : null;
   setStatusFilter(restoredStatus);
+  const restoredBadgeValue = new URLSearchParams(rest.qs ?? "").get(QS.badge);
+  const restoredBadge = !isReloadRef.current && ROOM_BADGES.some((item) => item.id === restoredBadgeValue) ? restoredBadgeValue as RoomBadge : null;
+  setBadgeFilter(restoredBadge);
 
   armRestoredFilterSig({
     search: restoredSearch,
@@ -1799,6 +1824,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     termFilters: restoredTerms,
     sortMode: restoredSort,
     statusFilter: restoredStatus,
+    badgeFilter: restoredBadge,
   });
 
   // (Giữ behavior cũ khi KHÔNG reload)
@@ -1852,6 +1878,8 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     const liteTerms = lite.termFilters ?? [];
     const liteSort = lite.sortMode ?? "updated_desc";
     const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
+    const liteBadgeValue = new URLSearchParams(lite.qs ?? "").get(QS.badge);
+    const liteBadge = !isReloadRef.current && ROOM_BADGES.some((item) => item.id === liteBadgeValue) ? liteBadgeValue as RoomBadge : null;
 
     setSearch(liteSearch);
     setPriceDraft(litePrice);
@@ -1864,6 +1892,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     setSortMode(liteSort);
     setTotal(typeof lite.total === "number" ? lite.total : null);
     setStatusFilter(liteStatus);
+    setBadgeFilter(liteBadge);
 
     armRestoredFilterSig({
       search: liteSearch,
@@ -1875,6 +1904,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
       termFilters: liteTerms,
       sortMode: liteSort,
       statusFilter: liteStatus,
+      badgeFilter: liteBadge,
     });
 
     const pIdx = lite.pageIndex ?? 0;
@@ -1921,6 +1951,7 @@ const hasAny =
     new URLSearchParams(window.location.search).has(QS.term) ||
     new URLSearchParams(window.location.search).has(QS.s) ||
     new URLSearchParams(window.location.search).has(QS.st) ||
+    new URLSearchParams(window.location.search).has(QS.badge) ||
     new URLSearchParams(window.location.search).has(QS.p) ||
     new URLSearchParams(window.location.search).has(QS.c));
 
@@ -1945,6 +1976,7 @@ pendingUrlFiltersRef.current = {
   terms: url.term,
   sort: url.s,
   status: url.st,
+  badge: url.badge,
 };
 
 const urlPrice: [number, number] = [url.minVal, url.maxVal];
@@ -1962,6 +1994,7 @@ setPetFilters(urlPets);
 setTermFilters(urlTerms);
 setSortMode(url.s);
 setStatusFilter(urlStatus);
+setBadgeFilter(url.badge);
 
 armRestoredFilterSig({
   search: url.q,
@@ -1973,6 +2006,7 @@ armRestoredFilterSig({
   termFilters: urlTerms,
   sortMode: url.s,
   statusFilter: urlStatus,
+  badgeFilter: url.badge,
 });
 
 const pageFromUrl = url.nextPage;
@@ -2084,6 +2118,8 @@ useEffect(() => {
   const liteTerms = lite.termFilters ?? [];
   const liteSort = lite.sortMode ?? "updated_desc";
   const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
+  const liteBadgeValue = new URLSearchParams(lite.qs ?? "").get(QS.badge);
+  const liteBadge = !isReloadRef.current && ROOM_BADGES.some((item) => item.id === liteBadgeValue) ? liteBadgeValue as RoomBadge : null;
   const litePriceFilterActive = hasExplicitPriceFilter(effectiveQs);
 
   setSearch(liteSearch);
@@ -2097,6 +2133,7 @@ useEffect(() => {
   setSortMode(liteSort);
   setTotal(typeof lite.total === "number" ? lite.total : null);
   setStatusFilter(liteStatus);
+  setBadgeFilter(liteBadge);
 
   const pIdx = lite.pageIndex ?? 0;
   const dIdx = lite.displayPageIndex ?? pIdx;
@@ -2112,6 +2149,7 @@ useEffect(() => {
     termFilters: liteTerms,
     sortMode: liteSort,
     statusFilter: liteStatus,
+    badgeFilter: liteBadge,
   });
   skipNextFilterEffectRef.current = true;
 
@@ -2146,6 +2184,7 @@ useEffect(() => {
   term: liteTerms,
   s: liteSort,
   st: liteStatus,
+    badge: liteBadge,
   p: pIdx,
   c: (lite.currentCursor ?? null) as UrlCursor,
 });
@@ -2163,6 +2202,7 @@ useEffect(() => {
       terms: liteTerms,
       sort: liteSort,
       status: liteStatus,
+      badge: liteBadge,
     };
 
     // ✅ fetch lại data theo filter đã restore
@@ -2204,6 +2244,7 @@ pendingUrlFiltersRef.current = {
   terms: urlTerms,
   sort: url.s,
   status: urlStatus,
+  badge: url.badge,
 };
 
 setSearch(url.q);
@@ -2216,6 +2257,7 @@ setPetFilters(urlPets);
 setTermFilters(urlTerms);
 setSortMode(url.s);
 setStatusFilter(urlStatus);
+setBadgeFilter(url.badge);
 
 armRestoredFilterSig({
   search: url.q,
@@ -2228,6 +2270,7 @@ armRestoredFilterSig({
   termFilters: urlTerms,
   sortMode: url.s,
   statusFilter: urlStatus,
+  badgeFilter: url.badge,
 });
 
 filtersVersionRef.current += 1;
@@ -2365,6 +2408,7 @@ const res = await fetchRooms({
     : undefined,
   sortMode: pending?.sort ?? sortMode,
   status: pending?.status ?? statusFilter,
+  badge: pending?.badge ?? badgeFilter,
 
   districts: (pending?.districts ?? selectedDistricts).length
     ? (pending?.districts ?? selectedDistricts)
@@ -2641,6 +2685,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     terms: [] as ("short" | "long")[],
     sort: "updated_desc" as SortMode,
     status: null,
+    badge: null as RoomBadge | null,
   };
 
   pendingUrlFiltersRef.current = defaultFilters;
@@ -2655,6 +2700,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     termFilters: defaultFilters.terms,
     sortMode: defaultFilters.sort,
     statusFilter: defaultFilters.status,
+    badgeFilter: defaultFilters.badge,
   });
 
   setSearch(defaultFilters.search);
@@ -2668,6 +2714,7 @@ const resetAllFiltersAndReload = useCallback(() => {
   setTermFilters(defaultFilters.terms);
   setSortMode(defaultFilters.sort);
   setStatusFilter(defaultFilters.status);
+  setBadgeFilter(defaultFilters.badge);
   setTotal(null);
 
   pageIndexRef.current = 0;
@@ -2686,6 +2733,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     term: defaultFilters.terms,
     s: defaultFilters.sort,
     st: defaultFilters.status,
+    badge: defaultFilters.badge,
     p: 0,
     c: null,
   }));
@@ -2765,6 +2813,7 @@ useEffect(() => {
   term: termFilters,
   s: sortMode,
   st: statusFilter,
+  badge: badgeFilter,
   p: 0,
   c: null,
 });
@@ -2813,6 +2862,7 @@ useEffect(() => {
   moveFilter,
   sortMode,
   statusFilter,
+  badgeFilter,
   buildQs,
   replaceUrlShallow,
   resetPagination,
@@ -2892,6 +2942,7 @@ pet: petFilters,
 term: termFilters,
   s: sortMode,
   st: statusFilter,
+  badge: badgeFilter,
   p: next,          // optional: hiển thị page
   c: nextCursor,    // ✅ nguồn sự thật để fetch
 });
@@ -2916,6 +2967,7 @@ persistSoon();
   sortMode,
   persistSoon,
   statusFilter,
+  badgeFilter,
   saveScrollToHistory,
   debugEnabled,
   displayPageIndex,
@@ -2947,6 +2999,7 @@ pet: petFilters,
 term: termFilters,
   s: sortMode,
   st: statusFilter,
+  badge: badgeFilter,
   p: next,
   c: prevCursor,
 });
@@ -2968,6 +3021,7 @@ persistSoon();
   sortMode,
   persistSoon,
   statusFilter,
+  badgeFilter,
   saveScrollToHistory,
 ]);
 
@@ -3041,6 +3095,17 @@ useEffect(() => {
     sub.subscription.unsubscribe();
   };
 }, [resetPagination, pageIndex, persistSoon]);
+
+useEffect(() => {
+  if (!currentUserId) return;
+  let active = true;
+  void supabase.rpc("get_my_admin_level").then(({ data, error }) => {
+    if (!active) return;
+    const level = Number(data ?? 0);
+    setAdminLevel(!error && (level === 1 || level === 2) ? level : 0);
+  });
+  return () => { active = false; };
+}, [currentUserId]);
 
  // ================== Khóa Anon ==================
 useEffect(() => {
@@ -3130,7 +3195,7 @@ const roomContactName = currentUserId
 
 // ================== RENDER ==================
 return (
-  <div className="home-redesign relative flex h-screen flex-col overflow-hidden bg-[#FFF8DC] text-[#3f2f24]">
+  <div className="home-redesign relative flex h-screen flex-col overflow-hidden bg-[#241206] text-[#F3E7D6]">
     {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
     <div className="fixed inset-0 z-0 pointer-events-none">
       <img
@@ -3139,8 +3204,9 @@ return (
         className="h-full w-full object-cover scale-105 blur-[2px]"
       />
 
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(244, 213, 164, 0.15)_0%,rgba(120, 117, 117, 0.08)_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(255, 209, 150, 0.42)_0%,transparent_45%)]" />
+      <div className="absolute inset-0 bg-[#241206]/75" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(36,18,6,0.52)_0%,rgba(36,18,6,0.88)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_0%,rgba(201,164,106,0.16)_0%,transparent_45%)]" />
     </div>
 
     <div
@@ -3157,7 +3223,7 @@ return (
           shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]
         "
       >
-        <div className="home-header-inner grid w-full max-w-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
+        <div className="home-header-inner grid w-full max-w-none grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
           {/* LEFT: LOGO + TITLE */}
           <div className="flex min-w-0 items-center gap-2 md:gap-3">
             <LogoIntroButton logoSrc="/logo-ui.webp" />
@@ -3173,7 +3239,18 @@ return (
           </div>
 
     {/* RIGHT: ACCOUNT */}
-        <div className="relative z-[3000] shrink-0 whitespace-nowrap self-start">
+        <div className="relative z-[3000] flex shrink-0 items-center gap-2 whitespace-nowrap">
+          <a
+            href="/saved"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Phòng đã lưu"
+            title="Phòng đã lưu"
+            className="home-saved-link flex h-[34px] min-w-[34px] shrink-0 items-center justify-center rounded-full border border-[#E5C9A9]/25 bg-[rgba(45,27,20,0.55)] px-0 text-base font-semibold text-[#E5C9A9] backdrop-blur-[20px] shadow-[0_10px_26px_rgba(0,0,0,0.35)] transition hover:bg-[rgba(255,255,255,0.08)] md:min-w-[118px] md:rounded-2xl md:px-4 md:text-xs"
+          >
+            <span className="home-saved-star">★</span>
+            <span className="home-saved-label"> Phòng đã lưu</span>
+          </a>
           {/* ACCOUNT */}
           <div
             id="auth-anchor"
@@ -3187,65 +3264,33 @@ return (
               shadow-[0_10px_26px_rgba(0,0,0,0.35)]
             "
           />
-
+          {currentUserId && (adminLevel === 1 || adminLevel === 2) ? <AdminNotificationCenter /> : null}
         </div>
 
-     {/* MAP + SAVED */}
-      <div className="col-span-2 flex items-center justify-between gap-2">
-      <a
-        href="/saved"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Phòng đã lưu"
-        title="Phòng đã lưu"
-        className="home-saved-link
-          flex h-[34px] min-w-[118px] items-center justify-center
-          rounded-2xl border border-[#E5C9A9]/25
-          bg-[rgba(45,27,20,0.55)]
-          px-4
-          text-[12px] font-semibold text-[#E5C9A9]
-          backdrop-blur-[20px]
-          shadow-[0_10px_26px_rgba(0,0,0,0.35)]
-          transition
-          hover:bg-[rgba(255,255,255,0.08)]
-        "
-      >
-        <span className="home-saved-star">★</span>
-        <span className="home-saved-label"> Phòng đã lưu</span>
-      </a>
-      </div>
         </div>
       </header>
 
-     {/* FILTER BAR */}
-      <div className="home-filter-shell relative z-[900]">
-        <div className="w-full max-w-none px-0.5 pt-0.5 sm:px-3 lg:px-4">
-          <div
-            className="
-              [&_button]:inline-flex
-              [&_button]:items-center
-              [&_button]:justify-center
-              [&_button]:whitespace-nowrap
-              [&_button]:w-fit
-              [&_button]:max-w-full
-              [&_button]:h-auto
-              [&_button]:min-h-[35px]
-              [&_button]:px-2
-              [&_button]:py-0.5
-              [&_button]:text-[11px]
-              [&_button]:leading-none
-              [&_button]:rounded-full
-              [&_button]:box-border
+      <section className="home-discovery mx-auto w-full max-w-[1440px] px-4 pb-1 pt-3 sm:px-6 md:pt-4">
+          <nav aria-label="Lối tắt tìm kiếm" className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {ROOM_BADGES.map((badge) => {
+              const active = badgeFilter === badge.id;
+              return (
+                <button
+                  key={badge.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setBadgeFilter((current) => current === badge.id ? null : badge.id)}
+                  className={`home-shortcut shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${active ? "border-[#C9A46A]/80 bg-[#C9A46A]/25 text-[#FFE8C6] shadow-[0_0_18px_rgba(201,164,106,.18)]" : "border-white/15 bg-white/[.06] text-[#F3E7D6] hover:border-[#C9A46A]/55 hover:bg-white/10"}`}
+                >
+                  {badge.label}
+                </button>
+              );
+            })}
+          </nav>
+      </section>
 
-              [&_input]:h-8
-              [&_input]:px-2
-              [&_input]:text-[11px]
-              [&_select]:h-8
-              [&_select]:px-2
-              [&_select]:text-[11px]
-              [&_label]:text-[11px]
-            "
-          >
+     {/* FILTER BAR */}
+      <div className="home-filter-shell relative z-[5000] mx-auto w-full max-w-[1440px] px-4 py-3 sm:px-6">
             <FilterBar
               districts={districts}
               roomTypes={roomTypes}
@@ -3273,8 +3318,6 @@ return (
               total={total}
               onResetAll={resetAllFiltersAndReload}
             />
-          </div>
-        </div>
       </div>
           {debugEnabled && pageDebug && (
         <div

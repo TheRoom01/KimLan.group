@@ -1,6 +1,7 @@
 /* ================= TYPES ================= */
 
 import type { RoomStatus } from '../../types/room'
+import type { RoomBadge } from '@/lib/roomBadges'
 
 export type TabKey = 'info' | 'fee' | 'amenity' | 'location'
 export type MediaItem = {
@@ -11,6 +12,7 @@ export type MediaItem = {
 
 
 export type RoomForm = {
+  badges?: RoomBadge[]
   property_id?: string
   room_code: string
   room_type: string

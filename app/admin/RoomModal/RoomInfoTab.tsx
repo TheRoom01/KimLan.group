@@ -8,6 +8,7 @@ import type { RoomForm } from './types'
 import type { RoomStatus } from '../../types/room'
 import { sectionBox } from './styles'
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
+import { ROOM_BADGES, normalizeRoomBadges } from "@/lib/roomBadges";
 
 
 type Props = {
@@ -378,6 +379,62 @@ useEffect(() => {
           </div>
         </div>
       </div>
+
+      <section
+        aria-labelledby="room-badges-heading"
+        style={{
+          marginTop: 18,
+          padding: 14,
+          border: "1px solid rgba(129, 89, 55, .22)",
+          borderRadius: 14,
+          background: "rgba(255, 248, 238, .62)",
+        }}
+      >
+        <h3 id="room-badges-heading" style={{ ...labelStyle, marginBottom: 4 }}>
+          Badge hiển thị
+        </h3>
+        <p style={{ margin: "0 0 12px", color: "#806a55", fontSize: 12, lineHeight: 1.5 }}>
+          Chọn các nhãn muốn hiển thị trên thẻ phòng.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {ROOM_BADGES.map((badge) => {
+            const selected = normalizeRoomBadges(value.badges).includes(badge.id);
+            return (
+              <label
+                key={badge.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  maxWidth: "100%",
+                  padding: "8px 11px",
+                  borderRadius: 999,
+                  border: `1px solid ${selected ? "#a9773d" : "rgba(107, 76, 51, .28)"}`,
+                  background: selected ? "rgba(201, 164, 106, .28)" : "rgba(255,255,255,.66)",
+                  color: "#553820",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => {
+                    const current = normalizeRoomBadges(value.badges);
+                    const next = selected
+                      ? current.filter((item) => item !== badge.id)
+                      : [...current, badge.id];
+                    onChange({ ...value, badges: next });
+                  }}
+                  style={{ accentColor: "#9a662e" }}
+                />
+                {badge.label}
+              </label>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Preview ảnh */}
 {imageUrls.filter((u: string) => /^https?:\/\//.test(u)).length > 0 && (

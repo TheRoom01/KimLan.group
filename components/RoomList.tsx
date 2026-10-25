@@ -55,6 +55,13 @@ const RoomList = ({
 
   return (
     <main className="home-room-list relative z-0 w-full max-w-none px-2 sm:px-3 lg:px-4 pb-36 pt-2">
+      <div id="phong" className="mx-auto mb-3 flex max-w-[1800px] items-end justify-between gap-3 px-1 sm:px-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#c9a46a]">The Room SG</p>
+          <h2 className="mt-0.5 text-lg font-semibold text-[#f3e7d6] sm:text-xl">Phòng phù hợp</h2>
+        </div>
+        {!fetchError && !showInitialSkeleton ? <span className="shrink-0 text-xs text-[#c8b7a5]">{hasRooms ? `${roomsToRender.length} phòng trên trang này` : "Thay đổi bộ lọc để tìm thêm phòng"}</span> : null}
+      </div>
       {isRefreshing && hasRooms && (
         <div className="mb-3 rounded-[15px] border border-[rgba(197,165,130,0.16)] bg-[rgba(45,27,20,0.35)] px-4 py-2 text-sm text-[#A0856E] backdrop-blur-[20px]">
           Đang cập nhật danh sách...
