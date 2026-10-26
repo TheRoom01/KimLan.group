@@ -17,6 +17,7 @@ import { formatVietnameseWard } from "@/lib/formatWard";
 import { extractContactPhones } from "@/lib/contactPhones";
 import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarousel";
 import RoomMediaVideo from "@/components/media/RoomMediaVideo";
+import RoomInquiryModal from "@/components/rooms/RoomInquiryModal";
 import { ROOM_BADGES, normalizeRoomBadges } from "@/lib/roomBadges";
 
 const ShareRoomModal = dynamic(() => import("@/components/share/ShareRoomModal"));
@@ -319,6 +320,7 @@ export default function RoomDetailClient({
   useRoomView(room?.id);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [inquiryOpen, setInquiryOpen] = useState(false);
   const [phoneModal, setPhoneModal] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
 
@@ -722,6 +724,23 @@ async function copyText(text: string) {
   } catch {
     return false;
   }
+}
+
+async function handlePublicRoomShare() {
+  const url = `${window.location.origin}/rooms/${encodeURIComponent(String(room?.id ?? id))}?modal=1`;
+  const title = room?.room_code ? `Phòng ${room.room_code}` : "The Room SG";
+
+  try {
+    if (navigator.share) {
+      await navigator.share({ title, url });
+      return;
+    }
+  } catch {
+    // Match the list card: copy the room link when native sharing is unavailable or dismissed.
+  }
+
+  const copied = await copyText(url);
+  showToast(copied ? "Đã copy link phòng" : "Không thể copy link — hãy copy thủ công");
 }
 
 
@@ -1599,26 +1618,26 @@ return (
             </button>
           )}
 
-          {/* Ngày cập nhật: sát đáy ảnh; với video nằm trên native controls. */}
-            {updatedText && (
-              <div
-                className={`
-                  pointer-events-none
-                  absolute right-3 z-20
-                  max-w-[calc(100%-24px)]
-                  rounded-full
-                  border border-white/20
-                  bg-black/50
-                  px-2.5 py-1
-                  text-[11px] font-medium text-white/90
-                  backdrop-blur-[10px]
-                  shadow-[0_6px_20px_rgba(0,0,0,0.35)]
-                  ${activeItem?.kind === "video" ? "bottom-16" : "bottom-3"}
-                `}
-              >
-                Đã cập nhật: {updatedText}
+          {/* Badge và ngày cập nhật cùng hàng ở sát đáy ảnh; video nằm trên native controls. */}
+          {(normalizeRoomBadges(room?.badges).length > 0 || updatedText) && (
+            <div className={`pointer-events-none absolute inset-x-3 z-20 flex items-center justify-between gap-2 ${activeItem?.kind === "video" ? "bottom-16" : "bottom-3"}`}>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                {normalizeRoomBadges(room?.badges).slice(0, 3).map((badgeId) => {
+                  const badge = ROOM_BADGES.find((item) => item.id === badgeId);
+                  return badge ? (
+                    <span key={badgeId} className={`max-w-full truncate rounded-full border px-2.5 py-1 text-[11px] font-bold shadow-sm ${badge.className}`}>
+                      {badge.label}
+                    </span>
+                  ) : null;
+                })}
               </div>
-            )}
+              {updatedText && (
+                <div className="max-w-[55%] shrink-0 truncate rounded-full border border-white/20 bg-black/50 px-2.5 py-1 text-[11px] font-medium text-white/90 shadow-[0_6px_20px_rgba(0,0,0,0.35)] backdrop-blur-[10px]">
+                  Đã cập nhật: {updatedText}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-0">
@@ -1778,7 +1797,11 @@ return (
               type="button"
               onClick={() => {
                 setZaloMenuOpen(false);
-                setShareOpen(true);
+                if (adminLevel === 1 || adminLevel === 2) {
+                  setShareOpen(true);
+                } else {
+                  void handlePublicRoomShare();
+                }
               }}
               className="
                 inline-flex h-9 shrink-0 items-center justify-center gap-1.5
@@ -2120,27 +2143,24 @@ return (
           </div>
         </div>
 
-        {normalizeRoomBadges(room?.badges).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pt-1" aria-label="Nhãn phòng">
-            {normalizeRoomBadges(room?.badges).slice(0, 3).map((badgeId) => {
-              const badge = ROOM_BADGES.find((item) => item.id === badgeId);
-              return badge ? (
-                <span key={badgeId} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold shadow-sm ${badge.className}`}>
-                  {badge.label}
-                </span>
-              ) : null;
-            })}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-[#F4E7D6]">Giá:</span>
+            <span
+              className="font-semibold text-[20px]"
+              style={{ color: ROOM_THEME.modalAccent }}
+            >
+              {formatVND(room?.price)}
+            </span>
           </div>
-        )}
 
-        <div className="mt-2 flex items-center gap-2">
-          <span className="font-medium text-[#F4E7D6]">Giá:</span>
-          <span
-            className="font-semibold text-[20px]"
-            style={{ color: ROOM_THEME.modalAccent }}
+          <button
+            type="button"
+            onClick={() => setInquiryOpen(true)}
+            className="ml-auto inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-3 text-xs font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
           >
-            {formatVND(room?.price)}
-          </span>
+            <span aria-hidden="true">✦</span> Đặt lịch/Tư vấn
+          </button>
         </div>
 
         {addressLine && (
@@ -2183,12 +2203,12 @@ return (
         {feeRows.length > 0 ? (
           <div className="space-y-1">
             {feeRows.map((r) => (
-              <p key={r.label} className="leading-6">
-                <span className="font-medium">{r.label}:</span>{" "}
-                <span className="whitespace-pre-wrap break-words">
+              <div key={r.label} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-3 leading-6">
+                <span className="min-w-0 font-medium">{r.label}:</span>
+                <span className="min-w-0 whitespace-pre-wrap break-words text-right">
                   {r.value}
                 </span>
-              </p>
+              </div>
             ))}
           </div>
         ) : (
@@ -2383,6 +2403,22 @@ return (
     roomUrl={roomShareUrl}
     adminLevel={adminLevel === 1 || adminLevel === 2 ? adminLevel : 0}
     detail={detail}
+  />
+)}
+
+{inquiryOpen && (
+  <RoomInquiryModal
+    open={inquiryOpen}
+    onClose={() => setInquiryOpen(false)}
+    room={{
+      id: String(room?.id ?? id),
+      code: String(roomCode || String(room?.id ?? id).slice(0, 8)),
+      type: String(roomType || "Phòng cho thuê"),
+      address: String(addressLine || "Địa chỉ đang cập nhật"),
+      price: Number.isFinite(Number(room?.price)) ? Number(room.price) : null,
+      image: imageUrls[0] || null,
+      href: `/rooms/${id}?modal=1`,
+    }}
   />
 )}
 

@@ -1513,7 +1513,7 @@ return (
           }}
           className="inline-flex min-h-[31px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-2.5 text-[10px] font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
         >
-          <span aria-hidden="true">✦</span> Đặt lịch
+          <span aria-hidden="true">✦</span> Đặt lịch/Tư vấn
         </button>
         {contactPhones.length > 0 && (
           <button
