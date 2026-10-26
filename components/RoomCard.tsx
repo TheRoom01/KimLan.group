@@ -903,7 +903,7 @@ const statusBadgeBaseClass =
   "inline-flex !min-h-0 items-center justify-center rounded-full font-bold leading-none whitespace-nowrap backdrop-blur-[12px] border";
 
 const statusBadgeAnonClass =
-  "h-[30px] min-w-[92px] px-1.5 py-0 text-[15px]";
+  "!h-[30px] !min-h-0 !min-w-[92px] !px-1.5 !py-0 !text-[15px]";
 
 const statusBadgeAdminClass =
   "!h-[30px] !min-h-0 !min-w-[92px] !px-1.5 !py-0 !text-[15px]";
@@ -1513,7 +1513,7 @@ return (
           }}
           className="inline-flex min-h-[31px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-2.5 text-[10px] font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
         >
-          <span aria-hidden="true">✦</span> Đặt lịch/Tư vấn
+          <span aria-hidden="true">✦</span> Đi xem/Tư vấn
         </button>
         {contactPhones.length > 0 && (
           <button
@@ -1564,18 +1564,20 @@ return (
                 }}
                 icon={<ShareIcon />}
               />
-              <ToolbarButton
-                label="Zalo"
-                title={isAdmin ? "Mở Zalo" : "Bạn cần đăng nhập để xem link Zalo"}
-                disabled={!isAdmin}
-                buttonRef={zaloButtonRef}
-                onClick={(event) => void openZaloFromToolbar(event)}
-                icon={
-                  <span className="grid h-4 w-4 place-items-center rounded-full border border-white/60 text-[9px] font-black leading-none">
-                    Z
-                  </span>
-                }
-              />
+              {currentUserIdValue ? (
+                <ToolbarButton
+                  label="Zalo"
+                  title={isAdmin ? "Mở Zalo" : "Bạn cần đăng nhập để xem link Zalo"}
+                  disabled={!isAdmin}
+                  buttonRef={zaloButtonRef}
+                  onClick={(event) => void openZaloFromToolbar(event)}
+                  icon={
+                    <span className="grid h-4 w-4 place-items-center rounded-full border border-white/60 text-[9px] font-black leading-none">
+                      Z
+                    </span>
+                  }
+                />
+              ) : null}
               <ToolbarButton
                 label="GG Maps"
                 title={mapsToolbarUrl ? "Mở vị trí trong Google Maps" : "Phòng chưa có link Google Maps"}

@@ -2159,7 +2159,7 @@ return (
             onClick={() => setInquiryOpen(true)}
             className="ml-auto inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-3 text-xs font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
           >
-            <span aria-hidden="true">✦</span> Đặt lịch/Tư vấn
+            <span aria-hidden="true">✦</span> Đi xem/Tư vấn
           </button>
         </div>
 

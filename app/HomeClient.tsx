@@ -3516,7 +3516,7 @@ return (
                   type="button"
                   aria-pressed={active}
                   onClick={() => setBadgeFilter((current) => current === badge.id ? null : badge.id)}
-                  className={`home-shortcut shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${active ? "border-[#C9A46A]/80 bg-[#C9A46A]/25 text-[#FFE8C6] shadow-[0_0_18px_rgba(201,164,106,.18)]" : "border-white/15 bg-white/[.06] text-[#F3E7D6] hover:border-[#C9A46A]/55 hover:bg-white/10"}`}
+                  className={`home-shortcut shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition ${badge.className} ${active ? "ring-2 ring-white/35 shadow-[0_0_18px_rgba(255,255,255,.16)]" : "hover:brightness-110"}`}
                 >
                   {badge.label}
                 </button>
