@@ -3,7 +3,15 @@
   "internalSecret": "",
   "scanIntervalMs": 600000,
   "messageLookbackHours": 24,
-"strictMessageLookback": true,
+  "strictMessageLookback": true,
+  "previewOnly": false,
+  "previewOnlyGroupKeys": [
+    "Gio-Hang-Can-Ho-Q1-Q3-Q10"
+  ],
+  "stagingOnlyImport": true,
+  "stagingOnlyGroupKey": "Gio-Hang-Can-Ho-Q1-Q3-Q10",
+  "stagingOnlyGroupId": "g1986619726266954037",
+  "stagingOnlyMaxMessages": 10,
   "networkDebug": false,
   "networkDebugOnly": false,
   "debugRetentionDays": 7,
@@ -21,7 +29,6 @@
   "indexedDbRoomPreview": true,
   "indexedDbRoomPreviewMaxGapMs": 600000,
   "indexedDbImportEnabled": true,
-  
   "indexedDbImportLimit": 20,
   "indexedDbScrollStepRatio": 0.7,
   "indexedDbScrollWaitMs": 800,
@@ -144,6 +151,21 @@
     {
       "key": "Top-Du-An-Quan-10-Tren-6tr",
       "name": "TOP DỰ ÁN QUẬN 10 TRÊN 6TR",
+      "parser": "semantic-timeline",
+      "parserOptions": {
+        "mediaBias": "auto",
+        "buildingBoundary": "address-or-separator",
+        "splitBySender": false,
+        "allowMediaOnly": true,
+        "allowTextOnly": true,
+        "maxMediaGapMs": 1800000,
+        "boundaryGapMs": 2700000,
+        "uncertainScoreDelta": 18
+      }
+    },
+    {
+      "key": "Gio-Hang-Can-Ho-Q1-Q3-Q10",
+      "name": "Giỏ Hàng Căn Hộ Q1,Q3,Q10 🏠",
       "parser": "semantic-timeline",
       "parserOptions": {
         "mediaBias": "auto",

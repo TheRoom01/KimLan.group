@@ -15,8 +15,10 @@ export type Phase2RoomMarkerAnalysis = {
 
 function priceStartIndex(input: string) {
   const patterns = [
+    /\b\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:đ|d|đồng|dong)?\b/i,
     /\b\d+\s*(?:tr|triệu)\d{0,3}\b/i,
     /\b\d+(?:[.,]\d+)?\s*(?:tr|triệu)\b/i,
+    /\b\d+(?:[.,]\d+)?\s*k\b/i,
     /\b\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:đ|d|đồng|dong)?\b/i,
   ];
 
@@ -30,9 +32,18 @@ function priceStartIndex(input: string) {
 }
 
 function normalizeRoomCode(input: string) {
-  return String(input || "")
-    .replace(/[.\s]+/g, "")
-    .toUpperCase();
+  const raw = cleanText(input);
+  const floor = raw.match(/^lầu\s*(\d{1,2})$/i);
+  if (floor?.[1]) return `Lầu ${Number(floor[1])}`;
+  if (/^trệt$/i.test(raw)) return "Trệt";
+
+  const dottedP = raw.match(/^p\s*\.\s*([a-z]?\d{2,4}[a-z]?)$/i);
+  if (dottedP?.[1]) return `P.${dottedP[1].toUpperCase()}`;
+
+  const compactP = raw.match(/^p\s*([a-z]?\d{2,4}[a-z]?)$/i);
+  if (compactP?.[1]) return `P${compactP[1].toUpperCase()}`;
+
+  return raw.replace(/[.\s]+/g, "").toUpperCase();
 }
 
 function extractExplicitLabeledRoomCodes(line: string) {
@@ -48,66 +59,83 @@ function extractExplicitLabeledRoomCodes(line: string) {
    * Dùng dấu ^ để không nhận nhầm "Giá phòng: 16.500.000".
    */
   const match = normalized.match(
-    /^(?:phong|ma phong|ma)\s*[,.:;\-]*\s*((?:p\s*\.?\s*)?[a-z]{0,2}\d{2,4}[a-z]?)(?=\s*(?:[,.:;\-]|$))/i
+    /^(?:phong|ma phong|ma)\s*[,.:;\-]*\s*(.*)$/i
   );
+  if (!match?.[1]) return [];
+  return extractRoomCodesFromLine(match[1]);
+}
 
-  if (!match?.[1]) {
-    return [];
+const ROOM_CODE_PATTERN =
+  /(?:p\s*\.\s*[a-z]?\d{2,4}[a-z]?|p\s*[a-z]?\d{2,4}[a-z]?|[a-z]{1,2}\d{2,4}[a-z]?|\d{2,4}[a-z]?|lầu\s*\d{1,2}|trệt)/gi;
+
+function extractRoomCodesFromLine(input: string) {
+  const line = cleanText(input);
+  const priceIndex = priceStartIndex(line);
+  let beforePrice = priceIndex >= 0 ? line.slice(0, priceIndex) : line;
+  let afterPrice = priceIndex >= 0 ? line.slice(priceIndex + (line.slice(priceIndex).match(ROOM_PRICE_PREFIX)?.[0].length || 0)) : "";
+
+  // Do not interpret a date such as 1/11 as a numeric room code.
+  beforePrice = beforePrice.replace(/^\s*\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+/, "");
+  afterPrice = afterPrice.split(/\b(?:trống|còn\s*trống|đã\s*thuê|hết\s*phòng|available)\b/i)[0] || "";
+
+  const labelled = line.match(/(?:mã\s*phòng|mã|phòng)\s*[:\-]?\s*([^\n]*)/i);
+  if (labelled?.[1]) {
+    const labelledEnd = labelled[1].split(/\b(?:trống|đã\s*thuê|hết\s*phòng|available)\b/i)[0] || "";
+    const labelledCodes = Array.from(labelledEnd.matchAll(ROOM_CODE_PATTERN)).map((item) => item[0]);
+    if (labelledCodes.length) return normalizeRoomCodeList(labelledCodes);
   }
 
-  const code = normalizeRoomCode(match[1]);
+  const postPriceWithoutAmounts = afterPrice.replace(
+    new RegExp(ROOM_PRICE_PREFIX.source, "gi"),
+    " "
+  );
+  const postCodes = Array.from(postPriceWithoutAmounts.matchAll(ROOM_CODE_PATTERN)).map((item) => item[0]);
+  const preCodeMatches = Array.from(beforePrice.matchAll(ROOM_CODE_PATTERN));
 
-  return code ? [code] : [];
+  // Bare numeric room codes require a room-type or availability cue before
+  // them; this avoids mistaking building/address numbers for room identifiers.
+  const roomCuePattern = /\b(?:studio|[1-9]\s*pn|trống(?:\s*sẵn)?|còn\s*trống|đã\s*thuê|hết\s*phòng)\b/gi;
+  const cueEnds = Array.from(beforePrice.matchAll(roomCuePattern)).map(
+    (match) => (match.index || 0) + match[0].length
+  );
+  const numericCodesStart = cueEnds.length ? Math.max(...cueEnds) : Number.POSITIVE_INFINITY;
+  const safePreCodes = preCodeMatches
+    .filter((match) => /^(?:p\s*\.?|[a-z])/i.test(match[0]))
+    .map((match) => match[0]);
+  for (const match of preCodeMatches) {
+    if (/^\d{2,4}[a-z]?$/i.test(match[0]) && (match.index || 0) >= numericCodesStart) {
+      safePreCodes.push(match[0]);
+    }
+  }
+
+  // A standalone numeric marker before price remains valid when it occupies
+  // the entire prefix (for example, `202 - 9tr`).
+  const barePrefix = beforePrice.trim().match(/^(\d{2,4}[a-z]?)\s*[-:.,]?\s*$/i);
+  if (barePrefix?.[1]) safePreCodes.push(barePrefix[1]);
+
+  const codes = [...safePreCodes, ...postCodes];
+  return normalizeRoomCodeList(codes);
+}
+
+const ROOM_PRICE_PREFIX = /\b\d{1,3}(?:[.,]\d{3}){1,2}\s*(?:đ|d|đồng|dong)?\b|\b\d+\s*(?:tr|triệu)\d{0,3}\b|\b\d+(?:[.,]\d+)?\s*(?:tr|triệu|k)\b/i;
+
+function normalizeRoomCodeList(rawCodes: string[]) {
+  const codes = Array.from(new Set(rawCodes.map(normalizeRoomCode).filter(Boolean)));
+  const floors = codes.filter((code) => /^(?:Lầu \d+|Trệt)$/i.test(code));
+  const roomCodes = codes.filter((code) => !floors.includes(code));
+
+  if (roomCodes.length === 1 && floors.length === 1) {
+    return [`${roomCodes[0]} _ ${floors[0]}`];
+  }
+
+  return codes;
 }
 
 function extractCodesBeforePrice(line: string) {
   const cleanLine = cleanText(line);
-
-    const explicitCodes =
-    extractExplicitLabeledRoomCodes(cleanLine);
-
-  if (explicitCodes.length > 0) {
-    return explicitCodes;
-  }
-  const priceIndex = priceStartIndex(cleanLine);
-
-  if (priceIndex < 0) return [];
-
-  const prefix = cleanLine
-    .slice(0, priceIndex)
-    .replace(
-      /^\s*\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+/,
-      ""
-    );
-
-  const codes: string[] = [];
-
-  for (const match of prefix.matchAll(
-    /\bp\s*\.?\s*(\d{2,4}[a-z]?)\b/gi
-  )) {
-    const code = normalizeRoomCode(`P${match[1]}`);
-    if (code) codes.push(code);
-  }
-
-  const withoutPCodes = prefix.replace(
-    /\bp\s*\.?\s*\d{2,4}[a-z]?\b/gi,
-    " "
-  );
-
-  for (const match of withoutPCodes.matchAll(
-    /(?:^|[^\d/])([a-z]{0,2}\d{2,4}[a-z]?)(?=$|[^\d])/gi
-  )) {
-    const raw = normalizeRoomCode(match[1]);
-
-    if (!raw) continue;
-    if (/^\d{1}$/.test(raw)) continue;
-    if (/^\d+PN$/i.test(raw)) continue;
-    if (/^\d+M2$/i.test(raw)) continue;
-
-    codes.push(raw);
-  }
-
-  return Array.from(new Set(codes));
+  const explicitCodes = extractExplicitLabeledRoomCodes(cleanLine);
+  if (explicitCodes.length > 0) return explicitCodes;
+  return extractRoomCodesFromLine(cleanLine);
 }
 
 function extractCodeFromRoomField(lines: string[]) {
@@ -123,15 +151,7 @@ function extractCodeFromRoomField(lines: string[]) {
     const rawValue = String(match[1] || "").trim();
     if (!rawValue) return [];
 
-    const codes = Array.from(
-      rawValue.matchAll(
-        /(?:p\s*\.?\s*)?([a-z]{0,2}\d{2,4}[a-z]?)/gi
-      )
-    )
-      .map((item) => normalizeRoomCode(item[1]))
-      .filter(Boolean);
-
-    return Array.from(new Set(codes));
+    return extractRoomCodesFromLine(rawValue);
   }
 
   return [];

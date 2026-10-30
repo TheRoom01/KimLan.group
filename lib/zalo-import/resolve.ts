@@ -119,33 +119,6 @@ function normalizeBuildingPayload(
   }
 }
 
-/**
- * Mặc định phòng có máy giặt chung khi:
- * - Tin Zalo không nói rõ;
- * - Không lấy được dữ liệu từ phòng cùng nhà.
- *
- * Giá trị false rõ ràng vẫn được giữ nguyên.
- */
-function applyDetailDefaults(
-  detailPayload: Record<string, any>,
-  inheritedFieldMap: Record<string, string>
-) {
-  if (
-    isEmptyValue(
-      detailPayload.shared_washer
-    )
-  ) {
-    detailPayload.shared_washer = true;
-
-    if (
-      !inheritedFieldMap.shared_washer
-    ) {
-      inheritedFieldMap.shared_washer =
-        "Mặc định có máy giặt chung";
-    }
-  }
-}
-
 export async function resolveZaloImportRoom(params: {
   supabase: AnySupabase;
   roomPayload: Record<string, any>;
@@ -188,11 +161,6 @@ export async function resolveZaloImportRoom(params: {
   ).trim();
 
   if (!houseNumber || !address || !district) {
-    applyDetailDefaults(
-      detailPayload,
-      inheritedFieldMap
-    );
-
     return {
       roomPayload,
       detailPayload,
@@ -267,11 +235,6 @@ export async function resolveZaloImportRoom(params: {
       matchedReason =
         "Trùng số nhà + đường + quận + mã phòng";
 
-      applyDetailDefaults(
-        detailPayload,
-        inheritedFieldMap
-      );
-
       return {
         roomPayload,
         detailPayload,
@@ -290,11 +253,6 @@ export async function resolveZaloImportRoom(params: {
       | undefined) || null;
 
   if (!sampleRoom) {
-    applyDetailDefaults(
-      detailPayload,
-      inheritedFieldMap
-    );
-
     return {
       roomPayload,
       detailPayload,
@@ -336,11 +294,6 @@ export async function resolveZaloImportRoom(params: {
   );
 
   if (detailErr) {
-    applyDetailDefaults(
-      detailPayload,
-      inheritedFieldMap
-    );
-
     return {
       roomPayload,
       detailPayload,
@@ -414,11 +367,6 @@ export async function resolveZaloImportRoom(params: {
       }
     }
   }
-
-  applyDetailDefaults(
-    detailPayload,
-    inheritedFieldMap
-  );
 
   return {
     roomPayload,

@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import os from "os";
+import readline from "readline";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -10,6 +11,30 @@ import {
   buildSemanticTimelineRooms,
   type SemanticParserOptions,
 } from "./parsers";
+import { parseZaloRoomText } from "../../lib/zalo-import/parser";
+import {
+  filterMessagesForPreview,
+  hashPreviewReference,
+  isReaderImportAllowed,
+  PHASE5_PREVIEW_GROUP_NAME,
+  PREVIEW_LOGIN_WAIT_MS,
+  sanitizePreviewText,
+  waitForUiReady,
+  type PreviewTimestampResult,
+} from "./parsers/phase5-preview";
+import {
+  CONTROLLED_ZALO_GROUP_ID,
+  CONTROLLED_ZALO_GROUP_NAME,
+  isControlledZaloTarget,
+  selectControlledStagingRooms,
+} from "../../lib/zalo-reader/controlled-staging";
+import {
+  assertStagingImportApiAvailable,
+  buildStagingRoomContent,
+  resolveStagingImportEndpoint,
+  StagingImportTransportError,
+  ZALO_READER_IMPORT_PATH,
+} from "../../lib/zalo-reader/staging-import-transport";
 
 import {
   filterMessagesByLookback,
@@ -67,6 +92,15 @@ type Config = {
   maxImagesPerBatch: number;
   maxFollowingImageMessages: number;
   groups: GroupConfigEntry[];
+  /** Hard side-effect barrier for local-only validation. */
+  previewOnly?: boolean;
+  /** Restrict preview mode to these configured group keys. */
+  previewOnlyGroupKeys?: string[];
+  /** Armed staging mode still requires previewOnly=false to send anything. */
+  stagingOnlyImport?: boolean;
+  stagingOnlyGroupKey?: string;
+  stagingOnlyGroupId?: string;
+  stagingOnlyMaxMessages?: number;
   roomTextKeywords: string[];
 
   networkDebug?: boolean;
@@ -194,6 +228,8 @@ type IndexedDbGroupMessage = {
     | null;
   sendDttm: number;
   serverTime: number;
+  strictTimestampOnly?: boolean;
+  trustedTimestampMs?: number;
   fromUid: string;
   toUid: string;
   senderName: string;
@@ -239,6 +275,7 @@ type IndexedDbRoomPreviewAlbum = {
 
 type IndexedDbRoomPreview = {
   sourceHash: string;
+  roomCode?: string;
 
   groupId: string;
   senderUid: string;
@@ -299,6 +336,9 @@ type RoomUnit = {
 
   sourceMessageId?: string;
   sentAt?: string;
+  groupId?: string;
+  stagingOnly?: boolean;
+  readerStartedAtMs?: number;
 
   videos?: IndexedDbVideoPayload[];
 
@@ -341,10 +381,18 @@ const GROUP_REFS_PATH =
   );
 
 const PROFILE_DIR =
-  path.join(
-    ROOT,
-    ".zalo-reader/profile"
-  );
+  String(
+    process.env.ZALO_READER_PROFILE_DIR || ""
+  ).trim()
+    ? path.resolve(
+        String(
+          process.env.ZALO_READER_PROFILE_DIR
+        ).trim()
+      )
+    : path.join(
+        ROOT,
+        ".zalo-reader/profile"
+      );
 
 const NETWORK_SESSION_ID = new Date()
   .toISOString()
@@ -504,15 +552,29 @@ function readConfig(): Config {
 
   const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 
-  config.webBaseUrl =
-    process.env.ZALO_READER_WEB_BASE_URL ||
-    config.webBaseUrl;
+  if (
+    config.previewOnly !== undefined &&
+    typeof config.previewOnly !== "boolean"
+  ) {
+    throw new Error("previewOnly must be a JSON boolean; refusing an ambiguous safety mode.");
+  }
+
+  if (config.stagingOnlyImport) {
+    const stagingApiUrl =
+      process.env.ZALO_READER_STAGING_API_URL || "http://127.0.0.1:3000";
+    resolveStagingImportEndpoint(stagingApiUrl);
+    config.webBaseUrl = stagingApiUrl;
+  } else {
+    config.webBaseUrl =
+      process.env.ZALO_READER_WEB_BASE_URL ||
+      config.webBaseUrl;
+  }
 
   config.internalSecret =
     process.env.ZALO_READER_INTERNAL_SECRET ||
     config.internalSecret;
 
-  if (!config.internalSecret) {
+  if (!config.previewOnly && !config.internalSecret) {
     throw new Error("Missing ZALO_READER_INTERNAL_SECRET");
   }
 
@@ -1545,6 +1607,71 @@ function buildRoomUnitsFromMessages(groupName: string, messages: Msg[]): RoomUni
 }
 
 
+async function waitForPreviewLogin(page: Page, config: Config) {
+  const selector = String(config.selectors.searchBox || "").trim();
+  let lastProbe = "ô tìm nhóm chưa xuất hiện";
+  let consecutiveReadyProbes = 0;
+
+  if (!selector) {
+    throw new Error("Preview không có selector searchBox trong config; không thể xác nhận đăng nhập.");
+  }
+
+  console.log(
+    `Chờ đăng nhập Zalo Web tối đa ${PREVIEW_LOGIN_WAIT_MS / 1000} giây. Hãy quét QR/đăng nhập trong cửa sổ Chrome.`
+  );
+  console.log(`Chỉ tiếp tục khi ô tìm nhóm đã hiển thị và bật: ${selector}`);
+
+  try {
+    await waitForUiReady({
+      timeoutMs: PREVIEW_LOGIN_WAIT_MS,
+      probe: async () => {
+        try {
+          const search = page.locator(selector).first();
+          const count = await search.count();
+          if (count === 0) {
+            lastProbe = `không tìm thấy selector ${selector}`;
+            return false;
+          }
+          const visible = await search.isVisible();
+          const enabled = await search.isEnabled();
+          if (!visible || !enabled) {
+            consecutiveReadyProbes = 0;
+            lastProbe = `selector ${selector} chưa hiển thị hoặc chưa bật`;
+            return false;
+          }
+          consecutiveReadyProbes += 1;
+          lastProbe = `selector ${selector} hiển thị và bật ${consecutiveReadyProbes}/2 lần liên tiếp`;
+          return consecutiveReadyProbes >= 2;
+        } catch (error: any) {
+          consecutiveReadyProbes = 0;
+          lastProbe = String(error?.message || "không kiểm tra được ô tìm nhóm");
+          return false;
+        }
+      },
+      sleep: (milliseconds) => page.waitForTimeout(milliseconds),
+    });
+  } catch (error: any) {
+    throw new Error(
+      `${String(error?.message || "Không xác nhận được đăng nhập")}. Trạng thái UI cuối: ${lastProbe}. Reader sẽ không tìm nhóm.`
+    );
+  }
+
+  console.log("Đã xác nhận UI tìm kiếm Zalo Web sẵn sàng; tiếp tục mở nhóm.");
+}
+
+function waitForPreviewEnter(message: string) {
+  return new Promise<void>((resolve) => {
+    const terminal = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    terminal.question(message, () => {
+      terminal.close();
+      resolve();
+    });
+  });
+}
+
 async function openGroup(
   page: Page,
   groupName: string,
@@ -1556,6 +1683,17 @@ async function openGroup(
         config.selectors.searchBox
       )
       .first();
+
+  if (config.previewOnly || config.stagingOnlyImport) {
+    const searchCount = await search.count().catch(() => 0);
+    const searchVisible = searchCount > 0 && await search.isVisible().catch(() => false);
+    const searchEnabled = searchCount > 0 && await search.isEnabled().catch(() => false);
+    if (!searchCount || !searchVisible || !searchEnabled) {
+      throw new Error(
+        `Reader không thể xác nhận ô tìm nhóm (${config.selectors.searchBox}) đang hiển thị và bật. Có thể phiên đăng nhập đã hết hạn hoặc selector không còn phù hợp; Reader dừng trước thao tác tìm nhóm.`
+      );
+    }
+  }
 
   await search.click({
     timeout: 10_000,
@@ -1624,6 +1762,7 @@ async function openGroup(
   let selectedIndex = -1;
   let selectedX =
     Number.POSITIVE_INFINITY;
+  let exactSearchResultCount = 0;
 
   for (
     let index = 0;
@@ -1657,18 +1796,23 @@ async function openGroup(
      * Chỉ click kết quả nằm trong panel tìm kiếm bên trái.
      * Nếu có nhiều node trùng tên, chọn node nằm trái nhất.
      */
-    if (
-      box.x <
-        searchPanelRight &&
-      box.x <
-        selectedX
-    ) {
-      selectedIndex =
-        index;
-
-      selectedX =
-        box.x;
+    if (box.x < searchPanelRight) {
+      exactSearchResultCount += 1;
+      if (box.x < selectedX) {
+        selectedIndex = index;
+        selectedX = box.x;
+      }
     }
+  }
+
+  if (config.previewOnly && exactSearchResultCount > 1) {
+    throw new Error(
+      [
+        "Có nhiều kết quả nhóm khớp chính xác.",
+        `Tên cần mở: "${groupName}".`,
+        "Reader dừng để tránh chọn nhầm nhóm trùng tên.",
+      ].join(" ")
+    );
   }
 
   if (
@@ -5336,6 +5480,10 @@ function isIndexedDbRoomMarkerText(
 function getIndexedDbMessageTimestamp(
   message: IndexedDbGroupMessage
 ) {
+  if (message.strictTimestampOnly) {
+    return Number(message.trustedTimestampMs || 0);
+  }
+
   return Number(
     message.sendDttm ||
       message.serverTime ||
@@ -8055,6 +8203,187 @@ function writeIndexedDbRoomPreview(
   };
 }
 
+function parsePreviewFields(text: string) {
+  const safeText = sanitizePreviewText(text);
+  if (!safeText.trim()) return null;
+
+  const parsed = parseZaloRoomText(safeText);
+  const sourceFields = parsed.sourceFieldMap || {};
+  const amenities = Object.fromEntries(
+    Object.entries(parsed.detailPayload || {}).filter(([key, value]) =>
+      Object.prototype.hasOwnProperty.call(sourceFields, key) &&
+      value !== null && value !== undefined && value !== false && value !== ""
+    )
+  );
+
+  return {
+    roomCode: parsed.roomPayload.room_code || "",
+    priceVnd: parsed.roomPayload.price ?? null,
+    roomType: parsed.roomPayload.room_type || "",
+    status: parsed.roomPayload.status || "",
+    amenities,
+  };
+}
+
+function writePhase5Preview(params: {
+  groupName: string;
+  groupId: string | null;
+  groupVerified: boolean;
+  readerStartedAtMs: number;
+  cutoffMs: number;
+  endMs: number;
+  decisions: Array<{
+    message: IndexedDbGroupMessage;
+    timestamp: PreviewTimestampResult;
+  }>;
+  rooms: IndexedDbRoomPreview[];
+}) {
+  const {
+    groupName,
+    groupId,
+    groupVerified,
+    readerStartedAtMs,
+    cutoffMs,
+    endMs,
+    decisions,
+    rooms,
+  } = params;
+
+  const roomByMessageId = new Map<string, IndexedDbRoomPreview[]>();
+  for (const room of rooms) {
+    const messageIds = [
+      room.markerMessageId,
+      ...(room.imageMessageIds || []),
+      ...(room.videoMessageIds || []),
+    ];
+    for (const messageId of messageIds) {
+      if (!messageId) continue;
+      const existing = roomByMessageId.get(String(messageId)) || [];
+      existing.push(room);
+      roomByMessageId.set(String(messageId), existing);
+    }
+  }
+
+  const messages = decisions.map(({ message, timestamp }) => {
+    const inWindow = timestamp.inWindow === true;
+    const text = inWindow ? sanitizePreviewText(message.text) : "";
+    const parsedMessage = parsePreviewFields(text);
+    const relatedRooms = inWindow
+      ? roomByMessageId.get(String(message.msgId || "")) || []
+      : [];
+    const parsedRoom = relatedRooms[0]
+      ? parsePreviewFields(relatedRooms[0].fullText || relatedRooms[0].markerText || "")
+      : null;
+
+    return {
+      groupName,
+      messageRef: hashPreviewReference(groupName, message.msgId),
+      timestamp: {
+        source: timestamp.source,
+        sourceValue:
+          typeof timestamp.sourceValue === "number" ||
+          timestamp.sourceValue === null
+            ? timestamp.sourceValue
+            : sanitizePreviewText(
+                typeof timestamp.sourceValue === "string"
+                  ? timestamp.sourceValue
+                  : JSON.stringify(timestamp.sourceValue)
+              ),
+        normalizedEpochMs: timestamp.timestampMs,
+        status: timestamp.status,
+        inWindow,
+      },
+      messageText: inWindow ? text : null,
+      recognized: parsedRoom || (
+        parsedMessage &&
+        (
+          parsedMessage.roomCode ||
+          parsedMessage.priceVnd ||
+          parsedMessage.roomType ||
+          parsedMessage.status ||
+          Object.keys(parsedMessage.amenities).length > 0
+        )
+      )
+        ? {
+            roomCode: parsedRoom?.roomCode || parsedMessage?.roomCode || "",
+            priceVnd: parsedRoom?.priceVnd ?? parsedMessage?.priceVnd ?? null,
+            roomType: parsedRoom?.roomType || parsedMessage?.roomType || "",
+            status: parsedRoom?.status || parsedMessage?.status || "",
+            amenities: parsedRoom?.amenities || parsedMessage?.amenities || {},
+          }
+        : null,
+      imageCount: inWindow
+        ? (Array.isArray(message.imageUrls) ? message.imageUrls.length : 0)
+        : null,
+      relatedRoomCount: relatedRooms.length,
+      exclusionReason: inWindow ? null : timestamp.exclusionReason || "outside_24_hour_window",
+    };
+  });
+
+  const safeRooms = rooms.map((room) => {
+    const parsed = parsePreviewFields(room.fullText || room.markerText || "");
+    return {
+      roomCode: room.roomCode || parsed?.roomCode || "",
+      priceVnd: parsed?.priceVnd ?? null,
+      roomType: parsed?.roomType || "",
+      status: parsed?.status || "",
+      amenities: parsed?.amenities || {},
+      markerText: sanitizePreviewText(room.markerText),
+      fullText: sanitizePreviewText(room.fullText),
+      imageCount: Array.isArray(room.imageUrls) ? room.imageUrls.length : 0,
+      videoCount: Array.isArray(room.videos) ? room.videos.length : 0,
+      warnings: room.warnings,
+    };
+  });
+
+  const session = new Date(readerStartedAtMs)
+    .toISOString()
+    .replace(/[:.]/g, "-");
+  const outputDir = path.join(
+    ROOT,
+    ".zalo-reader",
+    "preview",
+    `${session}-${crypto.randomUUID()}`
+  );
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, "preview.json");
+  fs.writeFileSync(
+    outputPath,
+    JSON.stringify(
+      {
+        mode: "local-preview-only",
+        generatedAt: new Date().toISOString(),
+        readerStartedAtEpochMs: readerStartedAtMs,
+        timezone: "Asia/Ho_Chi_Minh",
+        window: { startEpochMs: cutoffMs, endEpochMs: endMs },
+        group: {
+          name: groupName,
+          id: groupVerified ? groupId : null,
+          verification: groupVerified ? "verified" : "unverified",
+        },
+        summary: {
+          scannedMessageCount: decisions.length,
+          eligibleMessageCount: messages.filter((item) => item.timestamp.inWindow).length,
+          excludedMessageCount: messages.filter((item) => !item.timestamp.inWindow).length,
+          roomCount: safeRooms.length,
+        },
+        messages,
+        rooms: safeRooms,
+        sideEffects: {
+          importApiCalled: false,
+          databaseWritten: false,
+          mediaUploadedOrCopied: false,
+          publishedOrApproved: false,
+        },
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+  return outputPath;
+}
+
 async function importIndexedDbRoomPreviews(
   params: {
     page: Page;
@@ -8062,6 +8391,7 @@ async function importIndexedDbRoomPreviews(
     groupName: string;
     rooms: IndexedDbRoomPreview[];
     state: Record<string, true>;
+    readerStartedAtMs: number;
   }
 ) {
   const {
@@ -8070,18 +8400,35 @@ async function importIndexedDbRoomPreviews(
     groupName,
     rooms,
     state,
+    readerStartedAtMs,
   } = params;
+
+  if (config.previewOnly && !config.stagingOnlyImport) {
+    throw new Error("Preview-only safety barrier blocked IndexedDB import.");
+  }
 
   let importedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
   let partialCount = 0;
+  let skippedNoTextCount = 0;
 
   const orderedRooms = [...rooms].sort(
     (a, b) =>
       b.markerTimestamp -
       a.markerTimestamp
   );
+
+  const trialSelection = config.stagingOnlyImport
+    ? selectControlledStagingRooms({
+        rooms: orderedRooms,
+        cutoffMs: readerStartedAtMs - 24 * 60 * 60 * 1000,
+        endMs: readerStartedAtMs,
+        maxMessages: Number(config.stagingOnlyMaxMessages ?? 10),
+        maxRooms: Number(config.indexedDbImportLimit ?? 20),
+      })
+    : null;
+  const roomsToProcess = trialSelection?.rooms ?? orderedRooms;
 
   /*
    * Chỉ khi khóa indexedDbImportSourceHashes
@@ -8179,10 +8526,33 @@ async function importIndexedDbRoomPreviews(
         ? "không giới hạn số phòng"
         : `tối đa ${importLimit} phòng/lượt`,
       `${orderedRooms.length} phòng trong preview`,
+      ...(trialSelection
+        ? [
+            `giới hạn staging: ${trialSelection.selectedMessages} tin nhắn, ${trialSelection.selectedRooms} phòng`,
+            `${trialSelection.excludedUntrusted} phòng thiếu ID/timestamp tin cậy hoặc ngoài cửa sổ`,
+            `${trialSelection.limitedMessages} tin nhắn vượt giới hạn tin`,
+            `${trialSelection.limitedRooms} tin nhắn bị bỏ nguyên nhóm vì vượt giới hạn phòng`,
+          ]
+        : []),
     ].join(" ")
   );
 
-  for (const room of orderedRooms) {
+  const stagingEndpoint = config.stagingOnlyImport
+    ? resolveStagingImportEndpoint(config.webBaseUrl)
+    : null;
+  if (
+    stagingEndpoint &&
+    roomsToProcess.some(
+      (room) =>
+        buildStagingRoomContent(room).rawText.length > 0,
+    )
+  ) {
+    await assertStagingImportApiAvailable(stagingEndpoint);
+  }
+
+  let duplicateCount = 0;
+
+  for (const room of roomsToProcess) {
     if (!room.sourceHash) {
       console.warn(
         `Không thể import phòng không có sourceHash: ${room.markerText.slice(
@@ -8225,6 +8595,16 @@ async function importIndexedDbRoomPreviews(
     ) {
       limitedOutCount += 1;
       skippedCount += 1;
+      continue;
+    }
+
+    const stagingContent = buildStagingRoomContent(room);
+    if (config.stagingOnlyImport && !stagingContent.rawText) {
+      skippedNoTextCount += 1;
+      skippedCount += 1;
+      console.warn(
+        `Bỏ qua staging room ${room.markerMessageId || room.sourceHash}: IndexedDB chưa có nội dung tin nhắn đã giải mã; không gửi bản nháp rỗng hoặc tải media.`
+      );
       continue;
     }
 
@@ -8320,12 +8700,13 @@ async function importIndexedDbRoomPreviews(
       });
     }
 
-    const rawText =
-      String(
-        room.fullText ||
-          room.markerText ||
-          "Phòng không có nội dung text"
-      ).trim();
+    const rawText = config.stagingOnlyImport
+      ? stagingContent.rawText
+      : String(
+          room.fullText ||
+            room.markerText ||
+            "Phòng không có nội dung text"
+        ).trim();
 
     const senderName =
       room.senderUid
@@ -8340,7 +8721,20 @@ async function importIndexedDbRoomPreviews(
         ? new Date(
             room.markerTimestamp
           ).toISOString()
-        : new Date().toISOString();
+        : config.stagingOnlyImport
+          ? ""
+          : new Date().toISOString();
+
+    if (
+      config.stagingOnlyImport &&
+      (!sentAt || !String(room.markerMessageId || "").trim())
+    ) {
+      console.warn(
+        "Bỏ qua staging room không có timestamp tin nhắn hoặc message ID đáng tin cậy."
+      );
+      skippedCount += 1;
+      continue;
+    }
 
     /*
      * Tổng số ảnh dự kiến lấy từ metadata album.
@@ -8389,7 +8783,9 @@ async function importIndexedDbRoomPreviews(
       senderName,
 
       imageSrcs:
-        room.imageUrls,
+        config.stagingOnlyImport
+          ? stagingContent.imageUrls
+          : room.imageUrls,
 
       sourceHash:
         room.sourceHash,
@@ -8407,6 +8803,13 @@ async function importIndexedDbRoomPreviews(
       expectedVideoCount,
 
       readerIssues,
+      groupId: config.stagingOnlyImport
+        ? config.stagingOnlyGroupId
+        : undefined,
+      stagingOnly: Boolean(config.stagingOnlyImport),
+      readerStartedAtMs: config.stagingOnlyImport
+        ? readerStartedAtMs
+        : undefined,
     };
 
     try {
@@ -8435,7 +8838,12 @@ async function importIndexedDbRoomPreviews(
 
       writeState(state);
 
-      importedCount += 1;
+      if (result?.duplicate) {
+        duplicateCount += 1;
+        skippedCount += 1;
+      } else {
+        importedCount += 1;
+      }
 
       if (
         result?.partial ||
@@ -8491,6 +8899,13 @@ async function importIndexedDbRoomPreviews(
         )}`,
         error?.message || error
       );
+
+      if (error instanceof StagingImportTransportError) {
+        console.error(
+          "Dừng staging batch ngay sau lỗi kết nối; không thử gửi các phòng còn lại."
+        );
+        break;
+      }
     }
   }
 
@@ -8498,8 +8913,10 @@ async function importIndexedDbRoomPreviews(
     [
       "Kết quả IndexedDB import:",
       `${importedCount} đã đưa lên Imports`,
+      `${duplicateCount} trùng nguồn đã bỏ qua`,
       `${partialCount} có lỗi media`,
       `${skippedCount} bỏ qua`,
+      `${skippedNoTextCount} thiếu nội dung tin nhắn`,
       `${filteredOutCount} ngoài whitelist`,
       `${limitedOutCount} vượt giới hạn`,
       `${failedCount} lỗi hoàn toàn`,
@@ -8519,7 +8936,9 @@ async function dumpActiveGroupMessages(
   groupName: string,
   groupKey: string,
   config: Config,
-  groupRefs: SavedGroupRefs
+  groupRefs: SavedGroupRefs,
+  readerStartedAtMs: number,
+  previewOnly = false
 ) {
   const rawScanLimit = Number(
     config.indexedDbGroupScanLimit ?? 30000
@@ -8607,11 +9026,25 @@ if (preferredGroupId) {
    * Vì vậy phải chụp trong lúc cuộn từ dưới lên, không được quay xuống cuối
    * rồi mới chụp một lần.
    */
-  const domScrollCapture =
-    await captureDomMessagesWhileScrollingUp(
-      page,
-      config
-    );
+  const domScrollCapture: DomMessageScrollCaptureResult = previewOnly
+    ? {
+        items: [],
+        viewportCount: 0,
+        attemptedSteps: 0,
+        movedSteps: 0,
+        reachedTop: false,
+        consecutiveNoNewItems: 0,
+        blobMediaCache: {
+          cacheDir: "",
+          attemptedCount: 0,
+          cachedCount: 0,
+          failedCount: 0,
+          reusedCount: 0,
+          totalBytes: 0,
+          failures: [],
+        },
+      }
+    : await captureDomMessagesWhileScrollingUp(page, config);
 
   const domMessageSnapshot =
     domScrollCapture.items;
@@ -8622,67 +9055,57 @@ if (preferredGroupId) {
       "active-group-dom-snapshot.json"
     );
 
-  fs.writeFileSync(
-    domSnapshotPath,
-    JSON.stringify(
-      {
-        capturedAt:
-          new Date().toISOString(),
-        groupName,
-        itemCount:
-          domMessageSnapshot.length,
-
-        scrollCapture: {
-          viewportCount:
-            domScrollCapture.viewportCount,
-          attemptedSteps:
-            domScrollCapture.attemptedSteps,
-          movedSteps:
-            domScrollCapture.movedSteps,
-          reachedTop:
-            domScrollCapture.reachedTop,
-          consecutiveNoNewItems:
-            domScrollCapture.consecutiveNoNewItems,
-
-          blobMediaCache:
-            domScrollCapture.blobMediaCache,
+  if (!previewOnly) {
+    fs.writeFileSync(
+      domSnapshotPath,
+      JSON.stringify(
+        {
+          capturedAt: new Date().toISOString(),
+          groupName,
+          itemCount: domMessageSnapshot.length,
+          scrollCapture: {
+            viewportCount: domScrollCapture.viewportCount,
+            attemptedSteps: domScrollCapture.attemptedSteps,
+            movedSteps: domScrollCapture.movedSteps,
+            reachedTop: domScrollCapture.reachedTop,
+            consecutiveNoNewItems: domScrollCapture.consecutiveNoNewItems,
+            blobMediaCache: domScrollCapture.blobMediaCache,
+          },
+          items: domMessageSnapshot,
         },
+        null,
+        2
+      ),
+      "utf8"
+    );
+  }
 
-        items:
-          domMessageSnapshot,
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
+  if (!previewOnly) {
+    console.log(
+      [
+        "Đã tích lũy DOM khi cuộn lên:",
+        `${domMessageSnapshot.length} item,`,
+        `${domScrollCapture.viewportCount} viewport,`,
+        `${domScrollCapture.movedSteps}/${domScrollCapture.attemptedSteps} bước có di chuyển`,
+      ].join(" ")
+    );
 
-  console.log(
-    [
-      "Đã tích lũy DOM khi cuộn lên:",
-      `${domMessageSnapshot.length} item,`,
-      `${domScrollCapture.viewportCount} viewport,`,
-      `${domScrollCapture.movedSteps}/${domScrollCapture.attemptedSteps} bước có di chuyển`,
-    ].join(" ")
-  );
+    console.log(
+      [
+        "Đã lưu blob ảnh DOM:",
+        `${domScrollCapture.blobMediaCache.cachedCount} mới,`,
+        `${domScrollCapture.blobMediaCache.reusedCount} dùng lại,`,
+        `${domScrollCapture.blobMediaCache.failedCount} lỗi,`,
+        `${(domScrollCapture.blobMediaCache.totalBytes / 1024 / 1024).toFixed(2)} MB`,
+      ].join(" ")
+    );
 
-  console.log(
-    [
-      "Đã lưu blob ảnh DOM:",
-      `${domScrollCapture.blobMediaCache.cachedCount} mới,`,
-      `${domScrollCapture.blobMediaCache.reusedCount} dùng lại,`,
-      `${domScrollCapture.blobMediaCache.failedCount} lỗi,`,
-      `${(domScrollCapture.blobMediaCache.totalBytes / 1024 / 1024).toFixed(2)} MB`,
-    ].join(" ")
-  );
+    console.log(
+      `Thư mục blob ảnh DOM: ${domScrollCapture.blobMediaCache.cacheDir}`
+    );
 
-  console.log(
-    `Thư mục blob ảnh DOM: ${domScrollCapture.blobMediaCache.cacheDir}`
-  );
-
-  console.log(
-    `File DOM snapshot: ${domSnapshotPath}`
-  );
+    console.log(`File DOM snapshot: ${domSnapshotPath}`);
+  }
 
   /**
    * Tránh lỗi tsx/esbuild:
@@ -8703,6 +9126,8 @@ if (preferredGroupId) {
         messageLimit,
         contextBeforeMs,
         contextAfterMs,
+        strictPreviewTimestamps,
+        stagingOnlyImport,
       }) => {
       function requestToPromise<T>(
         request: IDBRequest<T>
@@ -9116,17 +9541,29 @@ if (preferredGroupId) {
         let videoThumbUrls: string[] = [];
         let videoDebug: any = null;
 
+        const decodedTextValue =
+          typeof value.message === "string"
+            ? value.message
+            : value.message && typeof value.message === "object"
+              ? [
+                  value.message.text,
+                  value.message.content,
+                  value.message.caption,
+                  value.message.body,
+                ].find(
+                  (item: any) =>
+                    typeof item === "string" && item.trim()
+                ) || ""
+              : "";
+
         if (
           msgType === 1 &&
-          typeof value.message ===
-            "string" &&
-          value.message.trim() &&
-          !isLikelyEncryptedMessageText(
-            value.message
-          )
+          typeof decodedTextValue === "string" &&
+          decodedTextValue.trim() &&
+          !isLikelyEncryptedMessageText(decodedTextValue)
         ) {
           kind = "text";
-          text = value.message;
+          text = decodedTextValue.trim();
         }
 
         const rawMessage =
@@ -10735,14 +11172,14 @@ const activeGroupHintMap =
             const latestTimestamp =
               Number(
                 directRead
-                  .latestMessage
+                .latestMessage
                   .sendDttm ||
-                  directRead
-                    .latestMessage
-                    .serverTime ||
-                  directRead
-                    .latestMessage
-                    .cliMsgId ||
+                directRead
+                  .latestMessage
+                  .serverTime ||
+                (!strictPreviewTimestamps && directRead
+                  .latestMessage
+                  .cliMsgId) ||
                   0
               );
 
@@ -10898,13 +11335,12 @@ if (!groupId.startsWith("g")) {
   return;
 }
 
-const messageTimestamp =
-  Number(
-    value.sendDttm ||
-      value.serverTime ||
-      value.cliMsgId ||
-      0
-  );
+const messageTimestamp = Number(
+  value.sendDttm ||
+    value.serverTime ||
+    (!strictPreviewTimestamps && value.cliMsgId) ||
+    0
+);
 
 /*
  * ==================================
@@ -11038,7 +11474,7 @@ if (activeGroupHint) {
                   const messageTimestamp = Number(
                     value.sendDttm ||
                       value.serverTime ||
-                      value.cliMsgId ||
+                      (!strictPreviewTimestamps && value.cliMsgId) ||
                       0
                   );
 
@@ -11698,13 +12134,9 @@ if (activeGroupHint) {
                 return;
               }
 
-                            const messageTimestamp =
-                Number(
-                  value.sendDttm ||
-                    value.serverTime ||
-                    value.cliMsgId ||
-                    0
-                );
+              const messageTimestamp = Number(
+                value.sendDttm || value.serverTime || 0
+              );
 
               const msgType = Number(
                 value.msgType || 0
@@ -11741,16 +12173,51 @@ if (activeGroupHint) {
                   value.originMsgType || ""
                 );
 
+              let decodedZdbMessage: any = value.message;
+              let zdbMessageText = "";
+              if (typeof value.message === "string") {
+                try {
+                  decodedZdbMessage = JSON.parse(value.message);
+                  if (typeof decodedZdbMessage === "string") {
+                    zdbMessageText = decodedZdbMessage.trim();
+                  } else if (
+                    decodedZdbMessage &&
+                    typeof decodedZdbMessage === "object" &&
+                    !Array.isArray(decodedZdbMessage)
+                  ) {
+                    const textField = [
+                      decodedZdbMessage.text,
+                      decodedZdbMessage.content,
+                      decodedZdbMessage.caption,
+                      decodedZdbMessage.body,
+                    ].find(
+                      (item: any) =>
+                        typeof item === "string" && item.trim()
+                    );
+                    zdbMessageText =
+                      typeof textField === "string" ? textField.trim() : "";
+                  }
+                } catch {
+                  decodedZdbMessage = value.message;
+                  zdbMessageText = value.message;
+                }
+              }
+
               if (
                 msgType === 1 &&
-                typeof value.message ===
-                  "string" &&
-                !isLikelyEncryptedMessageText(
-                  value.message
-                )
+                zdbMessageText &&
+                !isLikelyEncryptedMessageText(zdbMessageText)
               ) {
                 kind = "text";
-                text = value.message;
+                text = zdbMessageText;
+              }
+
+              if (
+                (msgType === 2 || msgType === 18) &&
+                decodedZdbMessage &&
+                typeof decodedZdbMessage === "object"
+              ) {
+                value.message = decodedZdbMessage;
               }
 
               if (
@@ -11997,8 +12464,9 @@ if (activeGroupHint) {
                 groupLayoutId,
                 imageIndex,
                 totalImages,
-                sendDttm:
-                  messageTimestamp,
+                sendDttm: strictPreviewTimestamps
+                  ? Number(value.sendDttm || 0)
+                  : messageTimestamp,
                 serverTime: Number(
                   value.serverTime || 0
                 ),
@@ -12021,6 +12489,10 @@ if (activeGroupHint) {
                 videoUrls,
                 videoThumbUrls,
                 videoDebug,
+                contentSource:
+                  text || imageUrls.length || videoUrls.length
+                    ? "zdb"
+                    : undefined,
               });
 
               cursor.continue();
@@ -12044,11 +12516,152 @@ if (activeGroupHint) {
           requestedCount:
             groupMessages.length,
           matchedRecordCount: 0,
+          matchedByMsgIdCount: 0,
+          matchedByCliMsgIdCount: 0,
+          notFoundCount: 0,
+          emptyContentCount: 0,
           decodedTextCount: 0,
           decodedImageCount: 0,
           decodedVideoCount: 0,
           photoRecordWithoutUrlCount: 0,
         };
+
+        // zdb/message is the content source of record. Match DOM IDs
+        // against its msgId primary key first, then cliMsgIdIndex.
+        if (bestCandidate.messageStoreName === "message") {
+          contentEnrichment.attempted = true;
+          contentEnrichment.databaseName = bestCandidate.databaseName;
+          const zdbStoreExists = selectedDb?.objectStoreNames.contains("message");
+          const uiMessages = Array.isArray(domMessageSnapshot)
+            ? domMessageSnapshot
+            : [];
+          const resolvedMessageIds = new Set<string>();
+
+          const getZdbRecord = (
+            key: string,
+            lookupByCliMsgId: boolean
+          ): Promise<any | null> =>
+            new Promise((resolve) => {
+              if (!selectedDb || !zdbStoreExists) {
+                resolve(null);
+                return;
+              }
+              try {
+                const tx = selectedDb.transaction("message", "readonly");
+                const store = tx.objectStore("message");
+                const source = lookupByCliMsgId
+                  ? store.indexNames.contains("cliMsgIdIndex")
+                    ? store.index("cliMsgIdIndex")
+                    : null
+                  : store;
+                if (!source) {
+                  resolve(null);
+                  return;
+                }
+                const request = source.get(key);
+                request.onsuccess = () => resolve(request.result || null);
+                request.onerror = () => resolve(null);
+              } catch {
+                resolve(null);
+              }
+            });
+
+          const trustedZdbTimestamp = (record: any) => {
+            const values = [record?.sendDttm, record?.serverTime]
+              .filter((value) => value !== undefined && value !== null && value !== "" && value !== 0 && value !== "0")
+              .map((value) => String(value).trim());
+            if (!values.length || values.some((value) => !/^\d{13}$/.test(value))) return false;
+            const parsed = values.map(Number);
+            return parsed.every(
+              (value) =>
+                Number.isSafeInteger(value) &&
+                value >= Date.UTC(2000, 0, 1) &&
+                value < Date.UTC(2100, 0, 1) &&
+                value === parsed[0]
+            );
+          };
+
+          for (const uiMessage of uiMessages) {
+            const ids = Array.from(
+              new Set(
+                (Array.isArray(uiMessage?.idCandidates) ? uiMessage.idCandidates : [])
+                  .map((id: any) => String(id || "").trim())
+                  .filter(Boolean)
+              )
+            );
+            let foundRecord: any = null;
+            let foundBy: "msgId" | "cliMsgId" | "none" = "none";
+
+            for (const id of ids) {
+              foundRecord = await getZdbRecord(id, false);
+              if (foundRecord) {
+                foundBy = "msgId";
+                break;
+              }
+              foundRecord = await getZdbRecord(id, true);
+              if (foundRecord) {
+                foundBy = "cliMsgId";
+                break;
+              }
+            }
+
+            if (
+              !foundRecord ||
+              String(foundRecord.toUid || "") !== bestCandidate.groupId ||
+              !trustedZdbTimestamp(foundRecord)
+            ) {
+              contentEnrichment.notFoundCount += 1;
+              continue;
+            }
+
+            const actualMsgId = String(foundRecord.msgId || "").trim();
+            if (!actualMsgId || resolvedMessageIds.has(actualMsgId)) continue;
+            resolvedMessageIds.add(actualMsgId);
+            contentEnrichment.matchedRecordCount += 1;
+            if (foundBy === "msgId") contentEnrichment.matchedByMsgIdCount += 1;
+            if (foundBy === "cliMsgId") contentEnrichment.matchedByCliMsgIdCount += 1;
+
+            const message = groupMessages.find(
+              (item) => String(item.msgId || "") === actualMsgId
+            );
+            if (!message) continue;
+
+            let decodedMessage: any = foundRecord.message;
+            if (typeof foundRecord.message === "string") {
+              try {
+                decodedMessage = JSON.parse(foundRecord.message);
+              } catch {
+                decodedMessage = foundRecord.message;
+              }
+            }
+            const decoded = extractDecodedSidxContent({
+              ...foundRecord,
+              message: decodedMessage,
+            });
+            if (decoded.kind === "text" && decoded.text.trim()) {
+              message.kind = "text";
+              message.text = decoded.text;
+              message.contentSource = "zdb";
+              contentEnrichment.decodedTextCount += 1;
+            } else if (decoded.kind === "image" && decoded.imageUrls.length) {
+              message.kind = "image";
+              message.imageUrls = decoded.imageUrls;
+              message.groupLayoutId = decoded.groupLayoutId;
+              message.imageIndex = decoded.imageIndex;
+              message.totalImages = decoded.totalImages;
+              message.contentSource = "zdb";
+              contentEnrichment.decodedImageCount += 1;
+            } else if (decoded.videoUrls.length || decoded.videoThumbUrls.length) {
+              message.videoUrls = decoded.videoUrls;
+              message.videoThumbUrls = decoded.videoThumbUrls;
+              message.videoDebug = decoded.videoDebug;
+              message.contentSource = "zdb";
+              contentEnrichment.decodedVideoCount += 1;
+            } else {
+              contentEnrichment.emptyContentCount += 1;
+            }
+          }
+        }
 
         if (
           bestCandidate.messageStoreName ===
@@ -12063,10 +12676,8 @@ if (activeGroupHint) {
                   )
               : "";
 
-          const sidxDatabaseName =
-            accountSuffix
-              ? `sidx_${accountSuffix}`
-              : "";
+          // idx_queue schema is not confirmed; do not use it as content source.
+          const sidxDatabaseName = "";
 
           if (
             sidxDatabaseName &&
@@ -12281,6 +12892,7 @@ if (activeGroupHint) {
          */
         const domHydration = {
           attempted:
+            !stagingOnlyImport &&
             Array.isArray(
               domMessageSnapshot
             ) &&
@@ -13412,6 +14024,9 @@ if (activeGroupHint) {
           messageLimit,
           contextBeforeMs,
           contextAfterMs,
+          strictPreviewTimestamps:
+            previewOnly || Boolean(config.stagingOnlyImport),
+          stagingOnlyImport: Boolean(config.stagingOnlyImport),
         }
   );
 
@@ -13595,9 +14210,9 @@ if (activeGroupHint) {
         "active_group_ui",
     };
 
-    writeGroupRefs(
-      groupRefs
-    );
+    if (!previewOnly) {
+      writeGroupRefs(groupRefs);
+    }
 
     (result as any).groupId =
       detectedGroupId;
@@ -13681,29 +14296,29 @@ if (activeGroupHint) {
       [];
   }
 
-    fs.mkdirSync(NETWORK_LOG_DIR, {
-      recursive: true,
-    });
-
     const outputPath = path.join(
       NETWORK_LOG_DIR,
       "active-group-messages.json"
     );
 
+    if (!previewOnly) {
+      fs.mkdirSync(NETWORK_LOG_DIR, {
+        recursive: true,
+      });
       fs.writeFileSync(
-    outputPath,
-    JSON.stringify(
-      {
-        capturedAt:
-          new Date().toISOString(),
-        groupName,
-        ...result,
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
+        outputPath,
+        JSON.stringify(
+          {
+            capturedAt: new Date().toISOString(),
+            groupName,
+            ...result,
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+    }
 
   const groupIdHints =
     Array.isArray(
@@ -13874,61 +14489,86 @@ if (activeGroupHint) {
 
   /* PHASE_3_24H_IMPORT_FILTER */
   const phase3GroupConfig =
-    (Array.isArray(config.groups)
-      ? config.groups
-      : []
-    ).find((entry: any) => {
-      const candidateName =
-        typeof entry === "string"
-          ? entry
-          : String(entry?.name || entry?.key || "");
-
-      return (
-        candidateName.trim().toLocaleLowerCase("vi-VN") ===
-        String(groupName || "")
-          .trim()
-          .toLocaleLowerCase("vi-VN")
-      );
+    (Array.isArray(config.groups) ? config.groups : []).find((entry: any) => {
+      const candidateName = typeof entry === "string"
+        ? entry
+        : String(entry?.name || entry?.key || "");
+      return candidateName.trim().toLocaleLowerCase("vi-VN") ===
+        String(groupName || "").trim().toLocaleLowerCase("vi-VN");
     }) as any;
 
-  const messageLookbackHours =
-    resolveMessageLookbackHours({
-      groupValue:
-        typeof phase3GroupConfig === "object"
-          ? phase3GroupConfig?.messageLookbackHours
-          : undefined,
-      globalValue:
-        (config as any).messageLookbackHours,
-      fallbackHours: 24,
-    });
+  const messageLookbackHours = resolveMessageLookbackHours({
+    groupValue: typeof phase3GroupConfig === "object"
+      ? phase3GroupConfig?.messageLookbackHours
+      : undefined,
+    globalValue: (config as any).messageLookbackHours,
+    fallbackHours: 24,
+  });
 
-  const messageLookbackResult =
-    filterMessagesByLookback({
-      messages: exportedMessages,
-      lookbackHours: messageLookbackHours,
-      nowMs: Date.now(),
-    });
+  const strictWindowMode = previewOnly || Boolean(config.stagingOnlyImport);
+  const previewFilter = strictWindowMode
+    ? filterMessagesForPreview(exportedMessages, readerStartedAtMs)
+    : null;
+  const normalFilter = strictWindowMode
+    ? null
+    : filterMessagesByLookback({
+        messages: exportedMessages,
+        lookbackHours: messageLookbackHours,
+        nowMs: Date.now(),
+      });
 
   const roomImportMessages =
-    messageLookbackResult.messages as IndexedDbGroupMessage[];
+    (previewFilter?.messages || normalFilter?.messages || []) as IndexedDbGroupMessage[];
 
-  const lookbackStats =
-    messageLookbackResult.stats;
+  if (previewFilter) {
+    const included = previewFilter.messages.length;
+    const excludedUnknown = previewFilter.decisions.filter(
+      (item) => item.timestamp.status !== "trusted"
+    ).length;
+    const excludedOutOfWindow = previewFilter.decisions.filter(
+      (item) => item.timestamp.status === "trusted" && !item.timestamp.inWindow
+    ).length;
+    console.log(
+      [
+        "Preview 24 giờ theo timestamp tin nhắn.",
+        `T0: ${new Date(readerStartedAtMs).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`,
+        `Khoảng: ${new Date(previewFilter.cutoffMs).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })} → ${new Date(previewFilter.endMs).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`,
+        `Giữ ${included}/${previewFilter.decisions.length}.`,
+        `Timestamp thiếu/không tin cậy: ${excludedUnknown}.`,
+        `Ngoài cửa sổ: ${excludedOutOfWindow}.`,
+      ].join(" ")
+    );
+  } else if (normalFilter) {
+    console.log(
+      [
+        `Giới hạn Imports: ${normalFilter.stats.lookbackHours} giờ.`,
+        `Giữ ${normalFilter.stats.included}/${normalFilter.stats.total} message.`,
+        `Quá hạn: ${normalFilter.stats.excludedTooOld}.`,
+        `Thiếu timestamp: ${normalFilter.stats.excludedUnknownTimestamp}.`,
+        `Timestamp tương lai: ${normalFilter.stats.excludedFuture}.`,
+        `Mốc bắt đầu: ${new Date(normalFilter.stats.cutoffMs).toLocaleString("vi-VN", {
+          timeZone: "Asia/Ho_Chi_Minh",
+        })}.`,
+      ].join(" ")
+    );
+  }
 
-  console.log(
-    [
-      `Giới hạn Imports: ${lookbackStats.lookbackHours} giờ.`,
-      `Giữ ${lookbackStats.included}/${lookbackStats.total} message.`,
-      `Quá hạn: ${lookbackStats.excludedTooOld}.`,
-      `Thiếu timestamp: ${lookbackStats.excludedUnknownTimestamp}.`,
-      `Timestamp tương lai: ${lookbackStats.excludedFuture}.`,
-      `Mốc bắt đầu: ${new Date(
-        lookbackStats.cutoffMs
-      ).toLocaleString("vi-VN", {
-        timeZone: "Asia/Ho_Chi_Minh",
-      })}.`,
-    ].join(" ")
-  );
+  const stagingLookbackStats = config.stagingOnlyImport
+    ? previewFilter
+      ? {
+          total: previewFilter.decisions.length,
+          included: previewFilter.messages.length,
+          excludedUnknown: previewFilter.decisions.filter(
+            (item) => item.timestamp.status !== "trusted"
+          ).length,
+          excludedOutOfWindow: previewFilter.decisions.filter(
+            (item) =>
+              item.timestamp.status === "trusted" &&
+              !item.timestamp.inWindow
+          ).length,
+        }
+      : null
+    : null;
 
   const videoMessages =
     exportedMessages
@@ -13954,7 +14594,7 @@ if (activeGroupHint) {
           message.videoDebug,
       }));
 
-  if (videoMessages.length > 0) {
+  if (!previewOnly && videoMessages.length > 0) {
     const videoDebugPath =
       path.join(
         NETWORK_LOG_DIR,
@@ -13995,22 +14635,47 @@ if (activeGroupHint) {
     result.ok &&
     config.indexedDbRoomPreview
   ) {
-    const previewResult =
-      writeIndexedDbRoomPreview({
+    if (previewOnly) {
+      const configuredEntry = config.groups.find((entry) =>
+        typeof entry === "string"
+          ? entry.trim() === groupName
+          : entry.name.trim() === groupName
+      );
+      const parserOptions =
+        configuredEntry && typeof configuredEntry !== "string"
+          ? configuredEntry.parserOptions
+          : undefined;
+      previewRooms = buildSemanticTimelineRooms({
         groupName,
-
-        groupId: String(
-          result.groupId || ""
-        ),
-
-        messages:
-          roomImportMessages,
-
+        groupId: String(result.groupId || ""),
+        messages: roomImportMessages,
+        maxGapMs: Number(config.indexedDbRoomPreviewMaxGapMs ?? 5 * 60 * 1000),
+        parserOptions,
+      }) as IndexedDbRoomPreview[];
+    } else {
+      const previewResult = writeIndexedDbRoomPreview({
+        groupName,
+        groupId: String(result.groupId || ""),
+        messages: roomImportMessages,
         config,
       });
+      previewRooms = previewResult.rooms;
+    }
+  }
 
-    previewRooms =
-      previewResult.rooms;
+  let phase5PreviewPath: string | null = null;
+  if (previewOnly && previewFilter) {
+    phase5PreviewPath = writePhase5Preview({
+      groupName,
+      groupId: (result as any).groupIdTrusted ? String(result.groupId || "") : null,
+      groupVerified: Boolean(result.ok && (result as any).groupIdTrusted),
+      readerStartedAtMs,
+      cutoffMs: previewFilter.cutoffMs,
+      endMs: previewFilter.endMs,
+      decisions: previewFilter.decisions,
+      rooms: previewRooms,
+    });
+    console.log(`Local preview: ${phase5PreviewPath}`);
   }
 
   if (!result.ok) {
@@ -14041,6 +14706,7 @@ if (activeGroupHint) {
     return {
       result,
       previewRooms,
+      phase5PreviewPath,
     };
   }
 
@@ -14064,14 +14730,16 @@ if (activeGroupHint) {
     `Đã xuất ${result.messages.length} message: ${textCount} text, ${imageCount} ảnh`
   );
 
-  console.log(
-    `File message: ${outputPath}`
-  );
+  if (!previewOnly) {
+    console.log(`File message: ${outputPath}`);
+  }
 
   return {
-  result,
-  previewRooms,
-};
+    result,
+    previewRooms,
+    phase5PreviewPath,
+    stagingLookbackStats,
+  };
 
 }
 
@@ -14792,8 +15460,24 @@ async function sendBatch(params: {
     msg,
   } = params;
 
+  if (config.previewOnly) {
+    throw new Error("Preview-only safety barrier blocked sendBatch before media or API work.");
+  }
+
   const roomUnit =
     msg as RoomUnit;
+
+  if (
+    config.stagingOnlyImport &&
+    !isControlledZaloTarget({
+      groupId: roomUnit.groupId,
+      groupName,
+    })
+  ) {
+    throw new Error(
+      "Staging-only import bị chặn vì Group ID hoặc tên nhóm không khớp nhóm đã xác minh."
+    );
+  }
 
   const videos =
     Array.isArray(
@@ -14833,6 +15517,21 @@ async function sendBatch(params: {
     mimeType: string;
     base64: string;
   }> = [];
+
+  function safeMediaSourceLabel(value: string) {
+    try {
+      return new URL(value).origin;
+    } catch {
+      return "[media URL ẩn]";
+    }
+  }
+
+  function redactMediaUrls(value: unknown) {
+    return String(value ?? "").replace(
+      /https?:\/\/[^\s"'<>]+/gi,
+      "[URL ẩn]"
+    );
+  }
 
   const imageSources =
     msg.imageSrcs.slice(
@@ -14943,12 +15642,13 @@ async function sendBatch(params: {
       });
     } catch (error: any) {
       const errorMessage =
-        error?.message ||
-        String(error);
+        redactMediaUrls(
+          error?.message || String(error)
+        );
 
       console.warn(
         "Không lấy được ảnh:",
-        src,
+        safeMediaSourceLabel(src),
         errorMessage
       );
 
@@ -14962,7 +15662,7 @@ async function sendBatch(params: {
           `Không tải/xử lý được ảnh thứ ${imageIndex + 1}: ${errorMessage}`,
 
         sourceUrl:
-          src,
+          safeMediaSourceLabel(src),
       });
     }
   }
@@ -15005,6 +15705,9 @@ async function sendBatch(params: {
 
   let importPayload = {
     groupName,
+    groupId: roomUnit.groupId || null,
+    stagingOnly: Boolean(roomUnit.stagingOnly),
+    readerStartedAtMs: roomUnit.readerStartedAtMs ?? null,
 
     senderName:
       msg.senderName,
@@ -15132,30 +15835,43 @@ async function sendBatch(params: {
       `${requestMegabytes.toFixed(
         2
       )} MB,`,
+      `${Buffer.byteLength(importPayload.rawText, "utf8")} byte text,`,
+      `${imageSources.length} URL ảnh nguồn,`,
       `${importPayload.images.length} ảnh gửi API,`,
       `${videos.length} video,`,
       `${readerIssues.length} cảnh báo/lỗi Reader`,
     ].join(" ")
   );
 
-  const res =
-    await fetch(
-      `${config.webBaseUrl}/api/internal/zalo-reader/import`,
-      {
-        method: "POST",
+  const endpoint = config.stagingOnlyImport
+    ? resolveStagingImportEndpoint(config.webBaseUrl)
+    : new URL(
+        ZALO_READER_IMPORT_PATH,
+        `${String(config.webBaseUrl).replace(/\/+$/, "")}/`,
+      ).toString();
 
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          "x-internal-secret":
-            config.internalSecret,
-        },
-
-        body:
-          requestBody,
-      }
-    );
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": config.internalSecret,
+      },
+      body: requestBody,
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (error: any) {
+    if (config.stagingOnlyImport) {
+      const detail = String(
+        error?.cause?.code || error?.cause?.message || error?.message || "network error",
+      );
+      throw new StagingImportTransportError(
+        `Gửi staging import tới ${endpoint} thất bại (${detail}). Không tự retry phòng kế tiếp.`,
+      );
+    }
+    throw error;
+  }
 
   const json =
     await res
@@ -15223,8 +15939,70 @@ async function sendBatch(params: {
 }
 
 async function main() {
+  const readerStartedAtMs = Date.now();
   const config = readConfig();
-  const state = readState();
+  const state = config.previewOnly ? {} : readState();
+
+  if (config.stagingOnlyImport) {
+    console.log(`Chrome profile staging: ${PROFILE_DIR}`);
+    console.log(
+      `Staging API staging: ${resolveStagingImportEndpoint(config.webBaseUrl)}`
+    );
+  }
+
+  if (config.previewOnly) {
+    const keys = Array.isArray(config.previewOnlyGroupKeys)
+      ? config.previewOnlyGroupKeys
+      : [];
+    const previewGroup = config.groups.find((entry) =>
+      typeof entry === "string"
+        ? false
+        : keys.includes(entry.key) && entry.name === PHASE5_PREVIEW_GROUP_NAME
+    );
+    if (!previewGroup) {
+      throw new Error(
+        "Preview-only requires the exact target group name and an explicit previewOnlyGroupKeys entry."
+      );
+    }
+    if (!config.indexedDbGroupExport || !config.indexedDbRoomPreview) {
+      throw new Error(
+        "Preview-only requires IndexedDB group export and local room preview to be enabled."
+      );
+    }
+  }
+
+  if (config.stagingOnlyImport) {
+    const targetGroup = config.groups.find(
+      (entry) =>
+        typeof entry !== "string" &&
+        entry.key === config.stagingOnlyGroupKey &&
+        entry.name === CONTROLLED_ZALO_GROUP_NAME
+    );
+    const maxMessages = Number(config.stagingOnlyMaxMessages ?? 10);
+    const maxRooms = Number(config.indexedDbImportLimit ?? 20);
+    if (
+      !isControlledZaloTarget({
+        groupId: config.stagingOnlyGroupId,
+        groupName: CONTROLLED_ZALO_GROUP_NAME,
+      }) ||
+      !targetGroup ||
+      Number((config as any).messageLookbackHours) !== 24 ||
+      (config as any).strictMessageLookback !== true ||
+      !config.indexedDbGroupExport ||
+      !config.indexedDbRoomPreview ||
+      !config.indexedDbImportEnabled ||
+      !Number.isInteger(maxMessages) ||
+      maxMessages < 1 ||
+      maxMessages > 20 ||
+      !Number.isInteger(maxRooms) ||
+      maxRooms < 1 ||
+      maxRooms > 20
+    ) {
+      throw new Error(
+        "Staging-only yêu cầu đúng nhóm đã xác minh, cửa sổ 24 giờ nghiêm ngặt, IndexedDB và giới hạn 1–20 tin nhắn."
+      );
+    }
+  }
 
   /**
    * Danh sách Group ID đã lưu được giữ trong bộ nhớ
@@ -15240,6 +16018,10 @@ async function main() {
     viewport: { width: 1400, height: 900 },
   });
 
+  let previewStage = "khởi tạo Chrome";
+  const previewOutputPaths: string[] = [];
+
+  try {
   const page =
     context.pages()[0] ||
     (await context.newPage());
@@ -15260,12 +16042,15 @@ async function main() {
    * Listener phải được cài trước page.goto()
    * để không bỏ lỡ request và WebSocket lúc khởi động.
    */
-  installNetworkDebug(
-    page,
-    config,
-    () => activeGroupName
-  );
+  if (!config.previewOnly) {
+    installNetworkDebug(
+      page,
+      config,
+      () => activeGroupName
+    );
+  }
 
+  previewStage = "mở trang Zalo Web";
   await page.goto(
     "https://chat.zalo.me",
     {
@@ -15273,11 +16058,15 @@ async function main() {
     }
   );
 
-  console.log(
-    "Nếu chưa login Zalo Web, hãy quét QR trong cửa sổ Chrome."
-  );
-
-  console.log("Sau khi login xong tool sẽ tự quét nhóm.");
+  if (config.previewOnly || config.stagingOnlyImport) {
+    previewStage = "chờ đăng nhập và xác nhận giao diện Zalo Web";
+    await waitForPreviewLogin(page, config);
+  } else {
+    console.log(
+      "Nếu chưa login Zalo Web, hãy quét QR trong cửa sổ Chrome."
+    );
+    console.log("Sau khi login xong tool sẽ tự quét nhóm.");
+  }
 
   /*
    * Pipeline IndexedDB phải hoạt động độc lập với chế độ debug-only.
@@ -15291,10 +16080,24 @@ async function main() {
       config.indexedDbDebugOnly
   );
 
+  const configuredGroups = config.stagingOnlyImport
+    ? config.groups.filter(
+        (entry) =>
+          typeof entry !== "string" &&
+          entry.key === config.stagingOnlyGroupKey &&
+          entry.name === CONTROLLED_ZALO_GROUP_NAME
+      )
+    : config.previewOnly
+    ? config.groups.filter((entry) =>
+        typeof entry !== "string" &&
+        (config.previewOnlyGroupKeys || []).includes(entry.key)
+      )
+    : config.groups;
+
   while (true) {
     for (
       const groupEntry of
-      config.groups
+      configuredGroups
     ) {
       const {
         key: groupKey,
@@ -15307,6 +16110,7 @@ async function main() {
       try {
         activeGroupName =
           groupName;
+        previewStage = `mở nhóm ${groupName}`;
 
         console.log(
           `\nĐang quét nhóm: ${groupName}`
@@ -15329,6 +16133,7 @@ async function main() {
           config.networkDebugOnly ||
           useIndexedDbPipeline
         ) {
+          previewStage = `đọc lịch sử nhóm ${groupName}`;
           console.log(
             `Đang tải lịch sử nhóm: ${groupName}`
           );
@@ -15353,7 +16158,7 @@ async function main() {
             5000
           );
 
-                   if (config.indexedDbDebug) {
+          if (config.indexedDbDebug && !config.previewOnly) {
             await dumpIndexedDb(
               page,
               groupName,
@@ -15378,8 +16183,13 @@ async function main() {
                 groupName,
                 groupKey,
                 config,
-                groupRefs
+                groupRefs,
+                readerStartedAtMs,
+                Boolean(config.previewOnly || config.stagingOnlyImport)
               );
+            if (indexedDbExport?.phase5PreviewPath) {
+              previewOutputPaths.push(indexedDbExport.phase5PreviewPath);
+            }
           }
 
           const indexedDbResult =
@@ -15391,15 +16201,37 @@ async function main() {
                 >
               | undefined;
 
+          if (
+            config.stagingOnlyImport &&
+            indexedDbExport?.stagingLookbackStats
+          ) {
+            const stats = indexedDbExport.stagingLookbackStats;
+            console.log(
+              [
+                "Staging trial thống kê tin:",
+                `đã đọc ${stats.total},`,
+                `đủ timestamp và trong cửa sổ ${stats.included},`,
+                `bị loại ${stats.excludedUnknown + stats.excludedOutOfWindow}`,
+                `(thiếu/không tin cậy ${stats.excludedUnknown}, ngoài cửa sổ ${stats.excludedOutOfWindow}).`,
+              ].join(" ")
+            );
+          }
+
           const indexedDbTrusted =
             Boolean(
               indexedDbResult?.ok &&
               indexedDbResult
-                ?.groupIdTrusted
+                ?.groupIdTrusted &&
+              (!config.stagingOnlyImport ||
+                String(indexedDbResult?.groupId || "").trim() ===
+                  config.stagingOnlyGroupId)
             );
 
           if (
-            config.indexedDbImportEnabled &&
+            isReaderImportAllowed(
+              config.previewOnly,
+              config.indexedDbImportEnabled
+            ) &&
             indexedDbTrusted
           ) {
             await importIndexedDbRoomPreviews({
@@ -15411,8 +16243,8 @@ async function main() {
                 indexedDbExport
                   ?.previewRooms ||
                 [],
-
               state,
+              readerStartedAtMs,
             });
           }
 
@@ -15450,10 +16282,23 @@ async function main() {
           }
 
           console.log(
-            indexedDbTrusted
-              ? `Đã hoàn tất quét/import IndexedDB nhóm ${groupName}`
-              : `IndexedDB chưa được xác minh cho nhóm ${groupName}`
+            config.previewOnly
+              ? indexedDbTrusted
+                ? `Đã hoàn tất quét preview IndexedDB nhóm ${groupName}`
+                : `IndexedDB chưa được xác minh cho nhóm ${groupName}`
+              : indexedDbTrusted
+                ? `Đã hoàn tất quét/import IndexedDB nhóm ${groupName}`
+                : `IndexedDB chưa được xác minh cho nhóm ${groupName}`
           );
+
+          if (config.previewOnly) {
+            console.log(
+              indexedDbTrusted
+                ? `Preview đã xác minh tên nhóm và Group ID: ${groupName}.`
+                : `Preview không xác minh được Group ID; không xuất nội dung và không import: ${groupName}.`
+            );
+            continue;
+          }
 
           /**
            * Chế độ debug chỉ tạo file kiểm tra,
@@ -15524,17 +16369,40 @@ async function main() {
             .messageItems
         );
       } catch (e: any) {
+        if (config.previewOnly || config.stagingOnlyImport) {
+          throw new Error(
+            `Lỗi tại bước ${previewStage}: ${String(e?.message || e)}`
+          );
+        }
         console.error(`Lỗi nhóm ${groupName}:`, e?.message || e);
       }
     }
 
-        if (
+    if (
+      config.previewOnly ||
+      config.stagingOnlyImport ||
       config.indexedDbDebugOnly ||
       config.networkDebugOnly
     ) {
-      console.log(
-        "\nDebug hoàn tất. Đang đóng Zalo Reader..."
-      );
+      if (config.previewOnly) {
+        console.log(
+          previewOutputPaths.length > 0
+            ? `\nPreview hoàn tất. File cục bộ: ${previewOutputPaths.join(", ")}`
+            : "\nPreview kết thúc nhưng chưa tạo được file kết quả."
+        );
+        await waitForPreviewEnter(
+          "Kiểm tra Chrome/kết quả xong, nhấn Enter để đóng trình duyệt..."
+        );
+      } else if (config.stagingOnlyImport) {
+        console.log(
+          "Staging trial đã kết thúc sau đúng một lượt; Reader không tiếp tục quét và không mở rộng sang các tin tiếp theo."
+        );
+        await waitForPreviewEnter(
+          "Kiểm tra Chrome và danh sách chờ duyệt xong, nhấn Enter để đóng trình duyệt..."
+        );
+      } else {
+        console.log("\nDebug hoàn tất. Đang đóng Zalo Reader...");
+      }
 
       await context.close();
       return;
@@ -15575,6 +16443,20 @@ async function main() {
      * Vì vòng lặp dùng await tuần tự nên không có hai lượt chạy chồng nhau.
      */
     await sleep(idleIntervalMs);
+  }
+  } catch (error: any) {
+    if (!config.previewOnly && !config.stagingOnlyImport) {
+      throw error;
+    }
+
+    console.error(
+      `Preview dừng tại bước “${previewStage}”: ${String(error?.message || error)}`
+    );
+    await waitForPreviewEnter(
+      "Chrome được giữ mở. Hãy kiểm tra Zalo/selector trong cửa sổ; nhấn Enter để đóng..."
+    );
+    await context.close();
+    process.exitCode = 1;
   }
 }
 

@@ -1198,6 +1198,7 @@ return (
                   sizes="(max-width: 440px) 60vw, 264px"
                   className="object-cover object-[50%_40%]"
                   loading={index === 0 ? "eager" : "lazy"}
+                  unoptimized
                   onError={() => {
                     setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));
                   }}
@@ -1229,6 +1230,7 @@ return (
                     fill
                     sizes="(max-width: 440px) 20vw, 88px"
                     className="object-cover"
+                     unoptimized
                     onError={() => setSub1Ok(false)}
                   />
                 </div>
@@ -1242,6 +1244,7 @@ return (
                     fill
                     sizes="(max-width: 440px) 20vw, 88px"
                     className="object-cover"
+                     unoptimized
                     onError={() => setSub2Ok(false)}
                   />
 
@@ -1511,7 +1514,7 @@ return (
             event.stopPropagation();
             setInquiryOpen(true);
           }}
-          className="inline-flex min-h-[31px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-2.5 text-[10px] font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
+          className="inline-flex min-h-[38px] w-full max-w-[190px] flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[#F5E4C8]/90 bg-[#F0DDBB] px-4 text-[13px] font-bold text-[#352216] shadow-[0_5px_17px_rgba(0,0,0,.18),inset_0_1px_0_rgba(255,255,255,0.65)] transition-colors duration-200 hover:border-[#FFF1D9] hover:bg-[#F8E9D0] active:scale-[.99]"
         >
           <span aria-hidden="true">✦</span> Đi xem/Tư vấn
         </button>

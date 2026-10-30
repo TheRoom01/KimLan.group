@@ -13,6 +13,10 @@ import {
   readZaloAutoImportSettings,
 } from "@/lib/zalo-import/quality";
 import { publishPendingRoom } from "@/lib/zalo-import/publish-pending-room";
+import {
+  isControlledZaloTarget,
+  shouldAutoPublishZaloImport,
+} from "@/lib/zalo-reader/controlled-staging";
 
 import {
   makeZaloTempImageKey,
@@ -771,6 +775,12 @@ export async function POST(
         ).trim()
       );
 
+    const sourceGroupId =
+      sanitizePostgrestString(
+        String(body.groupId || "").trim()
+      );
+    const stagingOnly = body.stagingOnly === true;
+
     const senderName =
       sanitizePostgrestString(
         String(
@@ -802,6 +812,47 @@ export async function POST(
           body.sentAt || ""
         ).trim()
       ) || null;
+
+    if (
+      stagingOnly &&
+      !isControlledZaloTarget({
+        groupId: sourceGroupId,
+        groupName,
+      })
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Staging trial chỉ chấp nhận đúng Group ID và tên nhóm đã xác minh.",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (stagingOnly) {
+      const readerStartedAtMs = Number(body.readerStartedAtMs);
+      const sentAtMs = sentAt ? Date.parse(sentAt) : NaN;
+      const maxFutureStartMs = Date.now() + 60_000;
+      if (
+        !sourceMessageId ||
+        !Number.isSafeInteger(readerStartedAtMs) ||
+        readerStartedAtMs <= 0 ||
+        readerStartedAtMs > maxFutureStartMs ||
+        !Number.isFinite(sentAtMs) ||
+        sentAtMs < readerStartedAtMs - 24 * 60 * 60 * 1000 ||
+        sentAtMs > readerStartedAtMs
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Staging trial từ chối tin thiếu timestamp/ID hoặc nằm ngoài cửa sổ 24 giờ cố định từ lúc Reader bắt đầu.",
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     const images:
       IncomingImage[] =
@@ -1014,6 +1065,7 @@ export async function POST(
             "quality-v1",
 
           parser_result: {
+            staging_trial: stagingOnly,
             room_payload:
               resolved.roomPayload,
 
@@ -1804,6 +1856,8 @@ export async function POST(
 
     const batchParserResult =
       {
+        staging_trial: stagingOnly,
+        staging_group_id: stagingOnly ? sourceGroupId : null,
         room_payload:
           pendingRoomPayload,
 
@@ -1954,6 +2008,13 @@ export async function POST(
               ? resolved.roomPayload
                   .status ?? null
               : null,
+          ...(stagingOnly
+            ? {
+                auto_approve_enabled: false,
+                auto_approve_at: null,
+                auto_approve_actor_id: null,
+              }
+            : {}),
         },
         "pending_room_versions.insert"
       );
@@ -1987,9 +2048,12 @@ export async function POST(
       string | null = null;
 
     if (
-      importQuality.eligible &&
-      autoImportSettings.enabled &&
-      !autoImportSettings.dryRun
+      shouldAutoPublishZaloImport({
+        stagingOnly,
+        eligible: importQuality.eligible,
+        enabled: autoImportSettings.enabled,
+        dryRun: autoImportSettings.dryRun,
+      })
     ) {
       try {
         const published =
@@ -2081,6 +2145,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       duplicate: false,
+      stagingOnly,
 
       partial:
         hasImportErrors,

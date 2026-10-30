@@ -66,6 +66,13 @@ export function uniqueTexts(values: string[]) {
 export function messageTimestamp(
   message: SemanticIndexedDbMessage
 ) {
+  if (message.strictTimestampOnly) {
+    const timestamp = Number(message.trustedTimestampMs || 0);
+    return Number.isSafeInteger(timestamp) && timestamp > 0
+      ? timestamp
+      : 0;
+  }
+
   const candidates = [
     Number(message.sendDttm || 0),
     Number(message.serverTime || 0),

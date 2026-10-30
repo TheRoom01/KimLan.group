@@ -31,6 +31,9 @@ export type SemanticIndexedDbMessage = {
   totalImages: string | number | null;
   sendDttm: number;
   serverTime: number;
+  /** Set only after Phase 5 validates the IndexedDB send timestamp. */
+  strictTimestampOnly?: boolean;
+  trustedTimestampMs?: number;
   fromUid: string;
   toUid: string;
   senderName: string;
@@ -69,6 +72,7 @@ export type SemanticRoomPreview = {
   sourceHash: string;
   groupId: string;
   senderUid: string;
+  roomCode?: string;
   houseInfoText: string;
   markerText: string;
   descriptionTexts: string[];
@@ -88,6 +92,7 @@ export type SemanticRoomPreview = {
 
 export type RoomAnchor = {
   id: string;
+  anchorGroupId?: string;
   messageId: string;
   messageIndex: number;
   timestamp: number;

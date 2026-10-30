@@ -115,6 +115,11 @@ function buildRoomAnchors(segment: BuildingSegment) {
             anchorIndex,
             codeIndex,
           ].join(":"),
+          anchorGroupId: [
+            segment.id,
+            String(message.msgId || message.cliMsgId || messageIndex),
+            anchorIndex,
+          ].join(":"),
           messageId: String(message.msgId || message.cliMsgId || "").trim(),
           messageIndex,
           timestamp: messageTimestamp(message),
@@ -151,6 +156,7 @@ function makeSyntheticRoom(params: {
 
   return {
     id: `${segment.id}:synthetic-room`,
+    anchorGroupId: `${segment.id}:synthetic-room`,
     messageId: String(
       firstMedia?.messageIds[0] ||
         lastMessage?.msgId ||
@@ -521,11 +527,16 @@ function flattenVideoPayloads(bundles: MediaBundle[]) {
 function buildFullText(params: {
   houseInfoText: string;
   markerText: string;
+  roomCode: string;
   descriptions: string[];
 }) {
+  const markerWithRoomCode = params.roomCode
+    ? `${params.markerText}\nMã phòng: ${params.roomCode}`
+    : params.markerText;
+
   return uniqueTexts([
     params.houseInfoText,
-    params.markerText,
+    markerWithRoomCode,
     ...params.descriptions,
   ])
     .join("\n\n")
@@ -567,22 +578,51 @@ function buildRoomsForSegment(params: {
     options,
   });
 
-  /* FINAL_SHARED_ALBUM_MULTI_ROOM */
   const realMarkerRooms = rooms.filter((room) => Boolean(cleanText(room.markerText)));
-  const markerMessageIds = new Set(realMarkerRooms.map((room) => room.messageId).filter(Boolean));
-  const markerMessageIndexes = new Set(realMarkerRooms.map((room) => room.messageIndex));
-  const mayShareSingleAlbum =
+  const singleBundleSharedBySender =
     bundles.length === 1 &&
     realMarkerRooms.length > 1 &&
-    (markerMessageIds.size === 1 || markerMessageIndexes.size === 1);
+    Boolean(bundles[0]?.senderUid) &&
+    realMarkerRooms.every((room) => room.senderUid === bundles[0]?.senderUid);
 
-  if (mayShareSingleAlbum) {
-    const sharedBundle = bundles[0];
+  if (singleBundleSharedBySender && bundles[0]) {
     for (const room of realMarkerRooms) {
-      assignment.assignedByRoomId.set(room.id, [sharedBundle]);
+      assignment.assignedByRoomId.set(room.id, [bundles[0]]);
       assignment.warningsByRoomId.get(room.id)?.add("SHARED_ALBUM_MULTI_ROOM_MESSAGE");
     }
     assignment.unassignedBundles.splice(0, assignment.unassignedBundles.length);
+  }
+
+  /* A single marker that names several codes creates sibling anchors. Share
+   * only media already assigned to one of those siblings; unrelated marker
+   * groups and albums in the same building segment remain independent. */
+  const siblingsByAnchor = new Map<string, RoomAnchor[]>();
+  for (const room of rooms) {
+    if (!cleanText(room.markerText)) continue;
+    const anchorGroupId = room.anchorGroupId || room.id;
+    const siblings = siblingsByAnchor.get(anchorGroupId) || [];
+    siblings.push(room);
+    siblingsByAnchor.set(anchorGroupId, siblings);
+  }
+
+  for (const siblings of siblingsByAnchor.values()) {
+    if (siblings.length < 2) continue;
+    const siblingBundles = new Set<MediaBundle>();
+    for (const sibling of siblings) {
+      for (const bundle of assignment.assignedByRoomId.get(sibling.id) || []) {
+        siblingBundles.add(bundle);
+      }
+    }
+    if (siblingBundles.size === 0) continue;
+    for (const sibling of siblings) {
+      assignment.assignedByRoomId.set(sibling.id, Array.from(siblingBundles));
+      assignment.warningsByRoomId.get(sibling.id)?.add("SHARED_ALBUM_MULTI_ROOM_MESSAGE");
+    }
+    for (let index = assignment.unassignedBundles.length - 1; index >= 0; index--) {
+      if (siblingBundles.has(assignment.unassignedBundles[index])) {
+        assignment.unassignedBundles.splice(index, 1);
+      }
+    }
   }
 
   if (!hadRealRoomMarker && rooms.length === bundles.length) {
@@ -684,10 +724,12 @@ function buildRoomsForSegment(params: {
       warnings.add(`UNASSIGNED_MEDIA:${assignment.unassignedBundles.length}`);
     }
 
-    const descriptionTexts = uniqueTexts(
-      distributed.roomTextsById.get(room.id) || [],
-    );
     const markerText = cleanText(room.markerText);
+    const descriptionTexts = uniqueTexts(
+      (distributed.roomTextsById.get(room.id) || []).filter(
+        (text) => cleanText(text) !== markerText
+      ),
+    );
 
     if (!room.roomCode) {
       warnings.add("ROOM_CODE_MISSING");
@@ -723,12 +765,14 @@ function buildRoomsForSegment(params: {
       sourceHash,
       groupId,
       senderUid,
+      roomCode: room.roomCode,
       houseInfoText,
       markerText,
       descriptionTexts,
       fullText: buildFullText({
         houseInfoText,
         markerText,
+        roomCode: room.roomCode,
         descriptions: descriptionTexts,
       }),
       markerMessageId,

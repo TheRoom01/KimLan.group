@@ -101,7 +101,7 @@ function toNullableNumber(value: unknown) {
 
 function toBoolean(
   value: unknown,
-  fallback = false
+  fallback: boolean | null = false
 ) {
   if (typeof value === "boolean") {
     return value;
@@ -208,40 +208,48 @@ function buildDetailInsertPayload(params: {
     other_fee_note: toNullableString(
       detail.other_fee_note
     ),
-    allow_pet: toBoolean(detail.allow_pet),
-    allow_cat: toBoolean(detail.allow_cat),
-    allow_dog: toBoolean(detail.allow_dog),
-    no_pet: toBoolean(detail.no_pet),
-    short_term: toBoolean(detail.short_term),
+    allow_pet: toBoolean(detail.allow_pet, null),
+    allow_cat: toBoolean(detail.allow_cat, null),
+    allow_dog: toBoolean(detail.allow_dog, null),
+    no_pet: toBoolean(detail.no_pet, null),
+    short_term: toBoolean(detail.short_term, null),
     long_term: toBoolean(
       detail.long_term,
-      true
+      null
     ),
     fingerprint_lock: toBoolean(
-      detail.fingerprint_lock
+      detail.fingerprint_lock,
+      null
     ),
-    free_time: toBoolean(detail.free_time),
+    free_time: toBoolean(detail.free_time, null),
     has_elevator: toBoolean(
-      detail.has_elevator
+      detail.has_elevator,
+      null
     ),
-    has_stairs: toBoolean(detail.has_stairs),
+    has_stairs: toBoolean(detail.has_stairs, null),
     shared_washer: toBoolean(
-      detail.shared_washer
+      detail.shared_washer,
+      null
     ),
     private_washer: toBoolean(
-      detail.private_washer
+      detail.private_washer,
+      null
     ),
     shared_dryer: toBoolean(
-      detail.shared_dryer
+      detail.shared_dryer,
+      null
     ),
     private_dryer: toBoolean(
-      detail.private_dryer
+      detail.private_dryer,
+      null
     ),
     has_parking: toBoolean(
-      detail.has_parking
+      detail.has_parking,
+      null
     ),
     has_basement: toBoolean(
-      detail.has_basement
+      detail.has_basement,
+      null
     ),
     other_amenities: toNullableString(
       detail.other_amenities
@@ -512,6 +520,12 @@ export async function publishPendingRoom(params: {
   if (!String(roomPayload.district || "").trim()) {
     throw new Error(
       "Thiếu quận/huyện. Vui lòng chỉnh sửa import trước khi duyệt."
+    );
+  }
+
+  if (!String(roomPayload.status || "").trim()) {
+    throw new Error(
+      "Chưa xác định trạng thái phòng. Vui lòng chọn trạng thái trước khi duyệt."
     );
   }
 

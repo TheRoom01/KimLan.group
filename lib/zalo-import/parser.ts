@@ -110,6 +110,26 @@ export function normalizeRoomCode(
     .replace(/\s+/g, " ")
     .trim();
 
+  const combinedPosition = withoutLabel.match(
+    /^(p\s*\.?\s*[a-z]?\d{2,4}[a-z]?)\s*[_–—-]\s*(lầu\s*\d{1,2}|trệt)$/i
+  );
+  if (combinedPosition?.[1] && combinedPosition?.[2]) {
+    const base = combinedPosition[1]
+      .replace(/\s+/g, "")
+      .replace(/^p\.(?=[a-z0-9])/i, "P");
+    const position = /^trệt$/i.test(combinedPosition[2])
+      ? "Trệt"
+      : `Lầu ${Number(combinedPosition[2].replace(/\D/g, ""))}`;
+    return `${base.toUpperCase()} _ ${position}`;
+  }
+
+  const floorOnly = withoutLabel.match(/^(lầu\s*\d{1,2}|trệt)$/i);
+  if (floorOnly?.[1]) {
+    return /^trệt$/i.test(floorOnly[1])
+      ? "Trệt"
+      : `Lầu ${Number(floorOnly[1].replace(/\D/g, ""))}`;
+  }
+
   const normalized =
     normalizeForCompare(
       withoutLabel
@@ -630,6 +650,13 @@ function extractRoomCodeFromMarker(
 
   if (!text) return "";
 
+  const compositeMatch = text.match(
+    /(?:mã\s*phòng|mã|phòng)\s*[:\-]?\s*(p\s*\.?\s*[a-z]?\d{2,4}[a-z]?)\s*[_–—-]\s*(lầu\s*\d{1,2}|trệt)/i
+  );
+  if (compositeMatch?.[1] && compositeMatch?.[2]) {
+    return normalizeRoomCode(`${compositeMatch[1]} _ ${compositeMatch[2]}`);
+  }
+
   const baseCode =
     "(?:" +
     "[A-Z]{1,3}\\s*\\.?\\s*\\d{1,4}[A-Z]?|" +
@@ -690,14 +717,6 @@ function extractRoomCodeFromMarker(
       "i"
     ),
 
-    /*
-     * Giá đứng trước mã tầng:
-     * Giá 13tr ... Tầng 3
-     */
-    new RegExp(
-      `${priceToken}[\\s\\S]{0,100}\\b(${floorToken})\\b`,
-      "i"
-    ),
   ];
 
   for (const pattern of explicitPatterns) {
@@ -709,6 +728,27 @@ function extractRoomCodeFromMarker(
         match[1]
       );
     }
+  }
+
+  // Look only in the short field between the price and the vacancy/status.
+  // This avoids treating address numbers, prices, or availability dates as codes.
+  const priceMatch = text.match(new RegExp(ROOM_PRICE_TOKEN_SOURCE, "i"));
+  if (priceMatch?.[0] && priceMatch.index != null) {
+    const afterPrice = text.slice(priceMatch.index + priceMatch[0].length);
+    const codeField = afterPrice
+      .split(/\b(?:trống|còn\s*trống|đã\s*thuê|hết\s*phòng|available)\b/i)[0]
+      .replace(/^\s*[-–—:|]+\s*/, "")
+      .trim();
+    const postPriceCodes = Array.from(
+      codeField.matchAll(/(?:p\s*\.?\s*[a-z]?\d{2,4}[a-z]?|lầu\s*\d{1,2}|trệt)/gi)
+    ).map((match) => match[0]);
+    const baseCode = postPriceCodes.find((code) => /^p/i.test(code));
+    const floorCode = postPriceCodes.find((code) => /^(?:lầu|trệt)/i.test(code));
+    if (baseCode && floorCode) {
+      return normalizeRoomCode(`${baseCode} _ ${floorCode}`);
+    }
+    if (baseCode) return normalizeRoomCode(baseCode);
+    if (floorCode) return normalizeRoomCode(floorCode);
   }
 
   return "";
@@ -3083,7 +3123,7 @@ function defaultRoomPayload(
     ward: "",
     district: "",
     price: null,
-    status: "Trống",
+    status: null,
 
     /*
      * Chỉ lấy mô tả từ dữ liệu riêng của phòng.
@@ -3123,29 +3163,24 @@ function defaultDetailPayload(): Record<string, any> {
     other_fee_value: null,
     other_fee_note: "",
 
-    has_elevator: false,
-    has_stairs: false,
-    /*
-     * Mặc định mọi phòng có máy giặt chung.
-     * Phần nhận diện phía dưới sẽ tắt mặc định này
-     * khi tin Zalo nói rõ máy giặt riêng hoặc không có máy giặt.
-     */
-    shared_washer: true,
-    private_washer: false,
-    shared_dryer: false,
-    private_dryer: false,
-    has_parking: true,
-    has_basement: false,
-    fingerprint_lock: false,
-    free_time: false,
+    has_elevator: null,
+    has_stairs: null,
+    shared_washer: null,
+    private_washer: null,
+    shared_dryer: null,
+    private_dryer: null,
+    has_parking: null,
+    has_basement: null,
+    fingerprint_lock: null,
+    free_time: null,
 
-    allow_pet: false,
-    allow_cat: false,
-    allow_dog: false,
-    no_pet: false,
+    allow_pet: null,
+    allow_cat: null,
+    allow_dog: null,
+    no_pet: null,
 
-    short_term: false,
-    long_term: true,
+    short_term: null,
+    long_term: null,
 
     other_amenities: "",
     detail_json: null,
@@ -3263,9 +3298,22 @@ const otherAmenities =
     houseInfoText
   );
 
-if (otherAmenities) {
+  const roomMarkerAmenities: string[] = [];
+  if (/(?:^|[\/+ ])cs(?=$|[\/+\s-])/.test(markerTextNoTone)) {
+    roomMarkerAmenities.push("Cửa sổ");
+  }
+  if (/(?:^|[\/+ ])bc(?=$|[\/+\s-])/.test(markerTextNoTone)) {
+    roomMarkerAmenities.push("Ban công");
+  }
+
+  const mergedOtherAmenities = uniqueTextLines([
+    otherAmenities,
+    ...roomMarkerAmenities,
+  ].filter(Boolean).join("\n").split("\n")).join("\n");
+
+  if (mergedOtherAmenities) {
   detailPayload.other_amenities =
-    otherAmenities;
+      mergedOtherAmenities;
 
   sourceFieldMap.other_amenities =
     "Tin Zalo";
@@ -3424,6 +3472,11 @@ if (
 
     sourceFieldMap.service_fee_value =
       "Tin Zalo";
+  } else if (
+    /(?:phí\s*)?(?:dịch\s*vụ|dv|service(?:\s*fee)?)\s*[:=\-]?\s*(?:free|miễn\s*phí|0\s*(?:đ|d|đồng)?)(?:\b|$)/i.test(text)
+  ) {
+    detailPayload.service_fee_value = 0;
+    sourceFieldMap.service_fee_value = "Tin Zalo";
   }
 
   const parkingFeeValue =
@@ -3443,7 +3496,7 @@ if (
   if (/đã\s*thuê|da\s*thue|hết\s*phòng|het\s*phong/i.test(text)) {
     roomPayload.status = "Đã thuê";
     sourceFieldMap.status = "Tin Zalo";
-  } else if (/trống|con trong|còn trống|available/i.test(textNoTone)) {
+  } else if (/\b(?:trong(?:\s*san)?|con\s*trong|available)\b/i.test(textNoTone)) {
     roomPayload.status = "Trống";
     sourceFieldMap.status = "Tin Zalo";
   }
@@ -3482,20 +3535,17 @@ if (parkingOutside) {
   detailPayload.has_parking =
     false;
 
-  detailPayload.has_basement =
-    false;
-
   sourceFieldMap.has_parking =
     "Tin Zalo";
-
-  sourceFieldMap.has_basement =
-    "Tin Zalo";
 } else {
-  /*
-   * Các trường hợp còn lại mặc định gửi xe Có.
-   */
-  detailPayload.has_parking =
-    true;
+  const parkingMentioned =
+    /\b(?:phi\s*)?(?:xe|giu\s*xe|gui\s*xe|cho\s*de\s*xe|bai\s*xe|parking)\b/.test(
+      houseTextNoTone
+    );
+  if (parkingMentioned) {
+    detailPayload.has_parking = true;
+    sourceFieldMap.has_parking = "Tin Zalo";
+  }
 
   const basementDenied =
     /\b(khong|ko)\s*(co\s*)?(ham xe|tang ham)\b/.test(
@@ -3515,9 +3565,21 @@ if (parkingOutside) {
     basementDenied ||
     basementAllowed
   ) {
+    detailPayload.has_basement = basementAllowed;
     sourceFieldMap.has_basement =
       "Tin Zalo";
   }
+}
+
+const explicitFeeNotes = getCleanZaloLines(text).filter((line) =>
+  /(?:phí\s*)?(?:dịch\s*vụ|dv|service(?:\s*fee)?)\s*[:=\-]?\s*(?:free|miễn\s*phí)\b|(?:phí\s*)?(?:xe|gửi\s*xe|giữ\s*xe|parking)\s*[:=\-]?\s*(?:gửi\s*ngoài|để\s*ngoài)/i.test(line)
+);
+if (explicitFeeNotes.length > 0) {
+  detailPayload.other_fee_note = uniqueTextLines([
+    String(detailPayload.other_fee_note || ""),
+    ...explicitFeeNotes,
+  ].filter(Boolean).join("\n").split("\n")).join("\n");
+  sourceFieldMap.other_fee_note = "Tin Zalo";
 }
 
   const washerDenied =

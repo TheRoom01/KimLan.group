@@ -1,3 +1,8 @@
+import {
+  isExactGroupNameMatch,
+  parseAllowedGroupsJson,
+} from "./group-allowlist";
+
 export type ZaloImportIssueLike = {
   level?: string | null;
   stage?: string | null;
@@ -237,7 +242,10 @@ export function readZaloAutoImportSettings(
     3
   );
 
-  const allowedGroups = uniqueStrings(
+  const jsonAllowedGroups = parseAllowedGroupsJson(
+    process.env.ZALO_AUTO_IMPORT_ALLOWED_GROUPS_JSON
+  );
+  const allowedGroups = jsonAllowedGroups ?? uniqueStrings(
     String(
       process.env.ZALO_AUTO_IMPORT_ALLOWED_GROUPS ||
         ""
@@ -246,14 +254,11 @@ export function readZaloAutoImportSettings(
       .map((item) => item.trim())
   );
 
-  const normalizedGroup = normalizeText(groupName);
-
-  const allowedGroup =
-    allowedGroups.includes("*") ||
-    allowedGroups.some(
-      (item) =>
-        normalizeText(item) === normalizedGroup
-    );
+  const allowedGroup = jsonAllowedGroups !== null
+    ? allowedGroups.some((item) => isExactGroupNameMatch(item, groupName))
+    : allowedGroups.includes("*") || allowedGroups.some(
+        (item) => normalizeText(item) === normalizeText(groupName)
+      );
 
   const ownerId = String(
     process.env.ZALO_AUTO_IMPORT_OWNER_ID || ""
@@ -413,6 +418,13 @@ export function evaluateZaloImportQuality(params: {
     addBlocker(
       "INVALID_PRICE",
       "Giá phòng phải nằm trong khoảng 2.000.000–50.000.000 đồng."
+    );
+  }
+
+  if (!String(room.status || "").trim()) {
+    addBlocker(
+      "MISSING_STATUS",
+      "Chưa xác định trạng thái phòng; cần admin kiểm tra trước khi đăng."
     );
   }
 

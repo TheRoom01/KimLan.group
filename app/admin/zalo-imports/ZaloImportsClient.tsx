@@ -1798,6 +1798,9 @@ function ImportDetailModal({
   const isDuplicate =
     currentRow.status ===
     "Trùng phòng";
+  const isStagingTrial = Boolean(
+    (currentRow.batch as any)?.parser_result?.staging_trial
+  );
 
   const {
     busyAction,
@@ -2009,6 +2012,19 @@ function ImportDetailModal({
               >
                 {currentRow.status}
               </span>
+
+              {isStagingTrial && (
+                <span
+                  style={{
+                    ...badgeBlue,
+                    background: "#ecfdf5",
+                    color: "#047857",
+                    border: "1px solid #a7f3d0",
+                  }}
+                >
+                  Nhập thử staging
+                </span>
+              )}
 
               <ImportNoticeBadge
                 row={currentRow}

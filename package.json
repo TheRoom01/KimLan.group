@@ -9,6 +9,8 @@
     "lint": "eslint .",
     "zalo-reader": "tsx tools/zalo-reader/zalo-reader.ts",
     "test:zalo-parser": "tsx tools/zalo-reader/parsers/semantic-parser-smoke-test.ts",
+    "test:zalo-preview": "tsx tools/zalo-reader/parsers/phase5-preview-smoke-test.ts",
+    "test:zalo-staging": "tsx tools/zalo-reader/parsers/controlled-staging.test.ts",
     "patch:zalo-parser-phase1": "node tools/zalo-reader/apply-phase1-parser-wiring.mjs",
     "build:webpack": "next build --webpack",
     "patch:zalo-parser-phase2-final": "node tools/zalo-reader/apply-phase2-final-marker-album.mjs",
