@@ -51,7 +51,9 @@ switch($Action) {
    foreach($key in @('Gio-Hang-Can-Ho-Q1-Q3-Q10','Gio-Hang-Can-Ho-PN-BT-TB')) {
      if (!$verified.$key.groupId) { throw 'Both groups must be verified.' }
    }
-   $cycle=Get-Content -LiteralPath (Join-Path $readerRoot '.zalo-reader/official/cycle-state.json') -Raw -Encoding UTF8|ConvertFrom-Json
+   $completedPath=Join-Path $readerRoot '.zalo-reader/official/last-completed-run.json'
+   if (!(Test-Path -LiteralPath $completedPath)) { $completedPath=Join-Path $readerRoot '.zalo-reader/official/cycle-state.json' }
+   $cycle=Get-Content -LiteralPath $completedPath -Raw -Encoding UTF8|ConvertFrom-Json
    $reports=Get-ChildItem -LiteralPath (Join-Path $readerRoot '.zalo-reader/official/runs') -Filter '*.json' -ErrorAction SilentlyContinue |
      ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8|ConvertFrom-Json } |
      Where-Object { $report=$_; $report.groups.Count -eq 2 -and @($report.groups.groupKey|Sort-Object -Unique).Count -eq 2 -and @($report.groups|Where-Object { !$_.groupId -or !$_.coverageComplete -or !$_.finishedAt -or $verified.($_.groupKey).groupId -ne $_.groupId }).Count -eq 0 -and (

@@ -1,3 +1,6 @@
+import { isUpdateCodeChange, stableJson } from "./room-comparison";
+import { applyPendingLocation } from "./pending-location";
+import { runSettledPool } from "@/lib/async-pool";
 import { randomUUID } from "crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -19,6 +22,7 @@ type PublishSource =
   | "draft_auto";
 
 export type PublishPendingRoomResult = {
+  locationWarning?: string | null;
   roomId: string;
   mediaCount: number;
   imageCount: number;
@@ -348,6 +352,9 @@ export async function publishPendingRoom(params: {
   source: PublishSource;
   supabase?: AnySupabase;
   actorSupabase?: AnySupabase;
+  createFromUpdate?: boolean;
+  expectedRoomPayload?: Record<string, any>;
+  expectedDetailPayload?: Record<string, any>;
 }): Promise<PublishPendingRoomResult> {
   const pendingId = String(
     params.pendingId || ""
@@ -413,7 +420,12 @@ export async function publishPendingRoom(params: {
   }
 
   const importReview = getImportReview((pending as any).room_payload);
-  if ((pending as any).matched_room_id || (importReview && importReview.type !== "CREATE")) {
+  const correctedUpdate = params.source === "manual" && params.createFromUpdate === true;
+  if (correctedUpdate) {
+    if (!isUpdateCodeChange((pending as any).room_payload) || importReview?.snapshot?.room.id !== (pending as any).matched_room_id) throw new Error("Hãy nhập mã phòng mới khác mã phòng cũ, giữ nguyên địa chỉ trước khi tạo phòng.");
+    if (!params.expectedRoomPayload || stableJson(params.expectedRoomPayload) !== stableJson((pending as any).room_payload) || stableJson(params.expectedDetailPayload || {}) !== stableJson((pending as any).detail_payload || {})) throw new Error("Bản nháp đã đổi. Hãy mở lại và kiểm tra trước khi duyệt.");
+  }
+  if (!correctedUpdate && ((pending as any).matched_room_id || (importReview && importReview.type !== "CREATE"))) {
     throw new Error("Pending UPDATE/cần xác minh không được tạo phòng mới. Hãy dùng duyệt cập nhật.");
   }
   // Recheck CREATE, including older drafts, immediately before publishing.
@@ -623,13 +635,13 @@ export async function publishPendingRoom(params: {
       throw detailInsert.error;
     }
 
-    for (const imageRow of images ?? []) {
+    await runSettledPool(images ?? [], 3, async (imageRow, imageIndex) => {
       const image: any = imageRow;
       const fromKey = String(
         image.temp_r2_key || ""
       ).trim();
 
-      if (!fromKey) continue;
+      if (!fromKey) return;
 
       const extension = extFromKey(
         fromKey,
@@ -661,7 +673,7 @@ export async function publishPendingRoom(params: {
         url: copied.url,
         path: copied.url,
         is_cover: mediaRows.length === 0,
-        sort_order: Number(image.sort_order ?? mediaRows.length),
+        sort_order: Number(image.sort_order ?? imageIndex),
       });
 
       imageMediaCount += 1;
@@ -679,15 +691,15 @@ export async function publishPendingRoom(params: {
       if (trackingUpdate.error) {
         throw trackingUpdate.error;
       }
-    }
+    });
 
-    for (const videoRow of videos ?? []) {
+    await runSettledPool(videos ?? [], 2, async (videoRow, videoIndex) => {
       const video: any = videoRow;
       const fromKey = String(
         video.temp_r2_key || ""
       ).trim();
 
-      if (!fromKey) continue;
+      if (!fromKey) return;
 
       const extension = extFromKey(
         fromKey,
@@ -719,7 +731,7 @@ export async function publishPendingRoom(params: {
         url: copied.url,
         path: copied.url,
         is_cover: mediaRows.length === 0,
-        sort_order: Number(video.sort_order ?? mediaRows.length),
+        sort_order: Number(video.sort_order ?? images.length + videoIndex),
       });
 
       videoMediaCount += 1;
@@ -745,7 +757,7 @@ export async function publishPendingRoom(params: {
       if (trackingUpdate.error) {
         throw trackingUpdate.error;
       }
-    }
+    });
 
     if (mediaRows.length <= 0) {
       throw new Error(
@@ -787,6 +799,8 @@ export async function publishPendingRoom(params: {
 
     const nextRoomPayload = {
       ...roomPayload,
+      ...(correctedUpdate ? { _room_import: identityCheck.roomPayload._room_import,
+        _created_from_update: { previous_room_id: (pending as any).matched_room_id, previous_room_code: importReview?.snapshot?.room.room_code, actor_id: actorUserId, at: now } } : {}),
       ...(nextQuality
         ? { import_quality: nextQuality }
         : {}),
@@ -811,6 +825,7 @@ export async function publishPendingRoom(params: {
       .update({
         status: "Đã duyệt",
         room_payload: nextRoomPayload,
+        ...(correctedUpdate ? { matched_room_id: null, matched_reason: "Admin tạo phòng với mã mới" } : {}),
         approved_room_id: roomId,
         approved_at: now,
         approved_by: actorUserId,
@@ -851,7 +866,9 @@ export async function publishPendingRoom(params: {
       });
     }
 
+    const locationWarning = await applyPendingLocation(params.actorSupabase, roomId, roomPayload);
     return {
+      locationWarning,
       roomId,
       mediaCount: mediaRows.length,
       imageCount: imageMediaCount,

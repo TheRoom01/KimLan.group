@@ -1,0 +1,47 @@
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# production
+build/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel/
+
+# Misc
+*.log
+
+.env.local
+
+.zalo-reader/
+tools/zalo-reader/state.json
+
+# resumable Map Search geocoding state (may contain production addresses)
+.map-geocode-cache.json
+.map-geocode-batch-jobs.json
+
+.vercel
+.env*
+
+.git/
+*.zip
+kimlan-semantic-parser-fix-v4-cumulative/
+tsconfig.tsbuildinfo

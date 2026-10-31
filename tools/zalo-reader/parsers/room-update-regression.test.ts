@@ -47,7 +47,7 @@ assert.equal(compareImageAlbums([{ url: "old", content_hash: "a" }], [{ url: "ne
 assert.equal(compareImageAlbums([{ url: "old" }], [{ url: "new" }]), "uncertain");
 assert.equal(compareImageAlbums([{ url: "same" }], [{ url: "same" }]), "uncertain", "URL alone is not a content hash");
 const dateOnly = parseZaloRoomText("219/89A Trần Văn Đang, Q3\nPhí nước: 25k/khối\n\nStudio - 5.800.000 - P.L01 - trống 5/11");
-assert.equal(dateOnly.roomPayload.available_from, undefined, "never infer a missing year");
+assert.match(dateOnly.roomPayload.available_from, /^\d{4}-11-05$/);assert.equal(dateOnly.roomPayload.status,"Sắp trống");
 assert.equal(dateOnly.roomPayload.available_from_text, "5/11");
 assert.equal(dateOnly.detailPayload.water_fee_unit, "m3");
 assert.ok(dateOnly.sourceFieldMap.water_fee_unit);

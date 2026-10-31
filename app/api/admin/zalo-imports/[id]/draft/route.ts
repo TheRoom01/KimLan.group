@@ -1,10 +1,12 @@
+import { readPendingLocation } from "@/lib/zalo-import/pending-location";
+import { runSettledPool } from "@/lib/async-pool";
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { deleteR2Keys } from "@/lib/r2/zalo-temp";
-import { getImportReview, normalizedRoomIdentity, canonicalStoredIdentity, ROOM_UPDATE_FIELDS, DETAIL_UPDATE_FIELDS, stableJson } from "@/lib/zalo-import/room-comparison";
+import { getImportReview, isUpdateCodeChange, normalizedRoomIdentity, canonicalStoredIdentity, ROOM_UPDATE_FIELDS, DETAIL_UPDATE_FIELDS, stableJson } from "@/lib/zalo-import/room-comparison";
 
 export const runtime = "nodejs";
 
@@ -375,6 +377,10 @@ export async function PATCH(
       );
     }
 
+    if (Object.hasOwn(roomPayload, "_pending_location")) {
+      try { roomPayload._pending_location = readPendingLocation(roomPayload._pending_location); }
+      catch { return NextResponse.json({ ok: false, error: "Tọa độ vị trí không hợp lệ." }, { status: 400 }); }
+    }
     const supabase =
       createSupabaseAdminClient();
 
@@ -418,7 +424,7 @@ export async function PATCH(
       return NextResponse.json({ ok: false, error: "Bản TEST chỉ cập nhật bằng Reader; không sửa hoặc tự duyệt." }, { status: 403 });
     }
     const originalReview = getImportReview(pendingRow.room_payload);
-    if (originalReview?.identity_key && normalizedRoomIdentity({ ...pendingRow.room_payload, ...roomPayload }) !== canonicalStoredIdentity(originalReview.identity_key)) {
+    if (originalReview?.identity_key && normalizedRoomIdentity({ ...pendingRow.room_payload, ...roomPayload }) !== canonicalStoredIdentity(originalReview.identity_key) && !isUpdateCodeChange({ ...pendingRow.room_payload, ...roomPayload, _room_import: originalReview })) {
       return NextResponse.json({ ok: false, error: "Khóa phòng đã đổi. Hãy dùng Phân tích lại để xác minh phòng đích trước khi lưu." }, { status: 409 });
     }
 
@@ -883,77 +889,15 @@ export async function PATCH(
       if (insertVideosErr) throw insertVideosErr;
     }
 
-    for (
-      let index = 0;
-      index <
-      requestedImageIds.length;
-      index++
-    ) {
-      const imageId =
-        requestedImageIds[
-          index
-        ];
-
-      const requestedOrder =
-        Number(
-          imageOrder[
-            index
-          ]?.sort_order
-        );
-
-      const sortOrder =
-        Number.isFinite(
-          requestedOrder
-        )
-          ? Math.max(
-              0,
-              Math.floor(
-                requestedOrder
-              )
-            )
-          : index;
-
-      const {
-        error:
-          imageUpdateErr,
-      } = await supabase
-        .from(
-          "zalo_import_images"
-        )
-        .update({
-          sort_order:
-            sortOrder,
-        })
-        .eq(
-          "batch_id",
-          pendingRow.batch_id
-        )
-        .eq(
-          "id",
-          imageId
-        );
-
-      if (
-        imageUpdateErr
-      ) {
-        throw imageUpdateErr;
-      }
-    }
-
-    for (let index = 0; index < requestedVideoIds.length; index++) {
-      const videoId = requestedVideoIds[index];
-      const sortOrder = normalizeSortOrder(videoOrder[index]?.sort_order, index);
-
-      const { error: videoUpdateErr } = await supabase
-        .from("zalo_import_videos")
-        .update({ sort_order: sortOrder })
-        .eq("batch_id", pendingRow.batch_id)
-        .eq("id", videoId);
-
-      if (videoUpdateErr) {
-        throw videoUpdateErr;
-      }
-    }
+    // Unchanged positions need no writes; bound concurrent updates to avoid N sequential round trips.
+    await runSettledPool([
+      ...requestedImageIds.map((id, index) => ({ id, order: normalizeSortOrder(imageOrder[index]?.sort_order, index), table: "zalo_import_images" as const, current: currentImageRows.find(row => row.id === id) })),
+      ...requestedVideoIds.map((id, index) => ({ id, order: normalizeSortOrder(videoOrder[index]?.sort_order, index), table: "zalo_import_videos" as const, current: currentVideoRows.find(row => row.id === id) })),
+    ].filter(item => Number(item.current?.sort_order) !== item.order), 4, async item => {
+      const { error } = await supabase.from(item.table).update({ sort_order: item.order })
+        .eq("batch_id", pendingRow.batch_id).eq("id", item.id);
+      if (error) throw error;
+    });
 
     const nextRoomPayload = {
       ...(

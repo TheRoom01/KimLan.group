@@ -304,10 +304,10 @@ check("G: phí tòa nhà và CS/BC được áp dụng nhất quán, không bi�
   assert.ok(results.every((result) => result.parsed.detailPayload.service_fee_value === 200_000));
   const byRoomCode = new Map(results.map((result) => [
     result.parsed.roomPayload.room_code,
-    result.parsed.detailPayload.other_amenities,
+    result.parsed.detailPayload,
   ]));
-  assert.match(byRoomCode.get("Lầu 1"), /cửa sổ/i);
-  assert.match(byRoomCode.get("Lầu 2"), /ban công/i);
+  assert.equal(byRoomCode.get("Lầu 1")?.has_window,true);
+  assert.equal(byRoomCode.get("Lầu 2")?.has_balcony,true);
 });
 
 check("H: thiếu trạng thái hoặc mã phòng tạo quality blocker tương ứng", async () => {
@@ -502,7 +502,8 @@ check("O: phòng 503 giữ đúng địa chỉ, phí, tiện ích và video phí
   assert.equal(result.parsed.roomPayload.price, 16_000_000);
   assert.equal(result.parsed.roomPayload.room_type, "2PN");
   assert.match(result.parsed.roomPayload.description, /5\/11/);
-  assert.match(result.parsed.detailPayload.other_amenities, /Ban công/);
+  assert.equal(result.parsed.detailPayload.has_balcony,true);
+  assert.doesNotMatch(result.parsed.detailPayload.other_amenities, /Ban công/);
   assert.match(result.parsed.detailPayload.other_amenities, /1 phòng khách/);
   assert.equal(result.parsed.detailPayload.electric_fee_value, 4_000);
   assert.equal(result.parsed.detailPayload.water_fee_value, 150_000);

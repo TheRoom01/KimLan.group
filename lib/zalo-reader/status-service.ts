@@ -28,6 +28,6 @@ export async function readReaderStatus(db: any) {
     if (run.error) throw run.error;
     const health = readerHealth(run.data);
     if(group.scheduler_enabled && group.next_expected_at) health.nextAt=group.next_expected_at;
-    return { ...group, run: run.data, health, manualCommand: "npm run zalo-reader:official" };
+    return { ...group, run: run.data, health, manualCommand: "npm run zalo-reader:production" };
   }));
 }

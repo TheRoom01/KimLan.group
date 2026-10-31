@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import LocationPicker from "@/components/map/LocationPicker";
 
@@ -14,6 +14,8 @@ export default function RoomLocationTab({
   loading,
   error,
   disabled,
+  autoSuggest = false,
+  fallbackQueries = [],
 }: {
   value: Location | null;
   onChange: (value: Location | null) => void;
@@ -21,7 +23,14 @@ export default function RoomLocationTab({
   loading?: boolean;
   error?: string | null;
   disabled?: boolean;
+  autoSuggest?: boolean;
+  fallbackQueries?: string[];
 }) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const attempted = useRef("");
+  const autoController = useRef<AbortController | null>(null);
+  const fallbackKey = fallbackQueries.join("\n");
   const [searchQuery, setSearchQuery] = useState(addressQuery);
   const [searching, setSearching] = useState(false);
   const [places, setPlaces] = useState<Place[]>([]);
@@ -33,6 +42,36 @@ export default function RoomLocationTab({
     setSearchError(null);
   }, [addressQuery]);
 
+  useEffect(() => {
+    if (!autoSuggest || disabled || value || addressQuery.length < 3 || attempted.current === addressQuery) return;
+    attempted.current = addressQuery;
+    const controller = new AbortController();
+    autoController.current = controller;
+    let completed = false;
+    setSearching(true);
+    void (async () => {
+      try {
+        for (const query of [addressQuery, ...fallbackKey.split("\n").filter(Boolean)]) {
+          const response = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+          const body = await response.json() as { results?: Place[]; error?: string };
+          if (!response.ok) throw new Error(body.error || "Không thể tìm vị trí lúc này.");
+          if (controller.signal.aborted) return;
+          if (body.results?.length) {
+            completed = true;
+            setSearchQuery(query); setPlaces(body.results);
+            const first = body.results[0];
+            onChangeRef.current({ latitude: first.latitude, longitude: first.longitude });
+            return;
+          }
+        }
+        completed = true;
+        setSearchError("Không tìm thấy vị trí. Bạn có thể tìm lại hoặc đặt ghim trên bản đồ.");
+      } catch (error) { if (!controller.signal.aborted) setSearchError(error instanceof Error ? error.message : "Không thể tìm vị trí."); }
+      finally { if (!controller.signal.aborted) setSearching(false); }
+    })();
+    return () => { controller.abort(); if (!completed) attempted.current = ""; setSearching(false); };
+  }, [autoSuggest, disabled, value, addressQuery, fallbackKey]);
+
   async function searchAddress(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const query = searchQuery.trim();
@@ -43,10 +82,14 @@ export default function RoomLocationTab({
     setSearching(true);
     setSearchError(null);
     try {
-      const response = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
-      const body = await response.json() as { results?: Place[]; error?: string };
-      if (!response.ok) throw new Error(body.error || "Không thể tìm địa chỉ lúc này.");
-      const nextPlaces = body.results ?? [];
+      let nextPlaces: Place[] = [];
+      for (const search of [query, ...(query === addressQuery ? fallbackQueries : [])]) {
+        const response = await fetch(`/api/geocode?q=${encodeURIComponent(search)}`);
+        const body = await response.json() as { results?: Place[]; error?: string };
+        if (!response.ok) throw new Error(body.error || "Không thể tìm địa chỉ lúc này.");
+        nextPlaces = body.results ?? [];
+        if (nextPlaces.length) { setSearchQuery(search); break; }
+      }
       setPlaces(nextPlaces);
       if (nextPlaces.length === 0) setSearchError("Không tìm thấy vị trí phù hợp.");
     } catch (searchFailure) {
@@ -77,8 +120,9 @@ export default function RoomLocationTab({
     <div className="space-y-3">
       <div className="grid items-start gap-3 md:grid-cols-2">
         <div className="min-h-full rounded-xl border border-[#aa825d]/25 bg-[#f8ecd9] px-3 py-2.5 text-xs leading-5 text-[#684324]">
-          <strong className="block text-sm">Vị trí dùng chung của tòa nhà</strong>
+          <strong className="block text-sm">{autoSuggest ? "Chọn trước vị trí cho bản nháp" : "Vị trí dùng chung của tòa nhà"}</strong>
           <span>{addressQuery || "Chưa có địa chỉ để định vị"}</span>
+          {autoSuggest && <p>Vị trí gợi ý là gần đúng. Kiểm tra hoặc kéo ghim; vị trí sẽ được gán cho tòa nhà khi duyệt.</p>}
           
         </div>
 
@@ -90,6 +134,8 @@ export default function RoomLocationTab({
               <input
                 value={searchQuery}
                 onChange={(event) => {
+                  autoController.current?.abort();
+                  setSearching(false);
                   setSearchQuery(event.target.value);
                   setPlaces([]);
                   setSearchError(null);

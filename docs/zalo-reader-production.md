@@ -2,7 +2,7 @@
 
 ## Lịch tự động Windows
 
-`npm run zalo-reader:production` vẫn chỉ chạy một lượt. Lịch `KimLan-ZaloReader-60m` chạy độc lập qua Windows Task Scheduler, dùng cùng `production.config.json` và Chrome profile hiện tại. Sau khi đọc xong hai nhóm, wrapper đặt lần kế tiếp sau 60 phút; lần bật lịch đầu tiên tôn trọng `cycle-state.json` của lượt thủ công vừa xong.
+`npm run zalo-reader:production` vẫn chỉ chạy một lượt. Lịch `KimLan-ZaloReader-60m` chạy độc lập qua Windows Task Scheduler, dùng cùng `production.config.json` và Chrome profile hiện tại. Sau khi đọc xong hai nhóm, wrapper đặt lần kế tiếp sau 60 phút; chỉ lượt tự động cập nhật `cycle-state.json`. Chạy thủ công không bị chặn 60 phút và không dời lịch tự động. Lượt thủ công hoàn tất được ghi riêng vào `last-completed-run.json` để xác minh trước khi bật lịch.
 
 ```powershell
 .\tools\zalo-reader\scheduler.ps1 -Action Install
@@ -12,7 +12,7 @@
 .\tools\zalo-reader\scheduler.ps1 -Action Disable
 ```
 
-Chỉ bật khi người dùng yêu cầu chạy tự động và đã có lượt hai nhóm xác minh đúng ID/phạm vi. Lượt production đã hoàn tất có thể được dùng để bật lịch dù một số phòng lỗi cục bộ; các phòng đó vẫn được giữ trong báo cáo và không có cơ chế tự duyệt đăng. Máy phải bật, tài khoản Windows đang đăng nhập, Zalo còn đăng nhập và server local cổng 3000 tiếp tục chạy. Có thể đóng Terminal chạy Reader; giữ Terminal server `npm run dev` mở. Bật/tắt lịch chỉ gửi trạng thái giám sát; không chạy Reader ngay, không reset checkpoint.
+Chỉ bật khi người dùng yêu cầu chạy tự động và đã có lượt hai nhóm xác minh đúng ID/phạm vi. Lượt production đã hoàn tất có thể được dùng để bật lịch dù một số phòng lỗi cục bộ; các phòng đó vẫn được giữ trong báo cáo và không có cơ chế tự duyệt đăng. Máy phải bật, tài khoản Windows đang đăng nhập, Zalo còn đăng nhập và API production tại `https://www.canhodichvu.pro` hoạt động. Có thể đóng Terminal chạy Reader; không cần chạy `npm run dev` trên máy Reader. Bật/tắt lịch chỉ gửi trạng thái giám sát; không chạy Reader ngay, không reset checkpoint.
 
 ## Trạng thái chuẩn bị
 
@@ -28,8 +28,8 @@ Reader in rõ phạm vi và yêu cầu gõ `PRODUCTION`. Khi Codex đã nhận x
 
 ## Phạm vi
 
-- API `http://127.0.0.1:3000` chạy bản code hiện tại, **kết nối Supabase production** `vgmtiymubuwztqdxsexn`; đây là Pending chính thức, không phải TEST LOCAL hay Pending TEST.
-- Imports: `http://localhost:3000/admin/zalo-imports`. Cần đăng nhập admin như bình thường.
+- API `https://www.canhodichvu.pro` chạy bản code đã triển khai production, **kết nối Supabase production** `vgmtiymubuwztqdxsexn`; đây là Pending chính thức, không phải TEST LOCAL hay Pending TEST.
+- Imports: `https://www.canhodichvu.pro/admin/zalo-imports`. Cần đăng nhập admin như bình thường.
 - Website public hiện chuyển sang `www.canhodichvu.pro`, nơi endpoint `/api/internal/zalo-reader/status` trả 404 lúc kiểm tra. Chưa triển khai bản code này lên website. Không dùng host CDN làm API.
 - Env riêng `ZALO_READER_PRODUCTION_API_URL`, nếu có, phải trùng origin trong production config. Cấu hình/env legacy về test và API legacy không điều khiển production. Các cờ test trong production config, env config/profile xung đột, hoặc tham số `--trial`/`--fixture` làm lệnh dừng rõ ràng.
 - Đúng hai nhóm Q1/Q3/Q10 (`g1986619726266954037`), sau đó PN/BT/TB (`g6674917926513771782`), cùng profile `.zalo-reader/profile`.
@@ -61,3 +61,9 @@ Test offline gồm config production và xung đột, vòng capture thật với
 Readiness GET và kiểm tra registry Supabase đều chỉ đọc; không ghi phòng giả để thử. Trước lượt thật phải xin xác nhận người dùng, ghi baseline Pending/phòng chính; sau lượt phải đối chiếu run report và database về CREATE/UPDATE, ảnh, cảnh báo, skip, cờ TEST và trạng thái chờ duyệt. Chưa được coi là hoàn tất production trước khi lượt được cho phép tạo Pending thật và được xác minh.
 
 Kết quả chuẩn bị 31/10/2026: tất cả các bộ test nêu trên PASS, bao gồm UI headless với mạng bị chặn và scheduler `-WhatIf`/mock. TypeScript và `git diff --check` PASS. GET API local trả 200/`ready:true`, đúng project Supabase. Kiểm tra không có tiến trình Reader/profile đang chạy, không có task Windows, không có checkpoint production sẵn có; hash checkpoint legacy vẫn `7A4D5A6EFF2D4FC46FF8DBCD80A881175F0CAECD13F27182B0169656EDE14891`. Database có 0 Pending ở thời điểm kiểm tra. Chưa chạy production; đang chờ xác nhận lượt đầu.
+
+## Reader dùng server tên miền chính thức
+
+Reader production hiện dùng `https://www.canhodichvu.pro` (tên miền gốc redirect 308 sang www). Không cần mở Next.js dev trên máy Windows nữa. Giữ máy bật và phiên Zalo đăng nhập; chạy `npm run zalo-reader:production` cho một lượt thủ công hoặc để lịch Windows hiện có chạy tự động.
+
+Đã triển khai API Reader/imports, xác minh readiness có secret trả `ready:true` và endpoint receipts hoạt động bằng danh sách rỗng. Giữ nguyên secret, database, media R2 và checkpoint; không chạy import live trong quá trình chuyển. Lịch Windows vẫn dùng cùng thư mục/profile và đọc production.config.json ở lượt tiếp theo.

@@ -6,7 +6,7 @@ export const OFFICIAL_ZALO_GROUPS = [
 export const READER_INTERVAL_MS = 60 * 60 * 1000;
 export type GroupCheckpoint = {
   version: 1; key: string; groupId: string | null; initializedFromMs: number;
-  processedThroughMs: number; receipts: Record<string, { timestamp: number; kind: string; anchor?: boolean }>;
+  processedThroughMs: number; receipts: Record<string, { timestamp: number; kind: string; anchor?: boolean; pendingIds?: string[] }>;
   lastAttemptAt?: string; lastSuccessAt?: string; scanExpansion?: number;
 };
 export function allowedOfficialGroup(name: unknown, id?: unknown) {

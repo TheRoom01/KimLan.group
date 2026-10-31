@@ -1,3 +1,4 @@
+import { vacancyDateFromText, withoutStructuredAmenities } from "./listing-fields";
 import { normalizedStreetKey } from "../rooms/street";
 export { normalizedStreetKey } from "../rooms/street";
 export type ParsedZaloRoom = {
@@ -3277,7 +3278,8 @@ function extractUtilityFeeValue(
 }
 
 export function parseZaloRoomText(
-  rawText: string
+  rawText: string,
+  options: { importedAt?: string | number | Date } = {}
 ): ParsedZaloRoom {
   const {
     fullText,
@@ -3358,12 +3360,10 @@ const otherAmenities =
 
   const roomMarkerAmenities: string[] = [];
   if (/(?:^|[\/+ ])cs(?=$|[\/+\s-])/.test(markerTextNoTone)) {
-    roomMarkerAmenities.push("Cửa sổ");
     detailPayload.has_window = true;
     sourceFieldMap.has_window = "Tin Zalo";
   }
   if (/(?:^|[\/+ ])bc(?=$|[\/+\s-])/.test(markerTextNoTone)) {
-    roomMarkerAmenities.push("Ban công");
     detailPayload.has_balcony = true;
     sourceFieldMap.has_balcony = "Tin Zalo";
   }
@@ -3586,17 +3586,15 @@ if (
     sourceFieldMap.status = "Tin Zalo";
   }
 
-  // Preserve an incomplete vacancy date for review; never invent its year.
-  const vacancyDate = markerTextNoTone.match(/\btrong\s*(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{4}))?\b/);
+  // Missing years use the import year in Vietnam, including historical reparses.
+  const vacancyDate = markerTextNoTone.match(/\btrong\s*(?:ngay\s*)?(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{4}))?\b/);
   if (vacancyDate) {
-    roomPayload.available_from_text = vacancyDate[0].replace(/^trong\s*/, "");
-    if (vacancyDate[3]) {
-      const year = Number(vacancyDate[3]), month = Number(vacancyDate[2]), day = Number(vacancyDate[1]);
-      const date = new Date(Date.UTC(year, month - 1, day));
-      if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
-        roomPayload.available_from = date.toISOString().slice(0, 10);
-        sourceFieldMap.available_from = "Tin Zalo";
-      }
+    roomPayload.available_from_text = vacancyDate[0].replace(/^trong\s*(?:ngay\s*)?/, "");
+    const date = vacancyDateFromText(roomPayload.available_from_text, options.importedAt);
+    if (date) {
+      roomPayload.available_from = date;
+      sourceFieldMap.available_from = "Tin Zalo";
+      if (roomPayload.status !== "Đã thuê") { roomPayload.status = "Sắp trống"; sourceFieldMap.status = "Tin Zalo"; }
     }
   } else if (/\btrong san\b/.test(markerTextNoTone)) {
     roomPayload.available_from = null;
@@ -4011,6 +4009,7 @@ if (petDenied) {
     preliminaryScore += 2;
   }
 
+  detailPayload.other_amenities = withoutStructuredAmenities(detailPayload.other_amenities || "", detailPayload.has_window === true, detailPayload.has_balcony === true);
   return {
     roomPayload,
     detailPayload,

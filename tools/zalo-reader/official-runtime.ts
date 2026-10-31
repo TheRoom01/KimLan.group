@@ -34,11 +34,12 @@ export function acquireReaderLock(directory: string) {
 }
 export type OfficialOptions = { stateDirectory: string; runId?: string; trial: boolean; overlapMinutes: number;
   initialLookbackHours: number; maxMessages: number; maxRooms: number; maxScrollSteps: number;
+  reconcile?: (groupKey: string, sources: Array<{ id: string; pendingIds?: string[] }>) => Promise<string[]>;
   report?: (event: Record<string, any>) => Promise<void>; now?: () => number };
 type ActiveGroup = { key: string; name: string; checkpoint: GroupCheckpoint; file: string; startedAt: string;
   window: { fromMs: number; toMs: number };
   observed: Array<{ id: string; timestamp: number }>; complete: boolean; sourceSizes: Record<string, number>;
-  acknowledgements: Record<string, { count: number; ids: Set<string>; timestamp: number; kind: string }>;
+  acknowledgements: Record<string, { count: number; ids: Set<string>; timestamp: number; kind: string; pendingIds: Set<string> }>;
   counters: Record<string, number>; errors: Array<{ code: string; sourceMessageId?: string }>; groupId: string | null };
 
 export class OfficialSession {
@@ -77,6 +78,18 @@ export class OfficialSession {
     const configuredId = config.groups?.find((entry: any) => entry.key === key)?.groupId;
     if (configuredId && checkpoint.groupId && configuredId !== checkpoint.groupId) throw new Error("GROUP_ID_CHANGED");
     const missed = checkpoint.lastAttemptAt ? Math.max(0, Math.floor((this.now() - Date.parse(checkpoint.lastAttemptAt)) / READER_INTERVAL_MS) - 1) : 0;
+    if (this.options.reconcile && !this.options.trial) {
+      const sources = Object.entries(checkpoint.receipts).filter(([, receipt]) => receipt.anchor && receipt.kind !== "non_room" && receipt.kind !== "unchanged" && receipt.timestamp >= this.now() - 24 * READER_INTERVAL_MS)
+        .map(([id, receipt]) => ({ id, pendingIds: receipt.pendingIds }));
+      const replay = await this.options.reconcile(key, sources);
+      for (const id of replay) {
+        const receipt = checkpoint.receipts[id];
+        if (!receipt) continue;
+        checkpoint.processedThroughMs = Math.min(checkpoint.processedThroughMs, receipt.timestamp);
+        checkpoint.initializedFromMs = Math.min(checkpoint.initializedFromMs, receipt.timestamp);
+        delete checkpoint.receipts[id];
+      }
+    }
     const window = checkpointWindow(checkpoint, this.now(), this.options.overlapMinutes);
     this.active = { key, name, checkpoint, file, startedAt: new Date(this.now()).toISOString(), observed: [], complete: false,
       window,
@@ -158,11 +171,13 @@ export class OfficialSession {
     } else if (kind === "unchanged") group.counters.unchanged++;
     else group.counters.existing_sources++;
     const id = String(room.markerMessageId);
-    const acknowledgement = group.acknowledgements[id] ||= { count: 0, ids: new Set([id]), timestamp: room.markerTimestamp, kind };
+    const acknowledgement = group.acknowledgements[id] ||= { count: 0, ids: new Set([id]), timestamp: room.markerTimestamp, kind, pendingIds: new Set<string>() };
     acknowledgement.count++;
+    if (result.pendingVersionId) acknowledgement.pendingIds.add(result.pendingVersionId);
     for (const mediaId of [...(room.imageMessageIds || []), ...(room.videoMessageIds || [])]) acknowledgement.ids.add(String(mediaId));
     if (acknowledgement.count === group.sourceSizes[id]) {
-      commitSource(group.checkpoint, [...acknowledgement.ids], acknowledgement.timestamp, kind);
+      commitSource(group.checkpoint, [...acknowledgement.ids], acknowledgement.timestamp, acknowledgement.pendingIds.size ? "existing_source" : kind);
+      group.checkpoint.receipts[id].pendingIds = [...acknowledgement.pendingIds];
       this.save(); // acknowledgement happens AFTER a confirmed API receipt
     }
   }

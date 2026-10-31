@@ -12,6 +12,7 @@ export type MediaItem = {
 
 
 export type RoomForm = {
+  _pending_location?: { latitude: number; longitude: number } | null
   badges?: RoomBadge[]
   property_id?: string
   room_code: string

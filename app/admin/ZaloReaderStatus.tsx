@@ -12,19 +12,19 @@ export default function ZaloReaderStatus() {
   },[]);
   const time = (date: any) => date ? new Date(date).toLocaleString("vi-VN") : "Chưa có";
   return <section style={{ margin:"12px 0",padding:12,border:"1px solid #cbd5e1",borderRadius:10,background:"#fff",color:"#0f172a",overflowWrap:"anywhere" }}>
-    <strong>Zalo Reader · mỗi 60 phút</strong>
+    <strong>Zalo Reader · tự động cách nhau 60 phút</strong>
     {error && <p>Chưa kết nối giám sát Reader. Cần triển khai SQL/API hoặc kiểm tra kết nối.</p>}
     <div style={{ display:"flex",flexWrap:"wrap",gap:16 }}>
       {groups.map(group => <div key={group.group_key} style={{ flex:"1 1 280px" }}>
         <b>{group.group_name}</b><div>{group.health.state === "running" ? "Đang chạy" : group.health.state === "error" ? "Cần kiểm tra" : "Đang chờ"} · Lịch {group.scheduler_enabled ? "bật" : "tắt"}</div>
         <div>Lần quét: {time(group.run?.started_at)}</div>
-        <div>Dự kiến: {group.scheduler_enabled ? time(group.health.nextAt || group.next_expected_at) : "Chưa bật lịch"}</div>
+        <div>Dự kiến: {group.scheduler_enabled ? time(group.next_expected_at || group.health.nextAt) : "Chưa bật lịch"}</div>
         <div>Pending mới: {group.run?.counters?.pending_created || 0}{group.run?.mode === "trial" ? " (TEST)" : ""}</div>
         {!group.group_id && <div>Cần xác minh Group ID bằng Zalo Web.</div>}
         {group.health.stale && <div style={{color:"#b45309"}}>Chưa quét hoặc đã quá 2 giờ chưa có lượt mới.</div>}
         {group.run?.error_code && <div>{group.run.error_code}</div>}
       </div>)}
     </div>
-    <details><summary>Chạy thủ công trên máy Windows của Reader</summary><code>npm run zalo-reader:official</code><p>Lịch phải được xác nhận và bật trước. Xem hướng dẫn vận hành trong dự án.</p></details>
+    <details><summary>Chạy thủ công trên máy Windows của Reader</summary><code>npm run zalo-reader:production</code><p>Chạy một lượt ngay, không chờ 60 phút và không cần bật lịch tự động. Không chạy đồng thời hai lượt Reader.</p></details>
   </section>;
 }

@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { ImportTaskToasts, useImportTasks, beginImportTask, finishImportTask, isImportBusy } from "./import-tasks";
 import RoomModal from "@/app/admin/RoomModal";
 import type { TabKey } from "@/app/types/room";
-import { getImportReview } from "@/lib/zalo-import/room-comparison";
+import { requestCodeChoice } from "./request-code-choice";
+import { getImportReview, isUpdateCodeChange } from "@/lib/zalo-import/room-comparison";
 import RoomUpdateComparison from "./RoomUpdateComparison";
 import ImportMediaOrder from "./ImportMediaOrder";
 import { importLifecycle, importLifecycleLabel, importMediaStatus } from "@/lib/zalo-import/lifecycle";
@@ -12,6 +14,7 @@ import ZaloReaderStatus from "../ZaloReaderStatus";
 import { OFFICIAL_ZALO_GROUPS } from "@/lib/zalo-reader/official";
 
 type ImportRow = {
+  media_original?: { imageIds: string[]; videoIds: string[] };
   id: string;
   status: string;
   confidence_score?: number | null;
@@ -99,7 +102,6 @@ export default function ZaloImportsClient() {
   const [readTo, setReadTo] = useState("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
-  const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
   const [editingPending, setEditingPending] = useState<ImportRow | null>(null);
   const [detailPending, setDetailPending] = useState<ImportRow | null>(null);
@@ -107,11 +109,17 @@ export default function ZaloImportsClient() {
   const [activeTab, setActiveTab] = useState<TabKey>("info");
 
   function showToast(message: string, tone: "success" | "error" = "success") {
-    setToast({ message, tone });
-    window.setTimeout(() => setToast(null), 3200);
+    const id = `notice-${Date.now()}-${Math.random()}`;
+    beginImportTask(id, "Thông báo");
+    finishImportTask(id, message, tone === "error");
   }
 
+  const listRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => listRequest.current?.abort(), []);
   async function loadData(nextOffset = offset, nextStatus = status) {
+    listRequest.current?.abort();
+    const controller = new AbortController();
+    listRequest.current = controller;
     try {
       setLoading(true);
       setErrorMsg(null);
@@ -130,6 +138,7 @@ export default function ZaloImportsClient() {
 
       const res = await fetch(`/api/admin/zalo-imports?${qs.toString()}`, {
         cache: "no-store",
+        signal: controller.signal,
       });
 
       const json = await res.json().catch(() => ({}));
@@ -138,12 +147,14 @@ export default function ZaloImportsClient() {
         throw new Error(json?.error || "Load thất bại");
       }
 
+      if (controller.signal.aborted) return;
       setRows(Array.isArray(json.data) ? json.data : []);
       setTotal(Number(json.total ?? 0));
     } catch (error: any) {
+      if (controller.signal.aborted) return;
       setErrorMsg(error?.message ?? "Load thất bại");
     } finally {
-      setLoading(false);
+      if (listRequest.current === controller) setLoading(false);
     }
   }
 
@@ -172,10 +183,7 @@ export default function ZaloImportsClient() {
       Math.max(0, currentTotal - 1)
     );
 
-    if (editingPending?.id === id) {
-      setEditingPending(null);
-      setOpenPendingModal(false);
-    }
+    setEditingPending(current => current?.id === id ? null : current);
 
     setDetailPending((current) =>
       current?.id === id
@@ -272,6 +280,7 @@ export default function ZaloImportsClient() {
 
   return (
     <main style={wrap}>
+      <ImportTaskToasts />
       <ZaloReaderStatus />
       <div style={topBar}>
         <div>
@@ -407,9 +416,10 @@ export default function ZaloImportsClient() {
               row={row}
               onRemoved={removeRowFromList}
               onViewDetail={(selectedRow) =>
-                setDetailPending(selectedRow)
+                !isImportBusy(selectedRow.id) && setDetailPending(selectedRow)
               }
               onEdit={(selectedRow) => {
+            if (isImportBusy(selectedRow.id)) return;
                 setDetailPending(null);
                 setEditingPending(selectedRow);
                 setActiveTab("info");
@@ -437,9 +447,10 @@ export default function ZaloImportsClient() {
               )
             );
 
-            setDetailPending(updatedRow);
+            setDetailPending(current => current?.id === updatedRow.id ? updatedRow : current);
           }}
           onEdit={(selectedRow) => {
+            if (isImportBusy(selectedRow.id)) return;
             setDetailPending(null);
             setEditingPending(selectedRow);
             setActiveTab("info");
@@ -448,32 +459,11 @@ export default function ZaloImportsClient() {
         />
       )}
 
-      {toast && (
-        <div
-          style={{
-            ...toastBox,
-            background:
-              toast.tone === "success"
-                ? "#ecfdf5"
-                : "#fef2f2",
-            color:
-              toast.tone === "success"
-                ? "#047857"
-                : "#b91c1c",
-            borderColor:
-              toast.tone === "success"
-                ? "#a7f3d0"
-                : "#fecaca",
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
-
       {openPendingModal && editingPending && (
         <RoomModal
           mode="pending"
           pendingId={editingPending.id}
+          pendingImportedAt={editingPending.created_at}
           pendingRoomPayload={
             editingPending.room_payload ?? {}
           }
@@ -482,12 +472,17 @@ export default function ZaloImportsClient() {
           }
           pendingImages={editingPending.images ?? []}
           pendingVideos={editingPending.videos ?? []}
+          pendingOriginalImageIds={editingPending.media_original?.imageIds}
+          pendingOriginalVideoIds={editingPending.media_original?.videoIds}
           pendingMatchedRoomId={editingPending.matched_room_id}
+          onPendingFailed={() => {
+            if (isImportBusy(editingPending.id)) return;
+            setEditingPending(current => current?.id === editingPending.id ? current : editingPending);
+            setDetailPending(null);
+            setOpenPendingModal(true);
+          }}
           onPendingApproved={async () => {
-            const nextOffset = rows.length <= 1 && offset > 0 ? offset - PAGE_SIZE : offset;
-            setOffset(nextOffset);
-            await loadData(nextOffset, status);
-            setEditingPending(null);
+            removeRowFromList(editingPending.id);
           }}
           open={openPendingModal}
           onClose={() =>
@@ -500,7 +495,7 @@ export default function ZaloImportsClient() {
             showToast(message, "success")
           }
           onPendingSaved={async (updated: any) => {
-            setEditingPending(current => current?.id === editingPending.id ? {...current,...updated} : current);
+            setEditingPending(current => current?.id === editingPending.id ? {...current,...updated,media_original:undefined} : current);
             setRows((currentRows) =>
               currentRows.map((row) =>
                 row.id === editingPending.id
@@ -677,11 +672,17 @@ function useImportActions({
   row,
   onRemoved,
   onAfterRemoved,
+  beforeApprove,
+  onApproveFailure,
 }: {
   row: ImportRow;
   onRemoved?: (id: string) => void;
   onAfterRemoved?: () => void;
+  beforeApprove?: () => Promise<ImportRow>;
+  onApproveFailure?: () => void;
 }) {
+  const tasks = useImportTasks();
+  const taskBusy = tasks.some(task => task.id === row.id && task.state === "running");
   const [busyAction, setBusyAction] =
     useState<CardBusyAction>(null);
 
@@ -690,17 +691,16 @@ function useImportActions({
     row.status === "Từ chối";
 
   const actionDisabled =
-    busyAction !== null ||
+    taskBusy || busyAction !== null ||
     importLifecycle(row) === "TEST" ||
     isLockedStatus;
 
   function finishRemoved() {
-    onAfterRemoved?.();
     onRemoved?.(row.id);
   }
 
   async function rejectImport() {
-    if (busyAction) return;
+    if (busyAction || isImportBusy(row.id)) return;
 
     const ok = window.confirm(
       "Bạn có chắc muốn từ chối import này? Ảnh tạm trên R2 sẽ bị xoá."
@@ -710,6 +710,8 @@ function useImportActions({
 
     const reason = "";
 
+    if (!beginImportTask(row.id, `Từ chối · ${row.room_payload?.room_code || row.id.slice(0, 8)}`)) return;
+    onAfterRemoved?.();
     setBusyAction("reject");
 
     try {
@@ -734,17 +736,16 @@ function useImportActions({
         );
       }
 
+      finishImportTask(row.id, "Đã hoàn tất.");
       finishRemoved();
     } catch (error: any) {
-      alert(
-        error?.message || "Từ chối thất bại"
-      );
+      finishImportTask(row.id, error?.message || "Từ chối thất bại", true);
       setBusyAction(null);
     }
   }
 
   async function deleteImport() {
-    if (busyAction) return;
+    if (busyAction || isImportBusy(row.id)) return;
 
     const ok = window.confirm(
       "Bạn có chắc muốn xoá hẳn import này? Dữ liệu pending và ảnh tạm R2 sẽ bị xoá."
@@ -752,6 +753,8 @@ function useImportActions({
 
     if (!ok) return;
 
+    if (!beginImportTask(row.id, `Xóa import · ${row.room_payload?.room_code || row.id.slice(0, 8)}`)) return;
+    onAfterRemoved?.();
     setBusyAction("delete");
 
     try {
@@ -772,34 +775,42 @@ function useImportActions({
         );
       }
 
+      finishImportTask(row.id, "Đã hoàn tất.");
       finishRemoved();
     } catch (error: any) {
-      alert(
-        error?.message || "Xoá thất bại"
-      );
+      finishImportTask(row.id, error?.message || "Xoá thất bại", true);
       setBusyAction(null);
     }
   }
 
   async function approveImport(
-    mode: "create_room" | "update_status" | "update_room",
+    mode: "create_room" | "update_status" | "update_room" | "create_room_new_code",
     selectedFields?: string[]
   ) {
-    if (busyAction) return;
+    if (busyAction || isImportBusy(row.id)) return;
 
+    let chosen = false;
+    if (mode === "update_room" && isUpdateCodeChange(row.room_payload || {})) {
+      const choice = await requestCodeChoice(String(getImportReview(row.room_payload)?.snapshot?.room.room_code || ""), String(row.room_payload?.room_code || ""), Boolean(selectedFields?.length));
+      if (!choice) return;
+      mode = choice; chosen = true;
+    }
     const confirmText =
       mode === "update_room" ? `Xác nhận cập nhật ${selectedFields?.length || 0} trường đã chọn vào phòng hiện tại?` : mode === "update_status"
         ? "Xác nhận cập nhật trạng thái phòng đã tồn tại?"
         : "Xác nhận duyệt và tạo phòng mới?";
 
     const ok =
-      window.confirm(confirmText);
+      chosen || window.confirm(confirmText);
 
     if (!ok) return;
 
+    if (!beginImportTask(row.id, `Duyệt đăng · ${row.room_payload?.room_code || row.id.slice(0, 8)}`)) return;
+    onAfterRemoved?.();
     setBusyAction("approve");
 
     try {
+      const approvalRow = beforeApprove ? await beforeApprove() : row;
       const res = await fetch(
         `/api/admin/zalo-imports/${row.id}/approve`,
         {
@@ -807,7 +818,7 @@ function useImportActions({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ mode, ...(mode === "update_room" ? { selectedFields, expectedRoomPayload: row.room_payload, expectedDetailPayload: row.detail_payload || {} } : {}) }),
+          body: JSON.stringify({ mode, ...((mode === "update_room" || mode === "create_room_new_code") ? { selectedFields, expectedRoomPayload: approvalRow.room_payload, expectedDetailPayload: approvalRow.detail_payload || {} } : {}) }),
         }
       );
 
@@ -821,11 +832,10 @@ function useImportActions({
         );
       }
 
+      finishImportTask(row.id, json.locationWarning || "Đã hoàn tất.", Boolean(json.locationWarning));
       finishRemoved();
     } catch (error: any) {
-      alert(
-        error?.message || "Duyệt thất bại"
-      );
+      finishImportTask(row.id, error?.message || "Duyệt thất bại", true, onApproveFailure);
       setBusyAction(null);
     }
   }
@@ -1751,11 +1761,10 @@ function ImportDetailModal({
     setCurrentRow,
   ] = useState<ImportRow>(row);
   const [selectedUpdateFields, setSelectedUpdateFields] = useState<string[]>([]);
-  const [savingMediaOrder, setSavingMediaOrder] = useState(false);
-  const [mediaOrderMessage, setMediaOrderMessage] = useState("");
-  const [mediaOrderError, setMediaOrderError] = useState("");
+  const [savingDraft, setSavingDraft] = useState(false);
   const mediaSaveRef = useRef(false);
-  const onClose = () => { if (!mediaSaveRef.current) closeModal(); };
+  const savedMediaRowRef = useRef<ImportRow | null>(null);
+  const onClose = closeModal;
 
   const [
     editableSourceText,
@@ -1828,42 +1837,55 @@ function ImportDetailModal({
     row: currentRow,
     onRemoved,
     onAfterRemoved: onClose,
+    beforeApprove: persistMediaDraft,
+    onApproveFailure: () => onEdit?.(savedMediaRowRef.current || currentRow),
   });
 
-  async function saveMediaOrder(media: any[]) {
-    if (mediaSaveRef.current || actionDisabled || reparsing) return;
+  function changeMedia(media: any[]) {
+    if (actionDisabled || reparsing || savingDraft) return;
+    const positioned = media.map((item, index) => ({ ...item, sort_order: index }));
+    setCurrentRow(previous => ({ ...previous,
+      media_original: previous.media_original || { imageIds: (previous.images || []).map(item => String(item.id)), videoIds: (previous.videos || []).map(item => String(item.id)) },
+      images: positioned.filter(item => item.type === "image"), videos: positioned.filter(item => item.type === "video"),
+    }));
+  }
+
+  async function persistMediaDraft() {
+    if (!currentRow.media_original) return currentRow;
+    const images = currentRow.images || [], videos = currentRow.videos || [];
+    const response = await fetch(`/api/admin/zalo-imports/${currentRow.id}/draft`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ manualReviewOnly: true, room_payload: {}, detail_payload: {},
+        images: images.map(({ id, sort_order }) => ({ id, sort_order })),
+        videos: videos.map(({ id, sort_order }) => ({ id, sort_order })),
+        removed_image_ids: currentRow.media_original.imageIds.filter(id => !images.some(item => String(item.id) === id)),
+        removed_video_ids: currentRow.media_original.videoIds.filter(id => !videos.some(item => String(item.id) === id)),
+      }),
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || !json.ok) throw new Error(json.error || "Chưa lưu được thay đổi media.");
+    const updated = { ...currentRow, media_original: undefined,
+      room_payload: json.room_payload ?? currentRow.room_payload, detail_payload: json.detail_payload ?? currentRow.detail_payload,
+      images: json.images ?? images, videos: json.videos ?? videos };
+    savedMediaRowRef.current = updated;
+    onUpdated?.(updated);
+    return updated;
+  }
+
+  async function saveDraft() {
+    if (actionDisabled || reparsing || savingDraft || !currentRow.media_original) return;
+    if (!beginImportTask(currentRow.id, `Lưu nháp · ${currentRow.room_payload?.room_code || currentRow.id.slice(0, 8)}`)) return;
     mediaSaveRef.current = true;
-    setSavingMediaOrder(true);
-    setMediaOrderMessage("");
-    setMediaOrderError("");
-    try {
-      const positioned = media.map((item, index) => ({ ...item, sort_order: index }));
-      const response = await fetch(`/api/admin/zalo-imports/${currentRow.id}/draft`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          manualReviewOnly: true, room_payload: {}, detail_payload: {},
-          images: positioned.filter(item => item.type === "image").map(({ id, sort_order }) => ({ id, sort_order })),
-          videos: positioned.filter(item => item.type === "video").map(({ id, sort_order }) => ({ id, sort_order })),
-        }),
-      });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok || !json?.ok) throw new Error(json?.error || "Chưa lưu được thứ tự ảnh/video. Vui lòng thử lại.");
-      const updatedRow = { ...currentRow, room_payload: json.room_payload ?? currentRow.room_payload, detail_payload: json.detail_payload ?? currentRow.detail_payload,
-        images: Array.isArray(json.images) ? json.images : positioned.filter(item => item.type === "image"),
-        videos: Array.isArray(json.videos) ? json.videos : positioned.filter(item => item.type === "video") };
-      setCurrentRow(updatedRow);
-      onUpdated?.(updatedRow);
-      setMediaOrderMessage("Đã lưu thứ tự ảnh/video.");
-    } catch (error: any) {
-      setMediaOrderError(error?.message || "Chưa lưu được thứ tự ảnh/video. Vui lòng thử lại.");
-    } finally {
-      mediaSaveRef.current = false;
-      setSavingMediaOrder(false);
-    }
+    setSavingDraft(true);
+    onClose();
+    try { await persistMediaDraft(); finishImportTask(currentRow.id, "Đã lưu bản nháp."); }
+    catch (error: any) { finishImportTask(currentRow.id, error?.message || "Chưa lưu được bản nháp.", true, () => onEdit?.(currentRow)); }
+    finally { mediaSaveRef.current = false; setSavingDraft(false); }
   }
 
   useEffect(() => {
     setCurrentRow(row);
+    savedMediaRowRef.current = null;
     setSelectedUpdateFields([]);
     setEditableSourceText(
       getEditableReparseText(row)
@@ -1954,9 +1976,7 @@ function ImportDetailModal({
       const updatedRow =
         json.data as ImportRow;
 
-      setCurrentRow(
-        updatedRow
-      );
+      setCurrentRow(previous => previous.media_original ? { ...updatedRow, images: previous.images, videos: previous.videos, media_original: previous.media_original } : updatedRow);
       setSelectedUpdateFields([]);
 
       setEditableSourceText(
@@ -2042,7 +2062,7 @@ function ImportDetailModal({
         className="zalo-import-modal-shell"
         style={{
           ...detailModalShell,
-          opacity: busyAction || reparsing || savingMediaOrder ? 0.82 : 1,
+          opacity: busyAction || reparsing || savingDraft ? 0.82 : 1,
         }}
         role="dialog"
         aria-modal="true"
@@ -2111,7 +2131,7 @@ function ImportDetailModal({
             onClick={onClose}
             style={detailModalCloseBtn}
             aria-label="Đóng"
-            disabled={savingMediaOrder}
+            disabled={savingDraft}
           >
             ×
           </button>
@@ -2181,7 +2201,7 @@ function ImportDetailModal({
                   "Loại phòng Duplex",
                 ].join("\\n")}
                 disabled={
-                  savingMediaOrder ||
+                  savingDraft ||
                   reparsing ||
                   busyAction !== null
                 }
@@ -2196,7 +2216,7 @@ function ImportDetailModal({
                   style={reparseRestoreBtn}
                   onClick={restoreOriginalText}
                   disabled={
-                    savingMediaOrder ||
+                    savingDraft ||
                     reparsing ||
                     busyAction !== null ||
                     !batch.raw_text
@@ -2212,7 +2232,7 @@ function ImportDetailModal({
                     void reparsePending()
                   }
                   disabled={
-                    savingMediaOrder ||
+                    savingDraft ||
                     reparsing ||
                     busyAction !== null ||
                     !editableSourceText.trim()
@@ -2296,14 +2316,11 @@ function ImportDetailModal({
             </div>
           </div>
 
-          {orderedMedia.length > 0 && (
+          {(orderedMedia.length > 0 || currentRow.media_original) && (
             <div style={imagesWrap}>
-              <div style={panelTitle}>Media tạm ({images.length} ảnh · {videos.length} video)</div>
-              <ImportMediaOrder media={orderedMedia} disabled={actionDisabled || reparsing || savingMediaOrder}
-                onChange={media => void saveMediaOrder(media)} />
-              {savingMediaOrder && <p role="status">Đang lưu thứ tự ảnh/video...</p>}
-              {mediaOrderMessage && <p role="status" style={{ color: "#15803d" }}>{mediaOrderMessage}</p>}
-              {mediaOrderError && <p role="alert" style={{ color: "#b91c1c" }}>{mediaOrderError}</p>}
+              <div style={panelTitle}>Ảnh/Video đã thêm ({images.length} ảnh · {videos.length} video)</div>
+              <ImportMediaOrder media={orderedMedia} disabled={actionDisabled || reparsing || savingDraft}
+                onChange={changeMedia} />
             </div>
           )}
         </div>
@@ -2321,7 +2338,7 @@ function ImportDetailModal({
               onClick={() =>
                 void deleteImport()
               }
-              disabled={busyAction !== null || reparsing || savingMediaOrder}
+              disabled={busyAction !== null || reparsing || savingDraft}
             >
               {busyAction === "delete"
                 ? "Đang xóa..."
@@ -2334,7 +2351,7 @@ function ImportDetailModal({
               onClick={() =>
                 void rejectImport()
               }
-              disabled={actionDisabled || reparsing || savingMediaOrder}
+              disabled={actionDisabled || reparsing || savingDraft}
             >
               {busyAction === "reject"
                 ? "Đang từ chối..."
@@ -2347,15 +2364,20 @@ function ImportDetailModal({
               onClick={() =>
                 onEdit?.(currentRow)
               }
-              disabled={actionDisabled || reparsing || savingMediaOrder}
+              disabled={actionDisabled || reparsing || savingDraft}
             >
               Chỉnh sửa
             </button>
 
+            <button type="button" style={ghostBtn} onClick={() => void saveDraft()}
+              disabled={actionDisabled || reparsing || savingDraft || !currentRow.media_original}>
+              Lưu bản nháp
+            </button>
+
             {roomReview?.type === "UPDATE" ? (
-              <button type="button" style={primaryBtn} disabled={actionDisabled || reparsing || savingMediaOrder || selectedUpdateFields.length === 0 || importLifecycle(currentRow) === "TEST"}
+              <button type="button" style={primaryBtn} disabled={actionDisabled || reparsing || savingDraft || (selectedUpdateFields.length === 0 && !isUpdateCodeChange(room)) || importLifecycle(currentRow) === "TEST"}
                 onClick={() => void approveImport("update_room", selectedUpdateFields)}>
-                {busyAction === "approve" ? "Đang cập nhật..." : `Duyệt cập nhật (${selectedUpdateFields.length} trường)`}
+                {busyAction === "approve" ? "Đang xử lý..." : isUpdateCodeChange(room) ? "Duyệt với mã phòng mới" : `Duyệt cập nhật (${selectedUpdateFields.length} trường)`}
               </button>
             ) : roomReview?.type === "NEEDS_REVIEW" ? (
               <span role="status">Cần xác minh và Phân tích lại trước khi duyệt.</span>
@@ -2369,7 +2391,7 @@ function ImportDetailModal({
                       "update_status"
                     )
                   }
-                  disabled={actionDisabled || reparsing || savingMediaOrder}
+                  disabled={actionDisabled || reparsing || savingDraft}
                 >
                   {busyAction === "approve"
                     ? "Đang duyệt..."
@@ -2386,7 +2408,7 @@ function ImportDetailModal({
                     "create_room"
                   )
                 }
-                disabled={actionDisabled || reparsing || savingMediaOrder}
+                disabled={actionDisabled || reparsing || savingDraft}
               >
                 {busyAction === "approve"
                   ? "Đang duyệt..."
@@ -3900,17 +3922,4 @@ const bulkDeleteBtn: CSSProperties = {
   color: "#fff",
   fontWeight: 700,
   cursor: "pointer",
-};
-
-const toastBox: CSSProperties = {
-  position: "fixed",
-  right: 20,
-  bottom: 20,
-  zIndex: 10000,
-  maxWidth: 420,
-  border: "1px solid",
-  borderRadius: 12,
-  padding: "12px 16px",
-  boxShadow: "0 14px 40px rgba(15, 23, 42, 0.18)",
-  fontWeight: 600,
 };

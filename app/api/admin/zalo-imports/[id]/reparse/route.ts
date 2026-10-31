@@ -387,7 +387,8 @@ export async function POST(
 
     const parsed =
       parseZaloRoomText(
-        sourceText
+        sourceText,
+        { importedAt: (pending as any).created_at ?? (pending as any).batch?.created_at }
       );
 
     const resolved =

@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import { parseZaloRoomText } from "../../../lib/zalo-import/parser";
+import { vacancyDateFromText, withoutStructuredAmenities } from "../../../lib/zalo-import/listing-fields";
+const parse=(marker:string,importedAt="2026-10-31T08:00:00Z")=>parseZaloRoomText(`125/4/30 Bùi Đình Túy, Bình Thạnh\nNội thất: máy lạnh, tủ lạnh\n\n${marker}`,{importedAt});
+const room=parse("1PN/CS/BC/1PB/1PK - 15.500.000 - P.301 - trống 1/12");
+assert.equal(room.roomPayload.room_code,"301");assert.equal(room.roomPayload.status,"Sắp trống");assert.equal(room.roomPayload.available_from,"2026-12-01");
+assert.equal(room.detailPayload.has_window,true);assert.equal(room.detailPayload.has_balcony,true);
+assert.doesNotMatch(room.detailPayload.other_amenities,/cửa sổ|ban công/i);assert.match(room.detailPayload.other_amenities,/1 phòng khách/);assert.match(room.detailPayload.other_amenities,/máy lạnh/);
+assert.equal(parse("Studio - 6tr - P.301 - trống 1/12","2027-01-01T00:00:00Z").roomPayload.available_from,"2027-12-01");
+assert.equal(parse("Studio - 6tr - P.301 - trống ngày 1/12").roomPayload.available_from,"2026-12-01");
+assert.equal(vacancyDateFromText("1/1","2026-12-31T18:00:00Z"),"2027-01-01","Vietnam import year at UTC boundary");
+assert.equal(vacancyDateFromText("1/12/2028","2026-01-01"),"2028-12-01");assert.equal(vacancyDateFromText("31/2","2026-01-01"),null);
+assert.equal(vacancyDateFromText("29/2","2028-01-01"),"2028-02-29");assert.equal(vacancyDateFromText("29/2","2026-01-01"),null);
+assert.equal(parse("Studio - 6tr - P.301 - trống sẵn").roomPayload.status,"Trống");assert.equal(parse("Studio - 6tr - P.301 - trống sẵn").roomPayload.available_from,null);
+assert.equal(withoutStructuredAmenities("Cửa sổ\nBan công\nCamera\nCửa sổ lớn hướng Đông",true,true),"Camera\nCửa sổ lớn hướng Đông");
+console.log("CS/BC structured fields without duplication / dated vacancy / import year / explicit year / invalid and leap dates / ready now PASS");

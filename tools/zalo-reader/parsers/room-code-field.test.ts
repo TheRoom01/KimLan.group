@@ -10,7 +10,7 @@ const source = (code: string) => `${building}\n\n${marker(code)}`;
 const dotted = parseZaloRoomText(source('P.1.2'));
 assert.deepEqual([dotted.roomPayload.house_number, dotted.roomPayload.address, dotted.roomPayload.ward, dotted.roomPayload.district, dotted.roomPayload.room_code, dotted.roomPayload.price, dotted.roomPayload.room_type], ['68/333', 'Trần Quang Khải', 'Tân Định', 'Quận 1', '1.2', 6200000, 'Studio']);
 assert.equal(dotted.roomPayload.available_from_text, '1/11');
-assert.equal(dotted.roomPayload.available_from, undefined, 'never invent the vacancy year');
+assert.match(dotted.roomPayload.available_from, /^\d{4}-11-01$/);assert.equal(dotted.roomPayload.status,'Sắp trống');
 assert.equal(dotted.detailPayload.has_stairs, true); assert.equal(dotted.detailPayload.has_window, true);
 assert.equal(dotted.detailPayload.water_fee_value, 150000); assert.equal(dotted.detailPayload.water_fee_unit, 'người');
 for (const [raw, expected] of [['P.1.2', '1.2'], ['p.1.2', '1.2'], ['1.2', '1.2'], ['P.1/2', '1/2'], ['P.A-01.B', 'A-01.B'], ['Suite Mặt tiền - A', 'Suite Mặt tiền - A'], ['P.1.2 (mã cũ)', '1.2 (mã cũ)']]) {
@@ -37,4 +37,4 @@ assert.equal(parseZaloRoomText(rooms[0].fullText).roomPayload.room_code, '1.2', 
 const literalPlus = buildSemanticTimelineRooms({ groupName: 'Fixture', groupId: 'g-fixture', messages: [message('building', building, 1000), message('marker', marker('Suite A+B.1'), 2000)] });
 assert.equal(literalPlus.length, 1, 'unknown code containing + is one literal field, not multiple guessed rooms');
 assert.equal(literalPlus[0].roomCode, 'Suite A+B.1');
-console.log('Room code 1.2 / whole unknown field / labelled code / identity separators / no media-count or date inference / forward album / Reader-to-API round trip: PASS (offline)');
+console.log('Room code 1.2 / whole unknown field / labelled code / identity separators / no media-count inference / vacancy uses import year / forward album / Reader-to-API round trip: PASS (offline)');

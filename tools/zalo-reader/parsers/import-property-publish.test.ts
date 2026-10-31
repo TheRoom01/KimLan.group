@@ -3,6 +3,8 @@ import fs from "node:fs";
 import vm from "node:vm";
 import * as crypto from "node:crypto";
 import ts from "typescript";
+import * as pendingLocation from "../../../lib/zalo-import/pending-location";
+import { runSettledPool } from "../../../lib/async-pool";
 import { getImportReview } from "../../../lib/zalo-import/room-comparison";
 import * as comparison from "../../../lib/zalo-import/room-comparison";
 import { zaloImportErrorMessage } from "../../../lib/zalo-import/error-message";
@@ -25,8 +27,9 @@ async function main(){
     maybeSingle(){return Promise.resolve(this.result(true))}single(){return Promise.resolve(this.result(true))}
     then(resolve:any,reject:any){return Promise.resolve(this.result()).then(resolve,reject)}
   }
-  const db={from:(table:string)=>new Query(table)};let rpcCalls=0;let ambiguous=false;let statusError=false;
+  const db={from:(table:string)=>new Query(table)};let rpcCalls=0;let ambiguous=false;let statusError=false;let savedPoint:any=null;
   const actor={rpc:async(name:string,args:any)=>{
+    if(name==="update_admin_room_property_location_v1"){savedPoint=args;return{data:{},error:null}}
     assert.equal(name,"admin_upsert_room_v3");rpcCalls++;
     if(statusError)return{data:null,error:{code:"23514",message:'new row for relation "rooms" violates check constraint "rooms_status_check"'}};
     assert.ok(['Đang trống','Sắp trống','Đã thuê'].includes(args.p_payload.status),'publisher must respect rooms_status_check');
@@ -34,7 +37,8 @@ async function main(){
     const row={...args.p_payload,id:args.p_room_id,property_id:args.p_payload.property_id||"matched-building"};tables.rooms.push(row);return{data:row,error:null};
   }};
   const loaded={exports:{} as any};
-  const deps:Record<string,any>={crypto,"./room-comparison":{getImportReview},"./resolve":{resolveZaloImportRoom:async()=>({roomPayload:{_room_import:{type:"CREATE"}}})},
+  let identityType="CREATE";
+  const deps:Record<string,any>={"./pending-location":pendingLocation,"@/lib/zalo-import/pending-location":pendingLocation,"@/lib/async-pool":{runSettledPool},crypto,"./room-comparison":comparison,"./resolve":{resolveZaloImportRoom:async()=>({roomPayload:{_room_import:{type:identityType}}})},
     "@/lib/supabase/admin":{createSupabaseAdminClient:()=>db},"@/lib/r2/zalo-temp":{
       makeRoomImageKey:(room:string,id:string)=>`rooms/${room}/images/${id}.webp`,
       copyR2Object:async({toKey}:any)=>({key:toKey,url:`https://example.test/${toKey}`}),deleteR2Keys:async()=>0,
@@ -67,11 +71,11 @@ async function main(){
   vm.runInNewContext(ts.transpileModule(fs.readFileSync("app/api/admin/zalo-imports/[id]/draft/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
     {module:draftModule,exports:draftModule.exports,require:(name:string)=>{assert.ok(name in draftDeps,name);return(draftDeps as any)[name]},console,structuredClone,process:{env:{R2_PUBLIC_BASE_URL:"https://example.test"}}});
   delete tables.pending_room_versions[0].room_payload._reader_manual_review;
-  const saved=await draftModule.exports.PATCH(new Request("http://offline.test/draft",{method:"PATCH",body:JSON.stringify({manualReviewOnly:true,room_payload:{...tables.pending_room_versions[0].room_payload,property_id:"chosen-building"},detail_payload:{},images:[],videos:[],
+  const saved=await draftModule.exports.PATCH(new Request("http://offline.test/draft",{method:"PATCH",body:JSON.stringify({manualReviewOnly:true,room_payload:{...tables.pending_room_versions[0].room_payload,property_id:"chosen-building",_pending_location:{latitude:10.8,longitude:106.7}},detail_payload:{},images:[],videos:[],
     new_media:[{type:"video",url:"https://example.test/rooms/zalo-pending-pending/videos/manual.mp4",temp_r2_key:"rooms/zalo-pending-pending/videos/manual.mp4"}]})}),{params:Promise.resolve({id:"pending"})});
-  assert.equal(saved.status,200);const draft=await saved.json();assert.equal(draft.videos.length,1);assert.equal(draft.room_payload._manual_video_required,false);
+  assert.equal(saved.status,200);const draft=await saved.json();assert.equal(draft.videos.length,1);assert.equal(draft.room_payload._manual_video_required,false);assert.deepEqual(draft.room_payload._pending_location,{latitude:10.8,longitude:106.7});assert.equal(savedPoint,null,"draft does not mutate building coordinates");
   assert.equal(draft.auto_approve_enabled,false,"manual media upload never schedules auto-publish");assert.equal(tables.rooms.length,0,"saving the draft still cannot create main-room data");
-  await publish();assert.equal(tables.rooms[0].property_id,"chosen-building");assert.equal(tables.room_media[0].type,"video");
+  await publish();assert.equal((savedPoint as any)?.p_latitude,10.8);assert.equal((savedPoint as any)?.p_longitude,106.7);assert.equal(tables.rooms[0].property_id,"chosen-building");assert.equal(tables.room_media[0].type,"video");
   const endpointModule={exports:{} as any};const endpointDeps={...draftDeps,
     "@/lib/zalo-import/error-message":{zaloImportErrorMessage},
     "@/lib/supabase/server":{createSupabaseServerClient:async()=>({auth:{getUser:async()=>({data:{user:{id:"admin"}}})},rpc:async(name:string,args:any)=>name==="get_my_admin_level"?{data:2,error:null}:actor.rpc(name,args)})},
@@ -110,16 +114,30 @@ async function main(){
   vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/zalo-import/update-pending-room.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
     {module:updateModule,exports:updateModule.exports,require:(name:string)=>{assert.ok(name in updateDeps,name);return(updateDeps as any)[name]},console});
   await updateModule.exports.updatePendingRoom({supabase:{...db,rpc:async(name:string,args:any)=>{assert.equal(name,"approve_zalo_room_update_v1");assert.deepEqual(JSON.parse(JSON.stringify(args.p_media.map((row:any)=>[row.type,row.sort_order]))),[['video',0],['image',1]],"UPDATE sends mixed media in saved order to the atomic RPC");return{data:{roomId:"main"},error:null}}},pendingId:"pending",actorUserId:"admin",selectedFields:["images","videos"],expectedRoomPayload:updateRow.room_payload,expectedDetailPayload:updateRow.detail_payload});
+  // A code correction can be staged without changing the verified old target.
+  reset("chosen-building");
+  const fork=tables.pending_room_versions[0];fork.matched_room_id="main";
+  const oldRoom={...fork.room_payload,id:"main"};tables.rooms.push({...oldRoom});
+  fork.room_payload._room_import={version:1,type:"UPDATE",identity_key:comparison.normalizedRoomIdentity(oldRoom),reason:"fixture",candidate_ids:["main"],conflicting_pending_ids:[],snapshot:comparison.snapshotRoom(oldRoom,null,[]),presence:{},uncertain_fields:[]};
+  const originalKey=fork.room_payload._room_import.identity_key;
+  const editCode=await saveOrder({room_payload:{room_code:"503B"}});assert.equal(editCode.status,200);
+  assert.equal(fork.room_payload.room_code,"503B");assert.equal(fork.room_payload._room_import.identity_key,originalKey);assert.equal(fork.matched_room_id,"main");assert.equal(fork.auto_approve_enabled,false);
+  const changedAddress=await saveOrder({room_payload:{room_code:"503C",house_number:"999"}});assert.equal(changedAddress.status,409,"only code may change in this flow");
+  await assert.rejects(publish,/không được tạo phòng mới/);
+  const forkPublish=(expected=structuredClone(fork.room_payload))=>loaded.exports.publishPendingRoom({pendingId:"pending",actorUserId:"admin",source:"manual",supabase:db,actorSupabase:actor,createFromUpdate:true,expectedRoomPayload:expected,expectedDetailPayload:fork.detail_payload});
+  await assert.rejects(()=>forkPublish({...fork.room_payload,room_code:"stale"}),/Bản nháp đã đổi/);
+  identityType="UPDATE";await assert.rejects(()=>forkPublish(),/trùng đã xuất hiện/);assert.equal(tables.rooms.length,1);
+  identityType="CREATE";const createdFromUpdate=await forkPublish();assert.notEqual(createdFromUpdate.roomId,"main");assert.equal(tables.rooms.length,2);assert.equal(tables.rooms.find(row=>row.id==="main").room_code,"503");assert.equal(tables.rooms.find(row=>row.id!=="main").room_code,"503B");assert.equal(fork.matched_room_id,null);assert.equal(fork.room_payload._created_from_update.previous_room_id,"main");
   // Execute the existing modal's pending-property branch to verify chooser UX.
   const modalAst=ts.createSourceFile("modal.tsx",fs.readFileSync("app/admin/RoomModal/index.tsx","utf8"),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let pendingPropertyBranch="";
   function visit(node:ts.Node){if(ts.isIfStatement(node)&&node.expression.getText(modalAst).startsWith("pendingRoomPayload?._room_import?.type"))pendingPropertyBranch=node.getText(modalAst);ts.forEachChild(node,visit)}visit(modalAst);assert.ok(pendingPropertyBranch);
-  let choice:any[]=[];let form:any={house_number:"100/2A2",address:"Trần Hưng Đạo",district:"Quận 1"};let result:any={match_status:"matched",property_id:"matched-building"};
-  const context:any={roomForm:form,roomPayload:{property_id:null},pendingRoomPayload:{_room_import:{type:"CREATE"}},
-    supabase:{rpc:async(name:string)=>{assert.equal(name,"admin_resolve_property_for_room_v2");return{data:result,error:null}}},setSaving(){},setErrorMsg(){},setPropertyCandidates:(value:any[])=>{choice=value},setRoomForm:(update:any)=>{form=update(form)}};
+  let form:any={house_number:"100/2A2",address:"Trần Hưng Đạo",district:"Quận 1"};let result:any={match_status:"matched",property_id:"matched-building"};
+  const context:any={unresolvedCandidates:[],roomForm:form,roomPayload:{property_id:null},pendingRoomPayload:{_room_import:{type:"CREATE"}},
+    supabase:{rpc:async(name:string)=>{assert.equal(name,"admin_resolve_property_for_room_v2");return{data:result,error:null}}},setSaving(){},setErrorMsg(){},setPropertyCandidates(){},setRoomForm:(update:any)=>{form=update(form)}};
   const execute=()=>vm.runInNewContext(ts.transpileModule(`(async()=>{${pendingPropertyBranch}})()`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
   await execute();assert.equal(context.roomPayload.property_id,"matched-building");
-  context.roomPayload.property_id=null;result={match_status:"ambiguous",candidates:[{id:"one"},{id:"two"}]};await execute();assert.equal(choice.length,2);assert.equal(context.roomPayload.property_id,null,"ambiguous buildings must be selected, never guessed");
+  context.roomPayload.property_id=null;result={match_status:"ambiguous",candidates:[{id:"one"},{id:"two"}]};await assert.rejects(execute(),/Có nhiều tòa nhà/);assert.equal(context.unresolvedCandidates.length,2);assert.equal(context.roomPayload.property_id,null,"ambiguous buildings must be selected, never guessed");
   console.log("Imports manual publish: authenticated /admin RPC, matched building, selected ambiguous building, video-only upload, empty-media preflight, Vietnamese errors, canonical statuses, saved media order for CREATE/UPDATE: PASS (offline)");
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

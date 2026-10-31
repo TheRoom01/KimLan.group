@@ -22,6 +22,7 @@ type Props = {
   // label vẫn là "Ngày tạo" nhưng lấy từ updated_at theo yêu cầu
   updatedAt?: string | null
 
+  uploadMessage?: string
   uploading?: boolean
   onUploadFiles: (files: File[]) => void
   
@@ -121,6 +122,7 @@ export default function RoomInfoTab({
   onChange,
   updatedAt,
   uploading = false,
+  uploadMessage,
   onUploadFiles,
   chinh_sach,
   onChangeChinhSach,
@@ -366,6 +368,8 @@ useEffect(() => {
           >
             {uploading ? 'Đang tải...' : 'Thêm ảnh/Video'}
           </button>
+
+          {uploading && <div role="status" style={{ ...helperText, overflowWrap: 'anywhere' }}>{uploadMessage || 'Đang chuẩn bị tải...'}</div>}
 
           {/* Gợi ý UX nhỏ */}
           <div style={helperText}>

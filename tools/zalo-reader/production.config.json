@@ -1,7 +1,7 @@
 {
     "mode":  "production",
     "enabled":  true,
-    "webBaseUrl":  "http://127.0.0.1:3000",
+    "webBaseUrl":  "https://www.canhodichvu.pro",
     "allowReimportForTesting":  false,
     "testImportToPending":  false,
     "officialTrial":  false,

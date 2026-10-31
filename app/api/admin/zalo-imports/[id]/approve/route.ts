@@ -1,3 +1,4 @@
+import { applyPendingLocation } from "@/lib/zalo-import/pending-location";
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -129,7 +130,7 @@ export async function POST(
     }
 
     if (
-      mode !== "create_room" &&
+      mode !== "create_room" && mode !== "create_room_new_code" &&
       mode !== "update_room" &&
       mode !== "update_status"
     ) {
@@ -150,13 +151,17 @@ export async function POST(
     if (mode === "update_room") {
       const updated = await updatePendingRoom({ supabase, pendingId, actorUserId: admin.user.id,
         selectedFields: body?.selectedFields, expectedRoomPayload: body?.expectedRoomPayload, expectedDetailPayload: body?.expectedDetailPayload });
-      return NextResponse.json({ ok: true, mode, ...updated });
+      const locationWarning = await applyPendingLocation(admin.supabaseUser, updated.roomId, body?.expectedRoomPayload || {});
+      return NextResponse.json({ ok: true, mode, ...updated, locationWarning });
     }
 
-    if (mode === "create_room") {
+    if (mode === "create_room" || mode === "create_room_new_code") {
       const published =
         await publishPendingRoom({
           pendingId,
+          createFromUpdate: mode === "create_room_new_code",
+          expectedRoomPayload: body?.expectedRoomPayload,
+          expectedDetailPayload: body?.expectedDetailPayload,
           actorUserId:
             admin.user.id,
           source: "manual",
@@ -167,6 +172,7 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         mode,
+        locationWarning: published.locationWarning,
         roomId:
           published.roomId,
         mediaCount:

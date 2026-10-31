@@ -11,7 +11,7 @@ try {
   $logDirectory=Join-Path $readerRoot '.zalo-reader/official/console'
   New-Item -ItemType Directory -Path $logDirectory -Force|Out-Null
   $logFile=Join-Path $logDirectory ((Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+$PID+'.log')
-  & $NodePath --import tsx (Join-Path $PSScriptRoot 'official-runner.ts') --production --confirm-production *> $logFile
+  & $NodePath --import tsx (Join-Path $PSScriptRoot 'official-runner.ts') --production --confirm-production --scheduled *> $logFile
   $readerExit=$LASTEXITCODE
   # An overlapping wrapper is not a completed cycle and must not move the timer.
   $lockPath=Join-Path $readerRoot '.zalo-reader/official/reader.lock'

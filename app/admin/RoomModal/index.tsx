@@ -1,12 +1,17 @@
 'use client'
 
+import { beginImportTask, updateImportTask, finishImportTask, isImportBusy, preserveImportForm, getImportForm, clearImportForm } from "@/app/admin/zalo-imports/import-tasks";
+import { vacancyDateFromText, withoutStructuredAmenities } from "@/lib/zalo-import/listing-fields";
+import { importLocationQueries } from "@/lib/zalo-import/pending-location";
+import { uploadDirect } from "@/lib/media/upload-direct";
 import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { useEffect, useState, useRef, type CSSProperties } from 'react'
 import type { Room, TabKey, RoomStatus } from '../../types/room'
 import type { RoomForm, RoomDetail } from './types'
 import { supabase } from '@/lib/supabase'
 import { normalizeRoomBadges, type RoomBadge } from '@/lib/roomBadges'
-import { getImportReview, importReviewInstructions } from '@/lib/zalo-import/room-comparison'
+import { getImportReview, isUpdateCodeChange, importReviewInstructions } from '@/lib/zalo-import/room-comparison'
+import { requestCodeChoice, type CodeApprovalMode } from "@/app/admin/zalo-imports/request-code-choice";
 import RoomUpdateComparison from '@/app/admin/zalo-imports/RoomUpdateComparison'
 
 import TabButton from './TabButton'
@@ -90,12 +95,16 @@ type Props = {
   activeTab: TabKey
   setActiveTab: (tab: TabKey) => void
   mode?: 'room' | 'pending'
+  pendingImportedAt?: string
   pendingId?: string | null
   pendingRoomPayload?: Record<string, any> | null
   pendingDetailPayload?: Record<string, any> | null
   pendingImages?: any[] | null
+  pendingOriginalImageIds?: string[]
+  pendingOriginalVideoIds?: string[]
   pendingVideos?: any[] | null
   pendingMatchedRoomId?: string | null
+  onPendingFailed?: () => void
   onPendingApproved?: () => void | Promise<void>
   onPendingSaved?: (updated?: {
     room_payload?: Record<string, any>
@@ -169,12 +178,16 @@ function normalizeStatus(v?: RoomStatus | string | null): RoomStatus {
 export default function RoomModal({
   mode = 'room',
   pendingId = null,
+  pendingImportedAt,
   pendingRoomPayload = null,
   pendingDetailPayload = null,
   pendingImages = null,
   pendingVideos = null,
+  pendingOriginalImageIds,
+  pendingOriginalVideoIds,
   pendingMatchedRoomId = null,
   onPendingApproved,
+  onPendingFailed,
   onPendingSaved,
   open,
   onClose,
@@ -219,6 +232,7 @@ useEffect(() => { setPendingUpdateFields([]) }, [open, pendingId])
 const [errorMsg, setErrorMsg] = useState<string | null>(null)
 const [propertyCandidates, setPropertyCandidates] = useState<PropertyCandidate[]>([])
 const [uploading, setUploading] = useState(false)
+const [uploadMessage, setUploadMessage] = useState('')
 const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 const [showAutoRead, setShowAutoRead] = useState(false)
 const [showHiddenSaveConfirm, setShowHiddenSaveConfirm] = useState(false)
@@ -585,10 +599,11 @@ async function runPool<T>(
   limit: number,
   worker: (item: T) => Promise<void>
 ) {
+  const errors: unknown[] = []
   const executing = new Set<Promise<void>>()
 
   for (const item of items) {
-    const p = worker(item).finally(() => executing.delete(p))
+    const p = worker(item).catch((error) => { errors.push(error) }).finally(() => executing.delete(p))
     executing.add(p)
 
     if (executing.size >= limit) {
@@ -597,6 +612,7 @@ async function runPool<T>(
   }
 
   await Promise.all(executing)
+  if (errors.length) throw errors[0]
 }
 
 // ===== compute existing images BEFORE upload (stable) =====
@@ -620,6 +636,7 @@ async function withImageConvertLock<T>(fn: () => Promise<T>): Promise<T> {
   return run
 }
 
+const originalMedia = Array.isArray((roomForm as any).media) ? [...(roomForm as any).media] : []
 const uploadedMedia: any[] = new Array(okFiles.length)
 await runPool(okFiles.map((file, index) => ({ file, index })), CONCURRENCY, async ({ file, index }) => {
   const isVideo = file.type.startsWith('video/')
@@ -719,29 +736,9 @@ await runPool(okFiles.map((file, index) => ({ file, index })), CONCURRENCY, asyn
 const MAX_SERVER_FALLBACK_BYTES = 4 * 1024 * 1024
 
 try {
-  const put = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: requiredHeaders,
-    body: file,
+  await uploadDirect({ url: uploadUrl, file, headers: requiredHeaders,
+    onProgress: percent => setUploadMessage(`${file.name}: ${percent}%${percent === 100 ? ' · Đang xác nhận…' : ''}`),
   })
-
-  if (!put.ok) {
-    const status = put.status
-    const contentType = put.headers.get('content-type') || ''
-
-    let rawText = ''
-    try {
-      rawText = await put.text()
-    } catch {}
-
-    const snippet = rawText.slice(0, 500).trim()
-
-    const detail =
-      `[r2/put] status=${status} content-type=${contentType}\n` +
-      (snippet ? `response: ${snippet}` : '(no body)')
-
-    throw new Error(detail)
-  }
 
    return { publicUrl }
     } catch (directError: any) {
@@ -815,8 +812,9 @@ try {
     ...(isPending ? { __pendingNew: true } : {}),
   } as const
 
-  // ✅ upload tuần tự => append đúng thứ tự user chọn
+  // Publish each successful file immediately, retaining selection order.
   uploadedMedia[index] = mediaItem
+  setRoomForm((prev: any) => ({ ...prev, media: [...originalMedia, ...uploadedMedia.filter(Boolean)] }))
 
   // ✅ thumb.webp: chỉ 1 lần, và đúng “ảnh đầu tiên của phòng”
   if (shouldMakeThumb && isImage && file === firstImageFileInBatch && !thumbStarted) {
@@ -835,10 +833,7 @@ try {
   }
 })
 
-setRoomForm((prev: any) => {
-  const prevMedia = Array.isArray(prev.media) ? prev.media : []
-  return { ...prev, media: [...prevMedia, ...uploadedMedia.filter(Boolean)] }
-})
+
 
   } catch (e: any) {
     console.error('Upload failed:', e)
@@ -1068,6 +1063,7 @@ const detailSample =
       }))
       .filter((media: any) => media.url)
 
+    const vacancy = pendingRoomPayload?.available_from || vacancyDateFromText(String(pendingRoomPayload?.available_from_text || ""), pendingImportedAt);
     setRoomForm({
       property_id: pendingRoomPayload?.property_id ?? '',
       room_code: pendingRoomPayload?.room_code ?? '',
@@ -1077,8 +1073,8 @@ const detailSample =
       ward: pendingRoomPayload?.ward ?? '',
       district: pendingRoomPayload?.district ?? '',
       price: Number(pendingRoomPayload?.price ?? 0),
-      status: normalizeStatus(pendingRoomPayload?.status ?? 'Trống'),
-      available_from: pendingRoomPayload?.available_from ?? null,
+      status: vacancy && normalizeStatus(pendingRoomPayload?.status) !== 'Đã thuê' ? 'Sắp trống' : normalizeStatus(pendingRoomPayload?.status ?? 'Trống'),
+      available_from: vacancy ?? null,
       description: pendingRoomPayload?.description ?? '',
       link_zalo: pendingRoomPayload?.link_zalo ?? '',
       google_maps_url: pendingRoomPayload?.google_maps_url ?? '',
@@ -1088,11 +1084,11 @@ const detailSample =
       badges: [],
     })
 
-    initialPendingImageIdsRef.current = pendingImageMedia
+    initialPendingImageIdsRef.current = pendingOriginalImageIds ?? pendingImageMedia
       .map((image: any) => String(image?.id || "").trim())
       .filter(Boolean)
 
-    initialPendingVideoIdsRef.current = pendingVideoMedia
+    initialPendingVideoIdsRef.current = pendingOriginalVideoIds ?? pendingVideoMedia
       .map((video: any) => String(video?.id || "").trim())
       .filter(Boolean)
 
@@ -1102,6 +1098,10 @@ const detailSample =
         : defaultDetailForm
     )
 
+    setBuildingLocation(pendingRoomPayload?._pending_location ?? null)
+    const recovered = getImportForm(String(pendingId))
+    if (recovered) { setRoomForm(recovered.room); setDetailForm(recovered.detail); setBuildingLocation(recovered.room._pending_location ?? pendingRoomPayload?._pending_location ?? null); if (Object.hasOwn(recovered.room, "_pending_location")) setBuildingLocationDirty(true); setPropertyCandidates(recovered.candidates || []) }
+    setDetailForm(previous => ({ ...previous, other_amenities: withoutStructuredAmenities(previous.other_amenities || "", previous.has_window === true, previous.has_balcony === true) }))
     setFeeAutofillDone(false)
     return
   }
@@ -1576,20 +1576,27 @@ const applyAutoReadCandidate = (
     if (review?.type === 'NEEDS_REVIEW' || (pendingMatchedRoomId && !review)) {
       setErrorMsg(`Lưu nháp nếu vừa sửa dữ liệu, sau đó đóng form chỉnh sửa. ${importReviewInstructions(pendingRoomPayload || {})}`); return
     }
-    if (review?.type === 'UPDATE' && pendingUpdateFields.length === 0) {
+    let approvalMode: CodeApprovalMode | undefined;
+    if (isUpdateCodeChange({ ...pendingRoomPayload, ...roomForm })) {
+      const choice = await requestCodeChoice(String(review?.snapshot?.room.room_code || ''), roomForm.room_code, pendingUpdateFields.length > 0);
+      if (!choice) return;
+      approvalMode = choice;
+    }
+    if (review?.type === 'UPDATE' && approvalMode !== 'create_room_new_code' && pendingUpdateFields.length === 0) {
       setErrorMsg('Hãy chọn các trường muốn cập nhật trong phần so sánh bên dưới.'); return
     }
-    if (!window.confirm(review?.type === 'UPDATE'
+    if (!approvalMode && !window.confirm(review?.type === 'UPDATE'
       ? `Lưu chỉnh sửa và duyệt cập nhật ${pendingUpdateFields.length} trường đã chọn vào phòng hiện tại?`
       : 'Lưu các chỉnh sửa hiện tại và duyệt đăng phòng mới lên app?')) return
     pendingApprovalRef.current = true
     setApprovingPending(true)
-    try { await handleSubmit(undefined, true) }
+    try { await handleSubmit(undefined, true, approvalMode) }
     catch (error: any) { setErrorMsg(error?.message || 'Chưa duyệt được import.') }
     finally { pendingApprovalRef.current = false; setApprovingPending(false) }
   }
 
-  async function handleSubmit(hiddenAction?: 'keep_hidden' | 'restore', approvePending = false) {
+  async function handleSubmit(hiddenAction?: 'keep_hidden' | 'restore', approvePending = false, approvalMode?: CodeApprovalMode) {
+  if (uploading) { setErrorMsg('Hãy chờ ảnh/video tải xong trước khi lưu.'); return }
   const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
   const v = validate()
   if (v) {
@@ -1604,6 +1611,7 @@ const applyAutoReadCandidate = (
     }
 
     const roomPayload = {
+      ...(buildingLocationDirty || Object.hasOwn(pendingRoomPayload || {}, "_pending_location") ? { _pending_location: buildingLocation } : {}),
       property_id: roomForm.property_id?.trim() || null,
       room_code: roomForm.room_code,
       room_type: roomForm.room_type,
@@ -1619,25 +1627,6 @@ const applyAutoReadCandidate = (
       google_maps_url: roomForm.google_maps_url,
       zalo_phone: roomForm.zalo_phone,
       chinh_sach: roomForm.chinh_sach,
-    }
-
-    if(pendingRoomPayload?._room_import?.type !== 'UPDATE' && !roomPayload.property_id && roomForm.house_number.trim() && roomForm.address.trim() && roomForm.district.trim()) {
-      setSaving(true)
-      try {
-        const resolution=await supabase.rpc('admin_resolve_property_for_room_v2',{p_payload:roomPayload})
-        if(resolution.error) throw resolution.error
-        const resolved=resolution.data as {match_status?:string;property_id?:string|null;candidates?:PropertyCandidate[]}
-        if(resolved?.match_status==='ambiguous') {
-          setPropertyCandidates((resolved.candidates || []).filter(candidate=>candidate?.id))
-          setErrorMsg('Có nhiều tòa nhà trùng địa chỉ. Hãy chọn tòa nhà để gán phòng.')
-          return
-        }
-        if(resolved?.match_status==='matched' && resolved.property_id) {
-          roomPayload.property_id=resolved.property_id
-          setRoomForm(prev=>({...prev,property_id:resolved.property_id || ''}))
-        }
-      } catch(error:any) {setErrorMsg(error?.message || 'Không nhận diện được tòa nhà.');return}
-      finally {setSaving(false)}
     }
 
     const allPendingMedia = (Array.isArray((roomForm as any).media)
@@ -1688,13 +1677,25 @@ const applyAutoReadCandidate = (
      */
     setSaving(true)
     setErrorMsg(null)
-    if (!approvePending) {
-      onClose()
-      onNotify?.('Đang lưu nháp import...')
-    }
+    if (isImportBusy(pendingId)) { setSaving(false); return }
+    beginImportTask(pendingId, `${approvePending ? 'Duyệt đăng' : 'Lưu nháp'} · ${roomForm.room_code || pendingId.slice(0, 8)}`)
+    onClose()
+    updateImportTask(pendingId, 'Đang lưu nội dung và media…')
 
+    let draftSaved = false
+    let unresolvedCandidates: PropertyCandidate[] = []
     const savePending = async () => {
       try {
+        if (pendingRoomPayload?._room_import?.type !== 'UPDATE' && !roomPayload.property_id && roomForm.house_number.trim() && roomForm.address.trim() && roomForm.district.trim()) {
+          const resolution = await supabase.rpc('admin_resolve_property_for_room_v2', { p_payload: roomPayload })
+          if (resolution.error) throw resolution.error
+          const resolved = resolution.data as { match_status?: string; property_id?: string | null; candidates?: PropertyCandidate[] }
+          if (resolved?.match_status === 'ambiguous') {
+            unresolvedCandidates = (resolved.candidates || []).filter(candidate => candidate?.id)
+            throw new Error('Có nhiều tòa nhà trùng địa chỉ. Mở lại chỉnh sửa và chọn tòa nhà để gán phòng.')
+          }
+          if (resolved?.match_status === 'matched' && resolved.property_id) roomPayload.property_id = resolved.property_id
+        }
         const res = await fetch(`/api/admin/zalo-imports/${pendingId}/draft`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -1722,6 +1723,8 @@ const applyAutoReadCandidate = (
           throw new Error(json?.error || 'Lưu nháp pending thất bại')
         }
 
+        draftSaved = true
+        clearImportForm(pendingId)
         const savedImages = Array.isArray(json?.images)
           ? json.images
           : pendingImagesToKeep
@@ -1752,54 +1755,30 @@ const applyAutoReadCandidate = (
           const savedDetail = json?.detail_payload ?? detailForm
           const review = getImportReview(savedRoom)
           if (review?.type === 'NEEDS_REVIEW') throw new Error('Bản nháp cần xác minh phòng đích trước khi duyệt.')
+          updateImportTask(pendingId, 'Đã lưu nháp. Đang duyệt và chuyển media…')
           const approval = await fetch(`/api/admin/zalo-imports/${pendingId}/approve`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(review?.type === 'UPDATE'
-              ? { mode: 'update_room', selectedFields: pendingUpdateFields, expectedRoomPayload: savedRoom, expectedDetailPayload: savedDetail }
+              ? { mode: approvalMode || 'update_room', selectedFields: pendingUpdateFields, expectedRoomPayload: savedRoom, expectedDetailPayload: savedDetail }
               : { mode: 'create_room' }),
           })
           const result = await approval.json().catch(() => ({}))
           if (!approval.ok || !result?.ok) throw new Error(result?.error || 'Duyệt import thất bại.')
-          onClose()
-          onNotify?.(review?.type === 'UPDATE' ? 'Đã duyệt cập nhật phòng.' : 'Đã duyệt đăng phòng mới.')
+          finishImportTask(pendingId, result.locationWarning || (review?.type === 'UPDATE' && approvalMode !== 'create_room_new_code' ? 'Đã duyệt cập nhật phòng.' : 'Đã duyệt đăng phòng mới.'), Boolean(result.locationWarning))
           await onPendingApproved?.()
           return
         }
 
-        if (
-          json?.changed &&
-          json?.auto_approve_enabled &&
-          json?.auto_approve_at
-        ) {
-          onNotify?.(
-            'Đã lưu nháp. Phòng sẽ tự duyệt sau 3 phút nếu bạn không mở chỉnh sửa lại.'
-          )
-        } else if (json?.changed) {
-          const reason = String(
-            json?.auto_approve_reason ||
-              'Phòng chưa đủ điều kiện tự duyệt.'
-          ).trim()
-
-          onNotify?.(
-            `Đã lưu nháp nhưng chưa lên lịch tự duyệt: ${reason}`
-          )
-        } else {
-          onNotify?.(
-            'Không có thay đổi mới. Phòng chưa được lên lịch tự duyệt.'
-          )
-        }
+        finishImportTask(pendingId, json?.auto_approve_enabled ? 'Đã lưu nháp. Đã lên lịch tự duyệt sau 3 phút.' : `Đã lưu nháp. ${json?.auto_approve_reason || ''}`)
       } catch (e: any) {
         console.error('Lưu nháp pending thất bại:', e)
-        if (approvePending) setErrorMsg(`Chưa duyệt: ${e?.message ?? 'Không rõ lỗi'}`)
-        else onNotify?.(
-          `Lưu nháp thất bại: ${e?.message ?? 'Không rõ lỗi'}`
-        )
+        if (!draftSaved) preserveImportForm(pendingId, { ...roomForm, ...(buildingLocationDirty ? { _pending_location: buildingLocation } : {}) }, detailForm, unresolvedCandidates)
+        finishImportTask(pendingId, e?.message || 'Không thể lưu hoặc duyệt import.', true, onPendingFailed)
       } finally {
         setSaving(false)
       }
     }
-    if (approvePending) await savePending()
-    else void savePending()
+    void savePending()
 
     return
   }
@@ -2352,6 +2331,7 @@ const stopBackdropEvents = (e: any) => {
             <RoomInfoTab
               value={roomForm}
               onChange={(next) => {
+                if (uploading) next = { ...next, media: roomForm.media }
                 const addressChanged =
                   next.house_number !== roomForm.house_number ||
                   next.address !== roomForm.address ||
@@ -2359,6 +2339,7 @@ const stopBackdropEvents = (e: any) => {
                   next.district !== roomForm.district
 
                 if (addressChanged) {
+                  if (isPending) { setBuildingLocation(null); setBuildingLocationDirty(true); }
                   setPropertyCandidates([])
                   setErrorMsg(null)
                 }
@@ -2367,6 +2348,7 @@ const stopBackdropEvents = (e: any) => {
               }}
               updatedAt={editingRoom?.updated_at ?? null}
               uploading={uploading}
+              uploadMessage={uploadMessage}
               onUploadFiles={handleUploadFiles}
               chinh_sach={roomForm.chinh_sach}
              onChangeChinhSach={(v: string) => setRoomForm(prev => ({ ...prev, chinh_sach: v }))}
@@ -2404,8 +2386,9 @@ const stopBackdropEvents = (e: any) => {
               value={buildingLocation}
               loading={buildingLocationLoading}
               error={buildingLocationError}
-              disabled={isPending}
-              addressQuery={[
+              autoSuggest={isPending}
+              fallbackQueries={isPending ? importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward).slice(1) : []}
+              addressQuery={isPending ? (importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward)[0] || "") : [
                 roomForm.house_number,
                 roomForm.address,
                 roomForm.ward,
@@ -2420,6 +2403,11 @@ const stopBackdropEvents = (e: any) => {
             />
           )}
 
+      {isPending && isUpdateCodeChange({ ...pendingRoomPayload, ...roomForm }) && (
+        <p style={{ margin: '12px 0', padding: 12, borderRadius: 10, background: '#eff6ff', color: '#1e40af' }}>
+          Mã phòng đã đổi từ {String(getImportReview(pendingRoomPayload)?.snapshot?.room.room_code || '')} thành {roomForm.room_code}. Khi duyệt, bạn có thể chọn cập nhật phòng cũ hoặc tạo phòng mới.
+        </p>
+      )}
       {isPending && getImportReview(pendingRoomPayload)?.type === 'UPDATE' && (
         <RoomUpdateComparison
           row={{room_payload:{...pendingRoomPayload,...roomForm},detail_payload:detailForm,
@@ -2468,7 +2456,7 @@ const stopBackdropEvents = (e: any) => {
       } else {
         void handleSubmit()
       }
-    }} style={btnSaveLight} disabled={saving || approvingPending || (wasHiddenAtOpen && adminLevel === null)} type="button">
+    }} style={btnSaveLight} disabled={saving || approvingPending || uploading || (wasHiddenAtOpen && adminLevel === null)} type="button">
       {saving ? "Đang lưu..." : isPending ? "Lưu nháp" : "Lưu"}
     </button>
     {isPending && <button type="button" style={btnSync} onClick={() => void handlePendingApprove()}

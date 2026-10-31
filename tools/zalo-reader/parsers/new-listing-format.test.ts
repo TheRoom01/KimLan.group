@@ -205,13 +205,15 @@ check("media chỉ thuộc marker gần nhất; các mã cùng marker vẫn dùn
 check("CS nhận diện thành Cửa sổ, không trở thành loại phòng", () => {
   const windowRoom = listing("Studio/CS - 6.300.000 - P.502 - trống sẵn");
   assert.equal(windowRoom.roomPayload.room_type, "Studio");
-  assert.match(windowRoom.detailPayload.other_amenities, /cửa sổ/i);
+  assert.equal(windowRoom.detailPayload.has_window,true);
+  assert.doesNotMatch(windowRoom.detailPayload.other_amenities, /cửa sổ/i);
 });
 
 check("BC nhận diện thành Ban công, không trở thành loại phòng", () => {
   const balconyRoom = listing("Studio/BC - 6.900.000 - P.103 - trống sẵn");
   assert.equal(balconyRoom.roomPayload.room_type, "Studio");
-  assert.match(balconyRoom.detailPayload.other_amenities, /ban công/i);
+  assert.equal(balconyRoom.detailPayload.has_balcony,true);
+  assert.doesNotMatch(balconyRoom.detailPayload.other_amenities, /ban công/i);
 });
 
 check("1PK và 1PB không làm thay đổi taxonomy loại phòng", () => {
@@ -311,9 +313,10 @@ check("phí xe gửi ngoài giữ nguyên ý nghĩa văn bản", () => {
   );
 });
 
-check("không tự chọn năm cho ngày trống chỉ có ngày/tháng", () => {
+check("ngày trống thiếu năm dùng năm import và trạng thái Sắp trống", () => {
   const parsed = listing("Studio/BC - 6.900.000 - P.103 - trống 1/11");
-  assert.equal(parsed.roomPayload.available_from, undefined);
+  assert.match(parsed.roomPayload.available_from, /^\d{4}-11-01$/);
+  assert.equal(parsed.roomPayload.status,"Sắp trống");
 });
 
 check("không tự gán trạng thái phòng khi tin không nêu", () => {

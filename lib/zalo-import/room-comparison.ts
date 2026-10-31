@@ -136,3 +136,13 @@ export function selectedUpdatePatch(room: any, detail: any, selected: string[]) 
   }
   return patch;
 }
+
+/** A corrected code may fork an UPDATE; its verified building and old target stay locked. */
+export function isUpdateCodeChange(payload: Record<string, any>) {
+  const review = getImportReview(payload);
+  const originalCode = review?.snapshot?.room.room_code;
+  const originalKey = review?.identity_key && canonicalStoredIdentity(review.identity_key);
+  const nextKey = normalizedRoomIdentity(payload);
+  return Boolean(review?.type === "UPDATE" && originalCode && originalKey && nextKey && nextKey !== originalKey &&
+    normalizedRoomIdentity({ ...payload, room_code: originalCode }) === originalKey);
+}

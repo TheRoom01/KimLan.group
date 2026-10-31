@@ -7,6 +7,10 @@ import { OFFICIAL_ZALO_GROUPS, READER_INTERVAL_MS, redactReaderLog } from "../..
 import { OfficialSession, acquireReaderLock, atomicJson, setOfficialSession, safeConsole } from "./official-runtime";
 import { buildSemanticTimelineRooms } from "./parsers";
 
+export function readerCycleDue(scheduled: boolean, previous: { runId?: string | null; nextEligibleAt?: string } | null, now = Date.now()) {
+  const next = Date.parse(previous?.nextEligibleAt || "");
+  return !scheduled || !previous?.runId || !Number.isFinite(next) || now >= next;
+}
 export function validateOfficialConfig(config: any) {
   if (config.intervalMinutes !== 60 || config.profileDirectory !== ".zalo-reader/profile" || typeof config.enabled !== "boolean") throw new Error("OFFICIAL_CONFIG_INVALID");
   if (config.maxLookbackHours !== 24 || config.runGroupsSequentially !== true || config.intervalFromCompletion !== true) throw new Error("OFFICIAL_CYCLE_CONFIG_INVALID");
@@ -90,7 +94,7 @@ export async function runOfflineFixture(file: string, root: string) {
 export async function main(args = process.argv.slice(2)) {
   const root = process.cwd();
   const production=args.includes("--production");
-  if(production && (args.some(arg=>!["--production","--confirm-production","--report-enabled","--report-disabled"].includes(arg)) || (args.includes("--report-enabled") && args.includes("--report-disabled")))) throw new Error("PRODUCTION_ARGUMENT_CONFLICT");
+  if(production && (args.some(arg=>!["--production","--confirm-production","--scheduled","--report-enabled","--report-disabled"].includes(arg)) || (args.includes("--report-enabled") && args.includes("--report-disabled")))) throw new Error("PRODUCTION_ARGUMENT_CONFLICT");
   const fixtureIndex = args.indexOf("--fixture");
   if (fixtureIndex >= 0) return runOfflineFixture(path.resolve(args[fixtureIndex + 1]), root);
   const configPath = path.resolve(root, production?"tools/zalo-reader/production.config.json":"tools/zalo-reader/official.config.json");
@@ -136,7 +140,7 @@ export async function main(args = process.argv.slice(2)) {
     const previousCycle = fs.existsSync(cycleFile) ? JSON.parse(fs.readFileSync(cycleFile,"utf8")) : null;
     // Older preflight failures wrote a cycle with runId:null without reading Zalo.
     // Such records must not delay a real run; keep valid completed cycles intact.
-    if(!trial && previousCycle?.runId && previousCycle?.nextEligibleAt && Date.now() < Date.parse(previousCycle.nextEligibleAt)) {
+    if(!trial && !readerCycleDue(args.includes("--scheduled"), previousCycle)) {
       console.log(`READER_CYCLE_NOT_DUE: Chờ đủ 60 phút sau khi lượt trước kết thúc. Có thể chạy lại từ ${new Date(previousCycle.nextEligibleAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`);
       return;
     }
@@ -157,7 +161,17 @@ export async function main(args = process.argv.slice(2)) {
     session = new OfficialSession({ stateDirectory: directory, trial, initialLookbackHours: config.initialLookbackHours,
       overlapMinutes: config.overlapMinutes, maxMessages: trial ? Math.min(5,config.maxMessagesPerGroup) : config.maxMessagesPerGroup,
       maxRooms: trial ? Math.min(5,config.maxRoomsPerGroup) : config.maxRoomsPerGroup,
-      maxScrollSteps: config.maxScrollSteps, report });
+      maxScrollSteps: config.maxScrollSteps, report,
+      reconcile: async (groupKey, sources) => {
+        const replay: string[] = [];
+        for (let offset = 0; offset < sources.length; offset += 100) {
+          const response = await fetch(new URL("/api/internal/zalo-reader/receipts", api), { method: "POST", headers: { "Content-Type": "application/json", "x-internal-secret": secret }, body: JSON.stringify({ groupKey, sources: sources.slice(offset, offset + 100) }), signal: AbortSignal.timeout(15000) });
+          const body = await response.json();
+          if (!response.ok || !Array.isArray(body.replay)) throw new Error("READER_RECEIPTS_UNAVAILABLE");
+          replay.push(...body.replay);
+        }
+        return replay;
+      } });
     setOfficialSession(session);
     const effective = effectiveReaderConfig(base,config,api,trial);
     const effectivePath = path.join(directory, "effective-config.json");
@@ -186,7 +200,8 @@ export async function main(args = process.argv.slice(2)) {
     throw error;
   } finally {
     if (heartbeat) clearInterval(heartbeat);
-    if(cycleAttempted && !trial) {
+    if (cycleAttempted && !trial) atomicJson(path.join(directory, "last-completed-run.json"), { finishedAt: new Date().toISOString(), runId: session?.runId || null });
+    if(cycleAttempted && !trial && args.includes("--scheduled")) {
       const finishedAt = new Date().toISOString();
       const nextEligibleAt = new Date(Date.parse(finishedAt)+READER_INTERVAL_MS).toISOString();
       atomicJson(path.join(directory,"cycle-state.json"),{finishedAt,nextEligibleAt,runId:session?.runId || null});
