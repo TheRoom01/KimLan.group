@@ -10,7 +10,8 @@ import { mergeCapturedImages, waitForStableMedia } from "../media-readiness";
 import { selectedUpdatePatch, normalizedRoomIdentity, snapshotRoom } from "../../../lib/zalo-import/room-comparison";
 
 async function main(){
-  const config=JSON.parse(fs.readFileSync("tools/zalo-reader/production.config.json","utf8"));
+  const configText=fs.readFileSync("tools/zalo-reader/production.config.json","utf8");
+  const config=JSON.parse(configText);
   const base=JSON.parse(fs.readFileSync("tools/zalo-reader/config.json","utf8"));
   assert.equal(base.allowReimportForTesting,true,"legacy local test stays separate");
   const api=validateProductionMode(config,["--production"],{});
@@ -28,7 +29,7 @@ async function main(){
   assert.equal(effective.mode,"production");assert.equal(effective.officialReader,true);
   for(const flag of ["allowReimportForTesting","testImportToPending","officialTrial","previewOnly","stagingOnlyImport"])assert.equal((effective as any)[flag],false);
   assert.equal(effective.groups.length,2);assert.equal(effective.indexedDbScrollMaxBatches,200);
-  assert.equal(effective.profileDirectory,".zalo-reader/profile");assert.equal(config.enabled,false,"one-shot never enables scheduler");
+  assert.equal(effective.profileDirectory,".zalo-reader/profile");assert.equal(fs.readFileSync("tools/zalo-reader/production.config.json","utf8"),configText,"one-shot config derivation never changes the scheduler setting");
   assert.equal(config.stateDirectory,".zalo-reader/official","production reuses existing checkpoints");
   const photo=(n:number)=>({url:`file:///fixture/message-${n}.webp`,cachedLocalFile:true});
   assert.deepEqual(mergeCapturedImages([photo(1),photo(2)],[photo(2),photo(3)]).map(image=>image.url),[1,2,3].map(n=>photo(n).url));

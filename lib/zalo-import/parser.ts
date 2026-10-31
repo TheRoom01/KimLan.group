@@ -90,6 +90,7 @@ export function normalizeRoomCode(
   if (!raw) return "";
 
   const withoutLabel = raw
+    .replace(/^(?:mã\s*phòng|ma\s*phong|phòng\s*mã|phong\s*ma|phòng|phong|room|mã|ma)(?=\s|[:=.\-]|$)\s*[:=.\-]?\s*/i, "")
     /*
      * "P." có dấu chấm thường là nhãn viết tắt của "Phòng":
      * P. G01 → G01
@@ -100,10 +101,6 @@ export function normalizeRoomCode(
     .replace(
       /^\s*p\s*\.\s*(?=[a-z0-9])/i,
       ""
-    )
-    .replace(
-      /\b(?:mã\s*phòng|ma\s*phong|phòng\s*mã|phong\s*ma|phòng|phong|room|mã|ma)\b/gi,
-      " "
     )
     .replace(
       /^[\s:|/\-–—]+|[\s:|/\-–—]+$/g,
@@ -183,14 +180,11 @@ export function normalizeRoomCode(
     )}`;
   }
 
-  return removeVietnameseTone(
-    withoutLabel
-  )
-    .replace(
-      /[\s:._/\-–—]+/g,
-      ""
-    )
-    .toUpperCase();
+  // Separators are part of an identifier: 1.2, 1/2 and 12 are different rooms.
+  const compact = withoutLabel.replace(/\s+/g, "");
+  return /^[a-z]{0,3}\d{1,4}[a-z]?$/i.test(compact)
+    ? compact.toUpperCase()
+    : withoutLabel.normalize("NFC");
 }
 
 /**
@@ -642,6 +636,33 @@ function normalizeRoomTypeFromText(
   return "";
 }
 
+/** Read only a labelled field or the delimited slot after a room's rent. */
+export function extractStructuredRoomCodeField(markerText: string): string | null {
+  const lines = String(markerText || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const cleanField = (raw: string) => {
+    const value = raw.split(/(?:^|\s)(?:đang\s+trống|còn\s+trống|sắp\s+trống|trống|trong|đã\s+thuê|hết\s+phòng|available)(?=\s|$)/i)[0]
+      .replace(/^[\s:|–—-]+|[\s:|–—-]+$/g, "").trim();
+    if (!value || /\b(?:album|video|metadata|photo|image)\b|(?:^|\s)(?:ảnh|hình|tin\s+nhắn)(?=\s|$)/i.test(value)) return "";
+    return value;
+  };
+  for (const line of lines) {
+    const labelled = line.match(/^(?:mã\s*phòng|ma\s*phong|room|phòng|phong)\s*[:=]\s*(.+)$/i);
+    if (labelled && !(normalizeRoomTypeFromText(labelled[1]) && extractRoomPriceFromMarker(labelled[1]) != null)) {
+      const value = labelled[1].split(new RegExp(`\\s+(?:[-–—|:]\\s*)?(?:giá(?:\\s+thuê)?|gia(?:\\s+thue)?|(?=${ROOM_PRICE_TOKEN_SOURCE}))`, "i"))[0];
+      return cleanField(value);
+    }
+  }
+  for (const line of lines) {
+    if (!normalizeRoomTypeFromText(line) || extractRoomPriceFromMarker(line) == null) continue;
+    const price = line.match(new RegExp(ROOM_PRICE_TOKEN_SOURCE, "i"));
+    if (price?.index == null) continue;
+    const tail = line.slice(price.index + price[0].length);
+    if (!/^\s*[-–—|:]\s*/.test(tail)) continue;
+    return cleanField(tail.replace(/^\s*[-–—|:]+\s*/, ""));
+  }
+  return null;
+}
+
 function extractRoomCodeFromMarker(
   markerText: string
 ) {
@@ -684,6 +705,15 @@ function extractRoomCodeFromMarker(
     "\\d+(?:[.,]\\d+)?\\s*(?:tr|triệu|trieu|k)|" +
     "\\d{1,3}(?:[.,]\\d{3})+" +
     ")";
+
+  const structuredField = extractStructuredRoomCodeField(text);
+  if (structuredField !== null) {
+    const codes = Array.from(structuredField.matchAll(new RegExp(codeToken, "gi")));
+    const residue = structuredField.replace(new RegExp(codeToken, "gi"), "").replace(/[\s+,/&_–—-]+/g, "");
+    // Preserve the existing multiple-room / code+floor handling when all tokens
+    // are known. Otherwise retain the WHOLE explicit slot, never a partial code.
+    if (codes.length < 2 || residue) return normalizeRoomCode(structuredField);
+  }
 
   const floorToken =
     "(?:" +

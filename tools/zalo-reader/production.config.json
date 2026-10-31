@@ -1,25 +1,33 @@
 {
-  "mode": "production",
-  "enabled": false,
-  "webBaseUrl": "http://127.0.0.1:3000",
-  "allowReimportForTesting": false,
-  "testImportToPending": false,
-  "officialTrial": false,
-  "previewOnly": false,
-  "stagingOnlyImport": false,
-  "intervalMinutes": 60,
-  "profileDirectory": ".zalo-reader/profile",
-  "stateDirectory": ".zalo-reader/official",
-  "initialLookbackHours": 24,
-  "maxLookbackHours": 24,
-  "runGroupsSequentially": true,
-  "intervalFromCompletion": true,
-  "overlapMinutes": 15,
-  "maxMessagesPerGroup": 10,
-  "maxRoomsPerGroup": 20,
-  "maxScrollSteps": 200,
-  "groups": [
-    { "key": "Gio-Hang-Can-Ho-Q1-Q3-Q10", "name": "Giỏ Hàng Căn Hộ Q1,Q3,Q10 🏠", "groupId": "g1986619726266954037" },
-    { "key": "Gio-Hang-Can-Ho-PN-BT-TB", "name": "Giỏ Hàng Căn Hộ PN,BT,TB 🏠", "groupId": "g6674917926513771782" }
-  ]
+    "mode":  "production",
+    "enabled":  true,
+    "webBaseUrl":  "http://127.0.0.1:3000",
+    "allowReimportForTesting":  false,
+    "testImportToPending":  false,
+    "officialTrial":  false,
+    "previewOnly":  false,
+    "stagingOnlyImport":  false,
+    "intervalMinutes":  60,
+    "profileDirectory":  ".zalo-reader/profile",
+    "stateDirectory":  ".zalo-reader/official",
+    "initialLookbackHours":  24,
+    "maxLookbackHours":  24,
+    "runGroupsSequentially":  true,
+    "intervalFromCompletion":  true,
+    "overlapMinutes":  15,
+    "maxMessagesPerGroup":  10,
+    "maxRoomsPerGroup":  20,
+    "maxScrollSteps":  200,
+    "groups":  [
+                   {
+                       "key":  "Gio-Hang-Can-Ho-Q1-Q3-Q10",
+                       "name":  "Giỏ Hàng Căn Hộ Q1,Q3,Q10 🏠",
+                       "groupId":  "g1986619726266954037"
+                   },
+                   {
+                       "key":  "Gio-Hang-Can-Ho-PN-BT-TB",
+                       "name":  "Giỏ Hàng Căn Hộ PN,BT,TB 🏠",
+                       "groupId":  "g6674917926513771782"
+                   }
+               ]
 }

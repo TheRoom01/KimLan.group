@@ -1,5 +1,19 @@
 # Zalo Reader production một lượt
 
+## Lịch tự động Windows
+
+`npm run zalo-reader:production` vẫn chỉ chạy một lượt. Lịch `KimLan-ZaloReader-60m` chạy độc lập qua Windows Task Scheduler, dùng cùng `production.config.json` và Chrome profile hiện tại. Sau khi đọc xong hai nhóm, wrapper đặt lần kế tiếp sau 60 phút; lần bật lịch đầu tiên tôn trọng `cycle-state.json` của lượt thủ công vừa xong.
+
+```powershell
+.\tools\zalo-reader\scheduler.ps1 -Action Install
+.\tools\zalo-reader\scheduler.ps1 -Action Enable -Confirmed
+.\tools\zalo-reader\scheduler.ps1 -Action Status
+# Dừng các lượt tự động tiếp theo:
+.\tools\zalo-reader\scheduler.ps1 -Action Disable
+```
+
+Chỉ bật khi người dùng yêu cầu chạy tự động và đã có lượt hai nhóm xác minh đúng ID/phạm vi. Lượt production đã hoàn tất có thể được dùng để bật lịch dù một số phòng lỗi cục bộ; các phòng đó vẫn được giữ trong báo cáo và không có cơ chế tự duyệt đăng. Máy phải bật, tài khoản Windows đang đăng nhập, Zalo còn đăng nhập và server local cổng 3000 tiếp tục chạy. Có thể đóng Terminal chạy Reader; giữ Terminal server `npm run dev` mở. Bật/tắt lịch chỉ gửi trạng thái giám sát; không chạy Reader ngay, không reset checkpoint.
+
 ## Trạng thái chuẩn bị
 
 Lệnh production mới dùng `tools/zalo-reader/production.config.json`, tách khỏi config local test. `npm run zalo-reader` vẫn là lệnh local test cũ; thay đổi cờ ở đó không điều khiển production.

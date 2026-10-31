@@ -13,7 +13,9 @@ async function main(){
     filters:Array<(row:any)=>boolean>=[];op="select";payload:any;
     constructor(readonly table:string){}
     select(){return this}eq(key:string,value:any){this.filters.push(row=>row[key]===value);return this}order(){return this}
-    insert(value:any){assert.notEqual(this.table,"rooms","manual Imports must use admin_upsert_room_v3, never raw INSERT");this.op="insert";this.payload=value;return this}
+    insert(value:any){assert.notEqual(this.table,"rooms","manual Imports must use admin_upsert_room_v3, never raw INSERT");
+      if(this.table==="room_details")for(const row of Array.isArray(value)?value:[value])for(const key of ['no_pet','short_term','long_term','free_time','has_balcony','has_window'])assert.equal(typeof row[key],'boolean',`${key} is NOT NULL in the real schema`);
+      this.op="insert";this.payload=value;return this}
     update(value:any){this.op="update";this.payload=value;return this}delete(){this.op="delete";return this}
     result(single=false){let rows=tables[this.table].filter(row=>this.filters.every(test=>test(row)));
       if(this.op==="insert"){rows=(Array.isArray(this.payload)?this.payload:[this.payload]).map(row=>({selected:true,...row}));tables[this.table].push(...rows)}
@@ -49,6 +51,10 @@ async function main(){
   assert.equal(tables.pending_room_versions[0].room_payload.property_id,"matched-building");
   assert.equal(tables.room_media[0].type,"video");
   assert.equal(tables.rooms[0].status,"Đang trống","legacy Trống becomes the official room status");
+  assert.equal(tables.room_details[0].no_pet,false);assert.equal(tables.room_details[0].short_term,false);assert.equal(tables.room_details[0].long_term,true);assert.equal(tables.room_details[0].free_time,false);
+  assert.equal(tables.room_details[0].allow_pet,null,'unknown nullable fields remain unknown');
+  for(const value of [null,true,false]){reset();tables.pending_room_versions[0].detail_payload={no_pet:value,short_term:value,long_term:value,free_time:value};await publish();
+    assert.equal(tables.room_details[0].no_pet,value??false);assert.equal(tables.room_details[0].short_term,value??false);assert.equal(tables.room_details[0].long_term,value??true);assert.equal(tables.room_details[0].free_time,value??false);}
   for(const status of ['Đang trống','Sắp trống','Đã thuê']){reset();tables.pending_room_versions[0].room_payload.status=status;await publish();assert.equal(tables.rooms[0].status,status,'preserve official statuses');}
   reset("chosen-building");ambiguous=true;await publish();assert.equal(tables.rooms[0].property_id,"chosen-building","explicit selection is forwarded to the same admin RPC");
   reset();const before=rpcCalls;await assert.rejects(publish,error=>(error as any).message==="PROPERTY_MATCH_REQUIRED");assert.equal(rpcCalls,before+1);assert.equal(tables.rooms.length,0);assert.equal(tables.pending_room_versions[0].status,"Chờ duyệt");
@@ -81,6 +87,7 @@ async function main(){
   assert.equal(invalidStatus.status,422);assert.match((await invalidStatus.json()).error,/Trạng thái phòng không hợp lệ[\s\S]*Chỉnh sửa/);assert.equal(tables.rooms.length,0);statusError=false;
   assert.match(zaloImportErrorMessage({message:'rooms_status_check'}),/Đang trống/);
   assert.equal(zaloImportErrorMessage(new Error('Lỗi tiếng Việt có sẵn')),'Lỗi tiếng Việt có sẵn');
+  assert.match(zaloImportErrorMessage({message:'null value in column "no_pet" of relation "room_details" violates not-null constraint'}),/tùy chọn tiện ích hoặc chính sách[\s\S]*lưu nháp/);
   reset("chosen-building");
   tables.zalo_import_images=[{id:"old-image",batch_id:"batch",selected:true,sort_order:0,temp_r2_key:"rooms/zalo-pending-pending/images/old.webp",temp_image_url:"https://example.test/old.webp"}];
   tables.zalo_import_videos[0].sort_order=1;

@@ -218,17 +218,17 @@ function buildDetailInsertPayload(params: {
     allow_pet: toBoolean(detail.allow_pet, null),
     allow_cat: toBoolean(detail.allow_cat, null),
     allow_dog: toBoolean(detail.allow_dog, null),
-    no_pet: toBoolean(detail.no_pet, null),
-    short_term: toBoolean(detail.short_term, null),
+    no_pet: toBoolean(detail.no_pet, false),
+    short_term: toBoolean(detail.short_term, false),
     long_term: toBoolean(
       detail.long_term,
-      null
+      true
     ),
     fingerprint_lock: toBoolean(
       detail.fingerprint_lock,
       null
     ),
-    free_time: toBoolean(detail.free_time, null),
+    free_time: toBoolean(detail.free_time, false),
     has_balcony: toBoolean(detail.has_balcony),
     has_window: toBoolean(detail.has_window),
     has_elevator: toBoolean(

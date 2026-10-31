@@ -22,7 +22,7 @@ export function validateOfficialConfig(config: any) {
 }
 export function validateProductionMode(config:any,args:string[],env:Partial<NodeJS.ProcessEnv>=process.env) {
   validateOfficialConfig(config);
-  if(config.mode!=="production" || args.some(arg=>["--trial","--fixture","--report-enabled","--report-disabled"].includes(arg))) throw new Error("PRODUCTION_MODE_CONFLICT: Không kết hợp production với test/fixture/scheduler control.");
+  if(config.mode!=="production" || args.some(arg=>["--trial","--fixture"].includes(arg))) throw new Error("PRODUCTION_MODE_CONFLICT: Không kết hợp production với test/fixture.");
   for(const flag of ["allowReimportForTesting","testImportToPending","officialTrial","previewOnly","stagingOnlyImport"]) {
     if(config[flag]!==false) throw new Error(`PRODUCTION_MODE_CONFLICT: ${flag} phải là false trong production.config.json.`);
   }
@@ -90,7 +90,7 @@ export async function runOfflineFixture(file: string, root: string) {
 export async function main(args = process.argv.slice(2)) {
   const root = process.cwd();
   const production=args.includes("--production");
-  if(production && args.some(arg=>!["--production","--confirm-production"].includes(arg))) throw new Error("PRODUCTION_ARGUMENT_CONFLICT");
+  if(production && (args.some(arg=>!["--production","--confirm-production","--report-enabled","--report-disabled"].includes(arg)) || (args.includes("--report-enabled") && args.includes("--report-disabled")))) throw new Error("PRODUCTION_ARGUMENT_CONFLICT");
   const fixtureIndex = args.indexOf("--fixture");
   if (fixtureIndex >= 0) return runOfflineFixture(path.resolve(args[fixtureIndex + 1]), root);
   const configPath = path.resolve(root, production?"tools/zalo-reader/production.config.json":"tools/zalo-reader/official.config.json");
@@ -134,18 +134,24 @@ export async function main(args = process.argv.slice(2)) {
   try {
     const cycleFile = path.join(directory,"cycle-state.json");
     const previousCycle = fs.existsSync(cycleFile) ? JSON.parse(fs.readFileSync(cycleFile,"utf8")) : null;
-    if(!trial && previousCycle?.nextEligibleAt && Date.now() < Date.parse(previousCycle.nextEligibleAt)) {
-      console.log("READER_CYCLE_NOT_DUE: Chờ đủ 60 phút sau khi lượt trước kết thúc.");
+    // Older preflight failures wrote a cycle with runId:null without reading Zalo.
+    // Such records must not delay a real run; keep valid completed cycles intact.
+    if(!trial && previousCycle?.runId && previousCycle?.nextEligibleAt && Date.now() < Date.parse(previousCycle.nextEligibleAt)) {
+      console.log(`READER_CYCLE_NOT_DUE: Chờ đủ 60 phút sau khi lượt trước kết thúc. Có thể chạy lại từ ${new Date(previousCycle.nextEligibleAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`);
       return;
     }
-    cycleAttempted = true;
     // A normal exclusive-file check; do not remove Chrome's lock or stop Chrome.
     if (process.platform === "win32") {
       const profileLock = path.join(root, ".zalo-reader/profile/lockfile").replace(/'/g, "''");
       const check = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `$p='${profileLock}';if(Test-Path -LiteralPath $p){try{$h=[IO.File]::Open($p,'Open','ReadWrite','None');$h.Dispose()}catch{exit 12}}`], { windowsHide: true, stdio: "ignore" });
       if (check.status !== 0) throw new Error("PROFILE_IN_USE");
     }
-    const health = await fetch(new URL("/api/internal/zalo-reader/status", api), { headers: { "x-internal-secret": secret }, signal: AbortSignal.timeout(10000) });
+    let health: Response;
+    try {
+      health = await fetch(new URL("/api/internal/zalo-reader/status", api), { headers: { "x-internal-secret": secret }, signal: AbortSignal.timeout(10000) });
+    } catch {
+      throw new Error(`READER_API_UNREACHABLE: Không kết nối được API tại ${api.origin}. Hãy chạy npm run dev trong Terminal khác, chờ server sẵn sàng đúng địa chỉ này rồi chạy lại Reader. Chưa bắt đầu đọc Zalo; không áp dụng thời gian chờ 60 phút.`);
+    }
     const readiness = await health.json();
     if (!health.ok || readiness.ready !== true) throw new Error("READER_DATABASE_NOT_READY");
     session = new OfficialSession({ stateDirectory: directory, trial, initialLookbackHours: config.initialLookbackHours,
@@ -165,6 +171,7 @@ export async function main(args = process.argv.slice(2)) {
     heartbeat = setInterval(() => { void session?.heartbeat().catch(() => console.warn("READER_HEARTBEAT_FAILED")); }, 30000);
     heartbeat.unref();
     const reader = await import("./zalo-reader.before-semantic-parser");
+    cycleAttempted = true;
     await reader.runReader();
   } catch (error: any) {
     const code = /LOGIN|login|đăng nhập/.test(String(error?.message)) ? "LOGIN_REQUIRED" : /PROFILE/.test(String(error?.message)) ? "PROFILE_IN_USE" : "READER_RUN_FAILED";
@@ -183,7 +190,7 @@ export async function main(args = process.argv.slice(2)) {
       const finishedAt = new Date().toISOString();
       const nextEligibleAt = new Date(Date.parse(finishedAt)+READER_INTERVAL_MS).toISOString();
       atomicJson(path.join(directory,"cycle-state.json"),{finishedAt,nextEligibleAt,runId:session?.runId || null});
-      try { await report({control:"cycle-finished",nextExpectedAt:nextEligibleAt}); } catch { console.warn("READER_NEXT_RUN_REPORT_UNAVAILABLE"); }
+      try { await report({control:"cycle-finished",nextExpectedAt:nextEligibleAt}); } catch { console.warn("READER_NEXT_RUN_REPORT_UNAVAILABLE: Đã lưu giờ chạy tiếp theo ở máy này nhưng chưa gửi được báo cáo lên API."); }
     }
     setOfficialSession(null); restoreConsole(); release?.();
   }

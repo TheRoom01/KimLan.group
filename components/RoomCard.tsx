@@ -1507,7 +1507,7 @@ return (
             ) : null}
           </div>
         </div>
-        <div className="relative z-20 mt-3 flex items-center justify-center gap-2">
+        <div className="home-room-actions relative z-20 mt-3 flex w-full min-w-0 items-center justify-between gap-2">
         <button
           type="button"
           onPointerDown={(event) => event.stopPropagation()}
@@ -1516,9 +1516,9 @@ return (
             event.stopPropagation();
             setInquiryOpen(true);
           }}
-          className="inline-flex min-h-[38px] w-full max-w-[190px] flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[#F5E4C8]/90 bg-[#F0DDBB] px-4 text-[13px] font-bold text-[#352216] shadow-[0_5px_17px_rgba(0,0,0,.18),inset_0_1px_0_rgba(255,255,255,0.65)] transition-colors duration-200 hover:border-[#FFF1D9] hover:bg-[#F8E9D0] active:scale-[.99]"
+          className="inline-flex min-h-[38px] min-w-0 max-w-[190px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#F5E4C8]/90 bg-[#F0DDBB] px-2 py-1 text-[13px] font-bold text-[#352216] shadow-[0_5px_17px_rgba(0,0,0,.18),inset_0_1px_0_rgba(255,255,255,0.65)] transition-colors duration-200 hover:border-[#FFF1D9] hover:bg-[#F8E9D0] active:scale-[.99] sm:px-4"
         >
-          <span aria-hidden="true">✦</span> Đi xem/Tư vấn
+          <span aria-hidden="true" className="shrink-0">✦</span><span className="min-w-0 break-words text-center leading-tight">Đi xem/Tư vấn</span>
         </button>
         {contactPhones.length > 0 && (
           <button
@@ -1530,7 +1530,7 @@ return (
             }}
             title={contactName}
             aria-label="Liên hệ"
-            className="ai-admin-button ai-admin-gradient-border relative z-20 shrink-0 rounded-full p-[1px] transition-all duration-50 hover:scale-[1.05] active:scale-[0.95]"
+            className="ai-admin-button ai-admin-gradient-border relative z-20 ml-auto shrink-0 rounded-full p-[1px] transition-all duration-50 hover:scale-[1.05] active:scale-[0.95]"
           >
             <span aria-hidden="true" className="ai-admin-gradient-border__track" />
             <span className="relative z-10 flex h-full items-center justify-center rounded-full bg-[#141516]/75 px-1 text-[14px] font-bold leading-none text-white backdrop-blur-[20px]">

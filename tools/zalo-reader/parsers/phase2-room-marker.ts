@@ -4,6 +4,7 @@ import {
   stableText,
   stripLeadingDecorations,
 } from "./utils";
+import { extractStructuredRoomCodeField, normalizeRoomCode as normalizeSourceRoomCode } from "../../../lib/zalo-import/parser";
 
 export type Phase2RoomMarkerAnalysis = {
   markerText: string;
@@ -70,6 +71,13 @@ const ROOM_CODE_PATTERN =
 
 function extractRoomCodesFromLine(input: string) {
   const line = cleanText(input);
+  const field = extractStructuredRoomCodeField(line);
+  if (field !== null) {
+    if (!field) return [];
+    const known = Array.from(field.matchAll(ROOM_CODE_PATTERN));
+    const residue = field.replace(ROOM_CODE_PATTERN, "").replace(/[\s+,/&_–—-]+/g, "");
+    if (residue || !known.length) return [normalizeSourceRoomCode(field)];
+  }
   const priceIndex = priceStartIndex(line);
   let beforePrice = priceIndex >= 0 ? line.slice(0, priceIndex) : line;
   let afterPrice = priceIndex >= 0 ? line.slice(priceIndex + (line.slice(priceIndex).match(ROOM_PRICE_PREFIX)?.[0].length || 0)) : "";

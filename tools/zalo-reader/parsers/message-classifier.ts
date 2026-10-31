@@ -60,6 +60,7 @@ export function classifyTextMessage(
         wholeMessageMarker.markerText,
       roomCode:
         wholeMessageMarker.roomCode,
+      roomCodes: wholeMessageMarker.roomCodes,
     });
   }
 

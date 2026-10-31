@@ -27,7 +27,7 @@ function New-ScheduledTaskSettingsSet { param([switch]$Disable,[switch]$StartWhe
   $global:ReaderScheduleAssertions++;return @{}
 }
 function Register-ScheduledTask { throw 'OFFLINE TEST MUST NOT REGISTER A TASK' }
-$configPath=Join-Path $readerRoot 'tools/zalo-reader/official.config.json'
+$configPath=Join-Path $readerRoot 'tools/zalo-reader/production.config.json'
 $configBefore=[IO.File]::ReadAllText($configPath)
 & (Join-Path $readerRoot 'tools/zalo-reader/scheduler.ps1') -Action Install -WhatIf
 if($global:ReaderScheduleAssertions -ne 4){throw 'Installer did not validate all scheduler objects'}
@@ -57,3 +57,9 @@ $cfg.enabled=$false;$global:FixtureTaskEnabled=$true
 & ([scriptblock]::Create($reschedule.Extent.Text))
 if($global:Rescheduled -ne 1){throw 'Overlap/disabled schedule was re-armed'}
 Write-Output 'Completion +60 minutes / overlap / disabled gates: PASS (no task writes)'
+
+$wrapperText=[IO.File]::ReadAllText($wrapperPath)
+if($wrapperText -notmatch 'official-runner.ts.+--production --confirm-production' -or $wrapperText -match 'official.config.json') { throw 'Scheduled runs must use production config and flags' }
+$schedulerText=[IO.File]::ReadAllText((Join-Path $readerRoot 'tools/zalo-reader/scheduler.ps1'))
+if($schedulerText -notmatch "configPath=Join-Path.+production.config.json" -or $schedulerText -notmatch '--production --report-enabled') { throw 'Scheduler control must use the production API/config' }
+Write-Output 'Production config / scheduled production flags / status control: PASS (offline)'

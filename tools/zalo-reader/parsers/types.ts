@@ -137,6 +137,7 @@ export type ClassifiedTextMessage = {
   roomAnchors: Array<{
     markerText: string;
     roomCode: string;
+    roomCodes?: string[];
   }>;
   buildingLines: string[];
   otherLines: string[];

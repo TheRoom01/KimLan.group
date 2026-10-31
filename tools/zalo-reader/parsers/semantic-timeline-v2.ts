@@ -100,8 +100,7 @@ function buildRoomAnchors(segment: BuildingSegment) {
 
     const classification = classifyTextMessage(message);
     classification.roomAnchors.forEach((anchor, anchorIndex) => {
-      const roomCodes = String(anchor.roomCode || "")
-        .split("+")
+      const roomCodes = (anchor.roomCodes ?? String(anchor.roomCode || "").split("+"))
         .map((value) => value.trim())
         .filter(Boolean);
 
