@@ -181,7 +181,7 @@ check("nhiều mức giá trên các dòng riêng giữ giá và mã tương ứ
   ]);
 });
 
-check("một bộ ảnh tham khảo dùng chung cho các phòng khác mã và khác giá", () => {
+check("media chỉ thuộc marker gần nhất; các mã cùng marker vẫn dùng chung", () => {
   const previews = semantic([
     textMessage("building", "391/146 Trần Hưng Đạo, Q1", 1_000),
     textMessage("room-502", "Studio/CS - 6.300.000 - P.502 - trống sẵn", 2_000),
@@ -194,11 +194,12 @@ check("một bộ ảnh tham khảo dùng chung cho các phòng khác mã và kh
   ]);
 
   assert.equal(previews.length, 3);
-  assert.ok(
-    previews.every((preview) =>
-      preview.imageMessageIds.includes("reference-photo")
-    )
+  const byCode = new Map(
+    previews.map((preview) => [preview.roomCode, preview.imageMessageIds])
   );
+  assert.deepEqual(byCode.get("P.502"), []);
+  assert.deepEqual(byCode.get("P.G01"), ["reference-photo"]);
+  assert.deepEqual(byCode.get("P.102"), ["reference-photo"]);
 });
 
 check("CS nhận diện thành Cửa sổ, không trở thành loại phòng", () => {

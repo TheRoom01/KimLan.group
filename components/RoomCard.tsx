@@ -70,6 +70,8 @@ function roomAmenityLabels(room: Room): string[] {
   const amenities = [
     ["has_elevator", "Thang máy"],
     ["has_stairs", "Thang bộ"],
+    ["has_balcony", "Ban công"],
+    ["has_window", "Cửa sổ"],
     ["shared_washer", "Máy giặt chung"],
     ["private_washer", "Máy giặt riêng"],
     ["shared_dryer", "Máy sấy chung"],

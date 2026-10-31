@@ -328,6 +328,8 @@ export function parseCreateOwnerPropertyInput(
 }
 
 const ROOM_DETAIL_BOOLEAN_FIELDS = [
+  "has_balcony",
+  "has_window",
   "has_elevator",
   "has_stairs",
   "shared_washer",

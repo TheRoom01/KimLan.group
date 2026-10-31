@@ -6,6 +6,8 @@ import type { Room, TabKey, RoomStatus } from '../../types/room'
 import type { RoomForm, RoomDetail } from './types'
 import { supabase } from '@/lib/supabase'
 import { normalizeRoomBadges, type RoomBadge } from '@/lib/roomBadges'
+import { getImportReview, importReviewInstructions } from '@/lib/zalo-import/room-comparison'
+import RoomUpdateComparison from '@/app/admin/zalo-imports/RoomUpdateComparison'
 
 import TabButton from './TabButton'
 import RoomInfoTab from './RoomInfoTab'
@@ -54,6 +56,8 @@ const defaultDetailForm: RoomDetail = {
 
   /* amenities */
     has_elevator: false,
+  has_balcony: false,
+  has_window: false,
   has_stairs: false,
   fingerprint_lock: false,
   free_time: false,
@@ -91,6 +95,8 @@ type Props = {
   pendingDetailPayload?: Record<string, any> | null
   pendingImages?: any[] | null
   pendingVideos?: any[] | null
+  pendingMatchedRoomId?: string | null
+  onPendingApproved?: () => void | Promise<void>
   onPendingSaved?: (updated?: {
     room_payload?: Record<string, any>
     detail_payload?: Record<string, any>
@@ -167,6 +173,8 @@ export default function RoomModal({
   pendingDetailPayload = null,
   pendingImages = null,
   pendingVideos = null,
+  pendingMatchedRoomId = null,
+  onPendingApproved,
   onPendingSaved,
   open,
   onClose,
@@ -204,6 +212,10 @@ export default function RoomModal({
   const [feeAutofillDone, setFeeAutofillDone] = useState(false)
 
 const [saving, setSaving] = useState(false)
+const [approvingPending, setApprovingPending] = useState(false)
+const [pendingUpdateFields, setPendingUpdateFields] = useState<string[]>([])
+const pendingApprovalRef = useRef(false)
+useEffect(() => { setPendingUpdateFields([]) }, [open, pendingId])
 const [errorMsg, setErrorMsg] = useState<string | null>(null)
 const [propertyCandidates, setPropertyCandidates] = useState<PropertyCandidate[]>([])
 const [uploading, setUploading] = useState(false)
@@ -1017,7 +1029,7 @@ const detailSample =
 }
 
   useEffect(() => {
-  setErrorMsg(null)
+  if (!pendingApprovalRef.current) setErrorMsg(null)
   setPropertyCandidates([])
   setShowCloseConfirm(false)
   setShowAutoRead(false)
@@ -1071,7 +1083,7 @@ const detailSample =
       link_zalo: pendingRoomPayload?.link_zalo ?? '',
       google_maps_url: pendingRoomPayload?.google_maps_url ?? '',
       zalo_phone: pendingRoomPayload?.zalo_phone ?? '',
-      media: [...pendingImageMedia, ...pendingVideoMedia],
+      media: [...pendingImageMedia, ...pendingVideoMedia].sort((a, b) => a.sort_order - b.sort_order),
       chinh_sach: pendingRoomPayload?.chinh_sach ?? '',
       badges: [],
     })
@@ -1557,7 +1569,27 @@ const applyAutoReadCandidate = (
     )
   }
 
-  async function handleSubmit(hiddenAction?: 'keep_hidden' | 'restore') {
+  async function handlePendingApprove() {
+    if (saving || uploading || pendingApprovalRef.current) return
+    if (pendingRoomPayload?.is_test_import === true) { setErrorMsg('Không được duyệt bản nháp TEST.'); return }
+    const review = getImportReview(pendingRoomPayload)
+    if (review?.type === 'NEEDS_REVIEW' || (pendingMatchedRoomId && !review)) {
+      setErrorMsg(`Lưu nháp nếu vừa sửa dữ liệu, sau đó đóng form chỉnh sửa. ${importReviewInstructions(pendingRoomPayload || {})}`); return
+    }
+    if (review?.type === 'UPDATE' && pendingUpdateFields.length === 0) {
+      setErrorMsg('Hãy chọn các trường muốn cập nhật trong phần so sánh bên dưới.'); return
+    }
+    if (!window.confirm(review?.type === 'UPDATE'
+      ? `Lưu chỉnh sửa và duyệt cập nhật ${pendingUpdateFields.length} trường đã chọn vào phòng hiện tại?`
+      : 'Lưu các chỉnh sửa hiện tại và duyệt đăng phòng mới lên app?')) return
+    pendingApprovalRef.current = true
+    setApprovingPending(true)
+    try { await handleSubmit(undefined, true) }
+    catch (error: any) { setErrorMsg(error?.message || 'Chưa duyệt được import.') }
+    finally { pendingApprovalRef.current = false; setApprovingPending(false) }
+  }
+
+  async function handleSubmit(hiddenAction?: 'keep_hidden' | 'restore', approvePending = false) {
   const media = Array.isArray((roomForm as any).media) ? (roomForm as any).media : []
   const v = validate()
   if (v) {
@@ -1572,6 +1604,7 @@ const applyAutoReadCandidate = (
     }
 
     const roomPayload = {
+      property_id: roomForm.property_id?.trim() || null,
       room_code: roomForm.room_code,
       room_type: roomForm.room_type,
       house_number: roomForm.house_number,
@@ -1588,9 +1621,28 @@ const applyAutoReadCandidate = (
       chinh_sach: roomForm.chinh_sach,
     }
 
-    const allPendingMedia = Array.isArray((roomForm as any).media)
+    if(pendingRoomPayload?._room_import?.type !== 'UPDATE' && !roomPayload.property_id && roomForm.house_number.trim() && roomForm.address.trim() && roomForm.district.trim()) {
+      setSaving(true)
+      try {
+        const resolution=await supabase.rpc('admin_resolve_property_for_room_v2',{p_payload:roomPayload})
+        if(resolution.error) throw resolution.error
+        const resolved=resolution.data as {match_status?:string;property_id?:string|null;candidates?:PropertyCandidate[]}
+        if(resolved?.match_status==='ambiguous') {
+          setPropertyCandidates((resolved.candidates || []).filter(candidate=>candidate?.id))
+          setErrorMsg('Có nhiều tòa nhà trùng địa chỉ. Hãy chọn tòa nhà để gán phòng.')
+          return
+        }
+        if(resolved?.match_status==='matched' && resolved.property_id) {
+          roomPayload.property_id=resolved.property_id
+          setRoomForm(prev=>({...prev,property_id:resolved.property_id || ''}))
+        }
+      } catch(error:any) {setErrorMsg(error?.message || 'Không nhận diện được tòa nhà.');return}
+      finally {setSaving(false)}
+    }
+
+    const allPendingMedia = (Array.isArray((roomForm as any).media)
       ? (roomForm as any).media
-      : []
+      : []).map((item: any, index: number) => ({ ...item, sort_order: index }))
 
     const pendingImagesToKeep = allPendingMedia
       .filter((item: any) => item?.type === 'image' && item?.__pendingImage && item?.id && item?.url)
@@ -1598,7 +1650,7 @@ const applyAutoReadCandidate = (
         id: String(item.id),
         temp_image_url: String(item.url),
         temp_r2_key: String(item.temp_r2_key || ""),
-        sort_order: index,
+        sort_order: item.sort_order,
       }))
 
     const pendingVideosToKeep = allPendingMedia
@@ -1607,7 +1659,7 @@ const applyAutoReadCandidate = (
         id: String(item.id),
         temp_video_url: String(item.url),
         temp_r2_key: String(item.temp_r2_key || ""),
-        sort_order: index,
+        sort_order: item.sort_order,
       }))
 
     const newMedia = allPendingMedia
@@ -1616,7 +1668,7 @@ const applyAutoReadCandidate = (
         type: item.type,
         url: String(item.url),
         temp_r2_key: String(item.temp_r2_key || inferR2KeyFromPublicUrl(String(item.url))),
-        sort_order: index,
+        sort_order: item.sort_order,
       }))
 
     const currentImageIds = pendingImagesToKeep.map((item: any) => item.id)
@@ -1636,15 +1688,18 @@ const applyAutoReadCandidate = (
      */
     setSaving(true)
     setErrorMsg(null)
-    onClose()
-    onNotify?.('Đang lưu nháp import...')
+    if (!approvePending) {
+      onClose()
+      onNotify?.('Đang lưu nháp import...')
+    }
 
-    void (async () => {
+    const savePending = async () => {
       try {
         const res = await fetch(`/api/admin/zalo-imports/${pendingId}/draft`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            manualReviewOnly: approvePending,
             room_payload: roomPayload,
             detail_payload: detailForm,
             images: pendingImagesToKeep.map((item: any) => ({
@@ -1692,6 +1747,25 @@ const applyAutoReadCandidate = (
           videos: savedVideos,
         })
 
+        if (approvePending) {
+          const savedRoom = json?.room_payload ?? roomPayload
+          const savedDetail = json?.detail_payload ?? detailForm
+          const review = getImportReview(savedRoom)
+          if (review?.type === 'NEEDS_REVIEW') throw new Error('Bản nháp cần xác minh phòng đích trước khi duyệt.')
+          const approval = await fetch(`/api/admin/zalo-imports/${pendingId}/approve`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(review?.type === 'UPDATE'
+              ? { mode: 'update_room', selectedFields: pendingUpdateFields, expectedRoomPayload: savedRoom, expectedDetailPayload: savedDetail }
+              : { mode: 'create_room' }),
+          })
+          const result = await approval.json().catch(() => ({}))
+          if (!approval.ok || !result?.ok) throw new Error(result?.error || 'Duyệt import thất bại.')
+          onClose()
+          onNotify?.(review?.type === 'UPDATE' ? 'Đã duyệt cập nhật phòng.' : 'Đã duyệt đăng phòng mới.')
+          await onPendingApproved?.()
+          return
+        }
+
         if (
           json?.changed &&
           json?.auto_approve_enabled &&
@@ -1716,13 +1790,16 @@ const applyAutoReadCandidate = (
         }
       } catch (e: any) {
         console.error('Lưu nháp pending thất bại:', e)
-        onNotify?.(
+        if (approvePending) setErrorMsg(`Chưa duyệt: ${e?.message ?? 'Không rõ lỗi'}`)
+        else onNotify?.(
           `Lưu nháp thất bại: ${e?.message ?? 'Không rõ lỗi'}`
         )
       } finally {
         setSaving(false)
       }
-    })()
+    }
+    if (approvePending) await savePending()
+    else void savePending()
 
     return
   }
@@ -2342,6 +2419,15 @@ const stopBackdropEvents = (e: any) => {
               }}
             />
           )}
+
+      {isPending && getImportReview(pendingRoomPayload)?.type === 'UPDATE' && (
+        <RoomUpdateComparison
+          row={{room_payload:{...pendingRoomPayload,...roomForm},detail_payload:detailForm,
+            images:(roomForm.media || []).filter((item:any)=>item.type==='image').map((item:any)=>({...item,temp_image_url:item.url})),
+            videos:(roomForm.media || []).filter((item:any)=>item.type==='video'),matched_room_id:pendingMatchedRoomId}}
+          selected={pendingUpdateFields} onSelect={setPendingUpdateFields}
+        />
+      )}
         </div>
 
       <div
@@ -2375,16 +2461,20 @@ const stopBackdropEvents = (e: any) => {
   </div>
 
   {/* RIGHT */}
-  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: 'wrap' }}>
     <button onClick={() => {
       if (adminLevel === 1 && wasHiddenAtOpen) {
         setShowHiddenSaveConfirm(true)
       } else {
         void handleSubmit()
       }
-    }} style={btnSaveLight} disabled={saving || (wasHiddenAtOpen && adminLevel === null)} type="button">
+    }} style={btnSaveLight} disabled={saving || approvingPending || (wasHiddenAtOpen && adminLevel === null)} type="button">
       {saving ? "Đang lưu..." : isPending ? "Lưu nháp" : "Lưu"}
     </button>
+    {isPending && <button type="button" style={btnSync} onClick={() => void handlePendingApprove()}
+      disabled={saving || approvingPending || uploading || pendingRoomPayload?.is_test_import === true}>
+      {approvingPending ? 'Đang duyệt...' : 'Duyệt'}
+    </button>}
   </div>
 </div>
 

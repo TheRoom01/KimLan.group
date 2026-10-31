@@ -559,17 +559,8 @@ function buildRoomsForSegment(params: {
     /* Chỉ text thì không tạo phòng giả; có media thì tạo review card. */
     if (bundles.length === 0) return [];
 
-    rooms = bundles.map((bundle, bundleIndex) => {
-      const synthetic = makeSyntheticRoom({ segment, bundles: [bundle] });
-      return {
-        ...synthetic,
-        id: `${segment.id}:media-review:${bundleIndex}`,
-        messageId: bundle.messageIds[0] || synthetic.messageId,
-        messageIndex: bundle.firstMessageIndex,
-        timestamp: bundle.firstTimestamp || synthetic.timestamp,
-        senderUid: bundle.senderUid || synthetic.senderUid,
-      };
-    });
+    // Retain unanchored media together for local review, never one room per photo.
+    rooms = [makeSyntheticRoom({ segment, bundles })];
   }
 
   const assignment = assignPhase2MediaToRooms({
@@ -577,21 +568,6 @@ function buildRoomsForSegment(params: {
     bundles,
     options,
   });
-
-  const realMarkerRooms = rooms.filter((room) => Boolean(cleanText(room.markerText)));
-  const singleBundleSharedBySender =
-    bundles.length === 1 &&
-    realMarkerRooms.length > 1 &&
-    Boolean(bundles[0]?.senderUid) &&
-    realMarkerRooms.every((room) => room.senderUid === bundles[0]?.senderUid);
-
-  if (singleBundleSharedBySender && bundles[0]) {
-    for (const room of realMarkerRooms) {
-      assignment.assignedByRoomId.set(room.id, [bundles[0]]);
-      assignment.warningsByRoomId.get(room.id)?.add("SHARED_ALBUM_MULTI_ROOM_MESSAGE");
-    }
-    assignment.unassignedBundles.splice(0, assignment.unassignedBundles.length);
-  }
 
   /* A single marker that names several codes creates sibling anchors. Share
    * only media already assigned to one of those siblings; unrelated marker
@@ -697,16 +673,17 @@ function buildRoomsForSegment(params: {
 
     if (imageUrls.length === 0) {
       warnings.add("NO_IMAGES");
-      warnings.add("ROOM_MEDIA_MISSING");
     }
 
     if (imageUrls.length === 0 && videoBundles.length === 0) {
+      warnings.add("ROOM_MEDIA_MISSING");
       warnings.add("NO_MEDIA");
     }
 
     for (const album of albums) {
       if (!album.complete) {
-        warnings.add(
+        warnings.add(album.expectedImageCount != null && album.actualImageCount < album.expectedImageCount ? "MEDIA_INCOMPLETE" : "MEDIA_UNVERIFIED");
+        if(album.expectedImageCount != null && album.actualImageCount < album.expectedImageCount) warnings.add(
           [
             "INCOMPLETE_ALBUM",
             album.albumKey,
@@ -715,6 +692,7 @@ function buildRoomsForSegment(params: {
         );
       }
     }
+    for(const message of segment.messages) if(imageMessageIds.includes(message.msgId)) for(const warning of (message.domHydration as any)?.mediaWarnings || []) warnings.add(warning);
 
     if (videoBundles.length > 0 && videos.length === 0) {
       warnings.add(`VIDEO_SOURCE_URL_MISSING:${videoBundles.length}`);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { decodeZdbMessagePayload, lookupZdbMessageRecord } from "./zdb-message-decoder";
 import { filterMessagesForPreview } from "./phase5-preview";
 
+async function main() {
 const plainText = decodeZdbMessagePayload("Studio - 11.000.000 - P04 - trống sẵn");
 assert.equal(plainText.isJson, false);
 assert.equal(plainText.text, "Studio - 11.000.000 - P04 - trống sẵn");
@@ -63,3 +64,7 @@ assert.equal(strictWindow.decisions[1]?.timestamp.status, "missing_or_untrusted_
 assert.equal(strictWindow.decisions[2]?.timestamp.status, "missing_or_untrusted_timestamp");
 
 console.log("ZDB message decoder regression tests passed.");
+
+}
+
+void main().catch((error) => { console.error(error); process.exitCode = 1; });

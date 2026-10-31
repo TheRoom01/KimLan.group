@@ -1,4 +1,5 @@
-import { normalizeSearchKeyword } from "@/lib/rooms/search";
+import { roomFeatureStatusTokens, type RoomFeature } from "@/lib/rooms/features";
+import { normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
 import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import { supabase } from "./supabase";
 
@@ -33,6 +34,7 @@ export type FetchRoomsParams = {
   status?: string | null;
   currentUserId?: string | null;
   badge?: RoomBadge | null;
+  featureFilters?: RoomFeature[];
 };
 
 /**
@@ -354,12 +356,13 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 
   // 4) statuses
   p_statuses:
-  typeof status === "string" || badge
+  typeof status === "string" || badge || params.featureFilters?.length
     ? Array.from(
         new Set(
           [
             ...(typeof status === "string" ? status.split(",") : []),
             ...(badge ? [`__badge:${badge}`] : []),
+        ...roomFeatureStatusTokens(params.featureFilters),
           ]
             .map((value) => value.trim())
             .filter(Boolean)

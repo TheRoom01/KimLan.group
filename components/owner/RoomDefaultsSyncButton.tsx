@@ -10,7 +10,7 @@ const DETAIL_FIELDS = [
   "other_fee_value", "other_fee_note", "has_elevator", "has_stairs", "shared_washer",
   "private_washer", "shared_dryer", "private_dryer", "has_parking", "has_basement",
   "fingerprint_lock", "free_time", "allow_pet", "allow_cat", "allow_dog", "no_pet", "short_term",
-  "long_term", "other_amenities",
+  "long_term", "other_amenities", "has_balcony", "has_window",
 ] as const;
 
 type PropertyDefaultsResult = {

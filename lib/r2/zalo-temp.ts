@@ -7,6 +7,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { createHash } from "node:crypto";
 
 export const R2_BUCKET = process.env.R2_BUCKET || "rooms-media";
 export const R2_PUBLIC_BASE_URL = process.env.R2_PUBLIC_BASE_URL || "";
@@ -48,6 +49,30 @@ export function makeZaloTempImageKey(batchId: string, imageId: string, ext = "we
 
 export function makeRoomImageKey(roomId: string, imageId: string, ext = "webp") {
   return `rooms/${roomId}/images/${imageId}.${ext.replace(/^\./, "")}`;
+}
+
+// Only hash images already belonging to the matched room in our own bucket.
+// Unsupported hosts/large files remain unknown, never "different" by URL alone.
+export async function hashRoomImage(roomId: string, imageUrl: string, timeoutMs = 10000): Promise<string | null> {
+  if (!R2_PUBLIC_BASE_URL || !imageUrl) return null;
+  const base = `${R2_PUBLIC_BASE_URL.replace(/\/$/, "")}/`;
+  if (!imageUrl.startsWith(base)) return null;
+  const key = imageUrl.slice(base.length).split(/[?#]/)[0];
+  if (!key.startsWith(`rooms/${roomId}/images/`) || key.includes("..")) return null;
+  const object = await r2Client.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { abortSignal: AbortSignal.timeout(Math.max(1, timeoutMs)) });
+  if (!object.Body) return null;
+  const hash = createHash("sha256");
+  let size = 0;
+  try {
+    for await (const chunk of object.Body as AsyncIterable<Uint8Array>) {
+      size += chunk.length;
+      if (size > 20 * 1024 * 1024) return null;
+      hash.update(chunk);
+    }
+    return size ? hash.digest("hex") : null;
+  } finally {
+    (object.Body as { destroy?: () => void }).destroy?.();
+  }
 }
 
 export async function uploadBufferToR2(params: {

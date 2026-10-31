@@ -54,6 +54,8 @@ export type RoomDetail = {
   /* ===== Amenities ===== */
   has_elevator: boolean
   has_stairs: boolean
+  has_balcony: boolean
+  has_window: boolean
   fingerprint_lock: boolean
   free_time: boolean
   allow_pet?: boolean

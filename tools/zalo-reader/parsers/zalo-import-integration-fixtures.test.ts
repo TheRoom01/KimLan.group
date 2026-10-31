@@ -67,6 +67,22 @@ function imageMessage(
   };
 }
 
+function videoMessage(
+  id: string,
+  timestamp: number,
+  sourceUrl = "https://media.dlmd.me/fixture.mp4"
+): SemanticIndexedDbMessage {
+  return {
+    ...textMessage(id, "", timestamp),
+    msgType: 18,
+    kind: "other",
+    originMsgType: "chat.video.msg",
+    videoUrls: sourceUrl ? [sourceUrl] : [],
+    videoThumbUrls: ["https://media.zdn.vn/fixture.jpg"],
+    videoDebug: { durationMs: 26_000, width: 720, height: 1280 },
+  };
+}
+
 function semantic(messages: SemanticIndexedDbMessage[]) {
   return buildSemanticTimelineRooms({
     groupName: "FIXTURE GROUP",
@@ -85,15 +101,20 @@ function semantic(messages: SemanticIndexedDbMessage[]) {
 }
 
 function roomLookup(candidates: Record<string, unknown>[] = []) {
-  const query = {
+  const makeQuery = (table: string) => ({
     select() { return this; },
     eq() { return this; },
+    ilike() { return this; },
+    in() { return this; },
     order() { return this; },
     limit() { return Promise.resolve({ data: candidates, error: null }); },
-  };
+    range() { return Promise.resolve({ data: table === "rooms" ? candidates : [], error: null }); },
+    maybeSingle() { return Promise.resolve({ data: null, error: null }); },
+    then(resolve: (value: any) => unknown) { return Promise.resolve({ data: [], error: null }).then(resolve); },
+  });
 
   return {
-    from() { return query; },
+    from(table: string) { return makeQuery(table); },
   };
 }
 
@@ -113,7 +134,12 @@ const safeSettings = {
 
 async function throughStagingBoundary(
   preview: SemanticRoomPreview,
-  media: { expected: number; imported: number },
+  media: {
+    expected: number;
+    imported: number;
+    expectedVideos?: number;
+    importedVideos?: number;
+  },
   issues: Array<{ level: string; stage: string; message: string }> = []
 ) {
   const parsed = parseZaloRoomText(preview.fullText);
@@ -131,9 +157,9 @@ async function throughStagingBoundary(
     matchedRoom: resolved.matchedRoom,
     importIssues: issues,
     expectedImageCount: media.expected,
-    expectedVideoCount: 0,
+    expectedVideoCount: media.expectedVideos ?? 0,
     importedImageCount: media.imported,
-    importedVideoCount: 0,
+    importedVideoCount: media.importedVideos ?? 0,
     groupName: "FIXTURE GROUP",
     settings: safeSettings,
   });
@@ -152,6 +178,7 @@ async function throughStagingBoundary(
       imported: media.imported,
       image_message_ids: preview.imageMessageIds,
       image_urls: preview.imageUrls,
+      videos: preview.videos,
     },
   }));
 
@@ -219,7 +246,7 @@ check("C: hai mã trong một dòng cùng giá/media thành hai staging payload"
   assert.deepEqual(results.map((result) => result.stagedShape.media.image_message_ids), [["c-shared-photo"], ["c-shared-photo"]]);
 });
 
-check("D: giá khác nhau dùng cùng một album khi parser nhận cùng media group", async () => {
+check("D: album sau marker chỉ thuộc marker gần nhất phía trước", async () => {
   const previews = semantic([
     textMessage("d-building", building, 1_000),
     textMessage("d-101", "Studio/BC - 8.500.000 - P.101 - trống sẵn", 2_000),
@@ -231,7 +258,12 @@ check("D: giá khác nhau dùng cùng một album khi parser nhận cùng media 
     throughStagingBoundary(preview, { expected: 1, imported: 1 })
   ));
   assert.deepEqual(results.map((result) => result.parsed.roomPayload.price).sort(), [8_500_000, 9_000_000]);
-  assert.ok(results.every((result) => result.stagedShape.media.image_message_ids.includes("d-reference-photo")));
+  const byCode = new Map(results.map((result) => [
+    result.parsed.roomPayload.room_code,
+    result.stagedShape.media.image_message_ids,
+  ]));
+  assert.deepEqual(byCode.get("101"), []);
+  assert.deepEqual(byCode.get("501"), ["d-reference-photo"]);
 });
 
 check("E/F: mã tầng độc lập và mã P04 + Lầu 2 được giữ qua resolve", async () => {
@@ -387,6 +419,112 @@ check("L: trùng mã phòng nhưng khác địa chỉ không bị resolver coi l
     detailPayload: parsed.detailPayload,
   });
   assert.equal(resolved.matchedRoom, null);
+});
+
+check("M: ảnh trước không nhận L01; 13 ảnh sau giữ đúng mã, giá và loại", async () => {
+  const previews = semantic([
+    textMessage("m-building", "219/89A Trần Văn Đang, Q3", 1_000),
+    imageMessage("m-before", "m-before", 2_000),
+    textMessage("m-anchor", "Studio/CS - 5.800.000 - P.L01 - trống 1/12", 3_000),
+    ...Array.from({ length: 13 }, (_, index) =>
+      imageMessage(`m-album-${index}`, "m-album", 4_000 + index)
+    ),
+  ].reverse());
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].imageMessageIds.length, 13);
+  assert.ok(!previews[0].imageMessageIds.includes("m-before"));
+  const result = await throughStagingBoundary(previews[0], { expected: 13, imported: 13 });
+  assert.equal(result.parsed.roomPayload.room_code, "L01");
+  assert.equal(result.parsed.roomPayload.room_type, "Studio");
+  assert.equal(result.parsed.roomPayload.price, 5_800_000);
+});
+
+check("N: phòng 402 hỗ trợ bản nháp chỉ có video", async () => {
+  const preview = semantic([
+    textMessage("n-building", "235/71 Nam Kỳ Khởi Nghĩa, Q3", 1_000),
+    textMessage("n-anchor", "Studio/CS - 5.500.000 - P.402 - trống", 2_000),
+    videoMessage("n-video", 3_000),
+  ])[0];
+  assert.equal(preview.imageUrls.length, 0);
+  assert.equal(preview.videos.length, 1);
+  const result = await throughStagingBoundary(preview, {
+    expected: 0,
+    imported: 0,
+    expectedVideos: 1,
+    importedVideos: 1,
+  });
+  assert.equal(result.parsed.roomPayload.room_code, "402");
+  assert.equal(result.parsed.roomPayload.room_type, "Studio");
+  assert.equal(result.parsed.roomPayload.price, 5_500_000);
+  assert.equal(result.stagedShape.media.videos[0].durationMs, 26_000);
+});
+
+const building503 = [
+  "100/2A2 Trần Hưng Đạo, Q1",
+  "Phí điện: 4.000/Kwh",
+  "Phí nước: 150k/ng",
+  "Phí dịch vụ: 200k/p",
+  "Phí xe: 100k/xe",
+  "Thang: máy",
+  "Giặt sấy chung tại căn",
+].join("\n");
+
+check("O: phòng 503 giữ đúng địa chỉ, phí, tiện ích và video phía sau", async () => {
+  const room503Video = videoMessage("o-video-503", 3_000);
+  room503Video.videoDebug = { durationMs: 77_000, width: 720, height: 1280 };
+  const previews = semantic([
+    textMessage("o-building-503", building503, 1_000),
+    textMessage("o-room-503", "2PN/BC/1PK - 16.000.000 - P.503 - trống 5/11", 2_000),
+    room503Video,
+    textMessage("o-next-building", "68/74 Đồng Nai, Q10", 4_000),
+    textMessage("o-next-room", "Studio/CS - 6.000.000 - P.201 - trống", 5_000),
+    imageMessage("o-next-image", "o-next-album", 6_000),
+  ]);
+  const preview503 = previews.find((preview) =>
+    preview.markerText.includes("P.503")
+  );
+  assert.ok(preview503);
+  assert.deepEqual(preview503.videoMessageIds, ["o-video-503"]);
+  assert.equal(preview503.imageUrls.length, 0);
+  assert.doesNotMatch(preview503.fullText, /68\/74|Đồng Nai/i);
+
+  const result = await throughStagingBoundary(preview503, {
+    expected: 0,
+    imported: 0,
+    expectedVideos: 1,
+    importedVideos: 1,
+  });
+  assert.equal(result.parsed.roomPayload.house_number, "100/2A2");
+  assert.equal(result.parsed.roomPayload.address, "Trần Hưng Đạo");
+  assert.equal(result.parsed.roomPayload.ward, "");
+  assert.equal(result.parsed.roomPayload.district, "Quận 1");
+  assert.equal(result.parsed.roomPayload.room_code, "503");
+  assert.equal(result.parsed.roomPayload.price, 16_000_000);
+  assert.equal(result.parsed.roomPayload.room_type, "2PN");
+  assert.match(result.parsed.roomPayload.description, /5\/11/);
+  assert.match(result.parsed.detailPayload.other_amenities, /Ban công/);
+  assert.match(result.parsed.detailPayload.other_amenities, /1 phòng khách/);
+  assert.equal(result.parsed.detailPayload.electric_fee_value, 4_000);
+  assert.equal(result.parsed.detailPayload.water_fee_value, 150_000);
+  assert.equal(result.parsed.detailPayload.service_fee_value, 200_000);
+  assert.equal(result.parsed.detailPayload.parking_fee_value, 100_000);
+  assert.equal(result.parsed.detailPayload.has_elevator, true);
+  assert.equal(result.parsed.detailPayload.shared_washer, true);
+  assert.equal(result.parsed.detailPayload.shared_dryer, true);
+  assert.equal(result.stagedShape.media.videos[0].messageId, "o-video-503");
+  assert.equal(result.stagedShape.media.videos[0].durationMs, 77_000);
+});
+
+check("P: message video không có URL vẫn ghép phòng nhưng báo thiếu nguồn", () => {
+  const preview = semantic([
+    textMessage("p-building", building503, 1_000),
+    textMessage("p-room", "2PN/BC/1PK - 16.000.000 - P.503 - trống 5/11", 2_000),
+    videoMessage("p-video-without-url", 3_000, ""),
+  ])[0];
+  assert.equal(preview.hasVideo, true);
+  assert.deepEqual(preview.videoMessageIds, ["p-video-without-url"]);
+  assert.equal(preview.videos.length, 0);
+  assert.ok(preview.warnings.some((warning) => warning.startsWith("VIDEO_SOURCE_URL_MISSING:")));
 });
 
 async function main() {

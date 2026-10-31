@@ -147,7 +147,10 @@ const readerSource = fs.readFileSync(
 const readerConfig = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), "tools/zalo-reader/config.json"), "utf8")
 );
-assert.equal(readerConfig.previewOnly, true);
+assert.equal(
+  Boolean(readerConfig.previewOnly || readerConfig.stagingOnlyImport),
+  true,
+);
 assert.equal(readerConfig.selectors.searchBox, "#contact-search-input");
 assert.deepEqual(readerConfig.previewOnlyGroupKeys, ["Gio-Hang-Can-Ho-Q1-Q3-Q10"]);
 assert.equal(
@@ -170,9 +173,9 @@ const importerFunction = readerSource.indexOf("async function importIndexedDbRoo
 const importerGuard = readerSource.indexOf("Preview-only safety barrier blocked IndexedDB import", importerFunction);
 const importerBatchCall = readerSource.indexOf("await sendBatch(", importerFunction);
 const importInvocation = readerSource.indexOf("await importIndexedDbRoomPreviews(", importGate);
-const stateReadBarrier = readerSource.includes("const state = config.previewOnly ? {} : readState();");
+const stateReadBarrier = readerSource.includes("const state = config.previewOnly || config.officialReader ? {} : readState();");
 const networkCaptureBarrier = readerSource.includes("if (!config.previewOnly) {\n    installNetworkDebug(");
-const mainStart = readerSource.indexOf("async function main() {");
+const mainStart = readerSource.indexOf("export async function runReader() {");
 const capturedT0 = readerSource.indexOf("const readerStartedAtMs = Date.now();", mainStart);
 const configLoad = readerSource.indexOf("const config = readConfig();", mainStart);
 const dumpFunction = readerSource.indexOf("async function dumpActiveGroupMessages(");

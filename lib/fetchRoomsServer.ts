@@ -1,4 +1,5 @@
-import { normalizeSearchKeyword } from "@/lib/rooms/search";
+import { roomFeatureStatusTokens, type RoomFeature } from "@/lib/rooms/features";
+import { normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
 import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -31,6 +32,7 @@ export type FetchRoomsParams = {
   // ✅ NEW: lọc 1 status (null | "Trống" | "Đã thuê")
   status?: string | null;
   badge?: RoomBadge | null;
+  featureFilters?: RoomFeature[];
 
   // (server) vẫn có thể truyền sortMode nếu bạn muốn đồng bộ với client
   sortMode?: "updated_desc" | "price_asc" | "price_desc" | null;
@@ -254,10 +256,11 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_contract_terms: pContractTerms,
 
   // 4) statuses
-  p_statuses: status || badge
+  p_statuses: status || badge || params.featureFilters?.length
     ? [
         ...(status ? String(status).split(",").map((value) => value.trim()).filter(Boolean) : []),
         ...(badge ? [`__badge:${badge}`] : []),
+        ...roomFeatureStatusTokens(params.featureFilters),
       ]
     : null,
 

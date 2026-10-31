@@ -67,6 +67,7 @@ async function main() {
   try {
     context = await chromium.launchPersistentContext(profileDir, {
       headless: true,
+      serviceWorkers: "block",
       viewport: { width: 900, height: 700 },
       args: [
         "--disable-background-networking",
@@ -98,6 +99,84 @@ async function main() {
 
     const page = context.pages()[0] || (await context.newPage());
     await page.goto("https://chat.zalo.me/", { waitUntil: "domcontentloaded" });
+
+    if (process.argv.includes("--payload-structure")) {
+      const summary = await page.evaluate(async ({ databaseName, groupId, t0 }) => {
+        // Only structural metadata leaves this realm. No record/ID/text samples.
+        const available = await indexedDB.databases();
+        if (!available.some((db) => db.name === databaseName)) throw new Error("Target database unavailable");
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open(databaseName);
+          request.onupgradeneeded = () => { request.transaction?.abort(); reject(new Error("Creation blocked")); };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(new Error("Cannot open target database"));
+        });
+        try {
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction("message", "readonly");
+            const store = tx.objectStore("message");
+            if (!store.indexNames.contains("userId_sendDttm_msgId")) {
+              reject(new Error("Group index unavailable; refusing full-store scan"));
+              return;
+            }
+            const counts = new Map();
+            let inspected = 0;
+            const type = (v) => v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+            const shape = (v, depth = 0) => {
+              if (!v || typeof v !== "object" || depth >= 4) return type(v);
+              if (Array.isArray(v)) return { array: v.slice(0, 3).map((x) => shape(x, depth + 1)) };
+              const output = {};
+              for (const key of Object.keys(v).sort().slice(0, 60)) {
+                // Exclude dynamic keys and never descend into credential fields.
+                if (!/^[A-Za-z_$][A-Za-z0-9_$]{0,39}$/.test(key)) continue;
+                output[key] = /token|secret|password|cookie|authorization|key/i.test(key)
+                  ? type(v[key]) : shape(v[key], depth + 1);
+              }
+              return output;
+            };
+            const request = store.index("userId_sendDttm_msgId").openCursor(
+              IDBKeyRange.bound([groupId], [groupId, []]), "prev",
+            );
+            request.onerror = () => reject(new Error("Group cursor failed"));
+            tx.onabort = () => reject(new Error("Readonly transaction aborted"));
+            tx.oncomplete = () => resolve({ inspected, schemas: Array.from(counts.values()) });
+            request.onsuccess = () => {
+              const cursor = request.result;
+              if (!cursor || inspected >= 300) return;
+              const row = cursor.value;
+              if (String(row.toUid || "") === groupId) {
+                const times = [row.sendDttm, row.serverTime].filter((x) => x != null && x !== "" && x !== 0 && x !== "0");
+                const valid = times.length && times.every((x) => /^\d{13}$/.test(String(x)) && Number(x) === Number(times[0]));
+                if (valid && Number(times[0]) >= t0 - 86400000 && Number(times[0]) <= t0) {
+                  inspected++;
+                  let payload = row.message;
+                  let format = type(payload);
+                  if (typeof payload === "string") {
+                    try { payload = JSON.parse(payload); format = "json-" + type(payload); }
+                    catch { format = payload.trim() ? "non-json-string" : "empty-string"; }
+                  }
+                  const text = typeof payload === "string" ? payload : payload && typeof payload === "object"
+                    ? [payload.text, payload.content, payload.caption, payload.body].find((x) => typeof x === "string" && x.trim()) || "" : "";
+                  const textGate = !text.trim() ? "no-recognized-text" :
+                    text.trim().length >= 24 && !/\s/.test(text.trim()) && /^[A-Za-z0-9+/=]+$/.test(text.trim()) && text.trim().length % 4 === 0
+                      ? "base64-like-heuristic-rejection-not-proof-of-encryption" : "text-field-present";
+                  const entry = { msgType: typeof row.msgType === "number" && Number.isFinite(row.msgType) ? row.msgType : type(row.msgType),
+                    format, textGate, recordShape: shape(row), payloadShape: shape(payload) };
+                  const signature = JSON.stringify(entry);
+                  if (!counts.has(signature)) counts.set(signature, { ...entry, count: 0 });
+                  counts.get(signature).count++;
+                }
+              }
+              cursor.continue();
+            };
+          });
+        } finally { db.close(); }
+      }, { databaseName: targetZdbName, groupId: "g1986619726266954037", t0: Date.now() });
+      fs.mkdirSync(diagnosticsDir, { recursive: true });
+      fs.writeFileSync(path.join(diagnosticsDir, "payload-structure.json"), JSON.stringify(summary, null, 2), "utf8");
+      console.log(`Payload structure diagnostic: ${summary.inspected} records; metadata-only report saved.`);
+      return;
+    }
 
     const result = await page.evaluate(
       async ({ targetZdbName, expectedSidxName }) => {

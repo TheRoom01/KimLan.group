@@ -252,6 +252,8 @@ function RoomDetailsSummary({
 
   const amenities = [
     details?.has_elevator && "Thang máy",
+    details?.has_balcony && "Ban công",
+    details?.has_window && "Cửa sổ",
     details?.has_stairs && "Cầu thang bộ",
     details?.has_parking && "Chỗ để xe",
     details?.has_basement && "Hầm xe",

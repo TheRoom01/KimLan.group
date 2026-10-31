@@ -4,10 +4,12 @@ import {
 } from "crypto";
 
 import { NextResponse } from "next/server";
+import { officialSourceIdentity, confirmOfficialRun, existingOfficialReceipt } from "./official-request";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { parseZaloRoomText } from "@/lib/zalo-import/parser";
 import { resolveZaloImportRoom } from "@/lib/zalo-import/resolve";
+import { findImportBaseline, assessIncomingChange } from "@/lib/zalo-import/incoming-change";
 import {
   evaluateZaloImportQuality,
   readZaloAutoImportSettings,
@@ -16,11 +18,13 @@ import { publishPendingRoom } from "@/lib/zalo-import/publish-pending-room";
 import {
   isControlledZaloTarget,
   shouldAutoPublishZaloImport,
+  makeTestPendingIdentity,
 } from "@/lib/zalo-reader/controlled-staging";
 
 import {
   makeZaloTempImageKey,
   uploadBufferToR2,
+  deleteR2Keys,
 } from "@/lib/r2/zalo-temp";
 
 export const runtime = "nodejs";
@@ -32,6 +36,7 @@ type IncomingImage = {
 };
 
 type IncomingVideo = {
+  messageId?: string;
   sourceUrl?: string;
   thumbnailUrl?: string;
 
@@ -42,6 +47,7 @@ type IncomingVideo = {
 };
 
 type IncomingReaderIssue = {
+  code?: string;
   level?: string;
   index?: number | null;
   message?: string;
@@ -49,6 +55,7 @@ type IncomingReaderIssue = {
 };
 
 type ImportIssue = {
+  code?: string;
   level: "warning" | "error";
 
   stage:
@@ -144,6 +151,7 @@ type ImportStage =
   | "lookup-existing"
   | "parse-room"
   | "resolve-room"
+  | "compare-new-source"
   | "batch-insert"
   | "image-upload"
   | "image-insert"
@@ -682,6 +690,7 @@ function normalizeReaderIssues(
           Number(issue?.index);
 
         return {
+          code: /^[A-Z][A-Z0-9_]{1,63}$/.test(String(issue?.code || "")) ? String(issue.code) : undefined,
           level:
             issue?.level ===
             "warning"
@@ -780,6 +789,15 @@ export async function POST(
         String(body.groupId || "").trim()
       );
     const stagingOnly = body.stagingOnly === true;
+    const testImportToPending = body.testImportToPending === true;
+    const testNewSourcesOnly = body.testNewSourcesOnly === true;
+    const officialReader = body.officialReader === true;
+    const officialTrial = officialReader && body.officialTrial === true;
+    if (officialReader && (testImportToPending || stagingOnly)) return NextResponse.json({ ok: false, code: "MIXED_READER_MODES" }, { status: 400 });
+    if (testNewSourcesOnly && !testImportToPending) return NextResponse.json({ ok: false, error: "testNewSourcesOnly chỉ dùng cho Pending test." }, { status: 400 });
+    if (testImportToPending && !stagingOnly) {
+      return NextResponse.json({ ok: false, error: "Test Pending chỉ được chạy trong staging." }, { status: 400 });
+    }
 
     const senderName =
       sanitizePostgrestString(
@@ -909,7 +927,13 @@ export async function POST(
       );
     }
 
-    const sourceHash =
+    const testIdentity = testImportToPending
+      ? makeTestPendingIdentity(sourceGroupId, sourceMessageId || "") : null;
+    const officialParsed = officialReader ? parseZaloRoomText(rawText) : null;
+    const officialIdentity = officialParsed ? officialSourceIdentity({ groupName, groupId: sourceGroupId,
+      sourceMessageId: sourceMessageId || "", sourceRoomKey: String(body.sourceRoomKey || ""), trial: officialTrial,
+      runId: String(body.officialRunId || ""), verified: body.groupIdVerified === true }, officialParsed.roomPayload) : null;
+    const sourceHash = officialIdentity?.sourceHash || testIdentity?.sourceHash ||
       sanitizePostgrestString(
         String(
           body.sourceHash || ""
@@ -928,6 +952,11 @@ export async function POST(
 
     const supabase =
       createSupabaseAdminClient();
+    if (officialIdentity) {
+      await confirmOfficialRun(supabase, officialIdentity, sentAt);
+      const receipt = await existingOfficialReceipt(supabase, officialIdentity, groupName, officialParsed!.roomPayload);
+      if (receipt) return NextResponse.json(receipt);
+    }
 
     stage = "lookup-existing";
 
@@ -950,7 +979,7 @@ export async function POST(
     }
 
     if (
-      existed.data?.id
+      existed.data?.id && !testImportToPending && !officialReader
     ) {
       const parserResult =
         existed.data
@@ -1015,9 +1044,39 @@ export async function POST(
       });
     }
 
+    let testPendingExists = false;
+    let oldTestImages: any[] = [];
+    let oldTestVideos: any[] = [];
+    if (testIdentity) {
+      if (existed.data && (existed.data.id !== testIdentity.batchId || (existed.data.parser_result as any)?.test_import !== true)) {
+        return NextResponse.json({ ok: false, error: "Không được ghi đè batch import thật." }, { status: 409 });
+      }
+      const existingPending = await supabase.from("pending_room_versions").select("id,batch_id,status,room_payload").eq("id", testIdentity.pendingId).maybeSingle();
+      if (existingPending.error) throw existingPending.error;
+      if (existingPending.data) {
+        const row = existingPending.data;
+        if ((row.room_payload as any)?.is_test_import !== true || row.batch_id !== testIdentity.batchId || row.status !== "Chờ duyệt") {
+          return NextResponse.json({ ok: false, error: "Chỉ cập nhật bản test đang Chờ duyệt; không ghi đè bản thật hoặc bản đã xử lý." }, { status: 409 });
+        }
+        testPendingExists = true;
+        if (testNewSourcesOnly) return NextResponse.json({ ok: true, duplicate: true, testImportToPending: true,
+          existingPendingId: row.id, testPendingAction: "skipped-existing", status: row.status });
+      }
+      if (existed.data) {
+        const [oldImages, oldVideos] = await Promise.all([
+          supabase.from("zalo_import_images").select("id,temp_r2_key").eq("batch_id", testIdentity.batchId),
+          supabase.from("zalo_import_videos").select("id,temp_r2_key,temp_thumb_r2_key").eq("batch_id", testIdentity.batchId),
+        ]);
+        if (oldImages.error) throw oldImages.error;
+        if (oldVideos.error) throw oldVideos.error;
+        oldTestImages = oldImages.data || [];
+        oldTestVideos = oldVideos.data || [];
+      }
+    }
+
     stage = "parse-room";
 
-    const parsed =
+    const parsed = officialParsed ||
       parseZaloRoomText(
         rawText
       );
@@ -1027,6 +1086,9 @@ export async function POST(
     const resolved =
       await resolveZaloImportRoom({
         supabase,
+        sourceFieldMap: parsed.sourceFieldMap,
+        skipInheritance: testImportToPending,
+        excludePendingId: testIdentity?.pendingId,
 
         roomPayload:
           parsed.roomPayload,
@@ -1035,11 +1097,42 @@ export async function POST(
           parsed.detailPayload,
       });
 
+    const roomReview = resolved.roomPayload._room_import;
+    if (!testImportToPending || testNewSourcesOnly) {
+      stage = "compare-new-source";
+      const baseline = await findImportBaseline(supabase, resolved.roomPayload, resolved.matchedRoom);
+      if (baseline) {
+        const comparison = assessIncomingChange({ room: resolved.roomPayload, detail: resolved.detailPayload,
+          sourceFields: parsed.sourceFieldMap, baseline, expectedImages: expectedImageCount, expectedVideos: expectedVideoCount,
+          imageHashes: images.map(image => { const bytes = base64ToBuffer(image.base64 || ""); return bytes.length ? createHash("sha256").update(bytes).digest("hex") : null; }),
+          // Video URLs/thumbnails are not content hashes. Until bytes have been
+          // verified, keep the existing review flow rather than falsely skip.
+          videoHashes: videos.map(() => null), hasSourceErrors: importIssues.some(issue => issue.level === "error" || ["MEDIA_UNVERIFIED","MEDIA_LOADING_TIMEOUT","MEDIA_INCOMPLETE"].includes(issue.code || "")),
+        });
+        if (comparison.status === "UNCHANGED") {
+          console.log("Zalo source comparison:", { sourceMessageId, status: "UNCHANGED", baseline: baseline.kind, pendingCreated: false });
+          return NextResponse.json({ ok: true, duplicate: false, skipped: true, noChanges: true,
+            testImportToPending,
+            comparisonStatus: "UNCHANGED", reasonCode: "NO_ROOM_CHANGES", status: "Không có cập nhật",
+            sourceMessageId, sourceHash, baselineKind: baseline.kind, baselineId: baseline.id,
+            imageCount: 0, videoCount: 0, partial: false, hasImportErrors: false, issues: [],
+            mediaProgress: { imagesUploaded: 0, videosDownloaded: 0, videosUploaded: 0 } });
+        }
+        roomReview.change_status = comparison.status;
+        roomReview.changed_fields = comparison.changedFields;
+      }
+    }
+    if ((!testImportToPending || testNewSourcesOnly) && roomReview?.conflicting_pending_ids?.length) {
+      return NextResponse.json({ ok: false, code: "ROOM_PENDING_EXISTS", error: "Phòng đã có bản nháp chưa duyệt. Hãy xử lý bản nháp hiện tại trước khi nhập nguồn mới.",
+        pendingIds: roomReview.conflicting_pending_ids }, { status: 409 });
+    }
+
     stage = "batch-insert";
 
     const batchInsertPayload =
       makePostgrestPayload(
         {
+          ...(officialIdentity ? { id: officialIdentity.batchId } : testIdentity ? { id: testIdentity.batchId } : {}),
           group_name:
             groupName,
 
@@ -1065,6 +1158,7 @@ export async function POST(
             "quality-v1",
 
           parser_result: {
+            ...(testImportToPending ? { test_import: true } : {}),
             staging_trial: stagingOnly,
             room_payload:
               resolved.roomPayload,
@@ -1118,8 +1212,9 @@ export async function POST(
         "zalo_import_batches.insert"
       );
 
-    const batchIns =
-      await supabase
+    const batchIns = officialIdentity ? { data: { id: officialIdentity.batchId }, error: null } : existed.data && testIdentity
+      ? { data: { id: testIdentity.batchId }, error: null }
+      : await supabase
         .from(
           "zalo_import_batches"
         )
@@ -1142,6 +1237,11 @@ export async function POST(
 
     const uploadedImages:
       any[] = [];
+    let imagesUploaded = 0;
+    let videosUploaded = 0;
+    let videosDownloaded = 0;
+    const imageHashes: Record<string, string> = {};
+    const videoHashes: Record<string, string> = {};
 
     stage = "image-upload";
 
@@ -1152,6 +1252,7 @@ export async function POST(
     ) {
       const img =
         images[i] || {};
+      let imageFailureCode = "IMAGE_DECODE_FAILED";
 
       try {
         const base64 =
@@ -1218,6 +1319,7 @@ export async function POST(
           );
         }
 
+        imageFailureCode = "IMAGE_STORAGE_UPLOAD_FAILED";
         const uploaded =
           await uploadBufferToR2({
             key,
@@ -1230,6 +1332,8 @@ export async function POST(
               "public, max-age=86400",
           });
 
+        imagesUploaded += 1;
+        imageHashes[uploaded.url] = createHash("sha256").update(buffer).digest("hex");
         uploadedImages.push({
           batch_id:
             batchId,
@@ -1256,6 +1360,7 @@ export async function POST(
         importIssues.push({
           level: "error",
           stage: "image",
+          code: imageFailureCode,
           index: i,
 
           message:
@@ -1284,7 +1389,7 @@ export async function POST(
         );
 
       const imgIns =
-        await supabase
+        officialReader ? { error: null } : await supabase
           .from(
             "zalo_import_images"
           )
@@ -1297,6 +1402,7 @@ export async function POST(
           level: "error",
           stage:
             "database",
+          code: "IMAGE_DATABASE_LINK_FAILED",
 
           index: null,
 
@@ -1334,6 +1440,7 @@ export async function POST(
           video.sourceUrl ||
             ""
         ).trim();
+      let videoFailureCode = "VIDEO_URL_INVALID";
 
       try {
         if (!rawSourceUrl) {
@@ -1348,6 +1455,7 @@ export async function POST(
             "video"
           );
 
+        videoFailureCode = "VIDEO_DOWNLOAD_FAILED";
         const downloadedVideo =
           await downloadRemoteBuffer({
             url: sourceUrl,
@@ -1364,6 +1472,10 @@ export async function POST(
               60_000,
           });
 
+        if (testImportToPending && (!downloadedVideo.buffer.length || !downloadedVideo.contentType.startsWith("video/"))) {
+          throw new Error("Video test tải về rỗng hoặc MIME không phải video.");
+        }
+        videosDownloaded += 1;
         const videoId =
           randomUUID();
 
@@ -1380,6 +1492,7 @@ export async function POST(
             videoExtension
           );
 
+        videoFailureCode = "VIDEO_STORAGE_UPLOAD_FAILED";
         const uploadedVideo =
           await uploadBufferToR2({
             key:
@@ -1397,6 +1510,8 @@ export async function POST(
               "public, max-age=86400",
           });
 
+        videosUploaded += 1;
+        videoHashes[uploadedVideo.url] = createHash("sha256").update(downloadedVideo.buffer).digest("hex");
         let uploadedThumb:
           | {
               key: string;
@@ -1571,6 +1686,7 @@ export async function POST(
         importIssues.push({
           level: "error",
           stage: "video",
+          code: videoFailureCode,
           index: i,
 
           message:
@@ -1603,7 +1719,7 @@ export async function POST(
         );
 
       const videoInsert =
-        await supabase
+        officialReader ? { error: null } : await supabase
           .from(
             "zalo_import_videos"
           )
@@ -1618,6 +1734,7 @@ export async function POST(
           level: "error",
           stage:
             "database",
+          code: "VIDEO_DATABASE_LINK_FAILED",
 
           index: null,
 
@@ -1671,6 +1788,15 @@ export async function POST(
       });
     }
 
+    // A verified room anchor followed by an identified video can remain a
+    // manual-review draft even when Zalo has not supplied a usable video URL.
+    const manualVideoRequired = officialReader && !officialTrial && expectedImageCount === 0 && expectedVideoCount > 0 &&
+      uploadedImages.length === 0 && uploadedVideos.length === 0 &&
+      Array.isArray(body.videoSourceMessageIds) && body.videoSourceMessageIds.some((id:unknown)=>typeof id==="string" && /^[A-Za-z0-9:_-]{1,128}$/.test(id)) &&
+      Boolean(parsed.roomPayload.room_code && parsed.roomPayload.room_type && Number(parsed.roomPayload.price)>0);
+    if(manualVideoRequired) importIssues.push({level:"error",stage:"video",code:"VIDEO_MANUAL_UPLOAD_REQUIRED",index:null,
+      message:"Tin phòng chỉ có video nhưng Reader chưa tải được. Mở Chỉnh sửa để thêm video thủ công trước khi duyệt đăng."});
+
     const hasImportErrors =
       importIssues.some(
         (issue) =>
@@ -1678,8 +1804,21 @@ export async function POST(
           "error"
       );
 
+    if (testImportToPending && uploadedImages.length === 0 && uploadedVideos.length === 0) {
+      return NextResponse.json({
+        ok: false, code: "TEST_NO_VALID_MEDIA", testImportToPending: true, error: "TEST_NO_VALID_MEDIA: Không lưu được ảnh/video hợp lệ; không tạo hoặc ghi đè Pending test.",
+        issues: importIssues, imageCount: 0, videoCount: 0,
+        mediaProgress: { imagesUploaded, videosDownloaded, videosUploaded },
+      }, { status: 422 });
+    }
+
     const importDiagnostics =
       {
+        manual_video_required: manualVideoRequired,
+        video_source_message_ids: Array.isArray(body.videoSourceMessageIds) ? body.videoSourceMessageIds.filter((id:unknown)=>typeof id==="string" && /^[A-Za-z0-9:_-]{1,128}$/.test(id)).slice(0,20) : [],
+        album_expected_images: Number.isInteger(body.albumExpectedImageCount) && body.albumExpectedImageCount>0 ? body.albumExpectedImageCount : null,
+        media_verification: Number.isInteger(body.albumExpectedImageCount) && body.albumExpectedImageCount>uploadedImages.length ? "MEDIA_INCOMPLETE"
+          : body.mediaVerification === "VERIFIED" && body.albumExpectedImageCount===uploadedImages.length && uploadedImages.length>0 && !hasImportErrors ? "VERIFIED" : "MEDIA_UNVERIFIED",
         has_errors:
           hasImportErrors,
 
@@ -1816,7 +1955,11 @@ export async function POST(
 
     const pendingRoomPayload =
       {
+        ...(testImportToPending || officialTrial ? { is_test_import: true, test_source_message_id: sourceMessageId } : {}),
         ...resolved.roomPayload,
+        ...(officialReader ? { _reader_manual_review: true } : {}),
+        ...(manualVideoRequired ? { _manual_video_required: true } : {}),
+        ...(roomReview ? { _room_import: { ...roomReview, image_hashes: imageHashes, video_hashes: videoHashes } } : {}),
 
         media:
           pendingMedia,
@@ -1856,6 +1999,8 @@ export async function POST(
 
     const batchParserResult =
       {
+        ...(officialIdentity ? { official_source: officialIdentity.metadata } : {}),
+        ...(testImportToPending || officialTrial ? { test_import: true } : {}),
         staging_trial: stagingOnly,
         staging_group_id: stagingOnly ? sourceGroupId : null,
         room_payload:
@@ -1910,7 +2055,9 @@ export async function POST(
 
           videos:
             uploadedVideos.map(
-              (video) => ({
+              (video, index) => ({
+                source_message_id:
+                  String(videos[index]?.messageId || "").trim() || null,
                 url:
                   video.temp_video_url,
 
@@ -1938,6 +2085,7 @@ export async function POST(
     const batchUpdatePayload =
       makePostgrestPayload(
         {
+          ...(testIdentity ? { raw_text: rawText, sent_at: sentAt } : {}),
           parser_result:
             batchParserResult,
         },
@@ -1945,7 +2093,7 @@ export async function POST(
       );
 
     const batchUpdate =
-      await supabase
+      officialReader ? { error: null } : await supabase
         .from(
           "zalo_import_batches"
         )
@@ -1968,11 +2116,12 @@ export async function POST(
     const pendingInsertPayload =
       makePostgrestPayload(
         {
+          ...(officialIdentity ? { id: officialIdentity.pendingId } : testIdentity ? { id: testIdentity.pendingId } : {}),
           batch_id:
             batchId,
 
           status:
-            resolved.matchedRoom
+            !testImportToPending && !officialReader && resolved.matchedRoom
               ? "Trùng phòng"
               : "Chờ duyệt",
 
@@ -2008,7 +2157,7 @@ export async function POST(
               ? resolved.roomPayload
                   .status ?? null
               : null,
-          ...(stagingOnly
+          ...(officialReader || stagingOnly || roomReview?.type !== "CREATE"
             ? {
                 auto_approve_enabled: false,
                 auto_approve_at: null,
@@ -2019,8 +2168,31 @@ export async function POST(
         "pending_room_versions.insert"
       );
 
-    const pendingIns =
-      await supabase
+    if (officialIdentity) {
+      // Keep all database links atomic. A batch alone is never a checkpoint receipt.
+        if (!uploadedImages.length && !uploadedVideos.length && !manualVideoRequired) {
+        return NextResponse.json({ ok: false, code: "NO_USABLE_MEDIA", issues: importIssues.map(issue => ({ level: issue.level, stage: issue.stage, code: issue.code })), mediaProgress: { imagesUploaded, videosDownloaded, videosUploaded } }, { status: 422 });
+      }
+      const finalized = await supabase.rpc("finalize_zalo_official_source_v1", {
+        p_batch: { ...batchInsertPayload, parser_result: batchParserResult }, p_pending: pendingInsertPayload,
+        p_images: uploadedImages, p_videos: uploadedVideos, p_run_id: officialIdentity.metadata.run_id,
+      });
+      if (finalized.error) throw finalized.error;
+      if (!finalized.data?.pending_id) throw new Error("OFFICIAL_RECEIPT_MISSING");
+      return NextResponse.json({ ok: true, duplicate: !finalized.data.created, batchId,
+        pendingVersionId: finalized.data.pending_id, importType: roomReview?.type || "NEEDS_REVIEW",
+          status: "Chờ duyệt", officialTrial, imageCount: uploadedImages.length, videoCount: uploadedVideos.length, manualVideoRequired,
+        partial: hasImportErrors, hasImportErrors, issues: importIssues, autoPublished: false,
+        mediaVerification: importDiagnostics.media_verification,
+        mediaProgress: { imagesUploaded, videosDownloaded, videosUploaded } });
+    }
+    const pendingWrite = supabase.from("pending_room_versions");
+    const pendingIns = testIdentity && testPendingExists
+      ? await pendingWrite.update(pendingInsertPayload)
+          .eq("id", testIdentity.pendingId).eq("batch_id", testIdentity.batchId)
+          .eq("status", "Chờ duyệt").eq("room_payload->>is_test_import", "true")
+          .select("id").single()
+      : await supabase
         .from(
           "pending_room_versions"
         )
@@ -2041,6 +2213,23 @@ export async function POST(
         pendingIns.data.id
       );
 
+    if (testIdentity) {
+      // Remove only media rows belonging to the previous revision of this test batch.
+      for (const [table, rows] of [["zalo_import_images", oldTestImages], ["zalo_import_videos", oldTestVideos]] as const) {
+        if (rows.length) {
+          const cleanup = await supabase.from(table).delete().eq("batch_id", testIdentity.batchId).in("id", rows.map((row) => row.id));
+          if (cleanup.error) throw cleanup.error;
+        }
+      }
+      const oldKeys = [...oldTestImages, ...oldTestVideos].flatMap((row) => [row.temp_r2_key, row.temp_thumb_r2_key]).filter(Boolean);
+      if (oldKeys.length) {
+        try { await deleteR2Keys(oldKeys); }
+        catch {
+          importIssues.push({ level: "warning", stage: "media", index: null, code: "TEST_MEDIA_CLEANUP_FAILED", message: "Pending test đã cập nhật; chưa dọn hết media tạm của phiên bản test cũ." });
+        }
+      }
+    }
+
     let autoPublished = false;
     let autoPublishedRoomId:
       string | null = null;
@@ -2048,12 +2237,12 @@ export async function POST(
       string | null = null;
 
     if (
-      shouldAutoPublishZaloImport({
+      !testImportToPending && shouldAutoPublishZaloImport({
         stagingOnly,
         eligible: importQuality.eligible,
         enabled: autoImportSettings.enabled,
         dryRun: autoImportSettings.dryRun,
-      })
+      }) && roomReview?.type === "CREATE"
     ) {
       try {
         const published =
@@ -2155,6 +2344,9 @@ export async function POST(
       batchId,
 
       pendingVersionId,
+      ...(testImportToPending ? { testPendingAction: testPendingExists ? "updated" : "created", testImportToPending: true } : {}),
+
+      mediaProgress: { imagesUploaded, videosDownloaded, videosUploaded },
 
       imageCount:
         uploadedImages.length,

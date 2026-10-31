@@ -22,6 +22,8 @@ export const amenityConfig: Array<{ key: AmenityBooleanKey; label: string }> = [
   /* ===== CƠ BẢN ===== */
   { key: 'has_elevator', label: 'Thang máy' },
   { key: 'has_stairs', label: 'Thang bộ' },
+  { key: 'has_balcony', label: 'Ban công' },
+  { key: 'has_window', label: 'Cửa sổ' },
   { key: 'fingerprint_lock', label: 'Khoá cửa vân tay' },
 
   /* ===== THÚ CƯNG ===== */

@@ -391,11 +391,8 @@ export function assignPhase2MediaToRooms(params: {
       a.firstMessageIndex - b.firstMessageIndex
   );
 
-  const resolvedBias = resolveBias({
-    rooms,
-    bundles,
-    options: params.options,
-  });
+  // Room facts only flow forward: anchor -> following media.
+  const resolvedBias: ResolvedBias = "after";
 
   const assignmentMode = detectMode({
     rooms,
@@ -403,118 +400,52 @@ export function assignPhase2MediaToRooms(params: {
     bias: resolvedBias,
   });
 
-  const pairMap = expectedPairs({
-    rooms,
-    bundles,
-    mode: assignmentMode,
-  });
-
-  const requiredMargin = Math.max(
-    12,
-    Number(
-      params.options.uncertainScoreDelta || 18
-    )
+  const maxGapMs = Math.max(
+    60_000,
+    Number(params.options.maxMediaGapMs || 30 * 60 * 1000),
   );
 
   for (const bundle of bundles) {
-    const expectedRoomId = pairMap.get(bundle.id);
+    const previousRooms = rooms.filter(
+      (room) => room.messageIndex <= bundle.firstMessageIndex,
+    );
+    const targetRoom = previousRooms[previousRooms.length - 1];
 
-    const candidates = rooms
-      .map((room, roomIndex) =>
-        candidateMetrics({
-          rooms,
-          room,
-          roomIndex,
-          bundle,
-          bias: resolvedBias,
-          mode: assignmentMode,
-          expectedRoomId,
-          options: params.options,
-        })
-      )
-      .filter(
-        (candidate): candidate is Candidate =>
-          candidate != null
-      )
-      .sort((a, b) => {
-        if (a.score !== b.score) {
-          return b.score - a.score;
-        }
-
-        if (a.crossedMarkers !== b.crossedMarkers) {
-          return (
-            a.crossedMarkers -
-            b.crossedMarkers
-          );
-        }
-
-        return a.indexGap - b.indexGap;
-      });
-
-    const best = candidates[0];
-    const second = candidates[1];
-
-    if (!best || best.score < 40) {
+    if (!targetRoom) {
       unassignedBundles.push(bundle);
-
-      if (best) {
-        warningsByRoomId
-          .get(best.room.id)
-          ?.add(
-            `LOW_CONFIDENCE_MEDIA_BINDING:${bundle.id}:${best.score}`
-          );
-      }
-
-      continue;
-    }
-
-    const isStrongExpectedPair =
-      expectedRoomId === best.room.id &&
-      (
-        assignmentMode.startsWith("batch") ||
-        assignmentMode.startsWith("alternating")
+      const nextRoom = rooms.find(
+        (room) => room.messageIndex >= bundle.lastMessageIndex,
       );
-
-    const margin = second
-      ? best.score - second.score
-      : Number.POSITIVE_INFINITY;
-
-    if (
-      second &&
-      !isStrongExpectedPair &&
-      margin < requiredMargin
-    ) {
-      unassignedBundles.push(bundle);
-
-      const warning = [
-        "AMBIGUOUS_MEDIA_BINDING",
-        bundle.id,
-        `${best.room.roomCode || best.room.id}:${best.score}`,
-        `${second.room.roomCode || second.room.id}:${second.score}`,
-      ].join(":");
-
-      warningsByRoomId
-        .get(best.room.id)
-        ?.add(warning);
-
-      warningsByRoomId
-        .get(second.room.id)
-        ?.add(warning);
-
+      if (nextRoom) {
+        warningsByRoomId.get(nextRoom.id)?.add(
+          `MEDIA_BEFORE_ROOM_ANCHOR_REVIEW_REQUIRED:${bundle.id}`,
+        );
+      }
       continue;
     }
 
-    assignedByRoomId
-      .get(best.room.id)
-      ?.push(bundle);
+    const roomTimestamp = Number(targetRoom.timestamp || 0);
+    const mediaTimestamp = Number(bundle.firstTimestamp || 0);
+    const timeGapMs = mediaTimestamp - roomTimestamp;
+    const roomSender = String(targetRoom.senderUid || "").trim();
+    const mediaSender = String(bundle.senderUid || "").trim();
+    const hasStableOrder =
+      roomTimestamp > 0 &&
+      mediaTimestamp > 0 &&
+      timeGapMs >= 0 &&
+      timeGapMs <= maxGapMs;
+    const sameSender =
+      !roomSender || !mediaSender || roomSender === mediaSender;
 
-    if (best.score < 75) {
-      warningsByRoomId
-        .get(best.room.id)
-        ?.add(
-          `MEDIA_BINDING_CONFIDENCE:medium:${bundle.id}:${best.score}`
-        );
+    if (!hasStableOrder || !sameSender) {
+      unassignedBundles.push(bundle);
+      warningsByRoomId.get(targetRoom.id)?.add(
+        `FORWARD_MEDIA_ORDER_REVIEW_REQUIRED:${bundle.id}`,
+      );
+      continue;
     }
+
+    assignedByRoomId.get(targetRoom.id)?.push(bundle);
   }
 
   return {

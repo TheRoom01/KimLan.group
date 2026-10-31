@@ -46,10 +46,12 @@ export type SemanticIndexedDbMessage = {
     order: number;
     timeText?: string;
     approxTimestamp?: number | null;
+    verifiedById?: boolean;
   };
 };
 
 export type SemanticVideoPayload = {
+  messageId: string;
   sourceUrl: string;
   thumbnailUrl?: string;
   durationMs?: number;

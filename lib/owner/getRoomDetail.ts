@@ -70,6 +70,8 @@ export async function getRoomDetail(roomId: string) {
         parking_fee_unit,
         other_fee_value,
         other_fee_note,
+        has_balcony,
+        has_window,
         has_elevator,
         has_stairs,
         shared_washer,

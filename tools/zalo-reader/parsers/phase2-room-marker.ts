@@ -197,7 +197,8 @@ function pricedMarkerLineIndexes(lines: string[]) {
 
     const hasRoomCue =
       codes.length > 0 ||
-      /\b(?:trong|trong san|phong|ma phong|lau|tang|tret|lung|2pn|3pn|studio)\b/.test(
+      /\btrống(?:\s+sẵn)?\b/i.test(line) ||
+      /\b(?:available|phong|ma phong|lau|tang|tret|lung|studio|duplex|[1-9]\s*pn)\b/.test(
         normalized
       );
 

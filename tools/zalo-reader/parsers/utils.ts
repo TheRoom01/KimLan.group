@@ -1,5 +1,6 @@
 // @ts-ignore Node built-in type is available in the project runtime.
 import crypto from "crypto";
+import { normalizedStreetKey } from "../../../lib/rooms/street";
 
 import type {
   SemanticAlbumPreview,
@@ -94,14 +95,17 @@ export function sortMessages(
     const timeDiff = messageTimestamp(a) - messageTimestamp(b);
     if (timeDiff !== 0) return timeDiff;
 
-    const orderDiff =
-      Number(a.domHydration?.order ?? Number.MAX_SAFE_INTEGER) -
-      Number(b.domHydration?.order ?? Number.MAX_SAFE_INTEGER);
+    const msgIdDiff = String(a.msgId || "").localeCompare(
+      String(b.msgId || ""),
+      undefined,
+      { numeric: true },
+    );
+    if (msgIdDiff !== 0) return msgIdDiff;
 
-    if (orderDiff !== 0) return orderDiff;
-
-    return String(a.msgId || "").localeCompare(
-      String(b.msgId || "")
+    return String(a.cliMsgId || "").localeCompare(
+      String(b.cliMsgId || ""),
+      undefined,
+      { numeric: true },
     );
   });
 }
@@ -196,14 +200,14 @@ export function extractAddressKey(input: unknown) {
 
   for (const line of candidates) {
     const match = line.match(
-      /^(\d+[a-z]*(?:(?:\/|-)\d+[a-z]*)*)\s+([a-z][a-z0-9.'\s-]{2,100}?)(?=\s*(?:,|\(|-|\||$|\b(?:p\.?|f\d{1,2}|phuong|q\.?|quan|tp|tphcm|hotline)\b))/i
+      /^(\d+[a-z]*(?:(?:\/|-)\d+[a-z]*)*)\s+((?:3\s*\/\s*2|3\s+thang\s+2)|[a-z][a-z0-9.'\/\s-]{2,100}?)(?=\s*(?:,|\(|-|\||$|\b(?:p\.?|f\d{1,2}|phuong|q\.?|quan|tp|tphcm|hotline)\b))/i
     );
 
     if (!match?.[1] || !match?.[2]) {
       continue;
     }
 
-    const street = normalizeAddressStreet(match[2]);
+    const street = normalizedStreetKey(normalizeAddressStreet(match[2]));
     if (!street || street.length < 2) {
       continue;
     }
@@ -508,7 +512,7 @@ export function getVideoPayload(
   message: SemanticIndexedDbMessage
 ): SemanticVideoPayload | null {
   const sourceUrl = String(
-    message.videoUrls?.find((url) => String(url || "").trim()) ||
+    message.videoUrls?.find((url) => isDownloadableZaloVideoUrl(url)) ||
       ""
   ).trim();
 
@@ -530,6 +534,7 @@ export function getVideoPayload(
   );
 
   return {
+    messageId: String(message.msgId || message.cliMsgId || "").trim(),
     sourceUrl,
     thumbnailUrl: thumbnailUrl || undefined,
     durationMs:
@@ -545,6 +550,18 @@ export function getVideoPayload(
         ? sizeBytes
         : undefined,
   };
+}
+
+export function isDownloadableZaloVideoUrl(value: unknown) {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    const hostname = parsed.hostname.toLowerCase();
+    return parsed.protocol === "https:" && (
+      hostname === "dlmd.me" || hostname.endsWith(".dlmd.me")
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function sha256(input: unknown) {

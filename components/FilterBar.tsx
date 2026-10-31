@@ -1,6 +1,7 @@
 "use client";
 
 import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import type { RoomFeature } from "@/lib/rooms/features";
 
 export type SortMode = "updated_desc" | "price_asc" | "price_desc";
 type RoomStatusFilter = "Đang trống" | "Sắp trống" | "Đã thuê";
@@ -40,6 +41,8 @@ type FilterBarProps = {
   setStatusFilter: React.Dispatch<React.SetStateAction<string | null>>;
 
   loading?: boolean;
+  featureFilters: RoomFeature[];
+  setFeatureFilters: React.Dispatch<React.SetStateAction<RoomFeature[]>>;
   onResetAll?: () => void;
 };
 
@@ -110,6 +113,8 @@ const FilterBar = ({
   setStatusFilter,
   loading = false,
   onResetAll,
+  featureFilters,
+  setFeatureFilters,
 }: FilterBarProps) => {
   const [openFilter, setOpenFilter] = useState<"district" | "roomType" | "amenities" | "sort" | null>(null);
  const [minInput, setMinInput] = useState(formatMoneyInput(priceDraft[0]));
@@ -397,7 +402,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Tìm theo tên đường, phường, quận..."
+        placeholder="Tìm đường, phường, quận, mô tả, tiện nghi..."
         className="w-full h-[46px] rounded-2xl border border-white/40 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
       />
 
@@ -620,6 +625,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
                   setMoveFilter(null);
                   setPetFilters([]);
                   setTermFilters([]);
+                  setFeatureFilters([]);
                 }}
               >
                 Clear
@@ -658,6 +664,14 @@ const toggleStatus = (value: RoomStatusFilter) => {
                 ))}
 
                 <div className="mt-1 border-t border-white/20 pt-0.5 md:hidden" />
+                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">Không gian phòng</div>
+                {([["balcony", "Ban công"], ["window", "Cửa sổ"]] as const).map(([value,label]) => (
+                  <label key={value} className={optionClass(featureFilters.includes(value))}>
+                    <input type="checkbox" className={checkboxClass} checked={featureFilters.includes(value)}
+                      onChange={() => setFeatureFilters(current => current.includes(value) ? current.filter(item=>item!==value) : [...current,value])} />
+                    <span className="text-[14px] font-medium leading-tight">{label}</span>
+                  </label>
+                ))}
               </div>
 
               <div className="space-y-1.5">

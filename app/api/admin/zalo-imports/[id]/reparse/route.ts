@@ -10,6 +10,7 @@ import {
 } from "@/lib/zalo-import/parser";
 
 import { resolveZaloImportRoom } from "@/lib/zalo-import/resolve";
+import { normalizedRoomIdentity } from "@/lib/zalo-import/room-comparison";
 
 import {
   evaluateZaloImportQuality,
@@ -328,6 +329,10 @@ export async function POST(
       );
     }
 
+    if ((pending as any).room_payload?.is_test_import === true || (pending as any).batch?.parser_result?.test_import === true) {
+      return NextResponse.json({ ok: false, error: "Chạy lại Reader để cập nhật bản nháp TEST." }, { status: 403 });
+    }
+
     const currentStatus =
       String(
         (pending as any).status ||
@@ -388,11 +393,16 @@ export async function POST(
     const resolved =
       await resolveZaloImportRoom({
         supabase,
+        sourceFieldMap: parsed.sourceFieldMap,
+        excludePendingId: pendingId,
         roomPayload:
           parsed.roomPayload,
         detailPayload:
           parsed.detailPayload,
       });
+    if (resolved.roomPayload._room_import?.conflicting_pending_ids?.length) {
+      return NextResponse.json({ ok: false, error: "Phòng đã có một bản nháp khác chưa duyệt.", code: "ROOM_PENDING_EXISTS" }, { status: 409 });
+    }
 
     const batch =
       (pending as any).batch ||
@@ -577,7 +587,12 @@ export async function POST(
 
     const nextRoomPayload = {
       ...resolved.roomPayload,
+      ...(oldRoomPayload._reader_manual_review === true || (batch as any)?.parser_result?.official_source ? { _reader_manual_review: true } : {}),
+      ...(oldRoomPayload._manual_video_required === true ? { _manual_video_required: videos.length === 0 } : {}),
+      ...(oldRoomPayload.property_id && normalizedRoomIdentity(oldRoomPayload) && normalizedRoomIdentity(oldRoomPayload) === normalizedRoomIdentity(resolved.roomPayload)
+        ? {property_id:oldRoomPayload.property_id} : {}),
       ...preservedMedia,
+      _room_import: { ...resolved.roomPayload._room_import, image_hashes: oldRoomPayload._room_import?.image_hashes || {}, video_hashes: oldRoomPayload._room_import?.video_hashes || {} },
 
       import_quality:
         importQuality,

@@ -16,7 +16,8 @@ import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import AdminNotificationCenter from "@/components/admin/AdminNotificationCenter";
 import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 import { getSavedRoomIds } from "@/lib/savedRooms";
-import { normalizeSearchKeyword } from "@/lib/rooms/search";
+import { normalizeRoomFeatures, matchesRoomFeatures, type RoomFeature } from "@/lib/rooms/features";
+import { roomMatchesSearch, normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
 
 type InitialProps = {
   initialRooms: any[];
@@ -39,6 +40,7 @@ const QS = {
   m: "m",
    pet: "pet",
   term: "term",
+  features: "features",
   s: "s",
   st: "st",
   badge: "badge",
@@ -97,6 +99,7 @@ function makeFilterSigValue(args: {
   moveFilter: "elevator" | "stairs" | null;
   petFilters: ("cat" | "dog" | "nopet")[];
   termFilters: ("short" | "long")[];
+  featureFilters?: RoomFeature[];
   sortMode: SortMode;
   statusFilter: string | null;
   badgeFilter?: RoomBadge | null;
@@ -111,6 +114,7 @@ function makeFilterSigValue(args: {
     args.moveFilter ?? "",
     args.petFilters.join(","),
     args.termFilters.join(","),
+    (args.featureFilters ?? []).join(","),
     args.sortMode,
     args.statusFilter ?? "",
     args.badgeFilter ?? "",
@@ -166,6 +170,7 @@ type BackSnapshot = {
   moveFilter: "elevator" | "stairs" | null;
   petFilters: ("cat" | "dog" | "nopet")[];
   termFilters: ("short" | "long")[];
+  featureFilters?: RoomFeature[];
   sortMode: SortMode;
   statusFilter: string | null;
 
@@ -192,6 +197,7 @@ type PersistState = {
   moveFilter: "elevator" | "stairs" | null;
   petFilters: ("cat" | "dog" | "nopet")[];
   termFilters: ("short" | "long")[];
+  featureFilters?: RoomFeature[];
   sortMode: SortMode;
   statusFilter: string | null;
 
@@ -217,6 +223,7 @@ type PersistLiteState = {
   moveFilter: "elevator" | "stairs" | null;
   petFilters: ("cat" | "dog" | "nopet")[];
   termFilters: ("short" | "long")[];
+  featureFilters?: RoomFeature[];
   sortMode: SortMode;
   statusFilter: string | null;
 
@@ -385,6 +392,7 @@ const [vipAdminName, setVipAdminName] = useState<string | null>(null);
   const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
   const [petFilters, setPetFilters] = useState<("cat" | "dog" | "nopet")[]>([]);
 const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
+const [featureFilters, setFeatureFilters] = useState<RoomFeature[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
   const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
   const lastFilterSigRef = useRef<string>("");
@@ -400,6 +408,7 @@ const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
   moveFilter: "elevator" | "stairs" | null;
   petFilters: ("cat" | "dog" | "nopet")[];
   termFilters: ("short" | "long")[];
+  featureFilters?: RoomFeature[];
   sortMode: SortMode;
   statusFilter: string | null;
   badgeFilter?: RoomBadge | null;
@@ -446,6 +455,7 @@ const filterSig = useMemo(() => {
     moveFilter ?? "",
     petFilters.join(","),
     termFilters.join(","),
+    featureFilters.join(","),
     sortMode,
     statusFilter ?? "",
     badgeFilter ?? "",
@@ -460,6 +470,8 @@ const filterSig = useMemo(() => {
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   sortMode,
   statusFilter,
   badgeFilter,
@@ -754,6 +766,7 @@ useEffect(() => {
   move: "elevator" | "stairs" | null;
   pets: ("cat" | "dog" | "nopet")[];
   terms: ("short" | "long")[];
+  features?: RoomFeature[];
   sort: SortMode;
   status: string | null;
   badge: RoomBadge | null;
@@ -955,15 +968,7 @@ const persistBlockedRef = useRef(false);
     const query = normalizeSearchKeyword(appliedSearch);
       const needle = query;
     const filtered = savedRooms.filter((room) => {
-      const detailText = (() => {
-        try { return typeof room.room_detail === "string" ? room.room_detail : JSON.stringify(room.room_detail ?? {}); }
-        catch { return ""; }
-      })();
-      const searchableText = normalizeSearchKeyword([
-        room.room_code, room.room_type, room.address, room.ward, room.district,
-        room.description, detailText,
-      ].filter(Boolean).join(" "));
-      if (needle && !searchableText.includes(needle)) return false;
+      if (needle && !roomMatchesSearch(room, needle, adminLevel === 1 || adminLevel === 2)) return false;
 
       const price = Number(room.price ?? room.price_month ?? room.monthly_price);
       if (priceFilterActive && (!Number.isFinite(price) || price < minPriceApplied || price > maxPriceApplied)) return false;
@@ -990,6 +995,7 @@ const persistBlockedRef = useRef(false);
             : room.no_pet === true);
         if (!allowed) return false;
       }
+      if (!matchesRoomFeatures(details, featureFilters)) return false;
       if (termFilters.length) {
         const terms = termFilters.some((term) => term === "short"
           ? room.short_term === true
@@ -1012,7 +1018,7 @@ const persistBlockedRef = useRef(false);
       return String(b.updated_at ?? b.created_at ?? "").localeCompare(String(a.updated_at ?? a.created_at ?? ""));
     });
   }, [savedRooms, appliedSearch, priceFilterActive, minPriceApplied, maxPriceApplied, selectedDistricts,
-    selectedRoomTypes, statusFilter, badgeFilter, moveFilter, petFilters, termFilters, sortMode]);
+    selectedRoomTypes, statusFilter, badgeFilter, moveFilter, petFilters, termFilters, featureFilters, adminLevel, sortMode]);
 
   const savedPageCount = Math.max(1, Math.ceil(savedFilteredRooms.length / LIMIT));
   const savedPageIndex = Math.min(pageIndex, savedPageCount - 1);
@@ -1075,6 +1081,7 @@ const persistBlockedRef = useRef(false);
     m?: "elevator" | "stairs" | null;
     pet?: ("cat" | "dog" | "nopet")[];
     term?: ("short" | "long")[];
+    features?: RoomFeature[];
     s?: SortMode;
     st?: string | null;
     badge?: RoomBadge | null;
@@ -1096,6 +1103,7 @@ const persistBlockedRef = useRef(false);
     setOrDel(QS.m, next.m ? next.m : null);
     setOrDel(QS.pet, next.pet?.length ? toListParam(next.pet) : null);
     setOrDel(QS.term, next.term?.length ? toListParam(next.term) : null);
+    setOrDel(QS.features, next.features?.length ? toListParam(next.features) : null);
     setOrDel(QS.s, next.s ? next.s : null);
 
     // ✅ URLSearchParams tự encode
@@ -1163,6 +1171,7 @@ const syncPageToUrl = useCallback(
     m: moveFilter,
     pet: petFilters,
     term: termFilters,
+    features: featureFilters,
     s: sortMode,
     st: statusFilter,
     badge: badgeFilter,
@@ -1180,6 +1189,8 @@ const syncPageToUrl = useCallback(
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   sortMode,
   statusFilter,
   badgeFilter,
@@ -1240,6 +1251,7 @@ const readUrlState = useCallback(() => {
     m,
     pet,
     term: normalizedTerm,
+    features: normalizeRoomFeatures(sp.get(QS.features)),
     s,
     st,
     badge,
@@ -1354,6 +1366,8 @@ const payload: PersistLiteState = {
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   sortMode,
   statusFilter,
 
@@ -1420,6 +1434,8 @@ const writeBackSnapshotNow = useCallback(() => {
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   sortMode,
   statusFilter,
 
@@ -1440,6 +1456,8 @@ const writeBackSnapshotNow = useCallback(() => {
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   pageIndex,
   priceApplied,
   search,
@@ -1490,6 +1508,8 @@ const payload: PersistState = {
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   sortMode,
   statusFilter,
 
@@ -1510,6 +1530,8 @@ debugSetItem(HOME_STATE_KEY, JSON.stringify(payload));
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   pathname,
   priceApplied,
   search,
@@ -1695,6 +1717,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
     setMoveFilter(snap.moveFilter ?? null);
     setPetFilters(snap.petFilters ?? []);
     setTermFilters(snap.termFilters ?? []);
+    setFeatureFilters(normalizeRoomFeatures(snap.featureFilters));
     setSortMode(snap.sortMode ?? "updated_desc");
     setTotal(typeof snap.total === "number" ? snap.total : null);
     setStatusFilter(snap.statusFilter ?? null);
@@ -1710,6 +1733,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
       moveFilter: snap.moveFilter ?? null,
       petFilters: snap.petFilters ?? [],
       termFilters: snap.termFilters ?? [],
+      featureFilters: normalizeRoomFeatures(snap.featureFilters),
       sortMode: snap.sortMode ?? "updated_desc",
       statusFilter: snap.statusFilter ?? null,
       badgeFilter: snapBadge,
@@ -1958,6 +1982,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   const restoredMove = rest.moveFilter ?? null;
   const restoredPets = rest.petFilters ?? [];
   const restoredTerms = rest.termFilters ?? [];
+const restoredFeatures = normalizeRoomFeatures(rest.featureFilters);
   const restoredSort = rest.sortMode ?? "updated_desc";
 
   setSearch(restoredSearch);
@@ -1968,6 +1993,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
   setMoveFilter(restoredMove);
   setPetFilters(restoredPets);
   setTermFilters(restoredTerms);
+setFeatureFilters(restoredFeatures);
   setSortMode(restoredSort);
   setTotal(typeof rest.total === "number" ? rest.total : null);
 
@@ -1985,6 +2011,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     moveFilter: restoredMove,
     petFilters: restoredPets,
     termFilters: restoredTerms,
+    featureFilters: restoredFeatures,
     sortMode: restoredSort,
     statusFilter: restoredStatus,
     badgeFilter: restoredBadge,
@@ -2039,6 +2066,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     const liteMove = lite.moveFilter ?? null;
     const litePets = lite.petFilters ?? [];
     const liteTerms = lite.termFilters ?? [];
+const liteFeatures = normalizeRoomFeatures(lite.featureFilters);
     const liteSort = lite.sortMode ?? "updated_desc";
     const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
     const liteBadgeValue = new URLSearchParams(lite.qs ?? "").get(QS.badge);
@@ -2052,6 +2080,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     setMoveFilter(liteMove);
     setPetFilters(litePets);
     setTermFilters(liteTerms);
+setFeatureFilters(liteFeatures);
     setSortMode(liteSort);
     setTotal(typeof lite.total === "number" ? lite.total : null);
     setStatusFilter(liteStatus);
@@ -2065,6 +2094,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
       moveFilter: liteMove,
       petFilters: litePets,
       termFilters: liteTerms,
+    featureFilters: liteFeatures,
       sortMode: liteSort,
       statusFilter: liteStatus,
       badgeFilter: liteBadge,
@@ -2112,6 +2142,7 @@ const hasAny =
     new URLSearchParams(window.location.search).has(QS.m) ||
     new URLSearchParams(window.location.search).has(QS.pet) ||
     new URLSearchParams(window.location.search).has(QS.term) ||
+    new URLSearchParams(window.location.search).has(QS.features) ||
     new URLSearchParams(window.location.search).has(QS.s) ||
     new URLSearchParams(window.location.search).has(QS.st) ||
     new URLSearchParams(window.location.search).has(QS.badge) ||
@@ -2137,6 +2168,7 @@ pendingUrlFiltersRef.current = {
   move: url.m,
   pets: url.pet,
   terms: url.term,
+  features: url.features,
   sort: url.s,
   status: url.st,
   badge: url.badge,
@@ -2146,6 +2178,7 @@ const urlPrice: [number, number] = [url.minVal, url.maxVal];
 const urlStatus = url.st;
 const urlPets = url.pet ?? [];
 const urlTerms = url.term ?? [];
+const urlFeatures = normalizeRoomFeatures(url.features);
 
 setSearch(url.q);
 setPriceDraft(urlPrice);
@@ -2155,6 +2188,7 @@ setSelectedRoomTypes(url.t);
 setMoveFilter(url.m);
 setPetFilters(urlPets);
 setTermFilters(urlTerms);
+setFeatureFilters(urlFeatures);
 setSortMode(url.s);
 setStatusFilter(urlStatus);
 setBadgeFilter(url.badge);
@@ -2167,6 +2201,7 @@ armRestoredFilterSig({
   moveFilter: url.m,
   petFilters: urlPets,
   termFilters: urlTerms,
+    featureFilters: urlFeatures,
   sortMode: url.s,
   statusFilter: urlStatus,
   badgeFilter: url.badge,
@@ -2284,6 +2319,7 @@ useEffect(() => {
   const liteMove = lite.moveFilter ?? null;
   const litePets = lite.petFilters ?? [];
   const liteTerms = lite.termFilters ?? [];
+const liteFeatures = normalizeRoomFeatures(lite.featureFilters);
   const liteSort = lite.sortMode ?? "updated_desc";
   const liteStatus = !isReloadRef.current ? lite.statusFilter ?? null : null;
   const liteBadgeValue = new URLSearchParams(lite.qs ?? "").get(QS.badge);
@@ -2298,6 +2334,7 @@ useEffect(() => {
   setMoveFilter(liteMove);
   setPetFilters(litePets);
   setTermFilters(liteTerms);
+setFeatureFilters(liteFeatures);
   setSortMode(liteSort);
   setTotal(typeof lite.total === "number" ? lite.total : null);
   setStatusFilter(liteStatus);
@@ -2315,6 +2352,7 @@ useEffect(() => {
     moveFilter: liteMove,
     petFilters: litePets,
     termFilters: liteTerms,
+    featureFilters: liteFeatures,
     sortMode: liteSort,
     statusFilter: liteStatus,
     badgeFilter: liteBadge,
@@ -2350,6 +2388,7 @@ useEffect(() => {
   m: liteMove,
   pet: litePets,
   term: liteTerms,
+    features: liteFeatures,
   s: liteSort,
   st: liteStatus,
     badge: liteBadge,
@@ -2368,6 +2407,7 @@ useEffect(() => {
       move: liteMove,
       pets: litePets,
       terms: liteTerms,
+    features: liteFeatures,
       sort: liteSort,
       status: liteStatus,
       badge: liteBadge,
@@ -2399,6 +2439,7 @@ const urlPrice: [number, number] = [url.minVal, url.maxVal];
 const urlStatus = isReloadRef.current ? null : url.st;
 const urlPets = url.pet ?? [];
 const urlTerms = url.term ?? [];
+const urlFeatures = normalizeRoomFeatures(url.features);
 
 pendingUrlFiltersRef.current = {
   search: url.q,
@@ -2410,6 +2451,7 @@ pendingUrlFiltersRef.current = {
   move: url.m,
   pets: urlPets,
   terms: urlTerms,
+    features: urlFeatures,
   sort: url.s,
   status: urlStatus,
   badge: url.badge,
@@ -2423,6 +2465,7 @@ setSelectedRoomTypes(url.t);
 setMoveFilter(url.m);
 setPetFilters(urlPets);
 setTermFilters(urlTerms);
+setFeatureFilters(urlFeatures);
 setSortMode(url.s);
 setStatusFilter(urlStatus);
 setBadgeFilter(url.badge);
@@ -2436,6 +2479,7 @@ armRestoredFilterSig({
   moveFilter: url.m,
   petFilters: urlPets,
   termFilters: urlTerms,
+    featureFilters: urlFeatures,
   sortMode: url.s,
   statusFilter: urlStatus,
   badgeFilter: url.badge,
@@ -2598,6 +2642,7 @@ const res = await fetchRooms({
     ? (pending?.pets ?? petFilters)
     : undefined,
 
+  featureFilters: pending?.features ?? featureFilters,
   contractTerms: (pending?.terms ?? termFilters).length
     ? (pending?.terms ?? termFilters)
     : undefined,
@@ -2750,6 +2795,8 @@ if (targetIndex === pageIndexRef.current) {
       moveFilter,
       petFilters,
       termFilters,
+
+      featureFilters,
       debugEnabled,
       displayPageIndex,
       total,
@@ -2859,6 +2906,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     move: null,
     pets: [] as ("cat" | "dog" | "nopet")[],
     terms: [] as ("short" | "long")[],
+    features: [] as RoomFeature[],
     sort: "updated_desc" as SortMode,
     status: null,
     badge: null as RoomBadge | null,
@@ -2874,6 +2922,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     moveFilter: defaultFilters.move,
     petFilters: defaultFilters.pets,
     termFilters: defaultFilters.terms,
+    featureFilters: defaultFilters.features,
     sortMode: defaultFilters.sort,
     statusFilter: defaultFilters.status,
     badgeFilter: defaultFilters.badge,
@@ -2888,6 +2937,7 @@ const resetAllFiltersAndReload = useCallback(() => {
   setMoveFilter(defaultFilters.move);
   setPetFilters(defaultFilters.pets);
   setTermFilters(defaultFilters.terms);
+  setFeatureFilters(defaultFilters.features);
   setSortMode(defaultFilters.sort);
   setStatusFilter(defaultFilters.status);
   setBadgeFilter(defaultFilters.badge);
@@ -2907,6 +2957,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     m: defaultFilters.move,
     pet: defaultFilters.pets,
     term: defaultFilters.terms,
+    features: defaultFilters.features,
     s: defaultFilters.sort,
     st: defaultFilters.status,
     badge: defaultFilters.badge,
@@ -2990,6 +3041,7 @@ useEffect(() => {
       m: moveFilter,
       pet: petFilters,
       term: termFilters,
+    features: featureFilters,
       s: sortMode,
       st: statusFilter,
       badge: badgeFilter,
@@ -3014,6 +3066,7 @@ useEffect(() => {
   m: moveFilter,
   pet: petFilters,
   term: termFilters,
+    features: featureFilters,
   s: sortMode,
   st: statusFilter,
   badge: badgeFilter,
@@ -3144,6 +3197,7 @@ const qs = buildQs({
   m: moveFilter,
 pet: petFilters,
 term: termFilters,
+    features: featureFilters,
   s: sortMode,
   st: statusFilter,
   badge: badgeFilter,
@@ -3168,6 +3222,8 @@ persistSoon();
   moveFilter,
   petFilters,
   termFilters,
+
+  featureFilters,
   sortMode,
   persistSoon,
   statusFilter,
@@ -3201,6 +3257,7 @@ const qs = buildQs({
   m: moveFilter,
 pet: petFilters,
 term: termFilters,
+    features: featureFilters,
   s: sortMode,
   st: statusFilter,
   badge: badgeFilter,
@@ -3545,6 +3602,8 @@ return (
               setMoveFilter={setMoveFilter}
               petFilters={petFilters}
               setPetFilters={setPetFilters}
+              featureFilters={featureFilters}
+              setFeatureFilters={setFeatureFilters}
               termFilters={termFilters}
               setTermFilters={setTermFilters}
               statusFilter={statusFilter}

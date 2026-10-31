@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { deleteR2Keys } from "@/lib/r2/zalo-temp";
+import { getImportReview, normalizedRoomIdentity, canonicalStoredIdentity, ROOM_UPDATE_FIELDS, DETAIL_UPDATE_FIELDS, stableJson } from "@/lib/zalo-import/room-comparison";
 
 export const runtime = "nodejs";
 
@@ -413,6 +414,14 @@ export async function PATCH(
     const pendingRow =
       pending as unknown as PendingDraftRow;
 
+    if ((pending as any).room_payload?.is_test_import === true) {
+      return NextResponse.json({ ok: false, error: "Bản TEST chỉ cập nhật bằng Reader; không sửa hoặc tự duyệt." }, { status: 403 });
+    }
+    const originalReview = getImportReview(pendingRow.room_payload);
+    if (originalReview?.identity_key && normalizedRoomIdentity({ ...pendingRow.room_payload, ...roomPayload }) !== canonicalStoredIdentity(originalReview.identity_key)) {
+      return NextResponse.json({ ok: false, error: "Khóa phòng đã đổi. Hãy dùng Phân tích lại để xác minh phòng đích trước khi lưu." }, { status: 409 });
+    }
+
     if (
       [
         "Đã duyệt",
@@ -648,7 +657,7 @@ export async function PATCH(
           type,
           url,
           temp_r2_key: tempR2Key,
-          sort_order: normalizeSortOrder(item?.sort_order, index),
+          sort_order: normalizeSortOrder(item?.sort_order, currentImageRows.length + currentVideoRows.length + index),
         };
       })
       .filter(
@@ -674,11 +683,13 @@ export async function PATCH(
 
     const imagesChanged =
       JSON.stringify(currentImageIds) !== JSON.stringify(requestedImageIds) ||
+      (hasImageOrder && imageOrder.some((item, index) => normalizeSortOrder(item?.sort_order, index) !== normalizeSortOrder(currentImageRows.find(row => String(row.id) === String(item.id))?.sort_order, index))) ||
       effectiveRemovedIds.length > 0 ||
       normalizedNewMedia.some((item) => item.type === "image");
 
     const videosChanged =
       JSON.stringify(currentVideoIds) !== JSON.stringify(requestedVideoIds) ||
+      (hasVideoOrder && videoOrder.some((item, index) => normalizeSortOrder(item?.sort_order, index) !== normalizeSortOrder(currentVideoRows.find(row => String(row.id) === String(item.id))?.sort_order, index))) ||
       effectiveRemovedVideoIds.length > 0 ||
       normalizedNewMedia.some((item) => item.type === "video");
 
@@ -845,7 +856,7 @@ export async function PATCH(
         batch_id: pendingRow.batch_id,
         temp_r2_key: item.temp_r2_key,
         temp_image_url: item.url,
-        sort_order: requestedImageIds.length + index,
+        sort_order: item.sort_order,
       }));
 
     const newVideoRows = normalizedNewMedia
@@ -855,7 +866,7 @@ export async function PATCH(
         batch_id: pendingRow.batch_id,
         temp_r2_key: item.temp_r2_key,
         temp_video_url: item.url,
-        sort_order: requestedVideoIds.length + index,
+        sort_order: item.sort_order,
       }));
 
     if (newImageRows.length > 0) {
@@ -950,6 +961,11 @@ export async function PATCH(
         {}
       ),
       ...roomPayload,
+      ...((pendingRow.room_payload as any)?._reader_manual_review === true ? { _reader_manual_review: true } : {}),
+      ...((pendingRow.room_payload as any)?._manual_video_required === true ? {
+        _manual_video_required: requestedVideoIds.length + newVideoRows.length === 0,
+      } : {}),
+      ...(originalReview ? { _room_import: structuredClone(originalReview) } : {}),
     };
 
     const nextDetailPayload = {
@@ -959,6 +975,21 @@ export async function PATCH(
       ),
       ...detailPayload,
     };
+    if (originalReview) {
+      // The client cannot replace snapshots/type/target via the edit form.
+      const review = (nextRoomPayload as any)._room_import;
+      for (const [scope, fields, oldPayload, newPayload] of [
+        ["room", ROOM_UPDATE_FIELDS, pendingRow.room_payload, roomPayload],
+        ["detail", DETAIL_UPDATE_FIELDS, pendingRow.detail_payload, detailPayload],
+      ] as const) {
+        for (const field of fields) {
+          if (Object.hasOwn(newPayload, field) && stableJson(oldPayload?.[field]) !== stableJson(newPayload[field])) {
+            review.presence[`${scope}.${field}`] = newPayload[field] == null || newPayload[field] === "" ? "clear" : "value";
+            review.uncertain_fields = review.uncertain_fields.filter((key: string) => key !== `${scope}.${field}`);
+          }
+        }
+      }
+    }
 
     const nextRevision =
       Math.max(
@@ -1006,7 +1037,11 @@ export async function PATCH(
     let autoApproveReason:
       string | null = null;
 
-    if (
+    if (body?.manualReviewOnly === true || (pendingRow.room_payload as any)?._reader_manual_review === true) {
+      autoApproveReason = "Phòng từ Reader chính thức phải được duyệt thủ công.";
+    } else if (originalReview && originalReview.type !== "CREATE") {
+      autoApproveReason = "Bản cập nhật/cần xác minh phải duyệt thủ công từng trường.";
+    } else if (
       String(
         pendingRow.status
       ) !== "Chờ duyệt"

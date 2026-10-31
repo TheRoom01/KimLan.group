@@ -1,10 +1,13 @@
 {
+  "mode": "test-local",
   "webBaseUrl": "https://canhodichvu.pro",
   "internalSecret": "",
   "scanIntervalMs": 600000,
   "messageLookbackHours": 24,
   "strictMessageLookback": true,
   "previewOnly": false,
+  "testImportToPending": false,
+  "allowReimportForTesting": true,
   "previewOnlyGroupKeys": [
     "Gio-Hang-Can-Ho-Q1-Q3-Q10"
   ],

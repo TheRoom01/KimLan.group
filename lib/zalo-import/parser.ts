@@ -1,3 +1,5 @@
+import { normalizedStreetKey } from "../rooms/street";
+export { normalizedStreetKey } from "../rooms/street";
 export type ParsedZaloRoom = {
   roomPayload: Record<string, any>;
   detailPayload: Record<string, any>;
@@ -724,6 +726,9 @@ function extractRoomCodeFromMarker(
       text.match(pattern);
 
     if (match?.[1]) {
+      // A vacancy date such as "trống 21/11" is not room code 21.
+      const afterMatch = text.slice((match.index || 0) + match[0].length);
+      if (/^\s*\/\s*\d/.test(afterMatch)) continue;
       return normalizeRoomCode(
         match[1]
       );
@@ -739,6 +744,12 @@ function extractRoomCodeFromMarker(
       .split(/\b(?:trống|còn\s*trống|đã\s*thuê|hết\s*phòng|available)\b/i)[0]
       .replace(/^\s*[-–—:|]+\s*/, "")
       .trim();
+    // A bare code is explicit only in the bounded field after a room's price.
+    // Do not search arbitrary text/media metadata for numbers or identifiers.
+    const bareCode = codeField.match(new RegExp(`^(${codeToken})\\s*[-–—|]?\\s*$`, "i"));
+    if (bareCode?.[1] && normalizeRoomTypeFromText(text) && extractRoomPriceFromMarker(text) != null) {
+      return normalizeRoomCode(bareCode[1]);
+    }
     const postPriceCodes = Array.from(
       codeField.matchAll(/(?:p\s*\.?\s*[a-z]?\d{2,4}[a-z]?|lầu\s*\d{1,2}|trệt)/gi)
     ).map((match) => match[0]);
@@ -1240,12 +1251,12 @@ function extractAddressParts(
 
   /* ADDRESS_PARSER_V7_ALPHANUMERIC_HOUSE_NUMBER */
   const houseNumberSource =
-    "(?:[A-Za-z]{1,4})?\\d+[A-Za-z]{0,4}" +
-    "(?:(?:\\/|-)\\d+[A-Za-z]{0,4})*";
+    "(?:[A-Za-z]{1,4})?\\d+[A-Za-z0-9]{0,4}" +
+    "(?:(?:\\/|-)\\d+[A-Za-z0-9]{0,4})*";
 
   const houseAndStreetPattern =
     new RegExp(
-      `^(${houseNumberSource})\\s+([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ0-9.'’/\\s-]{1,140})$`,
+      `^(${houseNumberSource})\\s+((?:3(?:\\s*[/]\\s*2|\\s+Tháng\\s+2)|[A-Za-zÀ-ỹ])[A-Za-zÀ-ỹ0-9.'’/\\s-]{0,140})$`,
       "i"
     );
 
@@ -1527,10 +1538,16 @@ function extractAddressParts(
       );
   }
 
+  /*
+   * Chỉ dò nhãn phường trên từng dòng. Nếu dò xuyên toàn bộ form, đơn vị
+   * `/p` ở cuối dòng phí dịch vụ có thể nuốt dòng tiện ích kế tiếp làm tên
+   * phường vì `\\s` cũng khớp ký tự xuống dòng.
+   */
   result.ward =
-    extractWardFromBuildingText(
-      rawText
-    );
+    rawText
+      .split("\n")
+      .map((line) => extractWardFromBuildingText(line))
+      .find(Boolean) || "";
 
   if (
     !result.district ||
@@ -1640,7 +1657,7 @@ function extractAddressParts(
 
     if (
       street.length < 2 ||
-      /^(?:gia|dien|nuoc|dich vu|phi|coc|hoa hong|phong|room|trong)\b/.test(
+      !normalizedStreetKey(street) || /^(?:gia|dien|nuoc|dich vu|phi|coc|hoa hong|phong|room|trong)\b/.test(
         normalizedStreet
       )
     ) {
@@ -1754,7 +1771,7 @@ function extractAddressParts(
   for (const line of lines) {
     if (
       new RegExp(
-        `^${houseNumberSource}(?:\\s|[,;])+[A-Za-zÀ-ỹ]`,
+        `^${houseNumberSource}(?:\\s|[,;])+(?:[A-Za-zÀ-ỹ]|3(?:\\s*/\\s*2|\\s+Tháng\\s+2))`,
         "i"
       ).test(line) &&
       parseAddressCandidate(
@@ -2244,6 +2261,15 @@ function splitBuildingAndRoomText(
     index >= 0;
     index--
   ) {
+    /*
+     * Khi nguồn không có dòng trống, toàn bộ form là một paragraph nhiều dòng.
+     * Không được coi cả form là marker chỉ vì dòng cuối có đủ mã/giá; để vòng
+     * fallback theo từng dòng bên dưới tách đúng thông tin tòa nhà và phòng.
+     */
+    if (paragraphs[index].includes("\n")) {
+      continue;
+    }
+
     if (
       !looksLikeRoomMarkerText(
         paragraphs[index]
@@ -3163,6 +3189,8 @@ function defaultDetailPayload(): Record<string, any> {
     other_fee_value: null,
     other_fee_note: "",
 
+    has_balcony: null,
+    has_window: null,
     has_elevator: null,
     has_stairs: null,
     shared_washer: null,
@@ -3301,9 +3329,16 @@ const otherAmenities =
   const roomMarkerAmenities: string[] = [];
   if (/(?:^|[\/+ ])cs(?=$|[\/+\s-])/.test(markerTextNoTone)) {
     roomMarkerAmenities.push("Cửa sổ");
+    detailPayload.has_window = true;
+    sourceFieldMap.has_window = "Tin Zalo";
   }
   if (/(?:^|[\/+ ])bc(?=$|[\/+\s-])/.test(markerTextNoTone)) {
     roomMarkerAmenities.push("Ban công");
+    detailPayload.has_balcony = true;
+    sourceFieldMap.has_balcony = "Tin Zalo";
+  }
+  if (/(?:^|[\/+ ])1\s*pk(?=$|[\/+\s-])/.test(markerTextNoTone)) {
+    roomMarkerAmenities.push("1 phòng khách");
   }
 
   const mergedOtherAmenities = uniqueTextLines([
@@ -3493,6 +3528,26 @@ if (
       "Tin Zalo";
   }
 
+  // A default fee unit is not evidence of a new unit. Mark only units actually
+  // present beside a parsed fee, including /m3 and /khối.
+  const unitNames: Record<string, string> = { kwh: "kWh", kw: "kWh", m3: "m3", "m³": "m3", khoi: "m3", nguoi: "người", ng: "người", phong: "phòng", p: "phòng", xe: "chiếc", chiec: "chiếc" };
+  const feeUnitLines = getCleanZaloLines(text).map(normalizeForCompare);
+  for (const [fee, label] of [["electric", /\bdien\b/], ["water", /\bnuoc\b/], ["service", /\b(?:dich vu|dv|service)\b/], ["parking", /\b(?:xe|parking)\b/]] as const) {
+    const line = feeUnitLines.find(line => label.test(line));
+    const labelMatch = line?.match(label);
+    const tail = labelMatch ? line!.slice((labelMatch.index || 0) + labelMatch[0].length).split(/\b(?:phi\s*)?(?:dien|nuoc|dich vu|dv|parking|giu xe|gui xe)\b|[;|]/)[0] : "";
+    if (/^\s*[:=-]?\s*(?:khong(?: con)?(?: ap dung)?|mien phi|free)\s*$/.test(tail)) {
+      detailPayload[`${fee}_fee_value`] = 0;
+      sourceFieldMap[`${fee}_fee_value`] = "Tin Zalo";
+    }
+    if (!sourceFieldMap[`${fee}_fee_value`]) continue;
+    const unit = tail.match(/\/\s*(kwh|kw|m3|m³|khoi|nguoi|ng|phong|p|xe|chiec)(?:\s*\/\s*(thang))?(?=$|\s|[,;])/);
+    if (unit) {
+      detailPayload[`${fee}_fee_unit`] = unitNames[unit[1]] + (unit[2] ? "/tháng" : "");
+      sourceFieldMap[`${fee}_fee_unit`] = "Tin Zalo";
+    }
+  }
+
   if (/đã\s*thuê|da\s*thue|hết\s*phòng|het\s*phong/i.test(text)) {
     roomPayload.status = "Đã thuê";
     sourceFieldMap.status = "Tin Zalo";
@@ -3501,8 +3556,29 @@ if (
     sourceFieldMap.status = "Tin Zalo";
   }
 
-    if (/thang máy|thang may|có thang máy|co thang may/i.test(textNoTone)) {
+  // Preserve an incomplete vacancy date for review; never invent its year.
+  const vacancyDate = markerTextNoTone.match(/\btrong\s*(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{4}))?\b/);
+  if (vacancyDate) {
+    roomPayload.available_from_text = vacancyDate[0].replace(/^trong\s*/, "");
+    if (vacancyDate[3]) {
+      const year = Number(vacancyDate[3]), month = Number(vacancyDate[2]), day = Number(vacancyDate[1]);
+      const date = new Date(Date.UTC(year, month - 1, day));
+      if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+        roomPayload.available_from = date.toISOString().slice(0, 10);
+        sourceFieldMap.available_from = "Tin Zalo";
+      }
+    }
+  } else if (/\btrong san\b/.test(markerTextNoTone)) {
+    roomPayload.available_from = null;
+    sourceFieldMap.available_from = "Tin Zalo";
+  }
+
+    if (/thang máy|thang may|có thang máy|co thang may|\bthang\s*:\s*may\b/i.test(textNoTone)) {
     detailPayload.has_elevator = true;
+    sourceFieldMap.has_elevator = "Tin Zalo";
+  }
+  if (/\b(?:khong|ko)(?: con)?\s+(?:co\s+)?thang may\b/.test(textNoTone)) {
+    detailPayload.has_elevator = false;
     sourceFieldMap.has_elevator = "Tin Zalo";
   }
 
@@ -3596,7 +3672,7 @@ if (explicitFeeNotes.length > 0) {
     );
 
   const sharedWasherMentioned =
-    /\b(?:may giat chung|mg chung|giat chung)\b/.test(
+    /\b(?:may giat chung|mg chung|giat(?:\s+say)? chung)\b/.test(
       textNoTone
     );
 

@@ -58,6 +58,38 @@ function imageMessage(
   };
 }
 
+function videoMessage(
+  id: string,
+  timestamp: number,
+  sourceUrl = "https://media.dlmd.me/fixture.mp4"
+): SemanticIndexedDbMessage {
+  return {
+    msgId: id,
+    cliMsgId: id,
+    msgType: 18,
+    kind: "other",
+    text: "",
+    imageUrls: [],
+    groupLayoutId: null,
+    imageIndex: null,
+    totalImages: null,
+    sendDttm: timestamp,
+    serverTime: timestamp,
+    fromUid: "u1",
+    toUid: "g1",
+    senderName: "Tester",
+    originMsgType: "chat.video.msg",
+    videoUrls: sourceUrl ? [sourceUrl] : [],
+    videoThumbUrls: ["https://media.zdn.vn/fixture.jpg"],
+    videoDebug: {
+      durationMs: 26_000,
+      width: 720,
+      height: 1280,
+      sizeBytes: 1_234_567,
+    },
+  };
+}
+
 const markerBeforeImages = buildSemanticTimelineRooms({
   groupName: "TEST",
   groupId: "g1",
@@ -127,12 +159,12 @@ assert.equal(imagesBeforeMarker.length, 2);
 assert.deepEqual(
   imagesBeforeMarker.find((room) => room.markerText.includes("P202"))
     ?.imageMessageIds,
-  ["202-a", "202-b"]
+  ["401-a", "401-b"]
 );
 assert.deepEqual(
   imagesBeforeMarker.find((room) => room.markerText.includes("P401"))
     ?.imageMessageIds,
-  ["401-a", "401-b"]
+  []
 );
 
 const combinedBuildingAndRoom = buildSemanticTimelineRooms({
@@ -344,17 +376,14 @@ if (!room902 || shared503And803.length !== 2) {
   );
 }
 
-assert.deepEqual(
-  room902.imageMessageIds,
-  ["902-a", "902-b"]
-);
+assert.deepEqual(room902.imageMessageIds, [
+  "503-a",
+  "503-b",
+  "503-c",
+]);
 
 for (const room of shared503And803) {
-  assert.deepEqual(room.imageMessageIds, [
-    "503-a",
-    "503-b",
-    "503-c",
-  ]);
+  assert.deepEqual(room.imageMessageIds, []);
 
   assert.equal(
     room.markerText,
@@ -607,19 +636,23 @@ assert.deepEqual(
   finalBatchMarkersThenAlbums.find((room) =>
     room.markerText.includes("301")
   )?.imageMessageIds,
-  ["final-batch-301-a"]
+  []
 );
 assert.deepEqual(
   finalBatchMarkersThenAlbums.find((room) =>
     room.markerText.includes("302")
   )?.imageMessageIds,
-  ["final-batch-302-a"]
+  []
 );
 assert.deepEqual(
   finalBatchMarkersThenAlbums.find((room) =>
     room.markerText.includes("303")
   )?.imageMessageIds,
-  ["final-batch-303-a"]
+  [
+    "final-batch-301-a",
+    "final-batch-302-a",
+    "final-batch-303-a",
+  ]
 );
 
 console.log("Phase 2 final marker-album regression: PASS");
@@ -635,7 +668,7 @@ const finalKinhDuong = buildSemanticTimelineRooms({
   ],
 });
 assert.equal(finalKinhDuong.length, 2);
-assert.ok(finalKinhDuong.every((room) => room.imageMessageIds.includes("kd-image")));
+assert.ok(finalKinhDuong.every((room) => room.imageMessageIds.length === 0));
 assert.ok(finalKinhDuong.every((room) => room.houseInfoText.includes("36 Kinh Dương Vương")));
 
 const finalDuongBaTrac = buildSemanticTimelineRooms({
@@ -650,7 +683,7 @@ const finalDuongBaTrac = buildSemanticTimelineRooms({
   ],
 });
 assert.equal(finalDuongBaTrac.length, 3);
-assert.ok(finalDuongBaTrac.every((room) => room.imageMessageIds.includes("dbt-image")));
+assert.ok(finalDuongBaTrac.every((room) => room.imageMessageIds.length === 0));
 
 const finalTextOnlyBuilding = buildSemanticTimelineRooms({
   groupName: "FINAL-TEXT-ONLY",
@@ -673,3 +706,75 @@ assert.ok(finalMediaReview[0].warnings.includes("ROOM_MARKER_MISSING"));
 assert.ok(finalMediaReview[0].warnings.includes("UNASSIGNED_MEDIA_REVIEW_REQUIRED"));
 
 console.log("Final building-room architecture regression: PASS");
+
+/* Forward-only media + video regressions from the controlled staging group. */
+const l01ForwardOnly = buildSemanticTimelineRooms({
+  groupName: "FORWARD-L01",
+  groupId: "g1",
+  // Deliberately newest -> oldest, matching the DOM/export order seen in staging.
+  messages: [
+    textMessage("l01-note", "‼️1/12/2026 Trống\nXem phòng vui lòng liên hệ trước\n💰Chốt trong tháng 11 thưởng nóng 500.000 VND", 6_000),
+    ...Array.from({ length: 13 }, (_, index) =>
+      imageMessage(`l01-album-${12 - index}`, "l01-album", 12 - index, 13, 4_000 + 12 - index)
+    ),
+    textMessage("l01-anchor", "Studio/CS - 5.800.000 - P.L01 - trống 1/12", 3_000),
+    imageMessage("l01-before", "l01-before", 0, 1, 2_000),
+    textMessage("l01-building", "219/89A Trần Văn Đang, Q3\nPhí điện: 4.000/Kwh", 1_000),
+  ],
+});
+assert.equal(l01ForwardOnly.length, 1);
+assert.equal(l01ForwardOnly[0].roomCode, "P.L01");
+assert.equal(l01ForwardOnly[0].imageMessageIds.length, 13);
+assert.ok(!l01ForwardOnly[0].imageMessageIds.includes("l01-before"));
+assert.doesNotMatch(l01ForwardOnly[0].markerText, /thưởng nóng/i);
+
+const room402Video = buildSemanticTimelineRooms({
+  groupName: "VIDEO-402",
+  groupId: "g1",
+  messages: [
+    textMessage("402-building", "235/71 Nam Kỳ Khởi Nghĩa, Q3", 10_000),
+    textMessage("402-anchor", "Studio/CS - 5.500.000 - P.402 - trống", 11_000),
+    videoMessage("402-video", 12_000),
+  ],
+});
+assert.equal(room402Video.length, 1);
+assert.equal(room402Video[0].roomCode, "P.402");
+assert.equal(room402Video[0].imageUrls.length, 0);
+assert.equal(room402Video[0].videos.length, 1);
+assert.equal(room402Video[0].videos[0].durationMs, 26_000);
+assert.ok(!room402Video[0].warnings.includes("ROOM_MEDIA_MISSING"));
+
+const twoRoomsForward = buildSemanticTimelineRooms({
+  groupName: "FORWARD-A-B",
+  groupId: "g1",
+  messages: [
+    textMessage("ab-building", "10 Nguyễn Huệ, Q1", 20_000),
+    textMessage("ab-a", "Studio/CS - 5.000.000 - P.A01 - trống", 21_000),
+    imageMessage("ab-media-a", "ab-album-a", 0, 1, 22_000),
+    textMessage("ab-b", "Studio/BC - 6.000.000 - P.B01 - trống", 23_000),
+    imageMessage("ab-media-b", "ab-album-b", 0, 1, 24_000),
+  ],
+});
+assert.deepEqual(
+  twoRoomsForward.map((room) => [room.roomCode, room.imageMessageIds]).sort(),
+  [
+    ["P.A01", ["ab-media-a"]],
+    ["P.B01", ["ab-media-b"]],
+  ],
+);
+
+const videoWithoutSource = buildSemanticTimelineRooms({
+  groupName: "VIDEO-MISSING-SOURCE",
+  groupId: "g1",
+  messages: [
+    textMessage("missing-building", "12 Nguyễn Huệ, Q1", 30_000),
+    textMessage("missing-anchor", "Studio/CS - 5.500.000 - P.402 - trống", 31_000),
+    videoMessage("missing-video", 32_000, ""),
+  ],
+});
+assert.equal(videoWithoutSource[0].hasVideo, true);
+assert.equal(videoWithoutSource[0].videos.length, 0);
+assert.ok(videoWithoutSource[0].warnings.includes("VIDEO_SOURCE_URL_MISSING:1"));
+assert.ok(!videoWithoutSource[0].warnings.includes("NO_MEDIA"));
+
+console.log("Forward-only media and video regressions: PASS");

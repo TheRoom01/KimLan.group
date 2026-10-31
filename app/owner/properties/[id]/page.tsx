@@ -51,6 +51,8 @@ type AccountUser = {
 
 const AMENITIES = [
   ["has_elevator", "Thang máy", Building2],
+  ["has_balcony", "Ban công", Building2],
+  ["has_window", "Cửa sổ", Sparkles],
   ["has_stairs", "Cầu thang bộ", Sparkles],
   ["shared_washer", "Máy giặt chung", WashingMachine],
   ["private_washer", "Máy giặt riêng", WashingMachine],

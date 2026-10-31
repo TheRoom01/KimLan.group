@@ -417,6 +417,7 @@ function Field({
 }
 
 const AMENITIES = [
+  ["has_balcony", "Ban công"], ["has_window", "Cửa sổ"],
   ["has_elevator", "Thang máy"], ["has_stairs", "Cầu thang bộ"],
   ["shared_washer", "Máy giặt chung"], ["private_washer", "Máy giặt riêng"],
   ["shared_dryer", "Máy sấy chung"], ["private_dryer", "Máy sấy riêng"],

@@ -3,7 +3,12 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import os from "os";
-import readline from "readline";
+import { waitForTerminalEnter } from "./terminal-wait";
+import { createVideoPlaybackProbe, VIDEO_OBJECT_OBSERVER } from "./video-playback-probe";
+import { buildMediaReport } from "../../lib/zalo-reader/media-report";
+import { getOfficialSession } from "./official-runtime";
+import { mediaReadinessBrowserScript, waitForStableMedia, mergeCapturedImages } from "./media-readiness";
+import { isDownloadableZaloVideoUrl } from "./parsers/utils";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -18,6 +23,7 @@ import {
   isReaderImportAllowed,
   PHASE5_PREVIEW_GROUP_NAME,
   PREVIEW_LOGIN_WAIT_MS,
+  resolveTrustedMessageTimestamp,
   sanitizePreviewText,
   waitForUiReady,
   type PreviewTimestampResult,
@@ -27,11 +33,13 @@ import {
   CONTROLLED_ZALO_GROUP_NAME,
   isControlledZaloTarget,
   selectControlledStagingRooms,
+  isAnchoredImportCandidate,
 } from "../../lib/zalo-reader/controlled-staging";
 import {
   assertStagingImportApiAvailable,
   buildStagingRoomContent,
   resolveStagingImportEndpoint,
+  STAGING_API_IMPORT_TIMEOUT_MS,
   StagingImportTransportError,
   ZALO_READER_IMPORT_PATH,
 } from "../../lib/zalo-reader/staging-import-transport";
@@ -41,6 +49,13 @@ import {
   resolveMessageLookbackHours,
   resolveStrictMessageLookback,
 } from "./parsers/phase3-message-lookback";
+
+import {
+  decodeZdbMessagePayload,
+  lookupZdbMessageRecord,
+  zdbMessageBrowserScript,
+  hasVerifiedZdbContent,
+} from "./parsers/zdb-message-decoder";
 
 const execFileAsync =
   promisify(execFile);
@@ -85,6 +100,16 @@ type SavedGroupRefs =
   >;
 
 type Config = {
+  officialReader?: boolean;
+  officialTrial?: boolean;
+  runOnce?: boolean;
+  nonInteractive?: boolean;
+  officialExactResultCount?: number;
+  officialFromMs?: number;
+  officialToMs?: number;
+  officialStopIds?: string[];
+  officialMessageTimes?: Record<string, number>;
+  officialWindowKnownEmpty?: boolean;
   webBaseUrl: string;
   internalSecret: string;
   scanIntervalMs: number;
@@ -94,6 +119,10 @@ type Config = {
   groups: GroupConfigEntry[];
   /** Hard side-effect barrier for local-only validation. */
   previewOnly?: boolean;
+  /** Local parser/media checks only; never calls the import API or updates state. */
+  allowReimportForTesting?: boolean;
+  testImportToPending?: boolean;
+  testNewSourcesOnly?: boolean;
   /** Restrict preview mode to these configured group keys. */
   previewOnlyGroupKeys?: string[];
   /** Armed staging mode still requires previewOnly=false to send anything. */
@@ -303,6 +332,7 @@ type IndexedDbRoomPreview = {
 };
 
 type IndexedDbVideoPayload = {
+  messageId: string;
   sourceUrl: string;
   thumbnailUrl?: string;
 
@@ -313,6 +343,7 @@ type IndexedDbVideoPayload = {
 };
 
 type ReaderIssue = {
+  code?: string;
   level:
     | "warning"
     | "error";
@@ -348,6 +379,9 @@ type RoomUnit = {
    */
   expectedImageCount?: number;
   expectedVideoCount?: number;
+  videoSourceMessageIds?: string[];
+  albumExpectedImageCount?: number | null;
+  mediaVerification?: string;
 
   /*
    * Lỗi Reader phát hiện trước khi gọi API.
@@ -357,7 +391,7 @@ type RoomUnit = {
 
 const ROOT = process.cwd();
 const CONFIG_PATH =
-  path.join(
+  process.env.ZALO_READER_CONFIG_PATH || path.join(
     ROOT,
     "tools/zalo-reader/config.json"
   );
@@ -551,6 +585,24 @@ function readConfig(): Config {
   loadDotEnvLocal();
 
   const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  if(config.mode==="production" && (!config.officialReader || !getOfficialSession() || ["allowReimportForTesting","testImportToPending","officialTrial","previewOnly","stagingOnlyImport"].some(flag=>config[flag]!==false))) {
+    throw new Error("PRODUCTION_MODE_CONFLICT: Chỉ chạy production bằng npm run zalo-reader:production; không được bật cờ TEST LOCAL.");
+  }
+
+  if (config.testImportToPending !== undefined && typeof config.testImportToPending !== "boolean") {
+    throw new Error("testImportToPending phải là true hoặc false.");
+  }
+  if (config.testImportToPending && (config.allowReimportForTesting || config.previewOnly || !config.stagingOnlyImport)) {
+    throw new Error("testImportToPending yêu cầu stagingOnlyImport=true, previewOnly=false, allowReimportForTesting=false.");
+  }
+  if (config.testNewSourcesOnly && !config.testImportToPending) throw new Error("testNewSourcesOnly yêu cầu testImportToPending=true.");
+
+  if (config.allowReimportForTesting !== undefined && typeof config.allowReimportForTesting !== "boolean") {
+    throw new Error("allowReimportForTesting phải là true hoặc false.");
+  }
+  if (config.allowReimportForTesting && (!config.stagingOnlyImport || config.previewOnly)) {
+    throw new Error("allowReimportForTesting yêu cầu stagingOnlyImport=true và previewOnly=false để kiểm tra media trong giới hạn staging.");
+  }
 
   if (
     config.previewOnly !== undefined &&
@@ -574,7 +626,7 @@ function readConfig(): Config {
     process.env.ZALO_READER_INTERNAL_SECRET ||
     config.internalSecret;
 
-  if (!config.previewOnly && !config.internalSecret) {
+  if (!config.previewOnly && !config.allowReimportForTesting && !config.internalSecret) {
     throw new Error("Missing ZALO_READER_INTERNAL_SECRET");
   }
 
@@ -1660,16 +1712,7 @@ async function waitForPreviewLogin(page: Page, config: Config) {
 }
 
 function waitForPreviewEnter(message: string) {
-  return new Promise<void>((resolve) => {
-    const terminal = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-    terminal.question(message, () => {
-      terminal.close();
-      resolve();
-    });
-  });
+  return waitForTerminalEnter(message);
 }
 
 async function openGroup(
@@ -1684,7 +1727,7 @@ async function openGroup(
       )
       .first();
 
-  if (config.previewOnly || config.stagingOnlyImport) {
+  if (config.previewOnly || config.stagingOnlyImport || config.officialReader) {
     const searchCount = await search.count().catch(() => 0);
     const searchVisible = searchCount > 0 && await search.isVisible().catch(() => false);
     const searchEnabled = searchCount > 0 && await search.isEnabled().catch(() => false);
@@ -1805,7 +1848,7 @@ async function openGroup(
     }
   }
 
-  if (config.previewOnly && exactSearchResultCount > 1) {
+  if ((config.previewOnly || config.officialReader) && exactSearchResultCount > 1) {
     throw new Error(
       [
         "Có nhiều kết quả nhóm khớp chính xác.",
@@ -1929,6 +1972,7 @@ async function openGroup(
   console.log(
     `Đã mở đúng nhóm: ${groupName}`
   );
+  if (config.officialReader) config.officialExactResultCount = exactSearchResultCount;
 }
 
 async function scrollChatAndCollect(
@@ -2367,6 +2411,9 @@ async function triggerNetworkHistoryLoad(
 }
 
 type DomMessageSnapshot = {
+  albumExpectedCount?: number | null;
+  mediaPendingCount?: number;
+  mediaWarnings?: string[];
   order: number;
   top: number;
   bottom: number;
@@ -2386,8 +2433,17 @@ type DomMessageSnapshot = {
     cachedLocalFile?: boolean;
     mimeType?: string;
     sizeBytes?: number;
+    loaded?: boolean;
+    quality?: string;
+    usableForRoom?: boolean;
   }>;
   videoUrls: string[];
+  videoDebug?: {
+    durationMs?: number;
+    width?: number;
+    height?: number;
+    mimeType?: string;
+  } | null;
 
   /**
    * identity: phần tử được dựng từ node có msgId/cliMsgId thật.
@@ -2406,6 +2462,7 @@ async function captureVisibleDomMessages(
   page: Page,
   config: Config
 ): Promise<DomMessageSnapshot[]> {
+  await page.evaluate(mediaReadinessBrowserScript());
   return page.evaluate(
     ({
       messageItemsSelector,
@@ -3220,6 +3277,14 @@ async function captureVisibleDomMessages(
                   "img"
               )
             );
+          const mediaPendingCount=imageNodes.filter(node=>{
+            const box=node.getBoundingClientRect();if(box.width<70||box.height<70 || box.bottom<=conversationRect.top || box.top>=conversationRect.bottom || box.right<=conversationRect.left || box.left>=conversationRect.right)return false;
+            const state=(globalThis as any).__zaloImageReadiness.inspectImageSource(node);
+            return !state.loaded || state.quality==="placeholder";
+          }).length;
+          const explicitImageCount=Number(element.getAttribute("data-total-images") || element.getAttribute("data-image-count") || element.getAttribute("data-album-count"));
+          const albumExpectedCount=Number.isInteger(explicitImageCount)&&explicitImageCount>0&&explicitImageCount<=500 ? explicitImageCount : null;
+          const hasMoreImages=Array.from(element.querySelectorAll("button,[role='button'],[class*='more']")).some(node=>/^\+\s*\d{1,3}$/.test((node.textContent||"").trim()));
 
           const images =
             imageNodes
@@ -3240,7 +3305,7 @@ async function captureVisibleDomMessages(
                 ).trim();
 
                 return {
-                  url,
+                  ...(globalThis as any).__zaloImageReadiness.inspectImageSource(imageElement),
                   width:
                     imageRect.width ||
                     imageElement.naturalWidth ||
@@ -3257,7 +3322,7 @@ async function captureVisibleDomMessages(
               })
               .filter(
                 (image) =>
-                  isUsefulMediaUrl(
+                  image.quality !== "placeholder" && isUsefulMediaUrl(
                     image.url
                   ) &&
                   image.width >= 70 &&
@@ -3280,6 +3345,7 @@ async function captureVisibleDomMessages(
                   node.getBoundingClientRect();
 
                 return {
+                  quality: "unverified", usableForRoom: false,
                   url: extractCssUrl(
                     style.backgroundImage
                   ),
@@ -3323,6 +3389,7 @@ async function captureVisibleDomMessages(
               uniqueImages.set(
                 image.url,
                 {
+                  ...image,
                   url: image.url,
                   idCandidates:
                     image.idCandidates,
@@ -3331,14 +3398,16 @@ async function captureVisibleDomMessages(
             }
           }
 
+          const videoNodes = Array.from(
+            element.querySelectorAll(
+              "video, video source, [data-video-src], [data-video-url]"
+            )
+          );
+
           const videoUrls =
             Array.from(
               new Set(
-                Array.from(
-                  element.querySelectorAll(
-                    "video, video source"
-                  )
-                )
+                videoNodes
                   .flatMap((node) => [
                     String(
                       (
@@ -3350,6 +3419,8 @@ async function captureVisibleDomMessages(
                         "src"
                       ) || ""
                     ),
+                    String(node.getAttribute("data-video-src") || ""),
+                    String(node.getAttribute("data-video-url") || ""),
                   ])
                   .map((url) =>
                     url.trim()
@@ -3357,6 +3428,30 @@ async function captureVisibleDomMessages(
                   .filter(Boolean)
               )
             );
+
+          const videoElement = videoNodes.find(
+            (node) => node instanceof HTMLVideoElement
+          ) as HTMLVideoElement | undefined;
+
+          const sourceElement = videoNodes.find(
+            (node) => node instanceof HTMLSourceElement
+          ) as HTMLSourceElement | undefined;
+
+          const videoDebug = videoElement
+            ? {
+                durationMs:
+                  Number.isFinite(videoElement.duration) && videoElement.duration > 0
+                    ? Math.round(videoElement.duration * 1000)
+                    : 0,
+                width: Number(videoElement.videoWidth || 0),
+                height: Number(videoElement.videoHeight || 0),
+                mimeType: String(
+                  sourceElement?.type ||
+                  videoElement.getAttribute("type") ||
+                  ""
+                ).trim(),
+              }
+            : null;
 
           const descendantIdentityCount =
             identityRoots.filter(
@@ -3422,6 +3517,8 @@ async function captureVisibleDomMessages(
 
           return {
             order,
+            mediaPendingCount, albumExpectedCount,
+            mediaWarnings: hasMoreImages ? ["MEDIA_UNVERIFIED"] : [],
             top: rect.top,
             bottom: rect.bottom,
             text,
@@ -3437,6 +3534,7 @@ async function captureVisibleDomMessages(
                 uniqueImages.values()
               ),
             videoUrls,
+            videoDebug,
             sourceType,
             descendantIdentityCount,
             textLength: text.length,
@@ -3449,6 +3547,7 @@ async function captureVisibleDomMessages(
             (
               Boolean(row.text) ||
               row.images.length > 0 ||
+              row.mediaPendingCount > 0 ||
               row.videoUrls.length > 0
             )
         )
@@ -3484,7 +3583,7 @@ async function captureVisibleDomMessages(
         }
       }
 
-      return Array.from(
+      const captured = Array.from(
         deduped.values()
       ).map((row, order) => ({
         order,
@@ -3499,6 +3598,7 @@ async function captureVisibleDomMessages(
         idCandidates:
           row.idCandidates,
         images: row.images,
+        mediaPendingCount: row.mediaPendingCount, albumExpectedCount: row.albumExpectedCount, mediaWarnings: row.mediaWarnings,
         videoUrls:
           row.videoUrls,
         sourceType:
@@ -3508,6 +3608,10 @@ async function captureVisibleDomMessages(
         textLength:
           row.textLength,
       }));
+      const loading=Array.from(conversationRoot.querySelectorAll("[aria-busy='true'],[role='progressbar'],[class*='skeleton']")).some(node=>isVisibleElement(node,conversationRect));
+      if(loading && captured.length) captured[0].mediaPendingCount=(captured[0].mediaPendingCount||0)+1;
+      if(loading && !captured.length) captured.push({order:0,top:0,bottom:0,text:"",senderName:"",timeText:"",approxTimestamp:null,idCandidates:[],images:[],videoUrls:[],sourceType:"selector",descendantIdentityCount:0,textLength:0,mediaPendingCount:1,albumExpectedCount:null,mediaWarnings:["MEDIA_UNVERIFIED"]});
+      return captured;
     },
     {
       messageItemsSelector:
@@ -3568,7 +3672,7 @@ async function captureDomMessagesWhileScrollingUp(
   const stepRatio = Math.max(
     0.25,
     Math.min(
-      0.9,
+      0.45,
       Number.isFinite(rawStepRatio)
         ? rawStepRatio
         : 0.65
@@ -3602,6 +3706,19 @@ async function captureDomMessagesWhileScrollingUp(
         : 1_400
     )
   );
+  let viewportStillLoading=false;
+  const captureSettledViewport=async()=>{
+    const snapshots=new Map<string,DomMessageSnapshot>();
+    const result=await waitForStableMedia({capture:()=>captureVisibleDomMessages(page,config),wait:ms=>page.waitForTimeout(ms),
+      onCapture:async items=>{
+        await cacheViewportBlobImages(items);
+        for(const item of items){const key=getSnapshotKey(item);const old=snapshots.get(key);snapshots.set(key,old?mergeSnapshotItem(old,item):item);}
+      },
+      retry:async()=>{await page.evaluate(()=>{for(const image of Array.from(document.images)){const rect=image.getBoundingClientRect();if(rect.bottom>0&&rect.top<innerHeight){image.loading="eager";void image.decode?.().catch(()=>{});}}});}});
+    viewportStillLoading=result.timedOut && result.items.some(item=>Number(item.mediaPendingCount)>0);
+    if(result.timedOut) console.warn("MEDIA_LOADING_TIMEOUT: viewport chưa ổn định sau một lần chờ lại; giữ cảnh báo để duyệt.");
+    return [...snapshots.values()].map(item=>({...item,mediaWarnings:[...new Set([...(item.mediaWarnings||[]),...(result.timedOut?["MEDIA_LOADING_TIMEOUT"]:[])])]}));
+  };
 
   const rawStepsPerBatch = Number(
     config.indexedDbScrollStepsPerBatch ?? 4
@@ -3624,7 +3741,7 @@ async function captureDomMessagesWhileScrollingUp(
   const maxBatches = Math.max(
     1,
     Math.min(
-      20,
+      config.officialReader ? 1000 : 20,
       Number.isFinite(rawMaxBatches)
         ? Math.floor(rawMaxBatches)
         : 5
@@ -3667,6 +3784,9 @@ async function captureDomMessagesWhileScrollingUp(
 
   const cachedBlobByMessage =
     new Map<string, string>();
+
+  const videoProbe = process.env.ZALO_READER_VIDEO_PROBE === "1"
+    ? createVideoPlaybackProbe(page, path.join(NETWORK_LOG_DIR, "video-probe")) : null;
 
   function normalizeBlobMimeType(
     input: any
@@ -3723,7 +3843,12 @@ async function captureDomMessagesWhileScrollingUp(
   async function cacheViewportBlobImages(
     items: DomMessageSnapshot[]
   ) {
+    if (videoProbe) return;
     for (const item of items) {
+      if (config.officialReader && config.officialMessageTimes && !item.idCandidates.some(id => {
+        const time = config.officialMessageTimes![id];
+        return time >= Number(config.officialFromMs) && time <= Number(config.officialToMs);
+      })) continue;
       const itemMessageId = String(
         item.idCandidates?.[0] || ""
       ).trim();
@@ -3736,6 +3861,7 @@ async function captureDomMessagesWhileScrollingUp(
       ) {
         const image =
           item.images[imageIndex];
+        if(image.usableForRoom === false) continue;
 
         const originalUrl = String(
           image?.url || ""
@@ -3758,10 +3884,7 @@ async function captureDomMessagesWhileScrollingUp(
             hash(originalUrl).slice(0, 24)
         ).trim();
 
-        const cacheKey = [
-          imageMessageId,
-          imageIndex,
-        ].join(":");
+        const cacheKey = `${imageMessageId}:${hash(originalUrl)}`;
 
         const reusedLocalUrl =
           cachedBlobByMessage.get(
@@ -3784,8 +3907,11 @@ async function captureDomMessagesWhileScrollingUp(
           const payload =
             await page.evaluate(
               async (blobUrl) => {
+                const controller=new AbortController();
+                const timer=setTimeout(()=>controller.abort(),8000);
+                try {
                 const response =
-                  await fetch(blobUrl);
+                  await fetch(blobUrl,{signal:controller.signal});
 
                 if (!response.ok) {
                   throw new Error(
@@ -3841,6 +3967,7 @@ async function captureDomMessagesWhileScrollingUp(
                   sizeBytes:
                     bytes.length,
                 };
+                } finally {clearTimeout(timer);}
               },
               originalUrl
             );
@@ -3881,7 +4008,7 @@ async function captureDomMessagesWhileScrollingUp(
             safeBlobMessageKey(
               imageMessageId
             ),
-            imageIndex,
+            crypto.createHash("sha256").update(sourceBuffer).digest("hex").slice(0, 32),
           ].join("-") +
             `.${extension}`;
 
@@ -4064,6 +4191,9 @@ async function captureDomMessagesWhileScrollingUp(
 
     return {
       ...current,
+      mediaPendingCount: incoming.mediaPendingCount,
+      albumExpectedCount: incoming.albumExpectedCount || current.albumExpectedCount || null,
+      mediaWarnings: [...new Set([...(current.mediaWarnings||[]),...(incoming.mediaWarnings||[])])],
 
       text: useIncomingText
         ? incomingText
@@ -4091,42 +4221,18 @@ async function captureDomMessagesWhileScrollingUp(
 
       idCandidates,
 
-      /**
-       * Một identity row ảnh tương ứng một message ảnh.
-       * Không cộng nhiều blob URL của các lần render khác nhau vào
-       * cùng message; chỉ chọn bản chụp có nhiều media hơn.
-       */
-      images:
-        (
-          incomingImages.filter(
-            (image) =>
-              image.cachedLocalFile ||
-              String(
-                image.url || ""
-              )
-                .toLowerCase()
-                .startsWith("file:")
-          ).length >
-          currentImages.filter(
-            (image) =>
-              image.cachedLocalFile ||
-              String(
-                image.url || ""
-              )
-                .toLowerCase()
-                .startsWith("file:")
-          ).length
-        ) ||
-        incomingImages.length >
-          currentImages.length
-          ? incomingImages
-          : currentImages,
+      images: mergeCapturedImages(currentImages,incomingImages),
 
       videoUrls:
         incomingVideos.length >
         currentVideos.length
           ? incomingVideos
           : currentVideos,
+
+      videoDebug:
+        incoming.videoDebug ||
+        current.videoDebug ||
+        null,
 
       sourceType:
         current.sourceType === "identity" ||
@@ -4205,14 +4311,12 @@ async function captureDomMessagesWhileScrollingUp(
 
   try {
     const firstViewport =
-      await captureVisibleDomMessages(
-        page,
-        config
-      );
+      await captureSettledViewport();
 
     await cacheViewportBlobImages(
       firstViewport
     );
+    await videoProbe?.inspect(firstViewport);
 
     viewportCount += 1;
     addViewport(
@@ -4222,7 +4326,7 @@ async function captureDomMessagesWhileScrollingUp(
 
     for (
       let stepIndex = 0;
-      stepIndex < maxSteps;
+      stepIndex < maxSteps && !viewportStillLoading && !(config.officialReader && firstViewport.some(item => item.idCandidates.some(id => config.officialStopIds?.includes(id))));
       stepIndex++
     ) {
       attemptedSteps += 1;
@@ -4402,7 +4506,7 @@ async function captureDomMessagesWhileScrollingUp(
         reachedTop = true;
       }
 
-      await page.waitForTimeout(waitMs);
+      await page.waitForTimeout(Math.min(waitMs,200));
 
       /**
        * Cuối mỗi batch chờ lâu hơn để Zalo có thời gian nạp và
@@ -4413,20 +4517,16 @@ async function captureDomMessagesWhileScrollingUp(
           stepsPerBatch ===
         0
       ) {
-        await page.waitForTimeout(
-          settleMs
-        );
+        // The adaptive capture below waits for DOM/media stability each step.
       }
 
       const viewport =
-        await captureVisibleDomMessages(
-          page,
-          config
-        );
+        await captureSettledViewport();
 
       await cacheViewportBlobImages(
         viewport
       );
+      await videoProbe?.inspect(viewport);
 
       viewportCount += 1;
 
@@ -4435,6 +4535,8 @@ async function captureDomMessagesWhileScrollingUp(
           viewport,
           true
         );
+      if(viewportStillLoading) { console.warn("MEDIA_LOADING_TIMEOUT: dừng cuộn nhóm để không bỏ qua ảnh đang tải.");break; }
+      if (config.officialReader && viewport.some(item => item.idCandidates.some(id => config.officialStopIds?.includes(id)))) break;
 
       if (newItemCount > 0) {
         consecutiveNoNewItems = 0;
@@ -4453,12 +4555,6 @@ async function captureDomMessagesWhileScrollingUp(
           moveResult.atTop ||
           !moveResult.moved
         )
-      ) {
-        break;
-      }
-
-      if (
-        consecutiveNoNewItems >= 6
       ) {
         break;
       }
@@ -5604,8 +5700,8 @@ function buildIndexedDbAlbums(
             imageMessageIds.length;
 
           const complete =
-            expectedImageCount == null ||
-            actualImageCount >=
+            expectedImageCount != null &&
+            actualImageCount ===
               expectedImageCount;
 
           return {
@@ -5693,9 +5789,17 @@ function getIndexedDbVideoPayload(
   const sourceUrl =
     String(
       message.videoUrls?.find(
-        (url) =>
-          typeof url === "string" &&
-          url.trim()
+        (url) => {
+          try {
+            const parsed = new URL(String(url || "").trim());
+            const hostname = parsed.hostname.toLowerCase();
+            return parsed.protocol === "https:" && (
+              hostname === "dlmd.me" || hostname.endsWith(".dlmd.me")
+            );
+          } catch {
+            return false;
+          }
+        }
       ) || ""
     ).trim();
 
@@ -5737,6 +5841,7 @@ function getIndexedDbVideoPayload(
     );
 
   return {
+    messageId: String(message.msgId || message.cliMsgId || "").trim(),
     sourceUrl,
 
     thumbnailUrl:
@@ -8412,6 +8517,9 @@ async function importIndexedDbRoomPreviews(
   let failedCount = 0;
   let partialCount = 0;
   let skippedNoTextCount = 0;
+  let testedCount = 0;
+  let testCreatedCount = 0;
+  let testUpdatedCount = 0;
 
   const orderedRooms = [...rooms].sort(
     (a, b) =>
@@ -8426,9 +8534,13 @@ async function importIndexedDbRoomPreviews(
         endMs: readerStartedAtMs,
         maxMessages: Number(config.stagingOnlyMaxMessages ?? 10),
         maxRooms: Number(config.indexedDbImportLimit ?? 20),
+        importedSourceHashes: new Set(Object.keys(state)),
+        allowReimportForTesting: config.allowReimportForTesting,
+        testImportToPending: config.testImportToPending,
+        testNewSourcesOnly: config.testNewSourcesOnly,
       })
     : null;
-  const roomsToProcess = trialSelection?.rooms ?? orderedRooms;
+  const roomsToProcess = config.officialReader ? getOfficialSession()!.select(orderedRooms as any[]) as typeof orderedRooms : trialSelection?.rooms ?? orderedRooms;
 
   /*
    * Chỉ khi khóa indexedDbImportSourceHashes
@@ -8529,9 +8641,15 @@ async function importIndexedDbRoomPreviews(
       ...(trialSelection
         ? [
             `giới hạn staging: ${trialSelection.selectedMessages} tin nhắn, ${trialSelection.selectedRooms} phòng`,
+            `${config.allowReimportForTesting || config.testImportToPending ? trialSelection.selectedImportedRooms : 0} phòng đã import được chọn kiểm thử`,
+            `${trialSelection.selectedNewRooms} phòng chưa import được chọn`,
             `${trialSelection.excludedUntrusted} phòng thiếu ID/timestamp tin cậy hoặc ngoài cửa sổ`,
+            `${trialSelection.excludedAlreadyImported} nguồn đã xử lý bị loại trước khi áp giới hạn`,
+            `${trialSelection.excludedDuplicateSources} sourceHash trùng trong preview bị loại`,
+            `${trialSelection.excludedUnanchored} mục media chưa có anchor chỉ giữ trong preview`,
             `${trialSelection.limitedMessages} tin nhắn vượt giới hạn tin`,
             `${trialSelection.limitedRooms} tin nhắn bị bỏ nguyên nhóm vì vượt giới hạn phòng`,
+            `${trialSelection.excludedMultiRoomSources} nguồn nhiều phòng giữ để duyệt (Pending test dùng một sourceMessageId/một bản)`,
           ]
         : []),
     ].join(" ")
@@ -8542,6 +8660,7 @@ async function importIndexedDbRoomPreviews(
     : null;
   if (
     stagingEndpoint &&
+    !config.allowReimportForTesting &&
     roomsToProcess.some(
       (room) =>
         buildStagingRoomContent(room).rawText.length > 0,
@@ -8551,8 +8670,14 @@ async function importIndexedDbRoomPreviews(
   }
 
   let duplicateCount = 0;
+  let unchangedCount = 0;
 
   for (const room of roomsToProcess) {
+    if (!isAnchoredImportCandidate(room)) {
+      skippedCount += 1;
+      console.warn("Bỏ qua import media chưa có anchor phòng; giữ trong preview để kiểm tra.");
+      continue;
+    }
     if (!room.sourceHash) {
       console.warn(
         `Không thể import phòng không có sourceHash: ${room.markerText.slice(
@@ -8576,9 +8701,9 @@ async function importIndexedDbRoomPreviews(
       continue;
     }
 
-    if (state[room.sourceHash]) {
+    if (!config.allowReimportForTesting && (!config.testImportToPending || config.testNewSourcesOnly) && state[room.sourceHash]) {
       console.log(
-        `Bỏ qua phòng đã import: ${room.markerText.slice(
+        `Bỏ qua nguồn đã xử lý: ${room.markerText.slice(
           0,
           80
         )}`
@@ -8622,6 +8747,13 @@ async function importIndexedDbRoomPreviews(
     const readerIssues:
       ReaderIssue[] = [];
 
+    if (config.testImportToPending) {
+      readerIssues.push({ level: "warning", index: null, message: "Bản test đã đối chiếu message ID/cliMsgId, nguồn DOM và chiều media sau anchor. Ngày trống giữ nguyên trong nội dung nguồn; trường không có bằng chứng để trống, cần duyệt trước khi sử dụng." });
+      if (/200k\/p\/1ng\s*-\s*250k\/p\/2ng/i.test(room.houseInfoText)) {
+        readerIssues.push({ level: "warning", index: null, message: "SOURCE_FIELDS_REVIEW_REQUIRED: phí dịch vụ có nhiều mức theo số người; kiểm tra nguyên văn nguồn, không dùng một mức phí chung cho mọi trường hợp." });
+      }
+    }
+
     const incompleteAlbums =
       room.albums.filter(
         (album) =>
@@ -8632,17 +8764,22 @@ async function importIndexedDbRoomPreviews(
       const album of incompleteAlbums
     ) {
       readerIssues.push({
-        level: "error",
+        level: album.expectedImageCount != null && album.actualImageCount < album.expectedImageCount ? "error" : "warning",
+        code: album.expectedImageCount != null && album.actualImageCount < album.expectedImageCount ? "MEDIA_INCOMPLETE" : "MEDIA_UNVERIFIED",
         index: null,
 
         message: [
-          "Reader phát hiện album ảnh chưa đầy đủ.",
+          album.expectedImageCount != null && album.actualImageCount < album.expectedImageCount ? "Reader phát hiện album ảnh chưa đầy đủ." : "Chưa xác minh đầy đủ album ảnh gốc.",
           `Album: ${album.albumKey}.`,
           `Dự kiến ${album.expectedImageCount ?? "không rõ"} ảnh,`,
           `hiện có ${album.actualImageCount} ảnh.`,
         ].join(" "),
       });
     }
+    for(const code of room.warnings.filter(warning=>/^MEDIA_/.test(warning))) readerIssues.push({level:"warning",index:null,code,message:code});
+    const albumExpectedImageCount=room.albums.length && room.albums.every(album=>album.expectedImageCount!=null)
+      ? room.albums.reduce((sum,album)=>sum+Number(album.expectedImageCount),0) : null;
+    const mediaVerification=room.warnings.includes("MEDIA_INCOMPLETE") ? "MEDIA_INCOMPLETE" : albumExpectedImageCount==null || room.warnings.some(warning=>/^MEDIA_/.test(warning)) ? "MEDIA_UNVERIFIED" : "VERIFIED";
 
     if (
       room.imageUrls.length === 0 &&
@@ -8799,8 +8936,10 @@ async function importIndexedDbRoomPreviews(
         room.videos,
 
       expectedImageCount,
+      albumExpectedImageCount,mediaVerification,
 
       expectedVideoCount,
+      videoSourceMessageIds: room.videoMessageIds,
 
       readerIssues,
       groupId: config.stagingOnlyImport
@@ -8814,10 +8953,7 @@ async function importIndexedDbRoomPreviews(
 
     try {
       console.log(
-        `Import IndexedDB: ${room.markerText.slice(
-          0,
-          100
-        )}`
+        `Import IndexedDB source message: ${room.markerMessageId}`
       );
 
       const result =
@@ -8828,16 +8964,44 @@ async function importIndexedDbRoomPreviews(
           msg: unit,
         });
 
+      if (config.officialReader) {
+        getOfficialSession()!.accept(room, result);
+        if (result?.noChanges) unchangedCount++;
+        else if (result?.duplicate) duplicateCount++;
+        else if (config.officialTrial) testCreatedCount++;
+        else importedCount++;
+        if (result?.partial || result?.hasImportErrors) partialCount++;
+        continue;
+      }
+
+      if (result?.testingOnly) {
+        testedCount += 1;
+        continue;
+      }
+      if (config.testImportToPending) {
+        if (result?.noChanges) { unchangedCount += 1; skippedCount += 1; continue; }
+        if (result?.duplicate) { duplicateCount += 1; skippedCount += 1; continue; }
+        if (result?.testPendingAction === "updated") testUpdatedCount += 1;
+        else testCreatedCount += 1;
+        if (result?.partial || result?.hasImportErrors) partialCount += 1;
+        continue;
+      }
+
       /*
-       * Khi API đã tạo được bản Imports,
-       * kể cả partial import, sourceHash vẫn
-       * được ghi state để tránh tạo bản trùng.
+       * Nguồn đã tạo Pending (kể cả partial) hoặc đã xác minh không
+       * có thay đổi đều được đánh dấu đã xử lý, tránh đọc lại vô ích.
        */
       state[room.sourceHash] =
         true;
 
       writeState(state);
 
+      if (result?.noChanges) {
+        unchangedCount += 1;
+        skippedCount += 1;
+        console.log("Bỏ qua nguồn mới không có cập nhật:", { sourceMessageId: room.markerMessageId, pendingCreated: false });
+        continue;
+      }
       if (result?.duplicate) {
         duplicateCount += 1;
         skippedCount += 1;
@@ -8854,10 +9018,7 @@ async function importIndexedDbRoomPreviews(
         console.warn(
           [
             "Import IndexedDB PARTIAL:",
-            room.markerText.slice(
-              0,
-              80
-            ),
+            `source message: ${room.markerMessageId}`,
             `Ảnh: ${Number(
               result?.imageCount ?? 0
             )}/${expectedImageCount}.`,
@@ -8868,36 +9029,19 @@ async function importIndexedDbRoomPreviews(
           ].join(" ")
         );
 
-        if (
-          Array.isArray(
-            result?.issues
-          ) &&
-          result.issues.length > 0
-        ) {
-          console.warn(
-            "Chi tiết lỗi:",
-            JSON.stringify(
-              result.issues,
-              null,
-              2
-            )
-          );
-        }
       } else {
         console.log(
           "Import IndexedDB OK:",
-          result
+          { sourceMessageId: room.markerMessageId, images: result?.imageCount, videos: result?.videoCount }
         );
       }
     } catch (error: any) {
       failedCount += 1;
+      if (config.officialReader) getOfficialSession()!.fail(error instanceof StagingImportTransportError ? "API_UNAVAILABLE" : "IMPORT_FAILED", room.markerMessageId);
 
       console.error(
-        `Import IndexedDB lỗi hoàn toàn: ${room.markerText.slice(
-          0,
-          100
-        )}`,
-        error?.message || error
+        `Import IndexedDB lỗi hoàn toàn, source message: ${room.markerMessageId}`,
+        "Kiểm tra phản hồi API; không ghi nội dung nguồn vào log tổng hợp."
       );
 
       if (error instanceof StagingImportTransportError) {
@@ -8912,9 +9056,13 @@ async function importIndexedDbRoomPreviews(
   console.log(
     [
       "Kết quả IndexedDB import:",
-      `${importedCount} đã đưa lên Imports`,
+      `${importedCount + testCreatedCount} đã đưa lên Imports`,
+      `${importedCount + testCreatedCount} phòng thực sự đưa lên Pending`,
+      `${testedCount} phòng kiểm thử local (không ghi Pending/checkpoint)`,
+      `${testCreatedCount} Pending test tạo mới, ${testUpdatedCount} Pending test cập nhật`,
       `${duplicateCount} trùng nguồn đã bỏ qua`,
-      `${partialCount} có lỗi media`,
+      `${unchangedCount} nguồn mới không có thay đổi, không tạo Pending`,
+      `${partialCount} phòng import chưa đầy đủ hoặc có lỗi`,
       `${skippedCount} bỏ qua`,
       `${skippedNoTextCount} thiếu nội dung tin nhắn`,
       `${filteredOutCount} ngoài whitelist`,
@@ -9021,6 +9169,59 @@ if (preferredGroupId) {
   );
 }
 
+  if (config.officialReader) {
+    await page.evaluate("globalThis.__name = Object");
+    await page.evaluate(zdbMessageBrowserScript());
+    const visible = (await waitForStableMedia({capture:()=>captureVisibleDomMessages(page,config),wait:ms=>page.waitForTimeout(ms)})).items;
+    const scope = await page.evaluate(async ({ preferredId, ids, fromMs, toMs }) => {
+      const requestValue = <T>(request: IDBRequest<T>) => new Promise<T>((resolve,reject) => {
+        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+      });
+      const databases = await indexedDB.databases();
+      const times: Record<string,number> = {}; const stops: string[] = [];
+      const matchedGroups = new Set<string>();
+      for (const info of databases.filter(info => /^zdb_/.test(info.name || ""))) {
+        const db = await requestValue(indexedDB.open(info.name!));
+        try {
+          if (!db.objectStoreNames.contains("message")) continue;
+          const store = () => db.transaction("message","readonly").objectStore("message");
+          if (!store().indexNames.contains("userId_sendDttm_msgId")) continue;
+          let id = preferredId;
+          if (!id) {
+            const found = new Set<string>();
+            for (const messageId of ids.slice(0,100)) {
+              const record = await requestValue(store().get(messageId));
+              if (record && String(record.msgId || "") === messageId && /^g\d{10,30}$/.test(String(record.toUid || ""))) found.add(String(record.toUid));
+            }
+            if (found.size > 1) throw new Error("DOM_WINDOW_GROUP_AMBIGUOUS");
+            id = [...found][0] || "";
+          }
+          if (!id) continue;
+          const index = () => store().index("userId_sendDttm_msgId");
+          const sample = await requestValue(index().openKeyCursor(IDBKeyRange.bound([id],[id,[]]),"prev"));
+          if (!sample) continue;
+          const bounds = (globalThis as any).__zaloZdbMessageTools.timestampIndexWindowKeys((sample.key as any[])[1],id,fromMs,toMs);
+          matchedGroups.add(id);
+          await new Promise<void>((resolve,reject) => {
+            let count=0;
+            const request=index().openKeyCursor(IDBKeyRange.bound(bounds.lower,bounds.upper),"next");
+            request.onerror=()=>reject(request.error);
+            request.onsuccess=()=>{
+              const cursor=request.result;if(!cursor || count++>=20000){resolve();return;}
+              const key=cursor.key as any[];times[String(key[2])]=Number(key[1]);cursor.continue();
+            };
+          });
+          const boundary=await requestValue(index().openKeyCursor(IDBKeyRange.bound([id],bounds.before,false,true),"prev"));
+          if(boundary){const key=boundary.key as any[];times[String(key[2])]=Number(key[1]);stops.push(String(key[2]));}
+        } finally { db.close(); }
+      }
+      if(matchedGroups.size !== 1) throw new Error("DOM_WINDOW_GROUP_UNVERIFIED");
+      return {times,stops};
+    }, { preferredId: preferredGroupId, ids: [...new Set(visible.flatMap(item=>item.idCandidates))], fromMs:Number(config.officialFromMs),toMs:Number(config.officialToMs) });
+    config.officialMessageTimes = scope.times;
+    config.officialWindowKnownEmpty = !Object.values(scope.times).some(time=>time>=Number(config.officialFromMs)&&time<=Number(config.officialToMs));
+    config.officialStopIds = [...new Set([...(config.officialStopIds || []),...scope.stops])];
+  }
   /**
    * Zalo đặt tin mới nhất ở dưới cùng và chỉ giữ các bubble gần viewport.
    * Vì vậy phải chụp trong lúc cuộn từ dưới lên, không được quay xuống cuối
@@ -9115,6 +9316,8 @@ if (preferredGroupId) {
     "globalThis.__name = Object"
   );
 
+  await page.evaluate(zdbMessageBrowserScript());
+
     const result = await page.evaluate(
       async ({
         groupName,
@@ -9127,8 +9330,14 @@ if (preferredGroupId) {
         contextBeforeMs,
         contextAfterMs,
         strictPreviewTimestamps,
+        officialWindow,
         stagingOnlyImport,
       }) => {
+      const zdbTools = (globalThis as any).__zaloZdbMessageTools as {
+        decodeZdbMessagePayload: typeof decodeZdbMessagePayload;
+        lookupZdbMessageRecord: typeof lookupZdbMessageRecord;
+        timestampIndexWindowKeys: (sample: unknown, groupId: string, fromMs: number, toMs: number) => { lower: IDBValidKey[]; upper: IDBValidKey[]; before: IDBValidKey[] };
+      };
       function requestToPromise<T>(
         request: IDBRequest<T>
       ): Promise<T> {
@@ -9496,11 +9705,9 @@ if (preferredGroupId) {
       }
 
       /**
-       * Chuyển record sidx/idx_queue thành cấu trúc nội dung
-       * Reader đang sử dụng. Timeline vẫn lấy từ zdb/message;
-       * sidx chỉ bổ sung payload đã giải mã theo đúng msgId.
+       * Chuẩn hóa payload của zdb/message; không suy đoán sidx/idx_queue.
        */
-      function extractDecodedSidxContent(
+      function extractDecodedZdbContent(
         input: any
       ) {
         const value = input || {};
@@ -9541,20 +9748,8 @@ if (preferredGroupId) {
         let videoThumbUrls: string[] = [];
         let videoDebug: any = null;
 
-        const decodedTextValue =
-          typeof value.message === "string"
-            ? value.message
-            : value.message && typeof value.message === "object"
-              ? [
-                  value.message.text,
-                  value.message.content,
-                  value.message.caption,
-                  value.message.body,
-                ].find(
-                  (item: any) =>
-                    typeof item === "string" && item.trim()
-                ) || ""
-              : "";
+        const decodedPayload = zdbTools.decodeZdbMessagePayload(value.message);
+        const decodedTextValue = decodedPayload.text;
 
         if (
           msgType === 1 &&
@@ -9563,17 +9758,10 @@ if (preferredGroupId) {
           !isLikelyEncryptedMessageText(decodedTextValue)
         ) {
           kind = "text";
-          text = decodedTextValue.trim();
+          text = decodedTextValue;
         }
 
-        const rawMessage =
-          value.message &&
-          typeof value.message ===
-            "object"
-            ? value.message
-            : safeJsonParse(
-                value.message
-              );
+        const rawMessage: any = decodedPayload.value;
 
         if (
           (
@@ -10751,7 +10939,8 @@ const visibleTextCandidates =
         indexedDB as any
       ).databases();
 
-      const searchDatabaseNames =
+      // Strict preview/staging only use the confirmed zdb/message schema.
+      const searchDatabaseNames = strictPreviewTimestamps ? [] :
   databaseInfos
     .map((item: any) =>
       String(item?.name || "")
@@ -12032,11 +12221,34 @@ if (activeGroupHint) {
 
       let selectedDb: IDBDatabase | null =
         null;
+      let officialBoundary: { id: string; timestamp: number } | null = null;
+      let officialIndexKeys: { lower: IDBValidKey[]; upper: IDBValidKey[]; before: IDBValidKey[] } | null = null;
 
       try {
         selectedDb = await openDatabase(
           bestCandidate.databaseName
         );
+        if (officialWindow && bestCandidate.messageStoreName === "message") {
+          const boundaryStore = selectedDb.transaction("message", "readonly").objectStore("message");
+          if (boundaryStore.indexNames.contains("userId_sendDttm_msgId")) {
+            const sample = await new Promise<IDBValidKey | null>((resolve,reject)=>{
+              const request=boundaryStore.index("userId_sendDttm_msgId").openKeyCursor(IDBKeyRange.bound([bestCandidate.groupId],[bestCandidate.groupId,[]]),"prev");
+              request.onerror=()=>reject(request.error);request.onsuccess=()=>resolve(request.result?.key || null);
+            });
+            if(sample) officialIndexKeys=zdbTools.timestampIndexWindowKeys((sample as IDBValidKey[])[1],bestCandidate.groupId,officialWindow.fromMs,officialWindow.toMs);
+            const boundaryIndex=selectedDb.transaction("message","readonly").objectStore("message").index("userId_sendDttm_msgId");
+            officialBoundary = await new Promise<{ id: string; timestamp: number } | null>((resolve, reject) => {
+              if(!officialIndexKeys){resolve(null);return;}
+              const request = boundaryIndex.openCursor(
+                IDBKeyRange.bound([bestCandidate.groupId], officialIndexKeys.before, false, true), "prev");
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => {
+                const value = request.result?.value;
+                resolve(value && String(value.toUid || "") === bestCandidate.groupId ? { id: String(value.msgId || ""), timestamp: Number(value.sendDttm || 0) } : null);
+              };
+            });
+          }
+        }
 
         const transaction =
           selectedDb.transaction(
@@ -12074,8 +12286,8 @@ if (activeGroupHint) {
 
               const groupRange =
                 IDBKeyRange.bound(
-                  [bestCandidate.groupId],
-                  [
+                  officialIndexKeys ? officialIndexKeys.lower : [bestCandidate.groupId],
+                  officialIndexKeys ? officialIndexKeys.upper : [
                     bestCandidate.groupId,
                     [],
                   ]
@@ -12084,7 +12296,7 @@ if (activeGroupHint) {
               cursorRequest =
                 messageIndex.openCursor(
                   groupRange,
-                  "prev"
+                  officialWindow ? "next" : "prev"
                 );
             } else {
               cursorRequest =
@@ -12173,39 +12385,13 @@ if (activeGroupHint) {
                   value.originMsgType || ""
                 );
 
-              let decodedZdbMessage: any = value.message;
-              let zdbMessageText = "";
-              if (typeof value.message === "string") {
-                try {
-                  decodedZdbMessage = JSON.parse(value.message);
-                  if (typeof decodedZdbMessage === "string") {
-                    zdbMessageText = decodedZdbMessage.trim();
-                  } else if (
-                    decodedZdbMessage &&
-                    typeof decodedZdbMessage === "object" &&
-                    !Array.isArray(decodedZdbMessage)
-                  ) {
-                    const textField = [
-                      decodedZdbMessage.text,
-                      decodedZdbMessage.content,
-                      decodedZdbMessage.caption,
-                      decodedZdbMessage.body,
-                    ].find(
-                      (item: any) =>
-                        typeof item === "string" && item.trim()
-                    );
-                    zdbMessageText =
-                      typeof textField === "string" ? textField.trim() : "";
-                  }
-                } catch {
-                  decodedZdbMessage = value.message;
-                  zdbMessageText = value.message;
-                }
-              }
+              const zdbPayload = zdbTools.decodeZdbMessagePayload(value.message);
+              const decodedZdbMessage: any = zdbPayload.value;
+              const zdbMessageText = zdbPayload.text;
 
               if (
                 msgType === 1 &&
-                zdbMessageText &&
+                zdbMessageText.trim() &&
                 !isLikelyEncryptedMessageText(zdbMessageText)
               ) {
                 kind = "text";
@@ -12502,11 +12688,9 @@ if (activeGroupHint) {
 
         /**
          * ==================================
-         * BỔ SUNG NỘI DUNG ĐÃ GIẢI MÃ TỪ sidx
-         * ==================================
-         *
-         * zdb/message quyết định timeline. sidx/idx_queue chỉ được
-         * tra trực tiếp theo msgId để lấy text/ảnh/video đã giải mã.
+         * ĐỌC NỘI DUNG TRỰC TIẾP TỪ zdb/message
+         * Timeline cung cấp msgId và cliMsgId riêng biệt, không phụ thuộc DOM.
+         * Không suy đoán payload của sidx/idx_queue.
          */
         const contentEnrichment = {
           attempted: false,
@@ -12520,22 +12704,20 @@ if (activeGroupHint) {
           matchedByCliMsgIdCount: 0,
           notFoundCount: 0,
           emptyContentCount: 0,
+          invalidTimestampCount: 0,
+          wrongGroupCount: 0,
+          lookupErrorCount: 0,
+          rejectedContentCount: 0,
           decodedTextCount: 0,
           decodedImageCount: 0,
           decodedVideoCount: 0,
           photoRecordWithoutUrlCount: 0,
         };
 
-        // zdb/message is the content source of record. Match DOM IDs
-        // against its msgId primary key first, then cliMsgIdIndex.
         if (bestCandidate.messageStoreName === "message") {
           contentEnrichment.attempted = true;
           contentEnrichment.databaseName = bestCandidate.databaseName;
           const zdbStoreExists = selectedDb?.objectStoreNames.contains("message");
-          const uiMessages = Array.isArray(domMessageSnapshot)
-            ? domMessageSnapshot
-            : [];
-          const resolvedMessageIds = new Set<string>();
 
           const getZdbRecord = (
             key: string,
@@ -12560,8 +12742,12 @@ if (activeGroupHint) {
                 }
                 const request = source.get(key);
                 request.onsuccess = () => resolve(request.result || null);
-                request.onerror = () => resolve(null);
+                request.onerror = () => {
+                  contentEnrichment.lookupErrorCount += 1;
+                  resolve(null);
+                };
               } catch {
+                contentEnrichment.lookupErrorCount += 1;
                 resolve(null);
               }
             });
@@ -12581,299 +12767,72 @@ if (activeGroupHint) {
             );
           };
 
-          for (const uiMessage of uiMessages) {
-            const ids = Array.from(
-              new Set(
-                (Array.isArray(uiMessage?.idCandidates) ? uiMessage.idCandidates : [])
-                  .map((id: any) => String(id || "").trim())
-                  .filter(Boolean)
-              )
-            );
-            let foundRecord: any = null;
-            let foundBy: "msgId" | "cliMsgId" | "none" = "none";
-
-            for (const id of ids) {
-              foundRecord = await getZdbRecord(id, false);
-              if (foundRecord) {
-                foundBy = "msgId";
-                break;
-              }
-              foundRecord = await getZdbRecord(id, true);
-              if (foundRecord) {
-                foundBy = "cliMsgId";
-                break;
-              }
-            }
-
-            if (
-              !foundRecord ||
-              String(foundRecord.toUid || "") !== bestCandidate.groupId ||
-              !trustedZdbTimestamp(foundRecord)
-            ) {
+          for (const message of groupMessages) {
+            message.contentSource = undefined;
+            const lookup = await zdbTools.lookupZdbMessageRecord<any>({
+              msgId: message.msgId,
+              cliMsgId: message.cliMsgId,
+              getByMsgId: (key) => getZdbRecord(key, false),
+              getByCliMsgId: (key) => getZdbRecord(key, true),
+            });
+            const foundRecord = lookup.record;
+            if (!foundRecord) {
               contentEnrichment.notFoundCount += 1;
               continue;
             }
-
-            const actualMsgId = String(foundRecord.msgId || "").trim();
-            if (!actualMsgId || resolvedMessageIds.has(actualMsgId)) continue;
-            resolvedMessageIds.add(actualMsgId);
             contentEnrichment.matchedRecordCount += 1;
-            if (foundBy === "msgId") contentEnrichment.matchedByMsgIdCount += 1;
-            if (foundBy === "cliMsgId") contentEnrichment.matchedByCliMsgIdCount += 1;
-
-            const message = groupMessages.find(
-              (item) => String(item.msgId || "") === actualMsgId
-            );
-            if (!message) continue;
-
-            let decodedMessage: any = foundRecord.message;
-            if (typeof foundRecord.message === "string") {
-              try {
-                decodedMessage = JSON.parse(foundRecord.message);
-              } catch {
-                decodedMessage = foundRecord.message;
-              }
+            if (lookup.matchedBy === "msgId") contentEnrichment.matchedByMsgIdCount += 1;
+            if (lookup.matchedBy === "cliMsgId") contentEnrichment.matchedByCliMsgIdCount += 1;
+            if (String(foundRecord.toUid || "") !== bestCandidate.groupId) {
+              contentEnrichment.wrongGroupCount += 1;
+              continue;
             }
-            const decoded = extractDecodedSidxContent({
-              ...foundRecord,
-              message: decodedMessage,
-            });
+            if (!trustedZdbTimestamp(foundRecord)) {
+              contentEnrichment.invalidTimestampCount += 1;
+              continue;
+            }
+
+            // Keep canonical source identity/time when the secondary index resolved it.
+            message.msgId = String(foundRecord.msgId || "");
+            message.cliMsgId = String(foundRecord.cliMsgId || "");
+            message.sendDttm = Number(foundRecord.sendDttm || 0);
+            message.serverTime = Number(foundRecord.serverTime || 0);
+            message.fromUid = String(foundRecord.fromUid || "");
+            message.toUid = String(foundRecord.toUid || "");
+            const decoded = extractDecodedZdbContent(foundRecord);
+            message.senderName = decoded.senderName;
+            let hasContent = false;
             if (decoded.kind === "text" && decoded.text.trim()) {
               message.kind = "text";
               message.text = decoded.text;
-              message.contentSource = "zdb";
               contentEnrichment.decodedTextCount += 1;
-            } else if (decoded.kind === "image" && decoded.imageUrls.length) {
+              hasContent = true;
+            }
+            if (decoded.kind === "image" && decoded.imageUrls.length) {
               message.kind = "image";
               message.imageUrls = decoded.imageUrls;
               message.groupLayoutId = decoded.groupLayoutId;
               message.imageIndex = decoded.imageIndex;
               message.totalImages = decoded.totalImages;
-              message.contentSource = "zdb";
               contentEnrichment.decodedImageCount += 1;
-            } else if (decoded.videoUrls.length || decoded.videoThumbUrls.length) {
+              hasContent = true;
+            } else if (decoded.msgType === 2 || decoded.originMsgType === "chat.photo") {
+              contentEnrichment.photoRecordWithoutUrlCount += 1;
+            }
+            if (decoded.videoUrls.length || decoded.videoThumbUrls.length) {
               message.videoUrls = decoded.videoUrls;
               message.videoThumbUrls = decoded.videoThumbUrls;
               message.videoDebug = decoded.videoDebug;
-              message.contentSource = "zdb";
               contentEnrichment.decodedVideoCount += 1;
-            } else {
-              contentEnrichment.emptyContentCount += 1;
+              hasContent = true;
             }
-          }
-        }
-
-        if (
-          bestCandidate.messageStoreName ===
-          "message"
-        ) {
-          const accountSuffix =
-            bestCandidate.databaseName
-              .startsWith("zdb_")
-              ? bestCandidate.databaseName
-                  .slice(
-                    "zdb_".length
-                  )
-              : "";
-
-          // idx_queue schema is not confirmed; do not use it as content source.
-          const sidxDatabaseName = "";
-
-          if (
-            sidxDatabaseName &&
-            searchDatabaseNames.includes(
-              sidxDatabaseName
-            )
-          ) {
-            let sidxDb:
-              | IDBDatabase
-              | null = null;
-
-            contentEnrichment.attempted =
-              true;
-
-            contentEnrichment.databaseName =
-              sidxDatabaseName;
-
-            try {
-              sidxDb = await openDatabase(
-                sidxDatabaseName
-              );
-
-              if (
-                sidxDb.objectStoreNames.contains(
-                  "idx_queue"
-                )
-              ) {
-                const sidxTransaction =
-                  sidxDb.transaction(
-                    "idx_queue",
-                    "readonly"
-                  );
-
-                const sidxStore =
-                  sidxTransaction.objectStore(
-                    "idx_queue"
-                  );
-
-                /**
-                 * Tạo toàn bộ request trước khi await để transaction
-                 * không tự đóng giữa chừng.
-                 */
-                const sidxRequests =
-                  groupMessages.map(
-                    (message) => {
-                      const msgId =
-                        String(
-                          message.msgId ||
-                            ""
-                        ).trim();
-
-                      if (!msgId) {
-                        return Promise.resolve(
-                          null
-                        );
-                      }
-
-                      return requestToPromise(
-                        sidxStore.get(
-                          msgId
-                        )
-                      ).catch(
-                        () => null
-                      );
-                    }
-                  );
-
-                const sidxValues =
-                  await Promise.all(
-                    sidxRequests
-                  );
-
-                for (
-                  let messageIndex = 0;
-                  messageIndex <
-                  groupMessages.length;
-                  messageIndex++
-                ) {
-                  const sidxValue =
-                    sidxValues[
-                      messageIndex
-                    ];
-
-                  if (!sidxValue) {
-                    continue;
-                  }
-
-                  contentEnrichment
-                    .matchedRecordCount += 1;
-
-                  const decoded =
-                    extractDecodedSidxContent(
-                      sidxValue
-                    );
-
-                  const message =
-                    groupMessages[
-                      messageIndex
-                    ];
-
-                  if (
-                    decoded.kind ===
-                      "text" &&
-                    decoded.text
-                  ) {
-                    message.kind =
-                      "text";
-                    message.text =
-                      decoded.text;
-                    message.contentSource =
-                      "sidx";
-
-                    contentEnrichment
-                      .decodedTextCount += 1;
-                  }
-
-                  if (
-                    decoded.kind ===
-                      "image" &&
-                    decoded.imageUrls
-                      .length > 0
-                  ) {
-                    message.kind =
-                      "image";
-                    message.imageUrls =
-                      decoded.imageUrls;
-                    message.groupLayoutId =
-                      decoded.groupLayoutId;
-                    message.imageIndex =
-                      decoded.imageIndex;
-                    message.totalImages =
-                      decoded.totalImages;
-                    message.contentSource =
-                      "sidx";
-
-                    contentEnrichment
-                      .decodedImageCount += 1;
-                  } else if (
-                    decoded.msgType === 2 ||
-                    decoded.originMsgType ===
-                      "chat.photo"
-                  ) {
-                    contentEnrichment
-                      .photoRecordWithoutUrlCount += 1;
-                  }
-
-                  if (
-                    decoded.videoUrls.length > 0 ||
-                    decoded.videoThumbUrls.length > 0
-                  ) {
-                    message.videoUrls =
-                      decoded.videoUrls;
-                    message.videoThumbUrls =
-                      decoded.videoThumbUrls;
-                    message.videoDebug =
-                      decoded.videoDebug;
-                    message.contentSource =
-                      "sidx";
-
-                    contentEnrichment
-                      .decodedVideoCount += 1;
-                  }
-
-                  if (decoded.senderName) {
-                    message.senderName =
-                      decoded.senderName;
-                  }
-
-                  if (decoded.originMsgType) {
-                    message.originMsgType =
-                      decoded.originMsgType;
-                  }
-
-                  if (
-                    !message.fromUid &&
-                    decoded.fromUid
-                  ) {
-                    message.fromUid =
-                      decoded.fromUid;
-                  }
-
-                  if (
-                    !message.toUid &&
-                    decoded.toUid
-                  ) {
-                    message.toUid =
-                      decoded.toUid;
-                  }
-                }
-              }
-            } catch {
-              /**
-               * Không làm hỏng timeline zdb khi sidx chưa sẵn sàng.
-               */
-            } finally {
-              sidxDb?.close();
+            if (hasContent) {
+              message.contentSource = "zdb";
+            } else if (foundRecord.message == null ||
+              typeof foundRecord.message === "string" && !foundRecord.message.trim()) {
+              contentEnrichment.emptyContentCount += 1;
+            } else {
+              contentEnrichment.rejectedContentCount += 1;
             }
           }
         }
@@ -12883,16 +12842,15 @@ if (activeGroupHint) {
          * BỔ SUNG NỘI DUNG TỪ DOM ĐANG HIỂN THỊ
          * ==================================
          *
-         * Chỉ áp dụng cho message zdb còn rỗng sau khi tra sidx.
+         * Chỉ áp dụng cho message zdb còn rỗng sau lookup trực tiếp.
          * Ưu tiên:
          * 1. Match trực tiếp msgId/cliMsgId từ attribute DOM.
          * 2. Match theo mốc thời gian đang hiển thị, ví dụ "17:54 Hôm qua".
          *
-         * Không ghi đè payload đã giải mã từ sidx.
+         * Không ghi đè nội dung nguồn đã xác minh từ zdb.
          */
         const domHydration = {
           attempted:
-            !stagingOnlyImport &&
             Array.isArray(
               domMessageSnapshot
             ) &&
@@ -13072,12 +13030,14 @@ if (activeGroupHint) {
 
           function markDomSource(
             message: any,
-            domItem: any
+            domItem: any,
+            verifiedById = false
           ) {
             message.contentSource =
               "dom";
 
             message.domHydration = {
+              mediaWarnings: domItem.mediaWarnings || [],
               order: Number(
                 domItem?.order || 0
               ),
@@ -13088,6 +13048,7 @@ if (activeGroupHint) {
                 Number(
                   domItem?.approxTimestamp || 0
                 ) || null,
+              verifiedById,
             };
 
             if (
@@ -13286,6 +13247,7 @@ if (activeGroupHint) {
 
             let itemMatched = false;
             let textTarget: any = null;
+            let textTargetVerifiedById = false;
 
             const directTargets =
               Array.from(
@@ -13336,6 +13298,7 @@ if (activeGroupHint) {
                 ) {
                   textTarget =
                     directTextTargets[0];
+                  textTargetVerifiedById = true;
 
                   domHydration
                     .directMatchCount += 1;
@@ -13363,6 +13326,7 @@ if (activeGroupHint) {
                       )[0] || null;
 
                   if (textTarget) {
+                    textTargetVerifiedById = true;
                     domHydration
                       .directMatchCount += 1;
                   }
@@ -13402,7 +13366,8 @@ if (activeGroupHint) {
 
                   markDomSource(
                     textTarget,
-                    domItem
+                    domItem,
+                    textTargetVerifiedById
                   );
 
                   assignedTextMessages.add(
@@ -13451,7 +13416,13 @@ if (activeGroupHint) {
                   continue;
                 }
 
-                const imageDirectTarget =
+                /*
+                 * Zalo thường render video chưa phát bằng một thumbnail <img>.
+                 * Giữ thumbnail theo đúng message ID để message video không bị
+                 * loại khỏi strict staging trước khi parser có thể cảnh báo URL
+                 * nguồn còn thiếu. Thumbnail không được tính là ảnh phòng.
+                 */
+                const videoThumbTarget =
                   (
                     Array.isArray(
                       image.idCandidates
@@ -13466,24 +13437,61 @@ if (activeGroupHint) {
                     )
                     .find(
                       (message: any) =>
-                        isBlankImageMessage(
-                          message
-                        ) &&
-                        !assignedImageMessages.has(
-                          message
-                        )
+                        Number(message?.msgType || 0) === 18 ||
+                        String(message?.originMsgType || "") === "chat.video.msg"
                     );
+
+                if (videoThumbTarget) {
+                  videoThumbTarget.videoThumbUrls = Array.from(
+                    new Set([
+                      ...(Array.isArray(videoThumbTarget.videoThumbUrls)
+                        ? videoThumbTarget.videoThumbUrls
+                        : []),
+                      imageUrl,
+                    ]),
+                  );
+
+                  markDomSource(
+                    videoThumbTarget,
+                    domItem,
+                    true
+                  );
+
+                  assignedDomImageUrls.add(imageUrl);
+                  itemMatched = true;
+                  continue;
+                }
+
+                if(image.usableForRoom === false) continue;
+                const imageTargets = Array.from(new Set(
+                  (
+                    Array.isArray(
+                      image.idCandidates
+                    )
+                      ? image.idCandidates
+                      : []
+                  )
+                    .map((id: any) =>
+                      messageByAnyId.get(
+                        String(id)
+                      )
+                    )
+                    .filter(
+                      (message: any) =>
+                        isBlankImageMessage(message) || assignedImageMessages.has(message)
+                    )));
+                const imageDirectTarget = imageTargets.length===1 ? imageTargets[0] as any : null;
 
                 if (imageDirectTarget) {
                   imageDirectTarget.kind =
                     "image";
-                  imageDirectTarget.imageUrls = [
-                    imageUrl,
-                  ];
+                  imageDirectTarget.imageUrls = [...new Set([...(imageDirectTarget.imageUrls||[]),imageUrl])];
+                  if(domItem.albumExpectedCount) imageDirectTarget.totalImages=Math.max(Number(imageDirectTarget.totalImages)||0,domItem.albumExpectedCount);
 
                   markDomSource(
                     imageDirectTarget,
-                    domItem
+                    domItem,
+                    true
                   );
 
                   assignedImageMessages.add(
@@ -13766,11 +13774,8 @@ if (activeGroupHint) {
                   )
                 : [];
 
-            if (
-              domVideoUrls.length > 0 &&
-              approxTimestamp > 0
-            ) {
-              const videoTarget =
+            if (domVideoUrls.length > 0) {
+              const directVideoTarget =
                 directTargets.find(
                   (message: any) =>
                     isBlankVideoMessage(
@@ -13779,27 +13784,41 @@ if (activeGroupHint) {
                     !assignedVideoMessages.has(
                       message
                     )
-                ) ||
-                findClosestBlankMessage({
-                  approxTimestamp,
-                  kind: "video",
-                  maxDistanceMs:
-                    4 * 60 * 1000,
-                  fromUid: String(
-                    textTarget?.fromUid ||
-                      ""
-                  ),
-                  excludedMessages:
-                    assignedVideoMessages,
-                });
+                );
+
+              const videoTarget =
+                directVideoTarget ||
+                (approxTimestamp > 0
+                  ? findClosestBlankMessage({
+                      approxTimestamp,
+                      kind: "video",
+                      maxDistanceMs:
+                        4 * 60 * 1000,
+                      fromUid: String(
+                        textTarget?.fromUid ||
+                          ""
+                      ),
+                      excludedMessages:
+                        assignedVideoMessages,
+                    })
+                  : null);
 
               if (videoTarget) {
+                const videoTargetVerifiedById =
+                  videoTarget === directVideoTarget;
                 videoTarget.videoUrls =
                   domVideoUrls;
+                if (domItem.videoDebug) {
+                  videoTarget.videoDebug = {
+                    ...(videoTarget.videoDebug || {}),
+                    ...domItem.videoDebug,
+                  };
+                }
 
                 markDomSource(
                   videoTarget,
-                  domItem
+                  domItem,
+                  videoTargetVerifiedById
                 );
 
                 assignedVideoMessages.add(
@@ -13985,6 +14004,7 @@ if (activeGroupHint) {
 
           contentEnrichment,
           domHydration,
+          officialBoundary,
 
           /**
            * File debug hiển thị mới → cũ.
@@ -14025,7 +14045,8 @@ if (activeGroupHint) {
           contextBeforeMs,
           contextAfterMs,
           strictPreviewTimestamps:
-            previewOnly || Boolean(config.stagingOnlyImport),
+            previewOnly || Boolean(config.stagingOnlyImport) || Boolean(config.officialReader),
+          officialWindow: config.officialReader ? { fromMs: Number(config.officialFromMs), toMs: Number(config.officialToMs) } : null,
           stagingOnlyImport: Boolean(config.stagingOnlyImport),
         }
   );
@@ -14391,11 +14412,15 @@ if (activeGroupHint) {
   ) {
     console.log(
       [
-        "Bổ sung nội dung từ sidx:",
+        "Đọc nội dung từ zdb/message:",
         `${contentEnrichment.matchedRecordCount}/${contentEnrichment.requestedCount} record khớp,`,
         `${contentEnrichment.decodedTextCount} text,`,
         `${contentEnrichment.decodedImageCount} ảnh,`,
-        `${contentEnrichment.decodedVideoCount} video`,
+        `${contentEnrichment.decodedVideoCount} video,`,
+        `msgId: ${contentEnrichment.matchedByMsgIdCount}, cliMsgId: ${contentEnrichment.matchedByCliMsgIdCount},`,
+        `không tìm thấy: ${contentEnrichment.notFoundCount}, rỗng: ${contentEnrichment.emptyContentCount},`,
+        `timestamp không hợp lệ: ${contentEnrichment.invalidTimestampCount}, sai nhóm: ${contentEnrichment.wrongGroupCount},`,
+        `payload không hỗ trợ hoặc chưa xác minh: ${contentEnrichment.rejectedContentCount}, lỗi lookup: ${contentEnrichment.lookupErrorCount}`,
       ].join(" ")
     );
   }
@@ -14421,6 +14446,38 @@ if (activeGroupHint) {
         `${domHydration.unmatchedItemCount} chưa ghép`,
       ].join(" ")
     );
+  }
+
+  const diagnosticMessages = Array.isArray((result as any).messages)
+    ? (result as any).messages
+    : [];
+  const diagnosticVideoMessages = diagnosticMessages.filter((message: any) =>
+    Number(message?.msgType || 0) === 18 ||
+    String(message?.originMsgType || "") === "chat.video.msg"
+  );
+  if (diagnosticVideoMessages.length > 0) {
+    const withDownloadableSource = diagnosticVideoMessages.filter((message: any) =>
+      getIndexedDbVideoPayload(message) != null
+    ).length;
+    const withThumbnailOnly = diagnosticVideoMessages.filter((message: any) =>
+      getIndexedDbVideoPayload(message) == null &&
+      Array.isArray(message?.videoThumbUrls) &&
+      message.videoThumbUrls.some((url: any) => String(url || "").trim())
+    ).length;
+    const withMetadataOnly = diagnosticVideoMessages.filter((message: any) =>
+      getIndexedDbVideoPayload(message) == null &&
+      !(Array.isArray(message?.videoThumbUrls) &&
+        message.videoThumbUrls.some((url: any) => String(url || "").trim())) &&
+      Boolean(message?.videoDebug)
+    ).length;
+    console.log([
+      "Chẩn đoán video:",
+      `${diagnosticVideoMessages.length} message nhận diện,`,
+      `${withDownloadableSource} có URL tải HTTPS hợp lệ,`,
+      `${withThumbnailOnly} chỉ có thumbnail,`,
+      `${withMetadataOnly} chỉ có metadata,`,
+      `${diagnosticVideoMessages.length - withDownloadableSource - withThumbnailOnly - withMetadataOnly} chưa có nguồn.`
+    ].join(" "));
   }
 
   const latestGroupTimestamp = Number(
@@ -14480,12 +14537,35 @@ if (activeGroupHint) {
   }
 
 
-    const exportedMessages =
+  let exportedMessages =
     (
       Array.isArray(result.messages)
         ? result.messages
         : []
     ) as IndexedDbGroupMessage[];
+  if (config.officialReader) {
+    const session = getOfficialSession()!;
+    session.verify(String(result.groupId || ""), Boolean((result as any).groupIdTrusted), config.officialExactResultCount || 0, String((result as any).groupIdSource || ""));
+    await session.heartbeat();
+    if (!exportedMessages.length && domMessageSnapshot.length && !config.officialWindowKnownEmpty) throw new Error("INDEXEDDB_WINDOW_EMPTY");
+    const observedMessages = exportedMessages;
+    exportedMessages = session.verifiedTextContext(exportedMessages, hasVerifiedZdbContent);
+    const idTimes = new Map<string, number>();
+    const boundary = (result as any).officialBoundary;
+    if (boundary?.id && Number.isSafeInteger(boundary.timestamp)) idTimes.set(boundary.id, boundary.timestamp);
+    for (const message of exportedMessages) {
+      const timestamp = resolveTrustedMessageTimestamp(message as any).timestampMs;
+      if (timestamp) for (const id of [message.msgId, message.cliMsgId]) if (id) idTimes.set(String(id), timestamp);
+    }
+    const domTimes = domMessageSnapshot.flatMap(item => item.idCandidates.map(id => idTimes.get(id)).filter((time): time is number => !!time));
+    const complete = (domTimes.length > 0 && Math.min(...domTimes) <= Number(config.officialFromMs)) ||
+      (domScrollCapture.reachedTop && exportedMessages.length < messageLimit);
+    session.observe(observedMessages.map(message => {
+      const parsed = parseZaloRoomText(String(message.text || ""));
+      return { id: String(message.msgId || ""), timestamp: resolveTrustedMessageTimestamp(message as any).timestampMs || 0,
+        verified: hasVerifiedZdbContent(message as any), nonRoom: !!message.text && !message.imageUrls?.length && !message.videoUrls?.length && !message.videoDebug && !parsed.roomPayload.room_code && !parsed.roomPayload.price && !parsed.roomPayload.room_type && !parsed.roomPayload.status };
+    }), complete);
+  }
 
   /* PHASE_3_24H_IMPORT_FILTER */
   const phase3GroupConfig =
@@ -14497,7 +14577,7 @@ if (activeGroupHint) {
         String(groupName || "").trim().toLocaleLowerCase("vi-VN");
     }) as any;
 
-  const messageLookbackHours = resolveMessageLookbackHours({
+  const messageLookbackHours = config.officialReader ? Number((config as any).messageLookbackHours) : resolveMessageLookbackHours({
     groupValue: typeof phase3GroupConfig === "object"
       ? phase3GroupConfig?.messageLookbackHours
       : undefined,
@@ -14517,8 +14597,22 @@ if (activeGroupHint) {
         nowMs: Date.now(),
       });
 
-  const roomImportMessages =
-    (previewFilter?.messages || normalFilter?.messages || []) as IndexedDbGroupMessage[];
+  const messagesInWindow =
+    (config.officialReader ? exportedMessages.filter(message => {
+      const time = resolveTrustedMessageTimestamp(message as any).timestampMs;
+      // Cached verified text supplies building context; source selection still
+      // enforces the fixed initial floor/checkpoint for every room/media.
+      return !!time && time >= Number(config.officialToMs) - 24 * 3600000 && time <= Number(config.officialToMs);
+    }) : previewFilter?.messages || normalFilter?.messages || []) as IndexedDbGroupMessage[];
+  const roomImportMessages = strictWindowMode || config.officialReader
+    ? messagesInWindow.filter(hasVerifiedZdbContent)
+    : messagesInWindow;
+  if (strictWindowMode) {
+    console.log(
+      `Nguồn nội dung đã xác minh trong cửa sổ: ${roomImportMessages.length} tin được parser xử lý; ` +
+      `${messagesInWindow.length - roomImportMessages.length} tin thiếu nội dung nguồn đã xác minh bị bỏ qua.`
+    );
+  }
 
   if (previewFilter) {
     const included = previewFilter.messages.length;
@@ -15447,6 +15541,16 @@ async function imageToBase64(
   );
 }
 
+function logImportMediaReport(report: ReturnType<typeof buildMediaReport>) {
+  console.log("Zalo import media summary:", JSON.stringify(report));
+  try {
+    fs.mkdirSync(NETWORK_LOG_DIR, { recursive: true });
+    fs.appendFileSync(path.join(NETWORK_LOG_DIR, "import-media-report.jsonl"), JSON.stringify(report) + "\n", "utf8");
+  } catch {
+    console.warn("Không lưu được import-media-report.jsonl; kết quả đã được in ở trên.");
+  }
+}
+
 async function sendBatch(params: {
   page: Page;
   config: Config;
@@ -15703,9 +15807,63 @@ async function sendBatch(params: {
     });
   }
 
+  if (config.allowReimportForTesting) {
+    let videosDownloaded = 0;
+    for (let index = 0; index < videos.length; index += 1) {
+      const sourceUrl = videos[index].sourceUrl;
+      if (!isDownloadableZaloVideoUrl(sourceUrl)) {
+        readerIssues.push({ level: "error", index, code: "VIDEO_URL_INVALID", message: "Video không có nguồn HTTPS hợp lệ." });
+        continue;
+      }
+      let response;
+      try {
+        // Reuse the authenticated browser media request path. Never upload or copy.
+        response = await page.context().request.get(sourceUrl, { timeout: 60_000, maxRedirects: 0 });
+        if (!response.ok()) throw new Error("VIDEO_DOWNLOAD_FAILED");
+        const headers = response.headers();
+        if (!String(headers["content-type"] || "").toLowerCase().startsWith("video/")) {
+          throw new Error("VIDEO_MIME_INVALID");
+        }
+        if (Number(headers["content-length"] || 0) > 100 * 1024 * 1024) throw new Error("VIDEO_SIZE_LIMIT");
+        const buffer = await response.body();
+        if (!buffer.length || buffer.length > 100 * 1024 * 1024) throw new Error("VIDEO_SIZE_LIMIT");
+        videosDownloaded += 1;
+      } catch (error) {
+        const code = error instanceof Error && ["VIDEO_MIME_INVALID", "VIDEO_SIZE_LIMIT"].includes(error.message)
+          ? error.message : "VIDEO_DOWNLOAD_FAILED";
+        readerIssues.push({ level: "error", index, code, message: "Không kiểm tra được video; không lưu hoặc ghi dữ liệu import." });
+      } finally {
+        await response?.dispose();
+      }
+    }
+    const parsed = parseZaloRoomText(msg.text);
+    const result = {
+      ok: true,
+      testingOnly: true,
+      imageCount: 0,
+      videoCount: 0,
+      partial: readerIssues.some((issue) => issue.level === "error"),
+      issues: readerIssues,
+      mediaProgress: { imagesUploaded: 0, videosUploaded: 0, videosDownloaded },
+    };
+    const report = {
+      ...buildMediaReport({ sourceMessageId: roomUnit.sourceMessageId, expectedImages: expectedImageCount, expectedVideos: expectedVideoCount, downloadedImages: images.length, submittedImages: 0, submittedVideos: 0, response: result }),
+      parser: {
+        roomCode: parsed.roomPayload.room_code,
+        roomType: parsed.roomPayload.room_type,
+        price: parsed.roomPayload.price,
+      },
+    };
+    logImportMediaReport(report);
+    return result;
+  }
+
   let importPayload = {
+    testImportToPending: config.testImportToPending === true,
+    testNewSourcesOnly: config.testNewSourcesOnly === true,
     groupName,
     groupId: roomUnit.groupId || null,
+    ...(config.officialReader ? getOfficialSession()!.requestFields(parseZaloRoomText(msg.text).roomPayload, msg.sourceHash) : {}),
     stagingOnly: Boolean(roomUnit.stagingOnly),
     readerStartedAtMs: roomUnit.readerStartedAtMs ?? null,
 
@@ -15730,8 +15888,11 @@ async function sendBatch(params: {
     videos,
 
     expectedImageCount,
+    albumExpectedImageCount: roomUnit.albumExpectedImageCount ?? null,
+    mediaVerification: roomUnit.mediaVerification || "MEDIA_UNVERIFIED",
 
     expectedVideoCount,
+    videoSourceMessageIds: roomUnit.videoSourceMessageIds || [],
 
     readerIssues,
   };
@@ -15752,76 +15913,15 @@ async function sendBatch(params: {
     1024 /
     1024;
 
-  /*
-   * Nếu payload ảnh vẫn vượt giới hạn Vercel,
-   * không bỏ phòng.
-   *
-   * Chỉ bỏ dữ liệu Base64 khỏi request và gửi
-   * phòng lên Imports với chẩn đoán lỗi.
-   */
-  if (
-    requestBytes >
-    4.2 * 1024 * 1024
-  ) {
-    const payloadError = [
-      "Payload chứa ảnh vượt giới hạn an toàn.",
-      `Kích thước ban đầu: ${requestMegabytes.toFixed(
-        2
-      )} MB.`,
-      "Reader đã bỏ phần Base64 ảnh khỏi request để phòng vẫn xuất hiện trên trang Imports.",
-    ].join(" ");
-
-    console.warn(
-      payloadError
-    );
-
-    readerIssues.push({
-      level: "error",
-      index: null,
-      message:
-        payloadError,
-    });
-
-    importPayload = {
-      ...importPayload,
-
-      /*
-       * API vẫn biết expectedImageCount,
-       * nhưng nhận 0 ảnh và đánh dấu partial.
-       */
-      images: [],
-
-      readerIssues,
-    };
-
-    requestBody =
-      JSON.stringify(
-        importPayload
-      );
-
-    requestBytes =
-      Buffer.byteLength(
-        requestBody,
-        "utf8"
-      );
-
-    requestMegabytes =
-      requestBytes /
-      1024 /
-      1024;
-  }
-
-  /*
-   * Trường hợp text hoặc diagnostics bất thường
-   * vẫn làm payload vượt 4.2 MB.
-   */
+  // Preserve the complete local album for retry; never silently strip every
+  // image to fit the transport limit. The per-room caller reports and continues.
   if (
     requestBytes >
     4.2 * 1024 * 1024
   ) {
     throw new Error(
       [
-        "Payload vẫn vượt giới hạn sau khi đã bỏ dữ liệu ảnh.",
+        "MEDIA_PAYLOAD_TOO_LARGE: Giữ ảnh local để thử lại; không gửi Pending thiếu toàn bộ ảnh.",
         `Kích thước: ${requestMegabytes.toFixed(
           2
         )} MB.`,
@@ -15859,7 +15959,7 @@ async function sendBatch(params: {
         "x-internal-secret": config.internalSecret,
       },
       body: requestBody,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(STAGING_API_IMPORT_TIMEOUT_MS),
     });
   } catch (error: any) {
     if (config.stagingOnlyImport) {
@@ -15878,14 +15978,19 @@ async function sendBatch(params: {
       .json()
       .catch(() => ({}));
 
-  console.log(
-    "Zalo Import API response:",
-    JSON.stringify(
-      json,
-      null,
-      2
-    )
-  );
+  const mediaReport = buildMediaReport({
+    detectedImages: msg.imageSrcs.length,
+    albumExpectedImages: roomUnit.albumExpectedImageCount ?? null,
+    sourceMessageId: roomUnit.sourceMessageId,
+    expectedImages: expectedImageCount,
+    expectedVideos: expectedVideoCount,
+    downloadedImages: images.length,
+    submittedImages: importPayload.images.length,
+    submittedVideos: importPayload.videos.length,
+    response: json,
+  });
+  logImportMediaReport(mediaReport);
+  if (config.officialReader) getOfficialSession()!.recordMedia(mediaReport);
 
   if (
     !res.ok ||
@@ -15895,6 +16000,11 @@ async function sendBatch(params: {
       json?.error ||
         `Import failed HTTP ${res.status}`
     );
+  }
+
+  if (json?.noChanges) {
+    console.log("So sánh nguồn mới: không có cập nhật, không tạo Pending.", { sourceMessageId: roomUnit.sourceMessageId });
+    return json;
   }
 
   if (
@@ -15938,10 +16048,25 @@ async function sendBatch(params: {
   return json;
 }
 
-async function main() {
+export async function runReader() {
   const readerStartedAtMs = Date.now();
   const config = readConfig();
-  const state = config.previewOnly ? {} : readState();
+  const state = config.previewOnly || config.officialReader ? {} : readState();
+
+  if (process.env.ZALO_READER_VIDEO_PROBE === "1" && (!config.allowReimportForTesting || config.testImportToPending || !config.stagingOnlyImport || config.previewOnly)) {
+    throw new Error("Video playback probe requires local testing only; no Pending/checkpoint writes allowed.");
+  }
+
+  console.log(`Chế độ Reader: ${config.officialReader ? (config.officialTrial ? "TRIAL HAI NHÓM → TEST PENDING (tối đa 5 phòng/nhóm, 10 tổng cộng)" : "CHÍNH THỨC → CHỜ DUYỆT (không publish)") : config.testImportToPending ? "TEST → PENDING (tối đa 10 phòng)" : config.allowReimportForTesting ? "TEST LOCAL" : config.previewOnly ? "PREVIEW" : "IMPORT CHÍNH THỨC"}`);
+
+  console.log(
+    `Chế độ test lại: ${config.allowReimportForTesting ? "BẬT" : "TẮT"} ` +
+    `(allowReimportForTesting=${config.allowReimportForTesting === true}); cấu hình: ${CONFIG_PATH}`
+  );
+
+  if (config.allowReimportForTesting) {
+    console.log("TEST REIMPORT: kiểm tra parser/media local; không gọi API import, ghi Pending/checkpoint hoặc publish.");
+  }
 
   if (config.stagingOnlyImport) {
     console.log(`Chrome profile staging: ${PROFILE_DIR}`);
@@ -16051,6 +16176,7 @@ async function main() {
   }
 
   previewStage = "mở trang Zalo Web";
+  if (process.env.ZALO_READER_VIDEO_PROBE === "1") await page.addInitScript(VIDEO_OBJECT_OBSERVER);
   await page.goto(
     "https://chat.zalo.me",
     {
@@ -16058,7 +16184,7 @@ async function main() {
     }
   );
 
-  if (config.previewOnly || config.stagingOnlyImport) {
+  if (config.previewOnly || config.stagingOnlyImport || config.officialReader) {
     previewStage = "chờ đăng nhập và xác nhận giao diện Zalo Web";
     await waitForPreviewLogin(page, config);
   } else {
@@ -16108,6 +16234,7 @@ async function main() {
         );
 
       try {
+        if (config.officialReader) await getOfficialSession()!.beginGroup(config, groupKey, groupName);
         activeGroupName =
           groupName;
         previewStage = `mở nhóm ${groupName}`;
@@ -16143,7 +16270,7 @@ async function main() {
            * Sau đó Reader chụp snapshot cuối cuộc trò chuyện
            * làm fallback cho message mới chưa có payload trong sidx.
            */
-          await triggerNetworkHistoryLoad(
+          if (!config.officialReader) await triggerNetworkHistoryLoad(
             page,
             15,
             config.selectors
@@ -16185,7 +16312,7 @@ async function main() {
                 config,
                 groupRefs,
                 readerStartedAtMs,
-                Boolean(config.previewOnly || config.stagingOnlyImport)
+                Boolean(config.previewOnly)
               );
             if (indexedDbExport?.phase5PreviewPath) {
               previewOutputPaths.push(indexedDbExport.phase5PreviewPath);
@@ -16226,6 +16353,11 @@ async function main() {
                 String(indexedDbResult?.groupId || "").trim() ===
                   config.stagingOnlyGroupId)
             );
+
+          if (process.env.ZALO_READER_VIDEO_PROBE === "1") {
+            console.log("Video probe hoàn tất; không gọi API import và không ghi checkpoint/Pending.");
+            continue;
+          }
 
           if (
             isReaderImportAllowed(
@@ -16330,6 +16462,8 @@ async function main() {
           );
         }
 
+        if (config.allowReimportForTesting || config.officialReader) continue;
+
         const messages =
           await scrollChatAndCollect(
             page,
@@ -16369,18 +16503,21 @@ async function main() {
             .messageItems
         );
       } catch (e: any) {
+        if (config.officialReader) getOfficialSession()!.fail(/đăng nhập|login/i.test(String(e?.message)) ? "LOGIN_REQUIRED" : /nhiều kết quả|trùng tên/i.test(String(e?.message)) ? "GROUP_NAME_AMBIGUOUS" : /parser|parse/i.test(String(e?.message)) ? "PARSER_FAILED" : "GROUP_SCAN_FAILED");
         if (config.previewOnly || config.stagingOnlyImport) {
           throw new Error(
             `Lỗi tại bước ${previewStage}: ${String(e?.message || e)}`
           );
         }
         console.error(`Lỗi nhóm ${groupName}:`, e?.message || e);
+      } finally {
+        if (config.officialReader) await getOfficialSession()!.finishGroup();
       }
     }
 
     if (
       config.previewOnly ||
-      config.stagingOnlyImport ||
+      config.stagingOnlyImport || config.runOnce ||
       config.indexedDbDebugOnly ||
       config.networkDebugOnly
     ) {
@@ -16445,6 +16582,7 @@ async function main() {
     await sleep(idleIntervalMs);
   }
   } catch (error: any) {
+    if (config.officialReader) { await context.close(); throw error; }
     if (!config.previewOnly && !config.stagingOnlyImport) {
       throw error;
     }
@@ -16460,7 +16598,7 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+if (process.env.ZALO_READER_EMBEDDED !== "1") runReader().catch((e) => {
   console.error(e);
   process.exit(1);
 });

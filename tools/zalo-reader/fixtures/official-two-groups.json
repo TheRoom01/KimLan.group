@@ -1,0 +1,153 @@
+{
+  "now": 1793404800000,
+  "groups": [
+    {
+      "key": "Gio-Hang-Can-Ho-Q1-Q3-Q10",
+      "groupId": "g1986619726266954037",
+      "messages": [
+        {
+          "msgId": "fixture-0-building",
+          "cliMsgId": "fixture-0-building",
+          "kind": "text",
+          "msgType": 1,
+          "text": "10 Nguyễn Huệ, Q1",
+          "sendDttm": 1793404700000,
+          "serverTime": 1793404700000,
+          "strictTimestampOnly": true,
+          "trustedTimestampMs": 1793404700000,
+          "fromUid": "fixture",
+          "toUid": "g1986619726266954037",
+          "senderName": "Fixture",
+          "originMsgType": "chat.text",
+          "imageUrls": [],
+          "videoUrls": [],
+          "videoThumbUrls": [],
+          "groupLayoutId": null,
+          "imageIndex": null,
+          "totalImages": null,
+          "fixtureNonRoom": true
+        },
+        {
+          "msgId": "fixture-0-room",
+          "cliMsgId": "fixture-0-room",
+          "kind": "text",
+          "msgType": 1,
+          "text": "Studio/CS - 5.500.000 - P.402 - trống",
+          "sendDttm": 1793404710000,
+          "serverTime": 1793404710000,
+          "strictTimestampOnly": true,
+          "trustedTimestampMs": 1793404710000,
+          "fromUid": "fixture",
+          "toUid": "g1986619726266954037",
+          "senderName": "Fixture",
+          "originMsgType": "chat.text",
+          "imageUrls": [],
+          "videoUrls": [],
+          "videoThumbUrls": [],
+          "groupLayoutId": null,
+          "imageIndex": null,
+          "totalImages": null,
+          "fixtureNonRoom": false
+        },
+        {
+          "msgId": "fixture-0-image",
+          "cliMsgId": "fixture-0-image",
+          "kind": "image",
+          "msgType": 3,
+          "text": "",
+          "sendDttm": 1793404720000,
+          "serverTime": 1793404720000,
+          "strictTimestampOnly": true,
+          "trustedTimestampMs": 1793404720000,
+          "fromUid": "fixture",
+          "toUid": "g1986619726266954037",
+          "senderName": "Fixture",
+          "originMsgType": "chat.photo",
+          "imageUrls": [
+            "https://example.test/fixture.jpg"
+          ],
+          "videoUrls": [],
+          "videoThumbUrls": [],
+          "groupLayoutId": null,
+          "imageIndex": null,
+          "totalImages": null,
+          "fixtureNonRoom": false
+        }
+      ]
+    },
+    {
+      "key": "Gio-Hang-Can-Ho-PN-BT-TB",
+      "groupId": "g1234567890123",
+      "messages": [
+        {
+          "msgId": "fixture-1-building",
+          "cliMsgId": "fixture-1-building",
+          "kind": "text",
+          "msgType": 1,
+          "text": "12 Phan Đăng Lưu, Q.Phú Nhuận",
+          "sendDttm": 1793404700000,
+          "serverTime": 1793404700000,
+          "strictTimestampOnly": true,
+          "trustedTimestampMs": 1793404700000,
+          "fromUid": "fixture",
+          "toUid": "g1234567890123",
+          "senderName": "Fixture",
+          "originMsgType": "chat.text",
+          "imageUrls": [],
+          "videoUrls": [],
+          "videoThumbUrls": [],
+          "groupLayoutId": null,
+          "imageIndex": null,
+          "totalImages": null,
+          "fixtureNonRoom": true
+        },
+        {
+          "msgId": "fixture-1-room",
+          "cliMsgId": "fixture-1-room",
+          "kind": "text",
+          "msgType": 1,
+          "text": "Studio/CS - 5.500.000 - P.402 - trống",
+          "sendDttm": 1793404710000,
+          "serverTime": 1793404710000,
+          "strictTimestampOnly": true,
+          "trustedTimestampMs": 1793404710000,
+          "fromUid": "fixture",
+          "toUid": "g1234567890123",
+          "senderName": "Fixture",
+          "originMsgType": "chat.text",
+          "imageUrls": [],
+          "videoUrls": [],
+          "videoThumbUrls": [],
+          "groupLayoutId": null,
+          "imageIndex": null,
+          "totalImages": null,
+          "fixtureNonRoom": false
+        },
+        {
+          "msgId": "fixture-1-image",
+          "cliMsgId": "fixture-1-image",
+          "kind": "image",
+          "msgType": 3,
+          "text": "",
+          "sendDttm": 1793404720000,
+          "serverTime": 1793404720000,
+          "strictTimestampOnly": true,
+          "trustedTimestampMs": 1793404720000,
+          "fromUid": "fixture",
+          "toUid": "g1234567890123",
+          "senderName": "Fixture",
+          "originMsgType": "chat.photo",
+          "imageUrls": [
+            "https://example.test/fixture.jpg"
+          ],
+          "videoUrls": [],
+          "videoThumbUrls": [],
+          "groupLayoutId": null,
+          "imageIndex": null,
+          "totalImages": null,
+          "fixtureNonRoom": false
+        }
+      ]
+    }
+  ]
+}

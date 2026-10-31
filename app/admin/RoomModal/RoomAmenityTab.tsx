@@ -38,6 +38,7 @@ export default function RoomAmenityTab({ detailForm, onChange }: Props) {
             <button
               key={String(key)}
               type="button"
+              aria-pressed={checked}
               style={{
                 ...amenityCard,
                 ...(checked ? amenityCardOn : {}),

@@ -1,3 +1,4 @@
+import { normalizeRoomFeatures } from "@/lib/rooms/features";
 import HomeClient from "./HomeClient";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
@@ -130,6 +131,7 @@ export default async function HomePage({
     move,
     petPolicies,
     contractTerms,
+    featureFilters: normalizeRoomFeatures(firstString(sp.features)),
     status,
     badge: badgeRaw === "budget_friendly" || badgeRaw === "new_listing" || badgeRaw === "featured" || badgeRaw === "exclusive" ? badgeRaw : null,
     sortMode,

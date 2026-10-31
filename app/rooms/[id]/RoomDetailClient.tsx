@@ -1309,6 +1309,8 @@ const feeCopyText = feeRows
 
 const amenitiesList = [
   detail?.has_elevator ? "Thang máy" : "",
+  detail?.has_balcony ? "Ban công" : "",
+  detail?.has_window ? "Cửa sổ" : "",
   detail?.has_stairs ? "Thang bộ" : "",
   detail?.shared_washer ? "Máy giặt chung" : "",
   detail?.private_washer ? "Máy giặt riêng" : "",
@@ -2234,6 +2236,8 @@ return (
 
         <ul className="grid grid-cols-2 gap-2">
           {detail?.has_elevator && <li>✔️ Thang máy</li>}
+          {detail?.has_balcony && <li>✔️ Ban công</li>}
+          {detail?.has_window && <li>✔️ Cửa sổ</li>}
           {detail?.has_stairs && <li>✔️ Thang bộ</li>}
           {detail?.shared_washer && <li>✔️ Máy giặt chung</li>}
           {detail?.private_washer && <li>✔️ Máy giặt riêng</li>}

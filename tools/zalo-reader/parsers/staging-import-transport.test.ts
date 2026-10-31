@@ -4,10 +4,14 @@ import {
   assertStagingImportApiAvailable,
   buildStagingRoomContent,
   resolveStagingImportEndpoint,
+  STAGING_API_IMPORT_TIMEOUT_MS,
+  STAGING_API_PREFLIGHT_TIMEOUT_MS,
   StagingImportTransportError,
 } from "../../../lib/zalo-reader/staging-import-transport";
 
 async function main() {
+  assert.equal(STAGING_API_PREFLIGHT_TIMEOUT_MS, 30_000);
+  assert.equal(STAGING_API_IMPORT_TIMEOUT_MS, 180_000);
   assert.equal(
     resolveStagingImportEndpoint("http://127.0.0.1:3000/"),
     "http://127.0.0.1:3000/api/internal/zalo-reader/import",

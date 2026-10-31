@@ -1,0 +1,28 @@
+import assert from "node:assert/strict";
+import { assessIncomingChange, type ImportBaseline } from "../../../lib/zalo-import/incoming-change";
+
+const room = { house_number: "219/89A", address: "Trần Văn Đang", district: "Quận 3", room_code: "L01", room_type: "Studio", price: 5800000, description: "Cửa sổ", status: "Trống" };
+const detail = { water_fee_value: 25000, water_fee_unit: "m3" };
+const sourceFields = Object.fromEntries(["room_type", "price", "description", "status", "water_fee_value", "water_fee_unit"].map(key => [key, "Tin Zalo"]));
+const baseline: ImportBaseline = { kind: "pending", id: "old-pending", room, detail, images: [{ url: "old-storage", content_hash: "photo-a" }], videos: [] };
+const input = { room, detail, sourceFields, baseline, imageHashes: ["photo-a"], expectedImages: 1, expectedVideos: 0 };
+assert.equal(assessIncomingChange(input).status, "UNCHANGED");
+assert.equal(assessIncomingChange({ ...input, room: { ...room, district: "Q3", room_code: "P.L01" } }).status, "UNCHANGED");
+assert.deepEqual(assessIncomingChange({ ...input, room: { ...room, price: 6000000 } }).changedFields, ["room.price"]);
+assert.equal(assessIncomingChange({ ...input, room: { ...room, room_type: "1PN" } }).status, "CHANGED");
+assert.equal(assessIncomingChange({ ...input, imageHashes: ["photo-b"] }).status, "CHANGED", "same count does not prove identical photos");
+assert.equal(assessIncomingChange({ ...input, baseline: { ...baseline, images: [{ url: "new-cdn-host", content_hash: "photo-a" }] } }).status, "UNCHANGED", "URL differences are not content changes");
+assert.equal(assessIncomingChange({ ...input, baseline: { ...baseline, images: [{ url: "old-storage" }] } }).status, "UNCERTAIN");
+assert.equal(assessIncomingChange({ ...input, expectedImages: 2 }).status, "UNCERTAIN");
+assert.equal(assessIncomingChange({ ...input, imageHashes: [null] }).status, "UNCERTAIN");
+assert.equal(assessIncomingChange({ ...input, expectedVideos: 1 }).status, "UNCERTAIN", "missing video URL/bytes must not be skipped as unchanged");
+assert.equal(assessIncomingChange({ ...input, baseline: { ...baseline, videos: [{ content_hash: "video-a" }] }, expectedVideos: 1, videoHashes: ["video-a"] }).status, "UNCHANGED");
+assert.equal(assessIncomingChange({ ...input, hasSourceErrors: true }).status, "UNCERTAIN");
+assert.equal(assessIncomingChange({ ...input, room: { ...room, available_from_text: "5/11" } }).status, "UNCERTAIN");
+assert.equal(assessIncomingChange({ ...input, room: { ...room, available_from_text: "5/11" }, baseline: { ...baseline, room: { ...room, available_from_text: "5/11" } } }).status, "UNCHANGED");
+assert.equal(assessIncomingChange({ ...input, sourceFields: { ...sourceFields, new_unknown_field: "Tin Zalo" } }).status, "UNCERTAIN");
+assert.equal(assessIncomingChange({ ...input, room: { ...room, room_code: "" } }).status, "UNCERTAIN");
+assert.equal(assessIncomingChange({ ...input, sourceFields: {} }).status, "UNCERTAIN", "no source evidence cannot prove equality");
+assert.equal(assessIncomingChange({ ...input, detail: { ...detail, water_fee_value: null }, sourceFields: { price: "Tin Zalo" } }).status, "UNCHANGED", "omitted data does not delete older values");
+assert.equal(assessIncomingChange({ ...input, detail: { ...detail, water_fee_value: 0 } }).status, "CHANGED", "explicit free fee is a real update");
+console.log("New-source comparison: unchanged, changed price/type/media, omissions, incomplete media, uncertainty and exact identity PASS");

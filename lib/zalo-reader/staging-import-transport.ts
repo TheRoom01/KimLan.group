@@ -1,6 +1,12 @@
 export const ZALO_READER_IMPORT_PATH =
   "/api/internal/zalo-reader/import";
 
+// Next.js dev may need several seconds to cold-compile the route.
+export const STAGING_API_PREFLIGHT_TIMEOUT_MS = 30_000;
+
+// A room can contain multiple images that the API uploads sequentially.
+export const STAGING_API_IMPORT_TIMEOUT_MS = 180_000;
+
 export class StagingImportTransportError extends Error {
   constructor(message: string) {
     super(message);
@@ -40,7 +46,7 @@ export async function assertStagingImportApiAvailable(
       // The current Next.js route only exports POST, so GET must resolve to 405.
       // This verifies the route without entering the import handler.
       method: "GET",
-      signal: AbortSignal.timeout(3_000),
+      signal: AbortSignal.timeout(STAGING_API_PREFLIGHT_TIMEOUT_MS),
     });
   } catch (error: any) {
     const causeCode = String(error?.cause?.code || "").trim();

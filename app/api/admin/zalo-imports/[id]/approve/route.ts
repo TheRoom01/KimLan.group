@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { publishPendingRoom } from "@/lib/zalo-import/publish-pending-room";
+import { updatePendingRoom } from "@/lib/zalo-import/update-pending-room";
+import { getImportReview } from "@/lib/zalo-import/room-comparison";
+import { zaloImportErrorMessage } from "@/lib/zalo-import/error-message";
 
 export const runtime = "nodejs";
 
@@ -127,6 +130,7 @@ export async function POST(
 
     if (
       mode !== "create_room" &&
+      mode !== "update_room" &&
       mode !== "update_status"
     ) {
       return NextResponse.json(
@@ -143,6 +147,12 @@ export async function POST(
     const supabase =
       createSupabaseAdminClient();
 
+    if (mode === "update_room") {
+      const updated = await updatePendingRoom({ supabase, pendingId, actorUserId: admin.user.id,
+        selectedFields: body?.selectedFields, expectedRoomPayload: body?.expectedRoomPayload, expectedDetailPayload: body?.expectedDetailPayload });
+      return NextResponse.json({ ok: true, mode, ...updated });
+    }
+
     if (mode === "create_room") {
       const published =
         await publishPendingRoom({
@@ -151,6 +161,7 @@ export async function POST(
             admin.user.id,
           source: "manual",
           supabase,
+          actorSupabase: admin.supabaseUser,
         });
 
       return NextResponse.json({
@@ -220,6 +231,13 @@ export async function POST(
           status: 400,
         }
       );
+    }
+
+    if ((pending as any).room_payload?.is_test_import === true || (pending as any).batch?.parser_result?.test_import === true) {
+      return NextResponse.json({ ok: false, error: "Không được duyệt bản nháp TEST vào dữ liệu phòng chính." }, { status: 403 });
+    }
+    if (getImportReview((pending as any).room_payload)) {
+      return NextResponse.json({ ok: false, error: "Hãy mở so sánh và chọn từng trường để duyệt cập nhật." }, { status: 409 });
     }
 
     const batch =
@@ -388,12 +406,10 @@ export async function POST(
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error?.message ||
-          "Approve failed",
+          error: zaloImportErrorMessage(error, "Duyệt đăng thất bại. Vui lòng thử lại."),
       },
       {
-        status: 500,
+        status: String(error?.message || "").includes("rooms_status_check") ? 422 : error?.code === "PGRST202" ? 503 : /CHANGED|MISSING|INVALID|PROPERTY_|Pending|chọn|xác minh|TEST/i.test(error?.message || "") ? 409 : 500,
       }
     );
   }

@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getImportReview } from "./room-comparison";
+import { resolveZaloImportRoom } from "./resolve";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -32,16 +34,18 @@ function normalizeStatus(value: unknown) {
     return "Đã thuê";
   }
 
+  if (normalized.includes("sắp")) return "Sắp trống";
+
   if (
     normalized.includes("trống") ||
     normalized === "trong"
   ) {
-    return "Trống";
+    return "Đang trống";
   }
 
   return (
-    String(value || "Trống").trim() ||
-    "Trống"
+    String(value || "Đang trống").trim() ||
+    "Đang trống"
   );
 }
 
@@ -149,6 +153,7 @@ function buildRoomInsertPayload(params: {
 
   return {
     id: params.roomId,
+    property_id: toNullableString(room.property_id),
     room_code: toNullableString(room.room_code),
     room_type: toNullableString(room.room_type),
     house_number: toNullableString(room.house_number),
@@ -157,8 +162,10 @@ function buildRoomInsertPayload(params: {
     district: toNullableString(room.district),
     price: toNullableNumber(room.price),
     status: normalizeStatus(room.status),
+    ...(Object.hasOwn(room, "available_from") ? { available_from: toNullableString(room.available_from) } : {}),
     description: toNullableString(room.description),
     link_zalo: toNullableString(room.link_zalo),
+    google_maps_url: toNullableString(room.google_maps_url),
     zalo_phone: toNullableString(room.zalo_phone),
     chinh_sach: toNullableString(room.chinh_sach),
     owner_id: params.actorUserId,
@@ -222,6 +229,8 @@ function buildDetailInsertPayload(params: {
       null
     ),
     free_time: toBoolean(detail.free_time, null),
+    has_balcony: toBoolean(detail.has_balcony),
+    has_window: toBoolean(detail.has_window),
     has_elevator: toBoolean(
       detail.has_elevator,
       null
@@ -338,6 +347,7 @@ export async function publishPendingRoom(params: {
   actorUserId: string;
   source: PublishSource;
   supabase?: AnySupabase;
+  actorSupabase?: AnySupabase;
 }): Promise<PublishPendingRoomResult> {
   const pendingId = String(
     params.pendingId || ""
@@ -385,6 +395,13 @@ export async function publishPendingRoom(params: {
     );
   }
 
+  if ((pending as any).room_payload?.is_test_import === true || (pending as any).batch?.parser_result?.test_import === true) {
+    throw new Error("Bản nháp TEST chỉ để kiểm tra; không được publish hoặc tạo phòng chính.");
+  }
+  if (params.source !== "manual" && ((pending as any).room_payload?._reader_manual_review === true || (pending as any).batch?.parser_result?.official_source)) {
+    throw new Error("OFFICIAL_MANUAL_REVIEW_REQUIRED: Phòng từ Reader chính thức phải được admin duyệt thủ công.");
+  }
+
   if (
     ["Đã duyệt", "Từ chối", "Hết hạn"].includes(
       String((pending as any).status || "")
@@ -394,6 +411,15 @@ export async function publishPendingRoom(params: {
       `Import đã ở trạng thái ${(pending as any).status}.`
     );
   }
+
+  const importReview = getImportReview((pending as any).room_payload);
+  if ((pending as any).matched_room_id || (importReview && importReview.type !== "CREATE")) {
+    throw new Error("Pending UPDATE/cần xác minh không được tạo phòng mới. Hãy dùng duyệt cập nhật.");
+  }
+  // Recheck CREATE, including older drafts, immediately before publishing.
+  const identityCheck = await resolveZaloImportRoom({ supabase, roomPayload: (pending as any).room_payload || {},
+    detailPayload: (pending as any).detail_payload || {}, sourceFieldMap: (pending as any).source_field_map || {}, excludePendingId: pendingId });
+  if (identityCheck.roomPayload._room_import?.type !== "CREATE") throw new Error("Phòng hoặc Pending trùng đã xuất hiện. Hãy phân tích lại trước khi duyệt.");
 
   if (
     params.source !== "manual" &&
@@ -534,6 +560,21 @@ export async function publishPendingRoom(params: {
     (pending as any).batch_id || ""
   ).trim();
 
+  // An intentionally incomplete video-only draft must remain editable without
+  // creating a main room/building until the admin has supplied selected media.
+  const [imageResult,videoResult] = await Promise.all([
+    supabase.from("zalo_import_images").select("*").eq("batch_id",batchId).eq("selected",true).order("sort_order",{ascending:true}),
+    supabase.from("zalo_import_videos").select("*").eq("batch_id",batchId).eq("selected",true).order("sort_order",{ascending:true}),
+  ]);
+  if(imageResult.error) throw imageResult.error;
+  if(videoResult.error) throw videoResult.error;
+  const images=imageResult.data || [],videos=videoResult.data || [];
+  if(![...images,...videos].some((item:any)=>String(item.temp_r2_key || '').trim())) {
+    throw new Error(roomPayload._manual_video_required
+      ? "Video chưa tải được. Hãy mở Chỉnh sửa, thêm video thủ công và Lưu nháp trước khi Duyệt đăng."
+      : "Pending không có ảnh/video đã chọn để đăng.");
+  }
+
   const finalKeys: string[] = [];
   const tempKeysToDelete: string[] = [];
   const mediaRows: any[] = [];
@@ -543,7 +584,13 @@ export async function publishPendingRoom(params: {
   let roomCreated = false;
 
   try {
-    const roomInsert = await supabase
+    if(params.source === "manual" && !params.actorSupabase) throw new Error("Thiếu phiên admin để xác định tòa nhà. Hãy đăng nhập lại và duyệt lại.");
+    // Use the exact same authenticated RPC as /admin -> Add room. It resolves
+    // the building, asks for ambiguous matches, and creates an unclaimed one
+    // only when no building matches. Never call this at Reader import time.
+    const roomInsert = params.source === "manual"
+      ? await params.actorSupabase!.rpc("admin_upsert_room_v3", {p_room_id:roomId,p_payload:buildRoomInsertPayload({roomId,actorUserId,roomPayload})})
+      : await supabase
       .from("rooms")
       .insert(
         buildRoomInsertPayload({
@@ -560,6 +607,8 @@ export async function publishPendingRoom(params: {
     }
 
     roomCreated = true;
+    if(params.source === "manual" && (!roomInsert.data?.property_id || roomInsert.data?.id !== roomId)) throw new Error("Không xác minh được tòa nhà của phòng mới. Hãy tải lại Imports trước khi duyệt lại.");
+    if(params.source === "manual") roomPayload.property_id=roomInsert.data.property_id;
 
     const detailInsert = await supabase
       .from("room_details")
@@ -572,38 +621,6 @@ export async function publishPendingRoom(params: {
 
     if (detailInsert.error) {
       throw detailInsert.error;
-    }
-
-    const {
-      data: images,
-      error: imageError,
-    } = await supabase
-      .from("zalo_import_images")
-      .select("*")
-      .eq("batch_id", batchId)
-      .eq("selected", true)
-      .order("sort_order", {
-        ascending: true,
-      });
-
-    if (imageError) {
-      throw imageError;
-    }
-
-    const {
-      data: videos,
-      error: videoError,
-    } = await supabase
-      .from("zalo_import_videos")
-      .select("*")
-      .eq("batch_id", batchId)
-      .eq("selected", true)
-      .order("sort_order", {
-        ascending: true,
-      });
-
-    if (videoError) {
-      throw videoError;
     }
 
     for (const imageRow of images ?? []) {
@@ -644,7 +661,7 @@ export async function publishPendingRoom(params: {
         url: copied.url,
         path: copied.url,
         is_cover: mediaRows.length === 0,
-        sort_order: mediaRows.length,
+        sort_order: Number(image.sort_order ?? mediaRows.length),
       });
 
       imageMediaCount += 1;
@@ -688,7 +705,7 @@ export async function publishPendingRoom(params: {
         toKey,
         contentType:
           video.mime_type ||
-          "video/mp4",
+          (extension === "webm" ? "video/webm" : extension === "mov" ? "video/quicktime" : "video/mp4"),
         cacheControl:
           "public, max-age=31536000, immutable",
       });
@@ -702,7 +719,7 @@ export async function publishPendingRoom(params: {
         url: copied.url,
         path: copied.url,
         is_cover: mediaRows.length === 0,
-        sort_order: mediaRows.length,
+        sort_order: Number(video.sort_order ?? mediaRows.length),
       });
 
       videoMediaCount += 1;
@@ -736,6 +753,8 @@ export async function publishPendingRoom(params: {
       );
     }
 
+    mediaRows.sort((a, b) => a.sort_order - b.sort_order);
+    mediaRows.forEach((item, index) => { item.sort_order = index; item.is_cover = index === 0; });
     const mediaInsert = await supabase
       .from("room_media")
       .insert(mediaRows);

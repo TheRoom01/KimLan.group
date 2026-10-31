@@ -2,10 +2,9 @@ import type {
   MediaBundle,
   SemanticAlbumPreview,
   SemanticIndexedDbMessage,
-  SemanticVideoPayload,
 } from "./types";
 
-import { isVideoMessage, messageTimestamp } from "./utils";
+import { getVideoPayload, isVideoMessage, messageTimestamp } from "./utils";
 
 function stableUrlSet(urls: string[]) {
   return Array.from(
@@ -58,6 +57,7 @@ function getFallbackImageUrls(message: SemanticIndexedDbMessage) {
         lower.includes("reaction") ||
         lower.includes("icon") ||
         lower.includes("logo")
+        || /placeholder|skeleton|spinner|transparent|(?:^|\/)blank[.-]/.test(lower.split(/[?#]/)[0])
       );
     }) as string[],
   );
@@ -94,38 +94,6 @@ function flattenAlbumUrls(messages: SemanticIndexedDbMessage[]) {
       Array.isArray(message.imageUrls) ? message.imageUrls : [],
     ),
   );
-}
-
-function getVideoPayload(
-  message: SemanticIndexedDbMessage,
-): SemanticVideoPayload | null {
-  const sourceUrl = String(
-    message.videoUrls?.find((url) => String(url || "").trim()) || "",
-  ).trim();
-
-  if (!sourceUrl) return null;
-
-  const thumbnailUrl = String(
-    message.videoThumbUrls?.find((url) => String(url || "").trim()) || "",
-  ).trim();
-
-  const durationMs = Number(message.videoDebug?.durationMs || 0);
-  const width = Number(message.videoDebug?.width || 0);
-  const height = Number(message.videoDebug?.height || 0);
-  const sizeBytes = Number(
-    message.videoDebug?.fileSize || message.videoDebug?.sizeBytes || 0,
-  );
-
-  return {
-    sourceUrl,
-    thumbnailUrl: thumbnailUrl || undefined,
-    durationMs:
-      Number.isFinite(durationMs) && durationMs > 0 ? durationMs : undefined,
-    width: Number.isFinite(width) && width > 0 ? width : undefined,
-    height: Number.isFinite(height) && height > 0 ? height : undefined,
-    sizeBytes:
-      Number.isFinite(sizeBytes) && sizeBytes > 0 ? sizeBytes : undefined,
-  };
 }
 
 type ImageRun = {
@@ -243,7 +211,7 @@ export function buildMediaBundles(messages: SemanticIndexedDbMessage[]) {
 
     const imageUrls = flattenAlbumUrls(sorted);
     /* Một message ảnh = một ảnh; URL fallback không làm tăng count. */
-    const actualImageCount = sorted.length;
+    const actualImageCount = imageUrls.length;
 
     const album: SemanticAlbumPreview = {
       albumKey: run.runKey,
@@ -251,7 +219,7 @@ export function buildMediaBundles(messages: SemanticIndexedDbMessage[]) {
       expectedImageCount,
       actualImageCount,
       complete:
-        expectedImageCount == null || actualImageCount >= expectedImageCount,
+        expectedImageCount != null && actualImageCount === expectedImageCount,
       imageMessageIds,
       imageUrls,
     };

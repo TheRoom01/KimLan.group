@@ -758,6 +758,8 @@ useEffect(() => {
     if (shareSel.amenities) {
       const amen: string[] = [];
 
+      if (sourceDetail?.has_balcony) amen.push("Ban công");
+      if (sourceDetail?.has_window) amen.push("Cửa sổ");
       if (sourceDetail?.shared_washer) amen.push("Máy giặt chung");
       if (sourceDetail?.private_washer) amen.push("Máy giặt riêng");
       if (sourceDetail?.shared_dryer) amen.push("Máy sấy chung");

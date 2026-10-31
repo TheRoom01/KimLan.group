@@ -119,6 +119,8 @@ export default function CreateRoomForm({
       other_fee_value: form.get("other_fee_value"),
       other_fee_note: form.get("other_fee_note"),
       has_elevator: form.get("has_elevator") === "on",
+      has_balcony: form.get("has_balcony") === "on",
+      has_window: form.get("has_window") === "on",
       has_stairs: form.get("has_stairs") === "on",
       shared_washer: form.get("shared_washer") === "on",
       private_washer: form.get("private_washer") === "on",
@@ -376,6 +378,8 @@ export default function CreateRoomForm({
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <Checkbox name="free_time" label="Giờ giấc tự do" defaultChecked={Boolean(detailDefaults.free_time)} />
           <Checkbox name="has_elevator" label="Thang máy" defaultChecked={Boolean(detailDefaults.has_elevator)} />
+          <Checkbox name="has_balcony" label="Ban công" defaultChecked={Boolean(detailDefaults.has_balcony)} />
+          <Checkbox name="has_window" label="Cửa sổ" defaultChecked={Boolean(detailDefaults.has_window)} />
           <Checkbox name="has_stairs" label="Cầu thang bộ" defaultChecked={Boolean(detailDefaults.has_stairs)} />
           <Checkbox name="has_parking" label="Chỗ để xe" defaultChecked={Boolean(detailDefaults.has_parking)} />
           <Checkbox name="has_basement" label="Hầm xe" defaultChecked={Boolean(detailDefaults.has_basement)} />

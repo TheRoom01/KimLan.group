@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import RoomModal from "@/app/admin/RoomModal";
 import type { TabKey } from "@/app/types/room";
+import { getImportReview } from "@/lib/zalo-import/room-comparison";
+import RoomUpdateComparison from "./RoomUpdateComparison";
+import ImportMediaOrder from "./ImportMediaOrder";
+import { importLifecycle, importLifecycleLabel, importMediaStatus } from "@/lib/zalo-import/lifecycle";
+import ZaloReaderStatus from "../ZaloReaderStatus";
+import { OFFICIAL_ZALO_GROUPS } from "@/lib/zalo-reader/official";
 
 type ImportRow = {
   id: string;
@@ -87,6 +93,10 @@ export default function ZaloImportsClient() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [status, setStatus] = useState("Chờ duyệt");
+  const [group, setGroup] = useState("");
+  const [importType, setImportType] = useState("");
+  const [readFrom, setReadFrom] = useState("");
+  const [readTo, setReadTo] = useState("");
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
   const [toast, setToast] = useState<{ message: string; tone: "success" | "error" } | null>(null);
@@ -109,6 +119,10 @@ export default function ZaloImportsClient() {
       const qs = new URLSearchParams();
       qs.set("limit", String(PAGE_SIZE));
       qs.set("offset", String(nextOffset));
+      if (group) qs.set("group",group);
+      if (importType) qs.set("type",importType);
+      if (readFrom) qs.set("readFrom",new Date(readFrom).toISOString());
+      if (readTo) qs.set("readTo",new Date(readTo).toISOString());
 
       if (nextStatus) {
         qs.set("status", nextStatus);
@@ -137,7 +151,7 @@ export default function ZaloImportsClient() {
     setOffset(0);
     void loadData(0, status);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status,group,importType,readFrom,readTo]);
 
   const page = useMemo(
     () => Math.floor(offset / PAGE_SIZE) + 1,
@@ -170,123 +184,95 @@ export default function ZaloImportsClient() {
     );
   }
 
-  async function deleteAllCurrentRows() {
-  if (rows.length === 0 || bulkDeleting) {
-    return;
-  }
-
-  const ids = rows.map((row) => row.id);
-
-  const ok = window.confirm(
-    `Bạn có chắc muốn xoá tất cả ${ids.length} card đang hiển thị trên trang này? Ảnh tạm R2 cũng sẽ bị xoá.`
-  );
-
-  if (!ok) {
-    return;
-  }
-
-  setBulkDeleting(true);
-
-  try {
-    const res = await fetch(
-      "/api/admin/zalo-imports/bulk-remove",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ids }),
-      }
-    );
-
-    const json = await res
-      .json()
-      .catch(() => ({}));
-
-    if (!res.ok || !json?.ok) {
-      throw new Error(
-        json?.error ||
-          "Xoá tất cả thất bại"
-      );
+  async function deleteAllFilteredRows() {
+    if (bulkDeleting || loading) {
+      return;
     }
 
-    const deletedCount = Number(
-      json.deleted ?? ids.length
+    const filterLabel = [status || "Tất cả",group,importType,readFrom,readTo].filter(Boolean).join(" · ");
+    const ok = window.confirm(
+      `Bạn có chắc muốn xoá toàn bộ ${total} phòng trong bộ lọc “${filterLabel}”? Thao tác này áp dụng cho tất cả các trang và ảnh/video tạm cũng sẽ được dọn.`
     );
 
-    /*
-     * Tính lại tổng số phòng còn lại.
-     */
-    const remainingTotal =
-      Math.max(
-        0,
-        total - deletedCount
+    if (!ok) {
+      return;
+    }
+
+    setBulkDeleting(true);
+
+    try {
+      const res = await fetch(
+        "/api/admin/zalo-imports/bulk-remove",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            allFiltered: true,
+            status,
+            group, type: importType,
+            readFrom: readFrom ? new Date(readFrom).toISOString() : "",
+            readTo: readTo ? new Date(readTo).toISOString() : "",
+          }),
+        }
       );
 
-    /*
-     * Nếu đang ở trang cuối và sau khi xóa
-     * offset hiện tại không còn hợp lệ,
-     * tự lùi về trang cuối còn dữ liệu.
-     *
-     * Ví dụ:
-     * - Đang offset 40.
-     * - Sau khi xóa chỉ còn 35 phòng.
-     * - Tự chuyển về offset 20.
-     */
-    const lastValidOffset =
-      remainingTotal > 0
-        ? Math.floor(
-            (remainingTotal - 1) /
-              PAGE_SIZE
-          ) * PAGE_SIZE
+      const json = await res
+        .json()
+        .catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(
+          json?.error ||
+            "Xoá tất cả thất bại"
+        );
+      }
+
+      const deletedCount = Number(
+        json.deleted ?? 0
+      );
+      const cleanupWarningCount = Array.isArray(json.cleanupWarnings)
+        ? json.cleanupWarnings.length
         : 0;
 
-    const nextOffset =
-      Math.min(
-        offset,
-        lastValidOffset
+      /* Đóng các modal đang mở. */
+      setEditingPending(null);
+      setDetailPending(null);
+      setOpenPendingModal(false);
+
+      /* Bộ lọc hiện tại đã rỗng nên luôn quay về trang đầu. */
+      setOffset(0);
+
+      await loadData(
+        0,
+        status
       );
 
-    /*
-     * Đóng các modal đang mở.
-     */
-    setEditingPending(null);
-    setDetailPending(null);
-    setOpenPendingModal(false);
-
-    /*
-     * Cập nhật trang hiện tại và gọi API
-     * để tự tải 20 card tiếp theo.
-     *
-     * Nếu đang ở trang đầu:
-     * - Xóa 20 phòng đầu.
-     * - Load lại offset 0.
-     * - 20 phòng tiếp theo tự xuất hiện.
-     */
-    setOffset(nextOffset);
-
-    await loadData(
-      nextOffset,
-      status
-    );
-
-    showToast(
-      `Đã xoá ${deletedCount} phòng. Danh sách đã được tải lại.`,
-      "success"
-    );
-  } catch (error: any) {
-    showToast(
-      error?.message ||
-        "Xoá tất cả thất bại",
-      "error"
-    );
-  } finally {
-    setBulkDeleting(false);
+      showToast(
+        cleanupWarningCount > 0
+          ? `Đã xoá ${deletedCount} phòng trong “${filterLabel}”; còn ${cleanupWarningCount} lỗi dọn media tạm trong log server.`
+          : deletedCount > 0
+            ? `Đã xoá toàn bộ ${deletedCount} phòng trong “${filterLabel}”.`
+            : `Không có phòng nào trong bộ lọc “${filterLabel}” để xoá.`,
+        cleanupWarningCount > 0 ? "error" : "success"
+      );
+    } catch (error: any) {
+      showToast(
+        error?.message ||
+          "Xoá tất cả thất bại",
+        "error"
+      );
+      setOffset(0);
+      await loadData(0, status);
+    } finally {
+      setBulkDeleting(false);
+    }
   }
-}
 
   return (
     <main style={wrap}>
+      <ZaloReaderStatus />
       <div style={topBar}>
         <div>
           <h1 style={title}>Zalo Imports</h1>
@@ -301,6 +287,14 @@ export default function ZaloImportsClient() {
       </div>
 
       <div style={filterBar}>
+        <select aria-label="Nhóm Zalo" value={group} onChange={event=>setGroup(event.target.value)} style={select}>
+          <option value="">Mọi nhóm Zalo</option>{OFFICIAL_ZALO_GROUPS.map(item=><option key={item.key} value={item.name}>{item.name}</option>)}
+        </select>
+        <select aria-label="Loại import" value={importType} onChange={event=>setImportType(event.target.value)} style={select}>
+          <option value="">Mọi loại phòng</option><option value="CREATE">Phòng mới</option><option value="UPDATE">Cập nhật</option><option value="NEEDS_REVIEW">Cần xác minh</option>
+        </select>
+        <label>Đọc từ <input type="datetime-local" value={readFrom} onChange={event=>setReadFrom(event.target.value)} /></label>
+        <label>Đến <input type="datetime-local" value={readTo} onChange={event=>setReadTo(event.target.value)} /></label>
         <select
           value={status}
           onChange={(event) =>
@@ -332,18 +326,18 @@ export default function ZaloImportsClient() {
         <button
           type="button"
           onClick={() =>
-            void deleteAllCurrentRows()
+            void deleteAllFilteredRows()
           }
           style={bulkDeleteBtn}
           disabled={
             bulkDeleting ||
             loading ||
-            rows.length === 0
+            total === 0
           }
         >
           {bulkDeleting
             ? "Đang xóa..."
-            : "Xóa tất cả phòng"}
+            : "Xóa tất cả"}
         </button>
       </div>
 
@@ -488,6 +482,13 @@ export default function ZaloImportsClient() {
           }
           pendingImages={editingPending.images ?? []}
           pendingVideos={editingPending.videos ?? []}
+          pendingMatchedRoomId={editingPending.matched_room_id}
+          onPendingApproved={async () => {
+            const nextOffset = rows.length <= 1 && offset > 0 ? offset - PAGE_SIZE : offset;
+            setOffset(nextOffset);
+            await loadData(nextOffset, status);
+            setEditingPending(null);
+          }}
           open={openPendingModal}
           onClose={() =>
             setOpenPendingModal(false)
@@ -499,6 +500,7 @@ export default function ZaloImportsClient() {
             showToast(message, "success")
           }
           onPendingSaved={async (updated: any) => {
+            setEditingPending(current => current?.id === editingPending.id ? {...current,...updated} : current);
             setRows((currentRows) =>
               currentRows.map((row) =>
                 row.id === editingPending.id
@@ -689,6 +691,7 @@ function useImportActions({
 
   const actionDisabled =
     busyAction !== null ||
+    importLifecycle(row) === "TEST" ||
     isLockedStatus;
 
   function finishRemoved() {
@@ -779,12 +782,13 @@ function useImportActions({
   }
 
   async function approveImport(
-    mode: "create_room" | "update_status"
+    mode: "create_room" | "update_status" | "update_room",
+    selectedFields?: string[]
   ) {
     if (busyAction) return;
 
     const confirmText =
-      mode === "update_status"
+      mode === "update_room" ? `Xác nhận cập nhật ${selectedFields?.length || 0} trường đã chọn vào phòng hiện tại?` : mode === "update_status"
         ? "Xác nhận cập nhật trạng thái phòng đã tồn tại?"
         : "Xác nhận duyệt và tạo phòng mới?";
 
@@ -803,7 +807,7 @@ function useImportActions({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ mode }),
+          body: JSON.stringify({ mode, ...(mode === "update_room" ? { selectedFields, expectedRoomPayload: row.room_payload, expectedDetailPayload: row.detail_payload || {} } : {}) }),
         }
       );
 
@@ -1112,6 +1116,9 @@ function buildParserWarnings(
     getImportQuality(row);
 
   const warningTexts: string[] = [];
+  if(room._manual_video_required === true && getImportVideos(row).length === 0) {
+    warningTexts.push('Video chưa tải được — mở Chỉnh sửa để thêm video thủ công trước khi Duyệt đăng.');
+  }
 
   if (quality) {
     const blockers =
@@ -1342,6 +1349,7 @@ function ImportCard({
   ] = useState(false);
 
   const room = row.room_payload ?? {};
+  const roomReview = getImportReview(room);
   const detail = row.detail_payload ?? {};
   const batch = row.batch ?? {};
   const images = getImportImages(row);
@@ -1508,6 +1516,9 @@ function ImportCard({
               >
                 {row.status}
               </span>
+              <span style={importLifecycle(row) === "TEST" ? badgeOrange : compactStatusBadge}>{importLifecycleLabel(row)}</span>
+              {importMediaStatus(row) && <span style={badgeOrange} title="Chưa chứng minh đủ toàn bộ ảnh gốc của album">{importMediaStatus(row)}</span>}
+              {roomReview && <span style={roomReview.type === "UPDATE" ? compactStatusBadge : badgeOrange}>{roomReview.type === "UPDATE" ? "CẬP NHẬT PHÒNG" : roomReview.type === "CREATE" ? "PHÒNG MỚI" : "CẦN XÁC MINH"}</span>}
 
               <ImportNoticeBadge
                 row={row}
@@ -1581,6 +1592,7 @@ function ImportCard({
             
             <span>
               Media: <b>{images.length} ảnh · {videos.length} video</b>
+              {room._manual_video_required === true && videos.length === 0 && <span role="alert" style={{display:'block',color:'#92400e',margin:'6px 0'}}>Video chưa tải được — mở Chỉnh sửa để thêm video thủ công trước khi Duyệt đăng.</span>}
             </span>
 
             <span>
@@ -1642,7 +1654,11 @@ function ImportCard({
           Chỉnh sửa
         </button>
 
-        {isDuplicate ? (
+        {roomReview?.type === "UPDATE" || roomReview?.type === "NEEDS_REVIEW" ? (
+          <button type="button" style={compactPrimaryBtn} onClick={() => onViewDetail?.(row)} disabled={actionDisabled}>
+            {roomReview.type === "UPDATE" ? "So sánh & duyệt cập nhật" : "Mở để xác minh"}
+          </button>
+        ) : isDuplicate ? (
           <>
             <button
               style={compactPrimaryBtn}
@@ -1659,18 +1675,6 @@ function ImportCard({
                 : "Duyệt cập nhật"}
             </button>
 
-            <button
-              style={compactCreateBtn}
-              type="button"
-              onClick={() =>
-                void approveImport(
-                  "create_room"
-                )
-              }
-              disabled={actionDisabled}
-            >
-              Tạo phòng mới
-            </button>
           </>
         ) : (
           <button
@@ -1731,7 +1735,7 @@ function CompactInfo({
 
 function ImportDetailModal({
   row,
-  onClose,
+  onClose: closeModal,
   onRemoved,
   onUpdated,
   onEdit,
@@ -1746,6 +1750,12 @@ function ImportDetailModal({
     currentRow,
     setCurrentRow,
   ] = useState<ImportRow>(row);
+  const [selectedUpdateFields, setSelectedUpdateFields] = useState<string[]>([]);
+  const [savingMediaOrder, setSavingMediaOrder] = useState(false);
+  const [mediaOrderMessage, setMediaOrderMessage] = useState("");
+  const [mediaOrderError, setMediaOrderError] = useState("");
+  const mediaSaveRef = useRef(false);
+  const onClose = () => { if (!mediaSaveRef.current) closeModal(); };
 
   const [
     editableSourceText,
@@ -1771,6 +1781,7 @@ function ImportDetailModal({
 
   const room =
     currentRow.room_payload ?? {};
+  const roomReview = getImportReview(room);
 
   const detail =
     currentRow.detail_payload ?? {};
@@ -1789,6 +1800,11 @@ function ImportDetailModal({
 
   const videos =
     getImportVideos(currentRow);
+
+  const orderedMedia = [
+    ...(currentRow.images || []).map((item, index) => ({ ...item, type: "image", url: getImportImageUrl(item), sort_order: Number(item.sort_order ?? index) })),
+    ...(currentRow.videos || []).map((item, index) => ({ ...item, type: "video", url: String(item.temp_video_url || item.video_url || item.url || ""), thumb: item.temp_thumb_url || item.thumb_url || item.thumbnail_url, sort_order: Number(item.sort_order ?? index) })),
+  ].sort((a, b) => a.sort_order - b.sort_order);
 
   const [
     openNoticeModal,
@@ -1814,8 +1830,41 @@ function ImportDetailModal({
     onAfterRemoved: onClose,
   });
 
+  async function saveMediaOrder(media: any[]) {
+    if (mediaSaveRef.current || actionDisabled || reparsing) return;
+    mediaSaveRef.current = true;
+    setSavingMediaOrder(true);
+    setMediaOrderMessage("");
+    setMediaOrderError("");
+    try {
+      const positioned = media.map((item, index) => ({ ...item, sort_order: index }));
+      const response = await fetch(`/api/admin/zalo-imports/${currentRow.id}/draft`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manualReviewOnly: true, room_payload: {}, detail_payload: {},
+          images: positioned.filter(item => item.type === "image").map(({ id, sort_order }) => ({ id, sort_order })),
+          videos: positioned.filter(item => item.type === "video").map(({ id, sort_order }) => ({ id, sort_order })),
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json?.ok) throw new Error(json?.error || "Chưa lưu được thứ tự ảnh/video. Vui lòng thử lại.");
+      const updatedRow = { ...currentRow, room_payload: json.room_payload ?? currentRow.room_payload, detail_payload: json.detail_payload ?? currentRow.detail_payload,
+        images: Array.isArray(json.images) ? json.images : positioned.filter(item => item.type === "image"),
+        videos: Array.isArray(json.videos) ? json.videos : positioned.filter(item => item.type === "video") };
+      setCurrentRow(updatedRow);
+      onUpdated?.(updatedRow);
+      setMediaOrderMessage("Đã lưu thứ tự ảnh/video.");
+    } catch (error: any) {
+      setMediaOrderError(error?.message || "Chưa lưu được thứ tự ảnh/video. Vui lòng thử lại.");
+    } finally {
+      mediaSaveRef.current = false;
+      setSavingMediaOrder(false);
+    }
+  }
+
   useEffect(() => {
     setCurrentRow(row);
+    setSelectedUpdateFields([]);
     setEditableSourceText(
       getEditableReparseText(row)
     );
@@ -1826,6 +1875,7 @@ function ImportDetailModal({
   async function reparsePending() {
     if (
       reparsing ||
+      mediaSaveRef.current ||
       busyAction
     ) {
       return;
@@ -1907,6 +1957,7 @@ function ImportDetailModal({
       setCurrentRow(
         updatedRow
       );
+      setSelectedUpdateFields([]);
 
       setEditableSourceText(
         getEditableReparseText(
@@ -1991,7 +2042,7 @@ function ImportDetailModal({
         className="zalo-import-modal-shell"
         style={{
           ...detailModalShell,
-          opacity: busyAction || reparsing ? 0.82 : 1,
+          opacity: busyAction || reparsing || savingMediaOrder ? 0.82 : 1,
         }}
         role="dialog"
         aria-modal="true"
@@ -2012,6 +2063,8 @@ function ImportDetailModal({
               >
                 {currentRow.status}
               </span>
+              <span style={importLifecycle(currentRow) === "TEST" ? badgeOrange : badgeBlue}>{importLifecycleLabel(currentRow)}</span>
+              {importMediaStatus(currentRow) && <span style={badgeOrange}>{importMediaStatus(currentRow)} · Cần kiểm tra album gốc</span>}
 
               {isStagingTrial && (
                 <span
@@ -2058,6 +2111,7 @@ function ImportDetailModal({
             onClick={onClose}
             style={detailModalCloseBtn}
             aria-label="Đóng"
+            disabled={savingMediaOrder}
           >
             ×
           </button>
@@ -2067,6 +2121,7 @@ function ImportDetailModal({
           className="zalo-import-modal-body"
           style={detailModalBody}
         >
+          <RoomUpdateComparison row={currentRow} selected={selectedUpdateFields} onSelect={setSelectedUpdateFields} />
           {isDuplicate && (
             <div style={duplicateBox}>
               <b>Phòng đã tồn tại</b>
@@ -2126,6 +2181,7 @@ function ImportDetailModal({
                   "Loại phòng Duplex",
                 ].join("\\n")}
                 disabled={
+                  savingMediaOrder ||
                   reparsing ||
                   busyAction !== null
                 }
@@ -2140,6 +2196,7 @@ function ImportDetailModal({
                   style={reparseRestoreBtn}
                   onClick={restoreOriginalText}
                   disabled={
+                    savingMediaOrder ||
                     reparsing ||
                     busyAction !== null ||
                     !batch.raw_text
@@ -2155,6 +2212,7 @@ function ImportDetailModal({
                     void reparsePending()
                   }
                   disabled={
+                    savingMediaOrder ||
                     reparsing ||
                     busyAction !== null ||
                     !editableSourceText.trim()
@@ -2218,6 +2276,8 @@ function ImportDetailModal({
               <Field label="Giữ xe" value={formatFee(detail.parking_fee_value, detail.parking_fee_unit)} field="parking_fee_value" source={source} inherited={inherited} />
               <Field label="Các phí khác" value={formatOtherFee(detail.other_fee_value, detail.other_fee_note)} field={["other_fee_value", "other_fee_note"]} source={source} inherited={inherited} />
               <Field label="Các tiện ích khác" value={String(detail.other_amenities || "").trim()} field="other_amenities" source={source} inherited={inherited} />
+              <Field label="Ban công" value={detail.has_balcony ? "Có" : "Không"} field="has_balcony" source={source} inherited={inherited} />
+              <Field label="Cửa sổ" value={detail.has_window ? "Có" : "Không"} field="has_window" source={source} inherited={inherited} />
               <Field label="Thang máy" value={detail.has_elevator ? "Có" : "Không"} field="has_elevator" source={source} inherited={inherited} />
               <Field label="Thang bộ" value={detail.has_stairs ? "Có" : "Không"} field="has_stairs" source={source} inherited={inherited} />
               <Field label="Khóa vân tay" value={detail.fingerprint_lock ? "Có" : "Không"} field="fingerprint_lock" source={source} inherited={inherited} />
@@ -2236,43 +2296,14 @@ function ImportDetailModal({
             </div>
           </div>
 
-          {images.length > 0 && (
+          {orderedMedia.length > 0 && (
             <div style={imagesWrap}>
-              <div style={panelTitle}>
-                Ảnh tạm ({images.length})
-              </div>
-
-              <div style={imagesGrid}>
-                {images.map((image) => (
-                  <img
-                    key={image.id}
-                    src={image.url}
-                    alt=""
-                    style={thumb}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {videos.length > 0 && (
-            <div style={imagesWrap}>
-              <div style={panelTitle}>
-                Video tạm ({videos.length})
-              </div>
-
-              <div style={videosGrid}>
-                {videos.map((video) => (
-                  <video
-                    key={video.id}
-                    src={video.url}
-                    poster={video.thumb || undefined}
-                    controls
-                    preload="metadata"
-                    style={videoPreview}
-                  />
-                ))}
-              </div>
+              <div style={panelTitle}>Media tạm ({images.length} ảnh · {videos.length} video)</div>
+              <ImportMediaOrder media={orderedMedia} disabled={actionDisabled || reparsing || savingMediaOrder}
+                onChange={media => void saveMediaOrder(media)} />
+              {savingMediaOrder && <p role="status">Đang lưu thứ tự ảnh/video...</p>}
+              {mediaOrderMessage && <p role="status" style={{ color: "#15803d" }}>{mediaOrderMessage}</p>}
+              {mediaOrderError && <p role="alert" style={{ color: "#b91c1c" }}>{mediaOrderError}</p>}
             </div>
           )}
         </div>
@@ -2290,7 +2321,7 @@ function ImportDetailModal({
               onClick={() =>
                 void deleteImport()
               }
-              disabled={busyAction !== null || reparsing}
+              disabled={busyAction !== null || reparsing || savingMediaOrder}
             >
               {busyAction === "delete"
                 ? "Đang xóa..."
@@ -2303,7 +2334,7 @@ function ImportDetailModal({
               onClick={() =>
                 void rejectImport()
               }
-              disabled={actionDisabled || reparsing}
+              disabled={actionDisabled || reparsing || savingMediaOrder}
             >
               {busyAction === "reject"
                 ? "Đang từ chối..."
@@ -2316,12 +2347,19 @@ function ImportDetailModal({
               onClick={() =>
                 onEdit?.(currentRow)
               }
-              disabled={actionDisabled || reparsing}
+              disabled={actionDisabled || reparsing || savingMediaOrder}
             >
               Chỉnh sửa
             </button>
 
-            {isDuplicate ? (
+            {roomReview?.type === "UPDATE" ? (
+              <button type="button" style={primaryBtn} disabled={actionDisabled || reparsing || savingMediaOrder || selectedUpdateFields.length === 0 || importLifecycle(currentRow) === "TEST"}
+                onClick={() => void approveImport("update_room", selectedUpdateFields)}>
+                {busyAction === "approve" ? "Đang cập nhật..." : `Duyệt cập nhật (${selectedUpdateFields.length} trường)`}
+              </button>
+            ) : roomReview?.type === "NEEDS_REVIEW" ? (
+              <span role="status">Cần xác minh và Phân tích lại trước khi duyệt.</span>
+            ) : isDuplicate ? (
               <>
                 <button
                   style={primaryBtn}
@@ -2331,25 +2369,13 @@ function ImportDetailModal({
                       "update_status"
                     )
                   }
-                  disabled={actionDisabled || reparsing}
+                  disabled={actionDisabled || reparsing || savingMediaOrder}
                 >
                   {busyAction === "approve"
                     ? "Đang duyệt..."
                     : "Duyệt cập nhật"}
                 </button>
 
-                <button
-                  style={ghostBtn}
-                  type="button"
-                  onClick={() =>
-                    void approveImport(
-                      "create_room"
-                    )
-                  }
-                  disabled={actionDisabled || reparsing}
-                >
-                  Tạo phòng mới
-                </button>
               </>
             ) : (
               <button
@@ -2360,7 +2386,7 @@ function ImportDetailModal({
                     "create_room"
                   )
                 }
-                disabled={actionDisabled || reparsing}
+                disabled={actionDisabled || reparsing || savingMediaOrder}
               >
                 {busyAction === "approve"
                   ? "Đang duyệt..."
@@ -2901,11 +2927,15 @@ const backBtn: CSSProperties = {
 
 const filterBar: CSSProperties = {
   display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
   gap: 10,
   marginBottom: 16,
 };
 
 const select: CSSProperties = {
+  maxWidth: "100%",
+  minWidth: 0,
   padding: "10px 12px",
   borderRadius: 10,
   border: "1px solid #d1d5db",

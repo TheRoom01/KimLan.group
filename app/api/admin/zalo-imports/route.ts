@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { importFilters, applyImportFilters } from "@/lib/zalo-import/filters";
+import { importLifecycle } from "@/lib/zalo-import/lifecycle";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -76,6 +78,7 @@ export async function GET(req: Request) {
 
     const status =
       url.searchParams.get("status") || "";
+    const filters = importFilters(Object.fromEntries(url.searchParams));
 
     const limit = toSafeInteger(
       url.searchParams.get("limit"),
@@ -99,7 +102,7 @@ export async function GET(req: Request) {
       .select(
         `
         *,
-        batch:zalo_import_batches(*)
+        batch:zalo_import_batches${filters.group ? "!inner" : ""}(*)
       `,
         {
           count: "exact",
@@ -119,6 +122,7 @@ export async function GET(req: Request) {
         status
       );
     }
+    query = applyImportFilters(query, filters);
 
     const {
       data,
@@ -216,6 +220,7 @@ export async function GET(req: Request) {
 
         return {
           ...row,
+          import_lifecycle: importLifecycle(row),
           images:
             imagesByBatch[batchId] ?? [],
           videos:

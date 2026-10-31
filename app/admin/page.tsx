@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import AdminClient from "./AdminClient";
+import ZaloReaderStatus from "./ZaloReaderStatus";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { attachRoomBadges } from "@/lib/roomBadges";
 
@@ -55,7 +56,7 @@ export default async function AdminPage({
 
   if (rpcErr) {
     console.error(`${rpcName} error:`, rpcErr);
-    return <AdminClient initialRooms={[]} initialTotal={0} />;
+    return <><ZaloReaderStatus /><AdminClient initialRooms={[]} initialTotal={0} /></>;
   }
 
   const rooms = await attachRoomBadges(supabase, ((rpcData as any)?.data ?? []) as any[]);
@@ -64,13 +65,16 @@ export default async function AdminPage({
     .from("room_consult_requests")
     .select("id", { count: "exact", head: true })
     .eq("status", "new");
-  
+
   return (
-  <AdminClient
-    initialRooms={rooms}
-    initialTotal={total}
-    report={report ?? null}
-    roomConsultNewCount={roomConsultCountError ? 0 : roomConsultNewCount ?? 0}
-  />
-);
+    <>
+      <ZaloReaderStatus />
+      <AdminClient
+        initialRooms={rooms}
+        initialTotal={total}
+        report={report ?? null}
+        roomConsultNewCount={roomConsultCountError ? 0 : roomConsultNewCount ?? 0}
+      />
+    </>
+  );
 }
