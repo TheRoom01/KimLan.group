@@ -40,11 +40,17 @@ async function main() {
   command.request_id = randomUUID(); command.desired_enabled = false;
   await syncReaderControl(deps); assert.deepEqual(applied, [true, false]); assert.equal(actual, false);
   assert.equal(immediateRuns.length, 1, "Stop never launches Reader");
+  actual = true;
   await syncReaderControl({ ...deps, apply: () => { throw new Error("private command output"); } });
   assert.equal(reports.at(-1).error, "SCHEDULER_CONTROL_FAILED"); assert.doesNotMatch(JSON.stringify(reports), /private/);
   const actions = applied.length;
   await assert.rejects(syncReaderControl({ ...deps, read: async () => { throw new Error("offline"); } }));
   assert.equal(applied.length, actions, "unreachable API must not change scheduler");
+  command.desired_enabled = true; command.request_id = randomUUID(); actual = true;
+  const scheduleChanges = applied.length;
+  await syncReaderControl(deps);
+  assert.equal(applied.length, scheduleChanges, "Start on an enabled schedule must not re-run scheduler enable/preflight");
+  assert.equal(immediateRuns.at(-1), command.request_id, "enabled schedule still starts the requested immediate run");
   const directory = path.resolve(".zalo-reader/offline-control-launch", randomUUID());
   const requestId = randomUUID(); let launches = 0;
   const launch = async () => { launches++; };

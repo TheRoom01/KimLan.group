@@ -17,7 +17,9 @@ export async function syncReaderControl(deps: {
   }
   try {
     // Only fixed Start/Stop actions, never executable code supplied by the web.
-    deps.apply(command.desired_enabled);
+    // Starting an already-enabled schedule only needs the immediate run;
+    // re-enabling it invokes production preflight and needlessly delays the ACK.
+    if (actual !== command.desired_enabled) deps.apply(command.desired_enabled);
     actual = deps.actual();
     if (actual !== command.desired_enabled) throw new Error("SCHEDULER_CONTROL_FAILED");
     if (command.desired_enabled) await deps.runNow(command.request_id);
