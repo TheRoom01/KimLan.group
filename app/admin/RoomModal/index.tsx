@@ -2360,8 +2360,8 @@ const stopBackdropEvents = (e: any) => {
            {activeTab === 'fee' && (
             <RoomFeeTab
               detailForm={detailForm}
-              isNew={!editingRoom?.id}
-              allowAutofill={!feeAutofillDone && !editingRoom?.id}
+              isNew={!isPending && !editingRoom?.id}
+              allowAutofill={!isPending && !feeAutofillDone && !editingRoom?.id}
               onAutofillDone={() => setFeeAutofillDone(true)}
               onChange={(patch) => {
                 // user sửa/xoá (kể cả về 0) => coi như đã “touched”, không autofill lại nữa
@@ -2386,15 +2386,10 @@ const stopBackdropEvents = (e: any) => {
               value={buildingLocation}
               loading={buildingLocationLoading}
               error={buildingLocationError}
-              autoSuggest={isPending}
-              fallbackQueries={isPending ? importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward).slice(1) : []}
-              addressQuery={isPending ? (importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward)[0] || "") : [
-                roomForm.house_number,
-                roomForm.address,
-                roomForm.ward,
-                roomForm.district,
-                'Thành phố Hồ Chí Minh',
-              ].filter(Boolean).join(', ')}
+              autoSuggest
+              isPending={isPending}
+              fallbackQueries={importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward).slice(1)}
+              addressQuery={importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward)[0] || ""}
               onChange={(next) => {
                 setBuildingLocation(next)
                 setBuildingLocationDirty(true)

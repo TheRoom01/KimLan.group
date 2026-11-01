@@ -501,7 +501,8 @@ check("O: phòng 503 giữ đúng địa chỉ, phí, tiện ích và video phí
   assert.equal(result.parsed.roomPayload.room_code, "503");
   assert.equal(result.parsed.roomPayload.price, 16_000_000);
   assert.equal(result.parsed.roomPayload.room_type, "2PN");
-  assert.match(result.parsed.roomPayload.description, /5\/11/);
+  assert.equal(result.parsed.roomPayload.description, "");
+  assert.equal(result.parsed.roomPayload.available_from_text, "5/11");
   assert.equal(result.parsed.detailPayload.has_balcony,true);
   assert.doesNotMatch(result.parsed.detailPayload.other_amenities, /Ban công/);
   assert.match(result.parsed.detailPayload.other_amenities, /1 phòng khách/);

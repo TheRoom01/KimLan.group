@@ -15,6 +15,7 @@ export default function RoomLocationTab({
   error,
   disabled,
   autoSuggest = false,
+  isPending = false,
   fallbackQueries = [],
 }: {
   value: Location | null;
@@ -24,6 +25,7 @@ export default function RoomLocationTab({
   error?: string | null;
   disabled?: boolean;
   autoSuggest?: boolean;
+  isPending?: boolean;
   fallbackQueries?: string[];
 }) {
   const onChangeRef = useRef(onChange);
@@ -43,7 +45,7 @@ export default function RoomLocationTab({
   }, [addressQuery]);
 
   useEffect(() => {
-    if (!autoSuggest || disabled || value || addressQuery.length < 3 || attempted.current === addressQuery) return;
+    if (!autoSuggest || loading || disabled || value || addressQuery.length < 3 || attempted.current === addressQuery) return;
     attempted.current = addressQuery;
     const controller = new AbortController();
     autoController.current = controller;
@@ -70,7 +72,7 @@ export default function RoomLocationTab({
       finally { if (!controller.signal.aborted) setSearching(false); }
     })();
     return () => { controller.abort(); if (!completed) attempted.current = ""; setSearching(false); };
-  }, [autoSuggest, disabled, value, addressQuery, fallbackKey]);
+  }, [autoSuggest, loading, disabled, value, addressQuery, fallbackKey]);
 
   async function searchAddress(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,9 +122,9 @@ export default function RoomLocationTab({
     <div className="space-y-3">
       <div className="grid items-start gap-3 md:grid-cols-2">
         <div className="min-h-full rounded-xl border border-[#aa825d]/25 bg-[#f8ecd9] px-3 py-2.5 text-xs leading-5 text-[#684324]">
-          <strong className="block text-sm">{autoSuggest ? "Chọn trước vị trí cho bản nháp" : "Vị trí dùng chung của tòa nhà"}</strong>
+          <strong className="block text-sm">{isPending ? "Chọn trước vị trí cho bản nháp" : "Vị trí dùng chung của tòa nhà"}</strong>
           <span>{addressQuery || "Chưa có địa chỉ để định vị"}</span>
-          {autoSuggest && <p>Vị trí gợi ý là gần đúng. Kiểm tra hoặc kéo ghim; vị trí sẽ được gán cho tòa nhà khi duyệt.</p>}
+          {autoSuggest && <p>Vị trí gợi ý là gần đúng. Kiểm tra hoặc kéo ghim; {isPending ? "vị trí sẽ được gán cho tòa nhà khi duyệt." : "vị trí sẽ được lưu cho tòa nhà khi lưu phòng."}</p>}
           
         </div>
 

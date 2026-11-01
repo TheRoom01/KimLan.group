@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { preserveConfirmedFields } from "@/lib/zalo-import/reparse-review";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -339,6 +340,10 @@ export async function POST(
         ""
       );
 
+    if ((pending as any).auto_approve_processing_at) {
+      return NextResponse.json({ ok: false, error: "Bản nháp đang được xử lý, hãy tải lại trước khi phân tích." }, { status: 409 });
+    }
+
     if (
       [
         "Đã duyệt",
@@ -388,14 +393,21 @@ export async function POST(
     const parsed =
       parseZaloRoomText(
         sourceText,
-        { importedAt: (pending as any).created_at ?? (pending as any).batch?.created_at }
+        { importedAt: (pending as any).created_at ?? (pending as any).batch?.created_at,
+          targetRoomCode: (pending as any).room_payload?.room_code || undefined }
       );
+
+    const conflicts = preserveConfirmedFields(pending, parsed, body?.conflictChoices || {});
+    if (conflicts.length) {
+      return NextResponse.json({ ok: false, code: "MANUAL_FIELD_CONFLICT", error: "Chọn dữ liệu cần giữ cho các trường đã xác nhận.", conflicts }, { status: 409 });
+    }
 
     const resolved =
       await resolveZaloImportRoom({
         supabase,
         sourceFieldMap: parsed.sourceFieldMap,
         excludePendingId: pendingId,
+        skipInheritance: true,
         roomPayload:
           parsed.roomPayload,
         detailPayload:
@@ -588,6 +600,7 @@ export async function POST(
 
     const nextRoomPayload = {
       ...resolved.roomPayload,
+      _reader_manual_review: true,
       ...(oldRoomPayload._reader_manual_review === true || (batch as any)?.parser_result?.official_source ? { _reader_manual_review: true } : {}),
       ...(oldRoomPayload._manual_video_required === true ? { _manual_video_required: videos.length === 0 } : {}),
       ...(oldRoomPayload.property_id && normalizedRoomIdentity(oldRoomPayload) && normalizedRoomIdentity(oldRoomPayload) === normalizedRoomIdentity(resolved.roomPayload)
@@ -608,6 +621,10 @@ export async function POST(
         : "Chờ duyệt";
 
     const pendingUpdatePayload = {
+      auto_approve_enabled: false,
+      auto_approve_at: null,
+      auto_approve_actor_id: null,
+      draft_revision: Number((pending as any).draft_revision || 0) + 1,
       status:
         nextStatus,
 
@@ -661,6 +678,9 @@ export async function POST(
         "id",
         pendingId
       )
+      .eq("draft_revision", (pending as any).draft_revision || 0)
+      .eq("status", currentStatus)
+      .is("auto_approve_processing_at", null)
       .select(
         `
         *,
@@ -671,84 +691,6 @@ export async function POST(
 
     if (updatePendingError) {
       throw updatePendingError;
-    }
-
-    if (batchId) {
-      const oldParserResult =
-        batch?.parser_result &&
-        typeof batch.parser_result ===
-          "object"
-          ? batch.parser_result
-          : {};
-
-      const nextParserResult = {
-        ...oldParserResult,
-
-        room_payload:
-          nextRoomPayload,
-
-        detail_payload:
-          resolved.detailPayload,
-
-        source_field_map:
-          parsed.sourceFieldMap,
-
-        inherited_field_map:
-          resolved
-            .inheritedFieldMap,
-
-        matched_room_id:
-          resolved.matchedRoom
-            ?.id ?? null,
-
-        matched_reason:
-          resolved.matchedReason ||
-          null,
-
-        import_quality:
-          importQuality,
-
-        manual_reparse:
-          manualReparseMeta,
-      };
-
-      const {
-        error: updateBatchError,
-      } = await supabase
-        .from(
-          "zalo_import_batches"
-        )
-        .update({
-          parser_version:
-            "quality-v1-manual",
-
-          parser_result:
-            nextParserResult,
-        })
-        .eq(
-          "id",
-          batchId
-        );
-
-      if (updateBatchError) {
-        throw updateBatchError;
-      }
-
-      /*
-       * Bản pending vừa select ở trên vẫn chứa batch trước update.
-       * Gắn parser_result mới vào response để UI hiển thị ngay.
-       */
-      (updatedPending as any).batch = {
-        ...(
-          (updatedPending as any)
-            .batch ||
-          batch
-        ),
-        parser_version:
-          "quality-v1-manual",
-        parser_result:
-          nextParserResult,
-      };
     }
 
     const finalRow = {

@@ -919,6 +919,14 @@ export async function PATCH(
       ),
       ...detailPayload,
     };
+    const confirmedFields = { ...((pendingRow.room_payload as any)?._confirmed_fields || {}) };
+    for (const [scope, oldValues, values] of [["room", pendingRow.room_payload, roomPayload], ["detail", pendingRow.detail_payload, detailPayload]] as const) {
+      for (const [field, value] of Object.entries(values || {})) {
+        if (!field.startsWith("_") && !["media", "video_url", "video_urls", "thumb_url", "has_video"].includes(field)
+          && stableJson(oldValues?.[field]) !== stableJson(value)) confirmedFields[`${scope}.${field}`] = value;
+      }
+    }
+    (nextRoomPayload as any)._confirmed_fields = confirmedFields;
     if (originalReview) {
       // The client cannot replace snapshots/type/target via the edit form.
       const review = (nextRoomPayload as any)._room_import;

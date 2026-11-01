@@ -1283,7 +1283,7 @@ function extractAddressParts(
   /* ADDRESS_PARSER_V7_ALPHANUMERIC_HOUSE_NUMBER */
   const houseNumberSource =
     "(?:[A-Za-z]{1,4})?\\d+[A-Za-z0-9]{0,4}" +
-    "(?:(?:\\/|-)\\d+[A-Za-z0-9]{0,4})*";
+    "(?:\\s*(?:\\/|-)\\s*\\d+[A-Za-z0-9]{0,4})*";
 
   const houseAndStreetPattern =
     new RegExp(
@@ -1688,7 +1688,7 @@ function extractAddressParts(
 
     if (
       street.length < 2 ||
-      !normalizedStreetKey(street) || /^(?:gia|dien|nuoc|dich vu|phi|coc|hoa hong|phong|room|trong)\b/.test(
+      !normalizedStreetKey(street) || /^(?:gia|dien|nuoc|dich vu|phi|coc|hoa hong|phong|room|trong|tang|lau|trieu|tr|studio|duplex)\b/.test(
         normalizedStreet
       )
     ) {
@@ -1952,7 +1952,7 @@ export function detectZaloBuildingCandidates(
     /(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]/i;
 
   const houseNumberAtStartPattern =
-    /^(?:[A-Za-z]{1,4})?\d+[A-Za-z]{0,4}(?:(?:\/|-)\d+[A-Za-z]{0,4})*\s+[A-Za-zÀ-ỹĐđ]/i;
+    /^(?:[A-Za-z]{1,4})?\d+[A-Za-z]{0,4}(?:\s*(?:\/|-)\s*\d+[A-Za-z]{0,4})*\s+[A-Za-zÀ-ỹĐđ]/i;
 
   /*
    * ADDRESS_PARSER_V5_1_INLINE_BUILDING_HEADER
@@ -2803,10 +2803,29 @@ function pickOtherAmenitiesFromZaloText(
 function pickDescriptionFromRoomMarker(
   markerText: string
 ): string {
-  const lines =
-    getCleanZaloLines(
-      markerText
-    );
+  // Description starts at the room's rent/status boundary, never at the start
+  // of a full edited message (which also contains building fees and policies).
+  const lines: string[] = [];
+  let roomStarted = false;
+  for (const line of getCleanZaloLines(markerText)) {
+    const normalized = normalizeForCompare(line);
+    const buildingField = /^(?:phi\s*)?(?:dien|nuoc|dich vu|dv|xe|giu xe|gui xe|internet|wifi|thang may|thang bo|tien ich|noi that)\b/.test(normalized);
+    if (buildingField) continue;
+    const price = line.match(new RegExp(ROOM_PRICE_TOKEN_SOURCE, "i"));
+    const roomRent = price && extractRoomPriceFromMarker(line) != null &&
+      (looksLikeRoomMarkerText(line) || /^(?:gia|gia thue)\b/.test(normalized));
+    let tail = line;
+    if (roomRent) {
+      roomStarted = true;
+      tail = line.slice(price.index! + price[0].length);
+    }
+    if (!roomStarted) continue;
+    const status = tail.match(/(?:trống\s*sẵn|trong\s*san|(?:sắp\s*)?trống|(?:sap\s*)?trong|đã\s*thuê|da\s*thue|hết\s*phòng|het\s*phong|available)(?:\s*(?:ngày|ngay)?\s*\d{1,2}[/.]\d{1,2}(?:[/.]\d{4})?)?(?=$|[\s,;:|–—-])/i);
+    if (status) tail = tail.slice(status.index! + status[0].length);
+    // A code slot after rent is metadata too, including a shared code list.
+    tail = tail.replace(/^[\s:|/–—-]*(?:(?:P\s*\.\s*)?[A-Za-z]{0,3}\d{2,4}[A-Za-z]?(?:\s*[_–—-]\s*lầu\s*\d{1,2})?\s*(?:[+,]\s*)?)+(?=$|[\s:|–—-])/i, "");
+    lines.push(tail);
+  }
 
   const picked:
     string[] = [];
@@ -2841,7 +2860,7 @@ function pickDescriptionFromRoomMarker(
      * Bỏ những dòng chỉ chứa field riêng.
      */
     if (
-      /^(ma|ma phong|phong|room)\s*[:\-]/.test(
+      /^(?:ma phong|ma)(?:\s|[:\-])|^(?:phong|room)\s*[:\-]/.test(
         normalized
       )
     ) {
@@ -3279,16 +3298,31 @@ function extractUtilityFeeValue(
 
 export function parseZaloRoomText(
   rawText: string,
-  options: { importedAt?: string | number | Date } = {}
+  options: { importedAt?: string | number | Date; targetRoomCode?: string } = {}
 ): ParsedZaloRoom {
+  const explicitCodes = [...rawText.matchAll(/(?:mã\s*phòng|ma\s*phong)\s*[:=\-]?\s*((?:P\s*\.\s*)?[A-Za-z]{0,3}\d{1,4}[A-Za-z]?(?:\s*[_–—-]\s*(?:lầu\s*\d{1,2}|trệt))?)/gi)];
+  const selectedCode = normalizeRoomCode(options.targetRoomCode || explicitCodes.at(-1)?.[1]);
+  // Scope room-specific lines before any field extraction. Shared building lines remain.
+  if (selectedCode) {
+    rawText = rawText.split(/\r?\n/).filter(line => {
+      const codes = [...line.matchAll(/(?:\bP\s*\.\s*|\b(?:phòng|phong|room)\s*[:\-]?\s*)([A-Za-z]{0,3}\d{2,4}[A-Za-z]?)/gi)]
+        .map(match => normalizeRoomCode(match[1]));
+      return codes.length === 0 || codes.some(code => code === selectedCode || selectedCode.startsWith(`${code} _ `));
+    }).join("\n");
+  }
   const {
     fullText,
-    houseInfoText,
-    markerText,
+    houseInfoText: splitHouseInfoText,
+    markerText: splitMarkerText,
   } =
     splitBuildingAndRoomText(
       rawText
     );
+  const houseInfoText = selectedCode ? fullText : splitHouseInfoText;
+  // An explicit code is often on the last line, after the shared type/price line.
+  const markerText = selectedCode
+    ? fullText.split("\n").filter(line => !/^(?:mã\s*phòng|ma\s*phong)\b/i.test(line.trim()) && !extractAddressParts(line).houseNumber).join("\n")
+    : splitMarkerText;
 
   const text =
     fullText;
@@ -3409,6 +3443,10 @@ const otherAmenities =
     sourceFieldMap.room_code =
       "Tin Zalo";
   }
+  if (selectedCode) {
+    roomPayload.room_code = selectedCode;
+    sourceFieldMap.room_code = "Tin Zalo";
+  }
 
   /*
  * Mẫu số tiền hỗ trợ:
@@ -3449,7 +3487,7 @@ if (
    */
   const addressParts =
     extractAddressParts(
-      houseInfoText || text
+      text
     );
 
   if (addressParts.houseNumber) {
@@ -4010,6 +4048,20 @@ if (petDenied) {
   }
 
   detailPayload.other_amenities = withoutStructuredAmenities(detailPayload.other_amenities || "", detailPayload.has_window === true, detailPayload.has_balcony === true);
+  // Keep the existing source map contract; attach review evidence separately.
+  roomPayload._parse_review = {
+    evidence: Object.fromEntries(Object.keys(sourceFieldMap).map(field => {
+      const value = roomPayload[field] ?? detailPayload[field];
+      const labels: Record<string, RegExp> = { price: /gia|\d.*(?:tr|trieu)|\d[.,]\d{3}/,
+        room_code: /ma phong|\bp\./, status: /trong|da thue|het phong/, room_type: /studio|duplex|\d\s*pn/ };
+      const literal = value == null || typeof value === "boolean" ? "" : normalizeForCompare(String(value));
+      const snippet = text.split("\n").filter(line => (literal && normalizeForCompare(line).includes(literal)) || labels[field]?.test(normalizeForCompare(line))).join("\n");
+      return [field, { kind: field === "available_from" && roomPayload.available_from_text && !/\d{4}/.test(roomPayload.available_from_text) ? "inferred" : "extracted",
+        text: snippet || text, value }];
+    })),
+    missing: ["house_number", "address", "district", "room_code", "room_type", "price", "status"]
+      .filter(field => roomPayload[field] == null || roomPayload[field] === ""),
+  };
   return {
     roomPayload,
     detailPayload,

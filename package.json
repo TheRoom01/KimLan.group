@@ -19,6 +19,7 @@
     "test:zalo-production-media": "tsx tools/zalo-reader/parsers/production-media-regression.test.ts && tsx tools/zalo-reader/parsers/test-pending-api.test.ts",
     "test:zalo-production": "tsx tools/zalo-reader/parsers/production-mode.test.ts && tsx tools/zalo-reader/parsers/import-property-publish.test.ts && npm run test:zalo-production-media",
     "test:zalo-parser": "tsx tools/zalo-reader/parsers/semantic-parser-smoke-test.ts",
+    "test:zalo-reparse": "tsx tools/zalo-reader/parsers/manual-reparse.test.ts && tsx tools/zalo-reader/address-parser-smoke-test.ts && tsx tools/zalo-reader/parsers/new-listing-format.test.ts && tsx tools/zalo-reader/parsers/listing-fields.test.ts",
     "test:zalo-preview": "tsx tools/zalo-reader/parsers/phase5-preview-smoke-test.ts",
     "test:zalo-staging": "tsx tools/zalo-reader/parsers/controlled-staging.test.ts",
     "patch:zalo-parser-phase1": "node tools/zalo-reader/apply-phase1-parser-wiring.mjs",

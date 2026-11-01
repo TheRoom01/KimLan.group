@@ -1762,6 +1762,8 @@ function ImportDetailModal({
   ] = useState<ImportRow>(row);
   const [selectedUpdateFields, setSelectedUpdateFields] = useState<string[]>([]);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [reparseConflicts, setReparseConflicts] = useState<any[]>([]);
+  const [conflictChoices, setConflictChoices] = useState<Record<string, string>>({});
   const mediaSaveRef = useRef(false);
   const savedMediaRowRef = useRef<ImportRow | null>(null);
   const onClose = closeModal;
@@ -1930,6 +1932,7 @@ function ImportDetailModal({
             },
             body: JSON.stringify({
               sourceText,
+              conflictChoices,
             }),
           }
         );
@@ -1938,6 +1941,12 @@ function ImportDetailModal({
         await response
           .json()
           .catch(() => ({}));
+
+      if (json?.code === "MANUAL_FIELD_CONFLICT") {
+        setReparseConflicts(json.conflicts || []);
+        setReparseError(json.error);
+        return;
+      }
 
       if (
         !response.ok ||
@@ -1975,6 +1984,8 @@ function ImportDetailModal({
 
       const updatedRow =
         json.data as ImportRow;
+      setReparseConflicts([]);
+      setConflictChoices({});
 
       setCurrentRow(previous => previous.media_original ? { ...updatedRow, images: previous.images, videos: previous.videos, media_original: previous.media_original } : updatedRow);
       setSelectedUpdateFields([]);
@@ -2186,6 +2197,8 @@ function ImportDetailModal({
                   setEditableSourceText(
                     event.target.value
                   );
+                  setConflictChoices({});
+                  setReparseConflicts([]);
                   setReparseError("");
                   setReparseSuccess("");
                 }}
@@ -2249,6 +2262,22 @@ function ImportDetailModal({
                   {reparseError}
                 </div>
               )}
+              {reparseConflicts.map(conflict => <label key={conflict.key} style={{ display: "block" }}>
+                {conflict.key}: đã xác nhận {JSON.stringify(conflict.previous)}; nguồn mới {JSON.stringify(conflict.proposed)}
+                <select value={conflictChoices[conflict.key] || ""} onChange={event => setConflictChoices(previous => ({ ...previous, [conflict.key]: event.target.value }))}>
+                  <option value="">Chọn dữ liệu rồi bấm Phân tích lại</option>
+                  <option value="keep">Giữ dữ liệu đã xác nhận</option>
+                  <option value="source">Dùng kết quả từ nguồn mới</option>
+                </select>
+              </label>)}
+              {room._parse_review && <details>
+                <summary>Nguồn nhận diện và trường còn thiếu</summary>
+                <p>Còn thiếu: {room._parse_review.missing?.join(", ") || "Không có"}</p>
+                {Object.entries(room._parse_review.evidence || {}).map(([field, evidence]: [string, any]) => <div key={field}>
+                  <strong>{field}</strong>: {JSON.stringify(evidence.value)} — {evidence.kind === "inferred" ? "Suy luận, cần xác minh" : "Trích xuất từ nguồn (cần kiểm tra)"}
+                  <pre style={{ whiteSpace: "pre-wrap" }}>{evidence.text}</pre>
+                </div>)}
+              </details>}
 
               {reparseSuccess && (
                 <div style={reparseSuccessBox}>
