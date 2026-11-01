@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:zalo-control": "tsx tools/zalo-reader/parsers/reader-control.test.ts && tsx tools/zalo-reader/parsers/reader-control-ui.test.ts",
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",

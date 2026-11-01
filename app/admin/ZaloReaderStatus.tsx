@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import ZaloReaderControls from "./ZaloReaderControls";
 export default function ZaloReaderStatus() {
   const [groups,setGroups] = useState<any[]>([]); const [error,setError] = useState(false);
   useEffect(() => {
@@ -13,6 +14,7 @@ export default function ZaloReaderStatus() {
   const time = (date: any) => date ? new Date(date).toLocaleString("vi-VN") : "Chưa có";
   return <section style={{ margin:"12px 0",padding:12,border:"1px solid #cbd5e1",borderRadius:10,background:"#fff",color:"#0f172a",overflowWrap:"anywhere" }}>
     <strong>Zalo Reader · tự động cách nhau 60 phút</strong>
+    <ZaloReaderControls />
     {error && <p>Chưa kết nối giám sát Reader. Cần triển khai SQL/API hoặc kiểm tra kết nối.</p>}
     <div style={{ display:"flex",flexWrap:"wrap",gap:16 }}>
       {groups.map(group => <div key={group.group_key} style={{ flex:"1 1 280px" }}>

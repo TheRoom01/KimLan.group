@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { build } from "esbuild";
+import { chromium } from "playwright";
+async function main() {
+  const bundle = await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import Controls from './app/admin/ZaloReaderControls';
+    window.control={desired_enabled:null,actual_enabled:false,request_id:null,applied_request_id:null,heartbeat_at:new Date().toISOString(),last_error:null};
+    window.sent=[];window.fail=false;window.setInterval=fn=>{window.refresh=fn;return 1};window.clearInterval=()=>{};
+    window.fetch=async(url,options={})=>{if(options.method==='POST'){if(window.fail)return{ok:false,json:async()=>({ok:false,error:'Mất kết nối API'})};const body=JSON.parse(options.body);window.sent.push(body.enabled);window.control={...window.control,desired_enabled:body.enabled,request_id:'command-'+window.sent.length};}return{ok:true,json:async()=>({ok:true,control:{...window.control}})}};
+    createRoot(document.getElementById('root')).render(<Controls/>);`, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", define: { "process.env.NODE_ENV": '"development"' } });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.route("**/*", route => route.abort());
+    await page.setContent(`<html><meta charset="utf-8"><div id="root"></div><script>${bundle.outputFiles[0].text}</script></html>`);
+    await page.getByText("Lịch đọc đã tắt", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await page.getByText("Đã gửi Start · chờ máy Reader xác nhận", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Lịch đọc đã bật", { exact: true }).count(), 0);
+    await page.evaluate(() => { const w = window as any; w.control.actual_enabled = true; w.control.applied_request_id = w.control.request_id; w.refresh(); });
+    await page.getByText("Lịch đọc đã bật", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await page.getByText("Đã gửi Stop · chờ máy Reader xác nhận", { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => (window as any).sent), [true, false]);
+    await page.evaluate(() => { const w = window as any; w.control.actual_enabled = false; w.control.applied_request_id = w.control.request_id; w.refresh(); });
+    await page.getByText("Lịch đọc đã tắt", { exact: true }).waitFor();
+    await page.evaluate(() => { (window as any).fail = true; });
+    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "Mất kết nối API" }).waitFor();
+    assert.equal(await page.getByText("Lịch đọc đã bật", { exact: true }).count(), 0);
+    await page.evaluate(() => { const w = window as any; w.fail = false; w.control.heartbeat_at = '2020-01-01T00:00:00Z'; w.refresh(); });
+    await page.getByText("Máy Reader chưa kết nối hoặc đang nghỉ", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await page.getByText("Đã gửi Stop · chờ máy Reader xác nhận", { exact: true }).waitFor();
+    const directory = path.resolve(".zalo-reader/offline-control-ui"); fs.mkdirSync(directory, { recursive: true });
+    await page.screenshot({ path: path.join(directory, "reader-controls-mobile.png"), fullPage: true });
+    console.log("Reader controls UI: mobile, Start/Stop, wait for ACK, API failure cannot claim success: PASS (offline)");
+  } finally { await browser.close(); }
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

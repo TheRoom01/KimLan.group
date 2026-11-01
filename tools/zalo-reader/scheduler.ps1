@@ -2,6 +2,7 @@
 param([ValidateSet('Install','Enable','Disable','Status','Run','Trial')][string]$Action='Status', [switch]$Confirmed)
 $ErrorActionPreference='Stop'
 $readerRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot 'scheduler-authorization.ps1')
 $configPath=Join-Path $PSScriptRoot 'production.config.json'
 $taskName='KimLan-ZaloReader-60m'
 $nodePath=(Get-Command node.exe -ErrorAction Stop).Source
@@ -30,7 +31,7 @@ switch($Action) {
  'Install' {
    if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { throw 'Task already exists. Inspect Status; do not overwrite an active schedule.' }
    $wrapperPath=Join-Path $PSScriptRoot 'scheduled-run.ps1'
-   $arguments='-NoProfile -NonInteractive -WindowStyle Hidden -File "'+$wrapperPath+'" -NodePath "'+$nodePath+'"'
+   $arguments='-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -WindowStyle Hidden -File "'+$wrapperPath+'" -NodePath "'+$nodePath+'"'
    $taskAction=New-ScheduledTaskAction -Execute (Get-Command powershell.exe -ErrorAction Stop).Source -Argument $arguments -WorkingDirectory $readerRoot
    $trigger=New-ScheduledTaskTrigger -Once -At (Get-NextReaderRun) -RepetitionInterval (New-TimeSpan -Minutes 60)
    $principal=New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited
@@ -60,7 +61,7 @@ switch($Action) {
        ($report.mode -eq 'trial' -and @($report.groups|Where-Object { $_.counters.failed -gt 0 -or $_.status -notin @('idle','needs_review') }).Count -eq 0) -or
        ($report.mode -eq 'official' -and $cycle.runId -eq $report.runId -and $cycle.finishedAt -and @($report.groups|Where-Object { $_.status -eq 'login_required' }).Count -eq 0)
      ) }
-   if (!$reports) { throw 'No completed two-group run with verified identity and coverage. Inspect reports before enabling.' }
+   if (!$reports -and !(Test-ReaderResumeAuthorization $readerRoot)) { throw 'No completed two-group run with verified identity and coverage. Inspect reports before enabling.' }
    $task=Get-ScheduledTask -TaskName $taskName
    $ownerSid=([Security.Principal.NTAccount]$task.Principal.UserId).Translate([Security.Principal.SecurityIdentifier]).Value
    if ($ownerSid -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'Use the Windows account that owns the Zalo profile/task.' }
@@ -74,6 +75,7 @@ switch($Action) {
          $trigger=New-ScheduledTaskTrigger -Once -At (Get-NextReaderRun) -RepetitionInterval (New-TimeSpan -Minutes 60)
          Set-ScheduledTask -TaskName $taskName -Trigger $trigger|Out-Null
          Enable-ScheduledTask -TaskName $taskName|Out-Null
+         Save-ReaderResumeAuthorization $readerRoot
        }
        catch {
          $enableFailure=$_

@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$NodePath)
+param([Parameter(Mandatory=$true)][string]$NodePath, [switch]$Immediate)
 $ErrorActionPreference='Stop'
 $readerRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if (![Environment]::UserInteractive -or [Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) { throw 'INTERACTIVE_WINDOWS_SESSION_REQUIRED' }
@@ -11,7 +11,11 @@ try {
   $logDirectory=Join-Path $readerRoot '.zalo-reader/official/console'
   New-Item -ItemType Directory -Path $logDirectory -Force|Out-Null
   $logFile=Join-Path $logDirectory ((Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+$PID+'.log')
-  & $NodePath --import tsx (Join-Path $PSScriptRoot 'official-runner.ts') --production --confirm-production --scheduled *> $logFile
+  if($Immediate) {
+    & $NodePath --import tsx (Join-Path $PSScriptRoot 'official-runner.ts') --production --confirm-production *> $logFile
+  } else {
+    & $NodePath --import tsx (Join-Path $PSScriptRoot 'official-runner.ts') --production --confirm-production --scheduled *> $logFile
+  }
   $readerExit=$LASTEXITCODE
   # An overlapping wrapper is not a completed cycle and must not move the timer.
   $lockPath=Join-Path $readerRoot '.zalo-reader/official/reader.lock'
