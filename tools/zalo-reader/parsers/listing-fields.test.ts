@@ -11,6 +11,6 @@ assert.equal(parse("Studio - 6tr - P.301 - trống ngày 1/12").roomPayload.avai
 assert.equal(vacancyDateFromText("1/1","2026-12-31T18:00:00Z"),"2027-01-01","Vietnam import year at UTC boundary");
 assert.equal(vacancyDateFromText("1/12/2028","2026-01-01"),"2028-12-01");assert.equal(vacancyDateFromText("31/2","2026-01-01"),null);
 assert.equal(vacancyDateFromText("29/2","2028-01-01"),"2028-02-29");assert.equal(vacancyDateFromText("29/2","2026-01-01"),null);
-assert.equal(parse("Studio - 6tr - P.301 - trống sẵn").roomPayload.status,"Trống");assert.equal(parse("Studio - 6tr - P.301 - trống sẵn").roomPayload.available_from,null);
+assert.equal(parse("Studio - 6tr - P.301 - trống sẵn").roomPayload.status,"Đang trống");assert.equal(parse("Studio - 6tr - P.301 - trống sẵn").roomPayload.available_from,null);
 assert.equal(withoutStructuredAmenities("Cửa sổ\nBan công\nCamera\nCửa sổ lớn hướng Đông",true,true),"Camera\nCửa sổ lớn hướng Đông");
 console.log("CS/BC structured fields without duplication / dated vacancy / import year / explicit year / invalid and leap dates / ready now PASS");

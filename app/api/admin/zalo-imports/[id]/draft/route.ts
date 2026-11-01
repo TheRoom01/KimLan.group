@@ -1,4 +1,5 @@
 import { readPendingLocation } from "@/lib/zalo-import/pending-location";
+import { normalizeRoomStatus, requireAvailabilityDate } from "@/lib/rooms/availability";
 import { runSettledPool } from "@/lib/async-pool";
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
@@ -419,6 +420,15 @@ export async function PATCH(
      */
     const pendingRow =
       pending as unknown as PendingDraftRow;
+
+    const availability = { ...(pendingRow.room_payload || {}), ...roomPayload };
+    if (availability.status) {
+      const status = normalizeRoomStatus(availability.status);
+      if (!status) return NextResponse.json({ ok: false, error: "Hãy chọn Đang trống, Sắp trống hoặc Đã thuê." }, { status: 422 });
+      try { roomPayload.available_from = requireAvailabilityDate(status, availability.available_from); }
+      catch { return NextResponse.json({ ok: false, error: "Phòng Sắp trống phải có ngày trống hợp lệ." }, { status: 422 }); }
+      roomPayload.status = status;
+    }
 
     if ((pending as any).room_payload?.is_test_import === true) {
       return NextResponse.json({ ok: false, error: "Bản TEST chỉ cập nhật bằng Reader; không sửa hoặc tự duyệt." }, { status: 403 });

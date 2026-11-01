@@ -3619,8 +3619,11 @@ if (
   if (/đã\s*thuê|da\s*thue|hết\s*phòng|het\s*phong/i.test(text)) {
     roomPayload.status = "Đã thuê";
     sourceFieldMap.status = "Tin Zalo";
+  } else if (/\bsap\s+trong\b/i.test(textNoTone)) {
+    roomPayload.status = "Sắp trống";
+    sourceFieldMap.status = "Tin Zalo";
   } else if (/\b(?:trong(?:\s*san)?|con\s*trong|available)\b/i.test(textNoTone)) {
-    roomPayload.status = "Trống";
+    roomPayload.status = "Đang trống";
     sourceFieldMap.status = "Tin Zalo";
   }
 

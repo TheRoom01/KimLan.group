@@ -1,4 +1,5 @@
 "use client";
+import { normalizeRoomStatus, roomStatusLabel } from "@/lib/rooms/availability";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -1590,7 +1591,7 @@ function ImportCard({
                 {row.matched_reason || "-"}
               </div>
               <div>
-                {row.old_status || "-"} → {row.new_status || "-"}
+                {normalizeRoomStatus(row.old_status) || row.old_status || "-"} → {normalizeRoomStatus(row.new_status) || row.new_status || "-"}
               </div>
             </div>
           )}
@@ -2160,9 +2161,9 @@ function ImportDetailModal({
                 Lý do: {row.matched_reason || "-"}
               </div>
               <div>
-                Trạng thái cũ: <b>{row.old_status || "-"}</b>
+                Trạng thái cũ: <b>{normalizeRoomStatus(row.old_status) || row.old_status || "-"}</b>
                 {" → "}
-                Trạng thái mới: <b>{row.new_status || "-"}</b>
+                Trạng thái mới: <b>{roomStatusLabel(normalizeRoomStatus(row.new_status) || row.new_status || "-", room.available_from)}</b>
               </div>
             </div>
           )}
@@ -2305,7 +2306,7 @@ function ImportDetailModal({
               <Field label="Phường" value={room.ward} field="ward" source={source} inherited={inherited} />
               <Field label="Quận" value={room.district} field="district" source={source} inherited={inherited} />
               <Field label="Giá" value={formatPrice(room.price)} field="price" source={source} inherited={inherited} />
-              <Field label="Trạng thái" value={room.status} field="status" source={source} inherited={inherited} />
+              <Field label="Trạng thái" value={roomStatusLabel(normalizeRoomStatus(room.status) || room.status || "-", room.available_from)} field="status" source={source} inherited={inherited} />
               <Field label="Zalo/Phone" value={room.zalo_phone || room.link_zalo} field="zalo_phone" source={source} inherited={inherited} />
               <Field label="Mô tả" value={room.description} field="description" source={source} inherited={inherited} />
               <Field label="Chính sách" value={room.chinh_sach} field="chinh_sach" source={source} inherited={inherited} />

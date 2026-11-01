@@ -1,3 +1,4 @@
+import * as availability from "../../../lib/rooms/availability";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
@@ -38,7 +39,7 @@ async function main(){
   }};
   const loaded={exports:{} as any};
   let identityType="CREATE";
-  const deps:Record<string,any>={"./pending-location":pendingLocation,"@/lib/zalo-import/pending-location":pendingLocation,"@/lib/async-pool":{runSettledPool},crypto,"./room-comparison":comparison,"./resolve":{resolveZaloImportRoom:async()=>({roomPayload:{_room_import:{type:identityType}}})},
+  const deps:Record<string,any>={"@/lib/rooms/availability":availability,"./pending-location":pendingLocation,"@/lib/zalo-import/pending-location":pendingLocation,"@/lib/async-pool":{runSettledPool},crypto,"./room-comparison":comparison,"./resolve":{resolveZaloImportRoom:async()=>({roomPayload:{_room_import:{type:identityType}}})},
     "@/lib/supabase/admin":{createSupabaseAdminClient:()=>db},"@/lib/r2/zalo-temp":{
       makeRoomImageKey:(room:string,id:string)=>`rooms/${room}/images/${id}.webp`,
       copyR2Object:async({toKey}:any)=>({key:toKey,url:`https://example.test/${toKey}`}),deleteR2Keys:async()=>0,
@@ -59,7 +60,8 @@ async function main(){
   assert.equal(tables.room_details[0].allow_pet,null,'unknown nullable fields remain unknown');
   for(const value of [null,true,false]){reset();tables.pending_room_versions[0].detail_payload={no_pet:value,short_term:value,long_term:value,free_time:value};await publish();
     assert.equal(tables.room_details[0].no_pet,value??false);assert.equal(tables.room_details[0].short_term,value??false);assert.equal(tables.room_details[0].long_term,value??true);assert.equal(tables.room_details[0].free_time,value??false);}
-  for(const status of ['Đang trống','Sắp trống','Đã thuê']){reset();tables.pending_room_versions[0].room_payload.status=status;await publish();assert.equal(tables.rooms[0].status,status,'preserve official statuses');}
+  for(const status of ['Đang trống','Sắp trống','Đã thuê']){reset();tables.pending_room_versions[0].room_payload.status=status;if(status==='Sắp trống')tables.pending_room_versions[0].room_payload.available_from="2099-11-05";await publish();assert.equal(tables.rooms[0].status,status,'preserve official statuses');}
+  for(const date of [null,'','2026-02-30']){reset();tables.pending_room_versions[0].room_payload.status='Sắp trống';tables.pending_room_versions[0].room_payload.available_from=date;const before=rpcCalls;await assert.rejects(publish,/ngày trống hợp lệ/);assert.equal(rpcCalls,before,'invalid upcoming date rejected before publish');}
   reset("chosen-building");ambiguous=true;await publish();assert.equal(tables.rooms[0].property_id,"chosen-building","explicit selection is forwarded to the same admin RPC");
   reset();const before=rpcCalls;await assert.rejects(publish,error=>(error as any).message==="PROPERTY_MATCH_REQUIRED");assert.equal(rpcCalls,before+1);assert.equal(tables.rooms.length,0);assert.equal(tables.pending_room_versions[0].status,"Chờ duyệt");
   reset();tables.zalo_import_videos=[];tables.pending_room_versions[0].room_payload._manual_video_required=true;const beforeEmpty=rpcCalls;
@@ -114,6 +116,8 @@ async function main(){
   vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/zalo-import/update-pending-room.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
     {module:updateModule,exports:updateModule.exports,require:(name:string)=>{assert.ok(name in updateDeps,name);return(updateDeps as any)[name]},console});
   await updateModule.exports.updatePendingRoom({supabase:{...db,rpc:async(name:string,args:any)=>{assert.equal(name,"approve_zalo_room_update_v1");assert.deepEqual(JSON.parse(JSON.stringify(args.p_media.map((row:any)=>[row.type,row.sort_order]))),[['video',0],['image',1]],"UPDATE sends mixed media in saved order to the atomic RPC");return{data:{roomId:"main"},error:null}}},pendingId:"pending",actorUserId:"admin",selectedFields:["images","videos"],expectedRoomPayload:updateRow.room_payload,expectedDetailPayload:updateRow.detail_payload});
+  updateRow.room_payload._room_import.presence['room.status']='value';
+  await updateModule.exports.updatePendingRoom({supabase:{...db,rpc:async(name:string,args:any)=>{assert.equal(args.p_expected_payload.status,'Đang trống','legacy UPDATE is canonical before transactional RPC');assert.equal(updateRow.room_payload.status,'Đang trống');return{data:{roomId:'main'},error:null}}},pendingId:'pending',actorUserId:'admin',selectedFields:['room.status'],expectedRoomPayload:updateRow.room_payload,expectedDetailPayload:updateRow.detail_payload});
   // A code correction can be staged without changing the verified old target.
   reset("chosen-building");
   const fork=tables.pending_room_versions[0];fork.matched_room_id="main";

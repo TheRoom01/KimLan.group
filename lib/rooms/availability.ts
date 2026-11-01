@@ -1,3 +1,12 @@
+/** Canonical room states, accepting legacy import labels at input boundaries. */
+export function normalizeRoomStatus(value: unknown): "Đang trống" | "Sắp trống" | "Đã thuê" | "" {
+  const text = String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim().replace(/\s+/g, " ");
+  if (/^(?:da thue|het phong|rented)$/.test(text)) return "Đã thuê";
+  if (/^(?:sap trong|sap trong \(co ngay\))$/.test(text)) return "Sắp trống";
+  if (/^(?:trong|trong san|dang trong|con trong|available)$/.test(text)) return "Đang trống";
+  return "";
+}
+
 /** Date-only values: never convert through the browser's timezone. */
 export function isAvailabilityDate(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

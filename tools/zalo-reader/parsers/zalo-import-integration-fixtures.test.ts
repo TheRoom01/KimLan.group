@@ -197,7 +197,7 @@ check("A: semantic → parser → resolver → quality → staged shape, một p
   const result = await throughStagingBoundary(previews[0], { expected: 1, imported: 1 });
   assert.equal(result.parsed.roomPayload.room_code, "103");
   assert.equal(result.parsed.roomPayload.price, 6_900_000);
-  assert.equal(result.parsed.roomPayload.status, "Trống");
+  assert.equal(result.parsed.roomPayload.status, "Đang trống");
   assert.deepEqual(result.stagedShape.media.image_message_ids, ["a-image"]);
 });
 
@@ -223,9 +223,9 @@ check("B: ba phòng giữ đúng mã, giá và album riêng qua parser và quali
       parsed.roomPayload.status,
     ]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
     [
-      ["103", 6_900_000, "b-photo-103", "Trống"],
-      ["401", 9_500_000, "b-photo-401", "Trống"],
-      ["502", 6_300_000, "b-photo-502", "Trống"],
+      ["103", 6_900_000, "b-photo-103", "Đang trống"],
+      ["401", 9_500_000, "b-photo-401", "Đang trống"],
+      ["502", 6_300_000, "b-photo-502", "Đang trống"],
     ]
   );
   assert.ok(results.every((result) => result.quality.blockers.some((item) => item.code === "GROUP_NOT_ALLOWED")));
@@ -387,7 +387,7 @@ check("K: cùng địa chỉ + mã phòng, giá mới được gắn vào pendin
       address: "Trần Hưng Đạo",
       district: "Q1",
       price: 8_000_000,
-      status: "Trống",
+      status: "Đang trống",
       updated_at: "2026-01-01T00:00:00.000Z",
     }]) as any,
     roomPayload: parsed.roomPayload,
@@ -412,7 +412,7 @@ check("L: trùng mã phòng nhưng khác địa chỉ không bị resolver coi l
       address: "Trần Hưng Đạo",
       district: "Q1",
       price: 9_000_000,
-      status: "Trống",
+      status: "Đang trống",
       updated_at: "2026-01-01T00:00:00.000Z",
     }]) as any,
     roomPayload: parsed.roomPayload,

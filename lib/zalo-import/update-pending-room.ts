@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { normalizeRoomStatus, requireAvailabilityDate } from "@/lib/rooms/availability";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { copyR2Object, deleteR2Keys, makeRoomImageKey } from "@/lib/r2/zalo-temp";
 import { getImportReview, selectedUpdatePatch, stableJson } from "./room-comparison";
@@ -18,8 +19,22 @@ export async function updatePendingRoom(params: {
     throw new Error("PENDING_CHANGED: Bản nháp đã đổi kể từ lúc mở so sánh. Hãy tải lại và chọn lại các trường.");
   }
   const review = getImportReview(pending.room_payload);
-  if (review?.type !== "UPDATE" || review.snapshot?.room.id !== pending.matched_room_id) throw new Error("Cần phân tích lại và xác minh phòng UPDATE.");
+  if (review?.type !== "UPDATE" || !review.snapshot || review.snapshot.room.id !== pending.matched_room_id) throw new Error("Cần phân tích lại và xác minh phòng UPDATE.");
   const patch = selectedUpdatePatch(pending.room_payload, pending.detail_payload, selectedFields);
+  if (Object.hasOwn(patch.room, "status") || Object.hasOwn(patch.room, "available_from")) {
+    const status = normalizeRoomStatus(Object.hasOwn(patch.room, "status") ? patch.room.status : review.snapshot.room.status);
+    if (!status) throw new Error("Hãy chọn Đang trống, Sắp trống hoặc Đã thuê.");
+    requireAvailabilityDate(status, Object.hasOwn(patch.room, "available_from") ? patch.room.available_from : review.snapshot.room.available_from);
+    // The transactional RPC reads the stored pending payload. Upgrade legacy
+    // labels there with a compare-and-swap; keep the original snapshot intact.
+    if (Object.hasOwn(patch.room, "status") && status !== pending.room_payload.status) {
+      const canonical = { ...pending.room_payload, status };
+      const saved = await supabase.from("pending_room_versions").update({ room_payload: canonical })
+        .eq("id", pendingId).eq("room_payload", pending.room_payload).eq("status", pending.status).select("id").single();
+      if (saved.error || !saved.data) throw new Error("PENDING_CHANGED: Hãy tải lại bản nháp trước khi duyệt.");
+      pending.room_payload = canonical;
+    }
+  }
   const roomId = pending.matched_room_id;
   const keys: string[] = [];
   const media: any[] = [];

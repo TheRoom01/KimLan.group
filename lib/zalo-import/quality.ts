@@ -1,3 +1,4 @@
+import { normalizeRoomStatus, isAvailabilityDate } from "../rooms/availability";
 import {
   isExactGroupNameMatch,
   parseAllowedGroupsJson,
@@ -426,6 +427,10 @@ export function evaluateZaloImportQuality(params: {
       "MISSING_STATUS",
       "Chưa xác định trạng thái phòng; cần admin kiểm tra trước khi đăng."
     );
+  } else if (!normalizeRoomStatus(room.status)) {
+    addBlocker("INVALID_STATUS", "Chỉ hỗ trợ Đang trống, Sắp trống hoặc Đã thuê.");
+  } else if (normalizeRoomStatus(room.status) === "Sắp trống" && !isAvailabilityDate(room.available_from)) {
+    addBlocker("MISSING_AVAILABLE_FROM", "Phòng Sắp trống phải có ngày trống hợp lệ.");
   }
 
   if (importedMedia <= 0) {

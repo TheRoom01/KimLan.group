@@ -100,7 +100,7 @@ check("một dự án một phòng: trích xuất loại, mã, giá và trạng 
   assert.equal(parsed.roomPayload.room_type, "Studio");
   assert.equal(parsed.roomPayload.room_code, "103");
   assert.equal(parsed.roomPayload.price, 6_900_000);
-  assert.equal(parsed.roomPayload.status, "Trống");
+  assert.equal(parsed.roomPayload.status, "Đang trống");
 });
 
 check("ba dòng phòng riêng được giữ thành ba preview với album tương ứng", () => {

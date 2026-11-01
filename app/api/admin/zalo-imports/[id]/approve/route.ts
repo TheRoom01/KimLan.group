@@ -1,3 +1,4 @@
+import { normalizeRoomStatus as normalizeStatus, requireAvailabilityDate } from "@/lib/rooms/availability";
 import { applyPendingLocation } from "@/lib/zalo-import/pending-location";
 import { NextResponse } from "next/server";
 
@@ -56,27 +57,6 @@ async function assertAdmin() {
   };
 }
 
-function normalizeStatus(value: unknown) {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase();
-
-  if (normalized.includes("thuê")) {
-    return "Đã thuê";
-  }
-
-  if (
-    normalized.includes("trống") ||
-    normalized === "trong"
-  ) {
-    return "Trống";
-  }
-
-  return (
-    String(value || "Trống").trim() ||
-    "Trống"
-  );
-}
 
 export async function POST(
   req: Request,
@@ -263,6 +243,10 @@ export async function POST(
       roomPayload.status ||
         (pending as any).new_status
     );
+    if (!newStatus) return NextResponse.json({ ok: false, error: "Hãy chọn Đang trống, Sắp trống hoặc Đã thuê." }, { status: 422 });
+    let availableFrom: string | null;
+    try { availableFrom = requireAvailabilityDate(newStatus, roomPayload.available_from); }
+    catch { return NextResponse.json({ ok: false, error: "Phòng Sắp trống phải có ngày trống hợp lệ." }, { status: 422 }); }
 
     if (!matchedRoomId) {
       return NextResponse.json(
@@ -309,13 +293,13 @@ export async function POST(
 
     const updateStatus =
       await admin.supabaseUser.rpc(
-        roomPayload.available_from ? "update_room_status_admin_v2" : "update_room_status",
+        availableFrom ? "update_room_status_admin_v2" : "update_room_status",
         {
           p_room_id:
             matchedRoomId,
           p_status:
             newStatus,
-          ...(roomPayload.available_from ? { p_available_from: roomPayload.available_from } : {}),
+          ...(availableFrom ? { p_available_from: availableFrom } : {}),
         }
       );
 

@@ -29,7 +29,7 @@ for (const text of [
   `${listing}\n${address}\nMã phòng: P.403`,
 ]) {
   const { roomPayload: room, detailPayload: detail } = parseZaloRoomText(text);
-  for (const [field, value] of Object.entries({ house_number: "158/4 - 6", address: "Hoàng Hoa Thám", district: "Tân Bình", room_code: "403", room_type: "Studio", price: 10000000, status: "Trống", ward: "" })) assert.equal(room[field], value, field);
+  for (const [field, value] of Object.entries({ house_number: "158/4 - 6", address: "Hoàng Hoa Thám", district: "Tân Bình", room_code: "403", room_type: "Studio", price: 10000000, status: "Đang trống", ward: "" })) assert.equal(room[field], value, field);
   assert.equal(detail.has_balcony, true);
   assert.ok(room._parse_review.evidence.address.text.includes(address));
 }
@@ -42,7 +42,7 @@ const scoped = parseZaloRoomText(`${address}\nP.103 Studio 5tr đã thuê\nP.403
 assert.equal(scoped.roomPayload.room_code, "403");
 assert.equal(scoped.roomPayload.price, 10000000);
 assert.equal(scoped.roomPayload.room_type, "Duplex");
-assert.equal(scoped.roomPayload.status, "Trống");
+assert.equal(scoped.roomPayload.status, "Đang trống");
 assert.equal(scoped.roomPayload.ward, "");
 for (const text of ["P.403 - Studio - 10tr - trống", "3 tầng, giá 10 triệu\nMã phòng: P.403"]) {
   const parsed = parseZaloRoomText(text);

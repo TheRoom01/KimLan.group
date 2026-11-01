@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isAvailabilityDate, requireAvailabilityDate, roomStatusLabel, resolveRoomAvailability } from '../lib/rooms/availability.ts';
+import { normalizeRoomStatus, isAvailabilityDate, requireAvailabilityDate, roomStatusLabel, resolveRoomAvailability } from '../lib/rooms/availability.ts';
+
+test('Imports status aliases preserve the three canonical states', () => {
+  for (const value of ['Trống', 'trong', 'Trống sẵn', 'Đang trống']) assert.equal(normalizeRoomStatus(value), 'Đang trống');
+  for (const value of ['Sắp trống', 'sap trong', 'Sắp trống (Có ngày)']) assert.equal(normalizeRoomStatus(value), 'Sắp trống');
+  for (const value of ['Đã thuê', 'da thue', 'Hết phòng']) assert.equal(normalizeRoomStatus(value), 'Đã thuê');
+  for (const value of ['', null, 'unknown', 'không trống']) assert.equal(normalizeRoomStatus(value), '');
+});
 
 test('publishing uses midnight Vietnam time and clears due dates', () => {
   const before = new Date('2026-09-06T16:59:59Z');

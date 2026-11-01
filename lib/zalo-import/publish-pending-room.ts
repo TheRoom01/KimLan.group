@@ -1,3 +1,4 @@
+import { normalizeRoomStatus as normalizeStatus, requireAvailabilityDate } from "@/lib/rooms/availability";
 import { isUpdateCodeChange, stableJson } from "./room-comparison";
 import { applyPendingLocation } from "./pending-location";
 import { runSettledPool } from "@/lib/async-pool";
@@ -29,29 +30,6 @@ export type PublishPendingRoomResult = {
   videoCount: number;
 };
 
-function normalizeStatus(value: unknown) {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase();
-
-  if (normalized.includes("thuê")) {
-    return "Đã thuê";
-  }
-
-  if (normalized.includes("sắp")) return "Sắp trống";
-
-  if (
-    normalized.includes("trống") ||
-    normalized === "trong"
-  ) {
-    return "Đang trống";
-  }
-
-  return (
-    String(value || "Đang trống").trim() ||
-    "Đang trống"
-  );
-}
 
 function extFromKey(
   key: string,
@@ -166,7 +144,7 @@ function buildRoomInsertPayload(params: {
     district: toNullableString(room.district),
     price: toNullableNumber(room.price),
     status: normalizeStatus(room.status),
-    ...(Object.hasOwn(room, "available_from") ? { available_from: toNullableString(room.available_from) } : {}),
+    available_from: requireAvailabilityDate(normalizeStatus(room.status), room.available_from),
     description: toNullableString(room.description),
     link_zalo: toNullableString(room.link_zalo),
     google_maps_url: toNullableString(room.google_maps_url),
@@ -561,11 +539,12 @@ export async function publishPendingRoom(params: {
     );
   }
 
-  if (!String(roomPayload.status || "").trim()) {
+  if (!normalizeStatus(roomPayload.status)) {
     throw new Error(
       "Chưa xác định trạng thái phòng. Vui lòng chọn trạng thái trước khi duyệt."
     );
   }
+  requireAvailabilityDate(normalizeStatus(roomPayload.status), roomPayload.available_from);
 
   const roomId = randomUUID();
   const batchId = String(
