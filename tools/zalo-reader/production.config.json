@@ -1,6 +1,6 @@
 {
     "mode":  "production",
-    "enabled":  true,
+    "enabled":  false,
     "webBaseUrl":  "https://www.canhodichvu.pro",
     "allowReimportForTesting":  false,
     "testImportToPending":  false,
@@ -23,13 +23,13 @@
                        "key":  "Gio-Hang-Can-Ho-Q1-Q3-Q10",
                        "name":  "Giỏ Hàng Căn Hộ Q1,Q3,Q10 🏠",
                        "groupId":  "g1986619726266954037",
-                       "accountGroupId": "g6040898958385854853"
+                       "accountGroupId":  "g6040898958385854853"
                    },
                    {
                        "key":  "Gio-Hang-Can-Ho-PN-BT-TB",
                        "name":  "Giỏ Hàng Căn Hộ PN,BT,TB 🏠",
                        "groupId":  "g6674917926513771782",
-                       "accountGroupId": "g1506001042738564534"
+                       "accountGroupId":  "g1506001042738564534"
                    }
                ]
 }
