@@ -26,6 +26,11 @@ async function main(){
   assert.throws(()=>validateProductionMode(config,["--production"],{ZALO_READER_PRODUCTION_API_URL:"https://wrong.example"}),/API_CONFLICT/);
   assert.equal(validateProductionMode(config,["--production"],{ZALO_READER_WEB_BASE_URL:"https://legacy-cdn.example"}).origin,api.origin,"legacy test environment cannot redirect production");
   const effective=effectiveReaderConfig(base,config,api,false);
+  for(const group of config.groups.filter((entry:any)=>entry.accountGroupId)) {
+    assert.deepEqual(effective.officialAccountGroups[group.key], {accountId:group.accountGroupId,canonicalId:group.groupId});
+    assert.equal(effective.groups.find((entry:any)=>entry.key===group.key)?.groupId,group.groupId,"account alias does not change server source identity");
+  }
+  assert.throws(()=>validateProductionMode({...config,groups:config.groups.map((group:any,index:number)=>index===0?{...group,accountGroupId:"wrong"}:group)},["--production"],{}),/ACCOUNT_GROUP_ID_INVALID/);
   assert.equal(effective.mode,"production");assert.equal(effective.officialReader,true);
   for(const flag of ["allowReimportForTesting","testImportToPending","officialTrial","previewOnly","stagingOnlyImport"])assert.equal((effective as any)[flag],false);
   assert.equal(effective.groups.length,2);assert.equal(effective.indexedDbScrollMaxBatches,200);

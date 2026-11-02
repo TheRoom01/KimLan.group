@@ -7,6 +7,7 @@ import { waitForTerminalEnter } from "./terminal-wait";
 import { createVideoPlaybackProbe, VIDEO_OBJECT_OBSERVER } from "./video-playback-probe";
 import { buildMediaReport } from "../../lib/zalo-reader/media-report";
 import { getOfficialSession } from "./official-runtime";
+import { canonicalAccountGroup } from "./account-group-identity";
 import { mediaReadinessBrowserScript, waitForStableMedia, mergeCapturedImages } from "./media-readiness";
 import { isDownloadableZaloVideoUrl } from "./parsers/utils";
 import { execFile } from "child_process";
@@ -100,6 +101,8 @@ type SavedGroupRefs =
   >;
 
 type Config = {
+  officialAccountGroups?: Record<string, { accountId: string; canonicalId: string }>;
+  officialAccountProof?: { groupId: string; matchedDomIds: number };
   officialReader?: boolean;
   officialTrial?: boolean;
   runOnce?: boolean;
@@ -9170,6 +9173,7 @@ if (preferredGroupId) {
 }
 
   if (config.officialReader) {
+    config.officialAccountProof = undefined;
     await page.evaluate("globalThis.__name = Object");
     await page.evaluate(zdbMessageBrowserScript());
     const visible = (await waitForStableMedia({capture:()=>captureVisibleDomMessages(page,config),wait:ms=>page.waitForTimeout(ms)})).items;
@@ -9180,6 +9184,7 @@ if (preferredGroupId) {
       const databases = await indexedDB.databases();
       const times: Record<string,number> = {}; const stops: string[] = [];
       const matchedGroups = new Set<string>();
+      let matchedDomIds = 0;
       for (const info of databases.filter(info => /^zdb_/.test(info.name || ""))) {
         const db = await requestValue(indexedDB.open(info.name!));
         try {
@@ -9200,6 +9205,11 @@ if (preferredGroupId) {
           const index = () => store().index("userId_sendDttm_msgId");
           const sample = await requestValue(index().openKeyCursor(IDBKeyRange.bound([id],[id,[]]),"prev"));
           if (!sample) continue;
+          for (const messageId of ids.slice(0,200)) {
+            let record = await requestValue(store().get(messageId));
+            if (!record && store().indexNames.contains("cliMsgIdIndex")) record = await requestValue(store().index("cliMsgIdIndex").get(messageId));
+            if (record && String((record as any).toUid || "") === id) matchedDomIds++;
+          }
           const bounds = (globalThis as any).__zaloZdbMessageTools.timestampIndexWindowKeys((sample.key as any[])[1],id,fromMs,toMs);
           matchedGroups.add(id);
           await new Promise<void>((resolve,reject) => {
@@ -9216,9 +9226,10 @@ if (preferredGroupId) {
         } finally { db.close(); }
       }
       if(matchedGroups.size !== 1) throw new Error("DOM_WINDOW_GROUP_UNVERIFIED");
-      return {times,stops};
+      return {times,stops,matchedDomIds};
     }, { preferredId: preferredGroupId, ids: [...new Set(visible.flatMap(item=>item.idCandidates))], fromMs:Number(config.officialFromMs),toMs:Number(config.officialToMs) });
     config.officialMessageTimes = scope.times;
+    config.officialAccountProof = { groupId: preferredGroupId, matchedDomIds: scope.matchedDomIds };
     config.officialWindowKnownEmpty = !Object.values(scope.times).some(time=>time>=Number(config.officialFromMs)&&time<=Number(config.officialToMs));
     config.officialStopIds = [...new Set([...(config.officialStopIds || []),...scope.stops])];
   }
@@ -14545,6 +14556,15 @@ if (activeGroupHint) {
     ) as IndexedDbGroupMessage[];
   if (config.officialReader) {
     const session = getOfficialSession()!;
+    const accountGroup = config.officialAccountGroups?.[groupKey];
+    if (accountGroup) {
+      (result as any).accountGroupId = result.groupId;
+      (result as any).groupId = canonicalAccountGroup({ ...accountGroup,
+        observedId: String(result.groupId || ""), exactResultCount: config.officialExactResultCount || 0,
+        matchedDomIds: config.officialAccountProof?.groupId === result.groupId ? config.officialAccountProof.matchedDomIds : 0,
+        trusted: Boolean((result as any).groupIdTrusted),
+      });
+    }
     session.verify(String(result.groupId || ""), Boolean((result as any).groupIdTrusted), config.officialExactResultCount || 0, String((result as any).groupIdSource || ""));
     await session.heartbeat();
     if (!exportedMessages.length && domMessageSnapshot.length && !config.officialWindowKnownEmpty) throw new Error("INDEXEDDB_WINDOW_EMPTY");
@@ -16135,6 +16155,11 @@ export async function runReader() {
    */
   const groupRefs =
     readGroupRefs();
+  // Local aliases never overwrite the historical server identity/checkpoints.
+  if (config.officialReader) for (const [key, mapping] of Object.entries(config.officialAccountGroups || {})) {
+    groupRefs[key] = { groupId: mapping.accountId, lastKnownName: groupRefs[key]?.lastKnownName || key,
+      savedAt: new Date().toISOString(), source: "manual" };
+  }
 
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
 
@@ -16597,6 +16622,10 @@ export async function runReader() {
     process.exitCode = 1;
   }
 }
+
+// Diagnostics reuse the exact same group selection and DOM identity extraction
+// as production, without invoking the import pipeline.
+export const groupIdentityDiagnostics = { openGroup, captureVisibleDomMessages, waitForPreviewLogin };
 
 if (process.env.ZALO_READER_EMBEDDED !== "1") runReader().catch((e) => {
   console.error(e);

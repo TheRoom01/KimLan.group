@@ -3,6 +3,7 @@ param([ValidateSet('Install','Enable','Disable','Status','Run','Trial')][string]
 $ErrorActionPreference='Stop'
 $readerRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 . (Join-Path $PSScriptRoot 'scheduler-authorization.ps1')
+. (Join-Path $PSScriptRoot 'hidden-task-action.ps1')
 $configPath=Join-Path $PSScriptRoot 'production.config.json'
 $taskName='KimLan-ZaloReader-60m'
 $nodePath=(Get-Command node.exe -ErrorAction Stop).Source
@@ -30,9 +31,7 @@ function Get-NextReaderRun {
 switch($Action) {
  'Install' {
    if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { throw 'Task already exists. Inspect Status; do not overwrite an active schedule.' }
-   $wrapperPath=Join-Path $PSScriptRoot 'scheduled-run.ps1'
-   $arguments='-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -WindowStyle Hidden -File "'+$wrapperPath+'" -NodePath "'+$nodePath+'"'
-   $taskAction=New-ScheduledTaskAction -Execute (Get-Command powershell.exe -ErrorAction Stop).Source -Argument $arguments -WorkingDirectory $readerRoot
+   $taskAction=New-ReaderHiddenTaskAction -Mode Hourly -NodePath $nodePath
    $trigger=New-ScheduledTaskTrigger -Once -At (Get-NextReaderRun) -RepetitionInterval (New-TimeSpan -Minutes 60)
    $principal=New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited
    # Parallel wrappers only: the Node atomic PID lock logs and exits overlapping runs.

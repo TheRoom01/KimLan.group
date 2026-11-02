@@ -53,6 +53,39 @@ input[type="radio"] {
   box-shadow: none;
 }
 
+/* Keep staff fields visible above the global transparent form reset. */
+.staff-account-form input:not([type="checkbox"]),
+.staff-account-form select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #b99a7b;
+  border-radius: 8px;
+  background: #fff;
+  color: #332519;
+  font-size: 14px;
+  box-shadow: 0 1px 2px rgb(83 48 22 / 5%);
+}
+
+.staff-account-form input::placeholder {
+  color: #8b7b6c;
+  opacity: 1;
+}
+
+.staff-account-form input:not([type="checkbox"]):focus,
+.staff-account-form select:focus {
+  border-color: #704522;
+  box-shadow: 0 0 0 3px rgb(112 69 34 / 15%);
+}
+
+.staff-account-form input[readonly] {
+  background: #eee8e1;
+  color: #6f5a46;
+  cursor: default;
+}
+
 /* ===== RESPONSIVE ADMIN ===== */
 @media (max-width: 1024px) {
   .admin-header {

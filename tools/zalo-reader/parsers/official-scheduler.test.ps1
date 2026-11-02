@@ -11,7 +11,7 @@ foreach($name in @('scheduler.ps1','scheduled-run.ps1')) {
 $global:ReaderScheduleAssertions=0
 function Get-ScheduledTask { param($TaskName,$ErrorAction) return $null }
 function New-ScheduledTaskAction { param($Execute,$Argument,$WorkingDirectory)
-  if($Argument -notmatch '-WindowStyle Hidden' -or $Argument -match 'Bypass|password|secret'){throw 'Unsafe task action'}
+  if([IO.Path]::GetFileName($Execute) -ne 'wscript.exe' -or $Argument -notmatch '^//B //Nologo ".+hidden-task.vbs" Hourly ".+node.exe"$' -or $Argument -match 'Bypass|password|secret'){throw 'Unsafe task action'}
   $global:ReaderScheduleAssertions++;return @{}
 }
 function New-ScheduledTaskTrigger { param([switch]$Once,$At,$RepetitionInterval)
@@ -59,7 +59,7 @@ if($global:Rescheduled -ne 1){throw 'Overlap/disabled schedule was re-armed'}
 Write-Output 'Completion +60 minutes / overlap / disabled gates: PASS (no task writes)'
 
 $wrapperText=[IO.File]::ReadAllText($wrapperPath)
-if($wrapperText -notmatch 'official-runner.ts.+--production --confirm-production' -or $wrapperText -match 'official.config.json') { throw 'Scheduled runs must use production config and flags' }
+if($wrapperText -notmatch "official-runner.ts.+--production','--confirm-production" -or $wrapperText -match 'official.config.json') { throw 'Scheduled runs must use production config and flags' }
 $schedulerText=[IO.File]::ReadAllText((Join-Path $readerRoot 'tools/zalo-reader/scheduler.ps1'))
 if($schedulerText -notmatch "configPath=Join-Path.+production.config.json" -or $schedulerText -notmatch '--production --report-enabled') { throw 'Scheduler control must use the production API/config' }
 Write-Output 'Production config / scheduled production flags / status control: PASS (offline)'

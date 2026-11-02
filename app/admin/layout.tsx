@@ -1,5 +1,10 @@
 import Link from "next/link";
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+import StaffAccountsButton from "./StaffAccountsButton";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: level, error } = user ? await supabase.rpc("get_my_admin_level") : { data: 0, error: null };
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#efe5d7]">
       <div className="mx-auto max-w-[1200px] px-4 py-4">
@@ -8,6 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-2">
             <nav aria-label="Điều hướng Admin" className="flex flex-wrap items-center gap-1.5">
               <Link href="/admin" className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 sm:text-sm">Quản lý phòng</Link>
+              {!error && level === 1 && <StaffAccountsButton />}
               <Link href="/admin/room-inquiries" className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 sm:text-sm">Yêu cầu phòng</Link>
               <Link href="/admin/notifications" className="rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 sm:text-sm">Thông báo</Link>
             </nav>

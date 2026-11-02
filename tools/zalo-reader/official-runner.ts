@@ -18,6 +18,7 @@ export function validateOfficialConfig(config: any) {
   for (const allowed of OFFICIAL_ZALO_GROUPS) {
     const group = config.groups.find((group: any) => group.key === allowed.key && group.name === allowed.name);
     if (!group || (allowed.groupId && group.groupId !== allowed.groupId) || (group.groupId && !/^g\d{10,30}$/.test(group.groupId))) throw new Error("OFFICIAL_GROUP_ALLOWLIST_INVALID");
+    if (group.accountGroupId && !/^g\d{10,30}$/.test(group.accountGroupId)) throw new Error("ACCOUNT_GROUP_ID_INVALID");
   }
   for (const [field, minimum, maximum] of [["initialLookbackHours",1,24],["overlapMinutes",1,60],["maxMessagesPerGroup",1,100],["maxRoomsPerGroup",1,100],["maxScrollSteps",20,1000]] as const) {
     if (!Number.isInteger(config[field]) || config[field] < minimum || config[field] > maximum) throw new Error(`OFFICIAL_CONFIG_INVALID_${field}`);
@@ -40,6 +41,7 @@ export function validateProductionMode(config:any,args:string[],env:Partial<Node
 }
 export function effectiveReaderConfig(base:any,config:any,api:URL,trial:boolean) {
   return { ...base, officialReader: true, runOnce: true, nonInteractive: true,
+    officialAccountGroups: Object.fromEntries(config.groups.filter((group:any)=>group.accountGroupId).map((group:any)=>[group.key,{accountId:group.accountGroupId,canonicalId:group.groupId}])),
     officialTrial: trial, webBaseUrl: api.origin, profileDirectory: ".zalo-reader/profile",
     previewOnly: false, stagingOnlyImport: false, testImportToPending: false, testNewSourcesOnly: false, allowReimportForTesting: false,
     networkDebug: false, networkDebugOnly: false, indexedDbDebug: false, indexedDbDebugOnly: false,

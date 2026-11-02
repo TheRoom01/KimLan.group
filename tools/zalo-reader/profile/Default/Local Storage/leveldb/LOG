@@ -1,0 +1,11 @@
+2026/11/02-23:14:26.883 2134 Creating DB C:\Users\Admin\Documents\Codex\2026-07-30\kie\work\KimLan.group\tools\zalo-reader\profile\Default\Local Storage\leveldb since it was missing.
+2026/11/02-23:14:27.003 2134 Reusing MANIFEST C:\Users\Admin\Documents\Codex\2026-07-30\kie\work\KimLan.group\tools\zalo-reader\profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/11/02-23:20:15.773 36bc Level-0 table #5: started
+2026/11/02-23:20:15.833 36bc Level-0 table #5: 400219 bytes OK
+2026/11/02-23:20:15.862 36bc Delete type=0 #3
+2026/11/02-23:22:36.779 36bc Level-0 table #7: started
+2026/11/02-23:22:36.793 36bc Level-0 table #7: 98358 bytes OK
+2026/11/02-23:22:36.797 36bc Delete type=0 #4
+2026/11/02-23:23:28.587 36bc Level-0 table #9: started
+2026/11/02-23:23:28.677 36bc Level-0 table #9: 62834 bytes OK
+2026/11/02-23:23:28.680 36bc Delete type=0 #6
