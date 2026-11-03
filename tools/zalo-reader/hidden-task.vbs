@@ -20,6 +20,11 @@ Select Case mode
     wrapper = fso.BuildPath(folder, "scheduled-run.ps1")
     command = command & " -File " & Quote(wrapper) & " -NodePath " & Quote(WScript.Arguments(1))
     If mode = "Immediate" Then command = command & " -Immediate"
+  Case "Browser"
+    If WScript.Arguments.Count <> 2 Then WScript.Quit 2
+    If Not fso.FileExists(WScript.Arguments(1)) Then WScript.Quit 2
+    wrapper = fso.BuildPath(folder, "browser-session-run.ps1")
+    command = command & " -File " & Quote(wrapper) & " -NodePath " & Quote(WScript.Arguments(1))
   Case "Probe"
     If WScript.Arguments.Count <> 1 Then WScript.Quit 2
     command = command & " -Command " & Quote("exit 23")

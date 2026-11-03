@@ -33,6 +33,7 @@ async function scenario(options: { cycle?: any; unavailable?: boolean; notReady?
     '../../lib/zalo-reader/official': official,
     './official-runtime': { OfficialSession: Session, acquireReaderLock: () => () => { released++; },
       atomicJson: (file: string, value: any) => files.set(file, JSON.stringify(value)), setOfficialSession() {}, safeConsole: () => () => {} },
+    './browser-session': { ensureReaderBrowser: async () => { if (options.profileBusy) throw new Error('PROFILE_IN_USE'); } },
     './parsers': {}, './zalo-reader.before-semantic-parser': { runReader: async () => { readerCalls++; if (options.readerFails) throw new Error('READER_FIXTURE_FAILURE'); } },
   };
   const module = { exports: {} as any };
@@ -49,7 +50,7 @@ async function scenario(options: { cycle?: any; unavailable?: boolean; notReady?
     },
   });
   let error: any;
-  try { await module.exports.main(options.control ? ['--production', '--report-enabled'] : ['--production', '--confirm-production']); } catch (caught) { error = caught; }
+  try { await module.exports.main(options.control ? ['--production', '--report-enabled'] : ['--production', '--confirm-production', '--scheduled']); } catch (caught) { error = caught; }
   assert.equal(released, options.control ? 0 : 1, 'runner lock is released on scans; status control never acquires the scan lock');
   assert.equal(files.get(checkpointFile), '{"receipt":"keep"}', 'no checkpoint reset');
   return { error, readerCalls, fetchCalls, logs, cycle: files.get(cycleFile) ? JSON.parse(files.get(cycleFile)!) : null };

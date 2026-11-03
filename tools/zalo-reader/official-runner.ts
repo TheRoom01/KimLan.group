@@ -1,7 +1,7 @@
+import { ensureReaderBrowser } from "./browser-session";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { OFFICIAL_ZALO_GROUPS, READER_INTERVAL_MS, redactReaderLog } from "../../lib/zalo-reader/official";
 import { OfficialSession, acquireReaderLock, atomicJson, setOfficialSession, safeConsole } from "./official-runtime";
@@ -146,12 +146,6 @@ export async function main(args = process.argv.slice(2)) {
       console.log(`READER_CYCLE_NOT_DUE: Chờ đủ 60 phút sau khi lượt trước kết thúc. Có thể chạy lại từ ${new Date(previousCycle.nextEligibleAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`);
       return;
     }
-    // A normal exclusive-file check; do not remove Chrome's lock or stop Chrome.
-    if (process.platform === "win32") {
-      const profileLock = path.join(root, ".zalo-reader/profile/lockfile").replace(/'/g, "''");
-      const check = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `$p='${profileLock}';if(Test-Path -LiteralPath $p){try{$h=[IO.File]::Open($p,'Open','ReadWrite','None');$h.Dispose()}catch{exit 12}}`], { windowsHide: true, stdio: "ignore" });
-      if (check.status !== 0) throw new Error("PROFILE_IN_USE");
-    }
     let health: Response;
     try {
       health = await fetch(new URL("/api/internal/zalo-reader/status", api), { headers: { "x-internal-secret": secret }, signal: AbortSignal.timeout(10000) });
@@ -160,6 +154,7 @@ export async function main(args = process.argv.slice(2)) {
     }
     const readiness = await health.json();
     if (!health.ok || readiness.ready !== true) throw new Error("READER_DATABASE_NOT_READY");
+    await ensureReaderBrowser(root);
     session = new OfficialSession({ stateDirectory: directory, trial, initialLookbackHours: config.initialLookbackHours,
       overlapMinutes: config.overlapMinutes, maxMessages: trial ? Math.min(5,config.maxMessagesPerGroup) : config.maxMessagesPerGroup,
       maxRooms: trial ? Math.min(5,config.maxRoomsPerGroup) : config.maxRoomsPerGroup,

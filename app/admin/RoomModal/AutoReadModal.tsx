@@ -1,6 +1,8 @@
 /* app/admin/RoomModal/AutoReadModal.tsx */
 'use client'
 
+import { applyImportAmenityDefaults } from "@/lib/zalo-import/listing-fields";
+
 import { useMemo, useState, type CSSProperties } from 'react'
 import { extractContactPhones } from '@/lib/contactPhones'
 import type { RoomDetail, RoomForm } from './types'
@@ -1125,10 +1127,10 @@ parsePolicies(text)
 ]),
   }
 
-  const sharedDetail: Partial<RoomDetail> = {
+  const sharedDetail: Partial<RoomDetail> = applyImportAmenityDefaults({
     ...parseFees(text),
     ...parseAmenities(text),
-  }
+  })
 
   const markers = extractRoomMarkers(context)
   const markerLines = markers.map(marker => marker.line)

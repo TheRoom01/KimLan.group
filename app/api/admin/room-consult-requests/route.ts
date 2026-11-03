@@ -37,6 +37,8 @@ export async function GET(request: Request) {
   const status = params.get("status");
   const requestType = params.get("request_type");
   const requestId = params.get("request_id");
+  const kind = params.get("consultation_kind");
+  if (kind && kind !== "all" && !["room_consultation", "general_consultation"].includes(kind)) return apiError("INVALID_INPUT", "Nhóm yêu cầu không hợp lệ", 400);
   const pageRaw = Number(params.get("page") ?? "1");
   const page = Number.isInteger(pageRaw) && pageRaw > 0 ? Math.min(pageRaw, 100_000) : 1;
   if (status && status !== "all" && !STATUSES.includes(status as RequestStatus)) {
@@ -46,16 +48,25 @@ export async function GET(request: Request) {
     return apiError("INVALID_INPUT", "Loại yêu cầu không hợp lệ", 400);
   }
   if (requestId && !UUID_RE.test(requestId)) return apiError("INVALID_INPUT", "Mã yêu cầu không hợp lệ", 400);
-  let query = supabase.from("room_consult_requests")
-    .select("id, room_id, assigned_admin_id, room_code_snapshot, room_type_snapshot, address_snapshot, price_snapshot, guest_name, guest_phone, request_type, viewing_date, preferred_time, notes, status, created_at, updated_at", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-  if (status && status !== "all") query = query.eq("status", status);
-  if (requestType && requestType !== "all") query = query.eq("request_type", requestType);
-  if (requestId) query = query.eq("id", requestId);
-  const { data, error, count } = await query;
-  if (error) return mapDatabaseError(error);
-  return apiSuccess({ requests: data ?? [], total: count ?? 0, page, page_size: PAGE_SIZE });
+  const legacyFields = "id, room_id, assigned_admin_id, room_code_snapshot, room_type_snapshot, address_snapshot, price_snapshot, guest_name, guest_phone, request_type, viewing_date, preferred_time, notes, status, created_at, updated_at";
+  const buildQuery = (legacy = false) => {
+    let query = supabase.from("room_consult_requests")
+      .select(legacy ? legacyFields : `${legacyFields}, consultation_kind, referral_source, referral_detail`, { count: "exact" })
+      .order("created_at", { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+    if (status && status !== "all") query = query.eq("status", status);
+    if (requestType && requestType !== "all") query = query.eq("request_type", requestType);
+    if (!legacy && kind && kind !== "all") query = query.eq("consultation_kind", kind);
+    if (requestId) query = query.eq("id", requestId);
+    return query;
+  };
+  let result = await buildQuery();
+  // Keep existing requests readable while the reviewed migration awaits deployment.
+  if (result.error?.code === "42703" || result.error?.code === "PGRST204") {
+    if (kind === "general_consultation") return apiSuccess({ requests: [], total: 0, page, page_size: PAGE_SIZE });
+    result = await buildQuery(true);
+  }
+  if (result.error) return mapDatabaseError(result.error);
+  return apiSuccess({ requests: result.data ?? [], total: result.count ?? 0, page, page_size: PAGE_SIZE });
 }
 
 export async function PATCH(request: Request) {

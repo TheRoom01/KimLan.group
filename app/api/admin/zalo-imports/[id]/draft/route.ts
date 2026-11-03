@@ -7,7 +7,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { deleteR2Keys } from "@/lib/r2/zalo-temp";
-import { getImportReview, isUpdateCodeChange, normalizedRoomIdentity, canonicalStoredIdentity, ROOM_UPDATE_FIELDS, DETAIL_UPDATE_FIELDS, stableJson } from "@/lib/zalo-import/room-comparison";
+import { resolveZaloImportRoom } from "@/lib/zalo-import/resolve";
+import { getImportReview, normalizedRoomIdentity, canonicalStoredIdentity, ROOM_UPDATE_FIELDS, DETAIL_UPDATE_FIELDS, stableJson } from "@/lib/zalo-import/room-comparison";
 
 export const runtime = "nodejs";
 
@@ -434,9 +435,7 @@ export async function PATCH(
       return NextResponse.json({ ok: false, error: "Bản TEST chỉ cập nhật bằng Reader; không sửa hoặc tự duyệt." }, { status: 403 });
     }
     const originalReview = getImportReview(pendingRow.room_payload);
-    if (originalReview?.identity_key && normalizedRoomIdentity({ ...pendingRow.room_payload, ...roomPayload }) !== canonicalStoredIdentity(originalReview.identity_key) && !isUpdateCodeChange({ ...pendingRow.room_payload, ...roomPayload, _room_import: originalReview })) {
-      return NextResponse.json({ ok: false, error: "Khóa phòng đã đổi. Hãy dùng Phân tích lại để xác minh phòng đích trước khi lưu." }, { status: 409 });
-    }
+
 
     if (
       [
@@ -953,6 +952,40 @@ export async function PATCH(
       }
     }
 
+    // Reclassify the saved draft itself; source text is only an optional parser input.
+    const identityChanged = normalizedRoomIdentity(nextRoomPayload) !== canonicalStoredIdentity(originalReview?.identity_key || null);
+    let identityUpdate: Record<string, any> = {};
+    if (!originalReview || identityChanged) {
+      const resolved = await resolveZaloImportRoom({
+        supabase, roomPayload: nextRoomPayload, detailPayload: nextDetailPayload,
+        excludePendingId: pendingId, skipInheritance: true,
+      });
+      const review = resolved.roomPayload._room_import;
+      review.presence = { ...(originalReview?.presence || {}), ...((nextRoomPayload as any)._room_import?.presence || {}) };
+      review.uncertain_fields = [];
+      for (const [scope, fields, values] of [
+        ["room", ROOM_UPDATE_FIELDS, nextRoomPayload],
+        ["detail", DETAIL_UPDATE_FIELDS, nextDetailPayload],
+      ] as const) {
+        for (const field of fields) if (Object.hasOwn(values, field)) {
+          review.presence[`${scope}.${field}`] = values[field] == null || values[field] === "" ? "clear" : "value";
+        }
+      }
+      review.image_hashes = originalReview?.image_hashes || {};
+      review.video_hashes = originalReview?.video_hashes || {};
+      (nextRoomPayload as any)._room_import = review;
+      if (["house_number", "address", "district"].some(field => stableJson(pendingRow.room_payload?.[field]) !== stableJson((nextRoomPayload as any)[field]))
+        && roomPayload.property_id === pendingRow.room_payload?.property_id) delete (nextRoomPayload as any).property_id;
+      identityUpdate = {
+        status: review.type === "UPDATE" ? "Trùng phòng" : review.type === "NEEDS_REVIEW" ? "Cần xác minh" : "Chờ duyệt",
+        matched_room_id: resolved.matchedRoom?.id || null,
+        matched_reason: review.reason,
+        old_status: resolved.matchedRoom?.status || null,
+        new_status: resolved.matchedRoom ? (nextRoomPayload as any).status || null : null,
+      };
+    }
+    const savedReview = getImportReview(nextRoomPayload);
+
     const nextRevision =
       Math.max(
         0,
@@ -1001,18 +1034,16 @@ export async function PATCH(
 
     if (body?.manualReviewOnly === true || (pendingRow.room_payload as any)?._reader_manual_review === true) {
       autoApproveReason = "Phòng từ Reader chính thức phải được duyệt thủ công.";
-    } else if (originalReview && originalReview.type !== "CREATE") {
+    } else if (savedReview && savedReview.type !== "CREATE") {
       autoApproveReason = "Bản cập nhật/cần xác minh phải duyệt thủ công từng trường.";
     } else if (
-      String(
-        pendingRow.status
-      ) !== "Chờ duyệt"
+      String(identityUpdate.status ?? pendingRow.status) !== "Chờ duyệt"
     ) {
       autoApproveReason =
         "Phòng không ở trạng thái Chờ duyệt.";
     } else if (
       String(
-        pendingRow.matched_room_id ||
+        (Object.hasOwn(identityUpdate, "matched_room_id") ? identityUpdate.matched_room_id : pendingRow.matched_room_id) ||
           ""
       ).trim()
     ) {
@@ -1046,6 +1077,7 @@ export async function PATCH(
         "pending_room_versions"
       )
       .update({
+        ...identityUpdate,
         room_payload:
           nextRoomPayload,
         detail_payload:
@@ -1180,6 +1212,7 @@ export async function PATCH(
       ok: true,
       pendingId,
       changed: true,
+      ...identityUpdate,
       draft_revision:
         nextRevision,
       auto_approve_enabled:

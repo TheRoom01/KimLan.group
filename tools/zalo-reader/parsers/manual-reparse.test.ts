@@ -52,7 +52,7 @@ for (const text of ["P.403 - Studio - 10tr - trống", "3 tầng, giá 10 triệ
 const pending = { room_payload: { _confirmed_fields: { "room.price": 9000000, "detail.has_window": false } } };
 const fresh = () => parseZaloRoomText(`${address}\n${listing}\nMã phòng P.403`);
 const parsed = fresh();
-assert.equal(preserveConfirmedFields(pending, parsed).length, 2);
+assert.equal(preserveConfirmedFields(pending, parsed).length, 1);
 assert.equal(parsed.roomPayload.price, 9000000);
 assert.equal(preserveConfirmedFields(pending, fresh(), { "room.price": "source", "detail.has_window": "keep" }).length, 0);
 const route = readFileSync("app/api/admin/zalo-imports/[id]/reparse/route.ts", "utf8");

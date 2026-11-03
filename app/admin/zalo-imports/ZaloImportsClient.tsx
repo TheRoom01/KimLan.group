@@ -502,6 +502,7 @@ export default function ZaloImportsClient() {
                 row.id === editingPending.id
                   ? {
                       ...row,
+                      ...updated,
                       room_payload:
                         updated?.room_payload ?? row.room_payload,
                       detail_payload:

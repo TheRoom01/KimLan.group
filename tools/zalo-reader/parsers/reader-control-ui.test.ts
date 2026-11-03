@@ -7,7 +7,7 @@ async function main() {
   const bundle = await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import Controls from './app/admin/ZaloReaderControls';
     window.control={desired_enabled:null,actual_enabled:false,request_id:null,applied_request_id:null,heartbeat_at:new Date().toISOString(),last_error:null};
     window.sent=[];window.fail=false;window.setInterval=fn=>{window.refresh=fn;return 1};window.clearInterval=()=>{};
-    window.fetch=async(url,options={})=>{if(options.method==='POST'){if(window.fail)return{ok:false,json:async()=>({ok:false,error:'Mất kết nối API'})};const body=JSON.parse(options.body);window.sent.push(body.enabled);window.control={...window.control,desired_enabled:body.enabled,request_id:'command-'+window.sent.length};}return{ok:true,json:async()=>({ok:true,control:{...window.control}})}};
+    window.fetch=async(url,options={})=>{if(options.method==='POST'){if(window.fail)return{ok:false,json:async()=>({ok:false,error:'Mất kết nối API'})};const body=JSON.parse(options.body);if(body.action==='open_zalo'){window.control={...window.control,open_request_id:'open-'+Date.now()};}else{window.sent.push(body.enabled);window.control={...window.control,desired_enabled:body.enabled,request_id:'command-'+window.sent.length};}}return{ok:true,json:async()=>({ok:true,control:{...window.control}})}};
     createRoot(document.getElementById('root')).render(<Controls/>);`, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", define: { "process.env.NODE_ENV": '"development"' } });
   const browser = await chromium.launch({ headless: true });
   try {
@@ -25,6 +25,16 @@ async function main() {
     assert.deepEqual(await page.evaluate(() => (window as any).sent), [true, false]);
     await page.evaluate(() => { const w = window as any; w.control.actual_enabled = false; w.control.applied_request_id = w.control.request_id; w.refresh(); });
     await page.getByText("Lịch đọc đã tắt", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Mở Zalo", exact: true }).click();
+    await page.getByText("Đã gửi yêu cầu mở Zalo · chờ máy Reader xác nhận", { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => (window as any).sent), [true, false], "Open must not change Start/Stop");
+    assert.equal(await page.getByRole("button", { name: "Mở Zalo", exact: true }).isDisabled(), true);
+    await page.evaluate(() => { const w = window as any; w.control.open_error = 'ZALO_OPEN_FAILED'; w.refresh(); });
+    await page.getByText(/Chưa mở được Zalo/).waitFor();
+    await page.getByRole("button", { name: "Mở Zalo", exact: true }).click();
+    await page.evaluate(() => { const w = window as any; w.control.open_error = null; w.control.open_applied_request_id = w.control.open_request_id; w.refresh(); });
+    await page.getByText(/Máy Reader đã xác nhận mở cửa sổ Zalo/).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Mở Zalo", exact: true }).isEnabled(), true);
     await page.evaluate(() => { (window as any).fail = true; });
     await page.getByRole("button", { name: "Start", exact: true }).click();
     await page.getByRole("alert").filter({ hasText: "Mất kết nối API" }).waitFor();

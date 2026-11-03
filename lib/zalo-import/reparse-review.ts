@@ -10,7 +10,8 @@ export function preserveConfirmedFields(
     if (!field || !["room", "detail"].includes(scope)) continue;
     const payload = scope === "room" ? parsed.roomPayload : parsed.detailPayload;
     const proposed = payload[field];
-    if (JSON.stringify(previous) !== JSON.stringify(proposed) && choices[key] !== "source" && choices[key] !== "keep") {
+    const adminAmenity = scope === "detail" && ["has_window", "free_time", "fingerprint_lock"].includes(field);
+    if (!adminAmenity && JSON.stringify(previous) !== JSON.stringify(proposed) && choices[key] !== "source" && choices[key] !== "keep") {
       conflicts.push({ key, previous, proposed });
     }
     if (choices[key] !== "source") payload[field] = previous;

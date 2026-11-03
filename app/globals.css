@@ -561,7 +561,7 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
   padding-top: 12px;
 }
 
-.home-room-list > .grid {
+:is(.home-room-list > .grid, .home-room-grid) {
   column-gap: clamp(14px, 1.5vw, 22px) !important;
   row-gap: clamp(18px, 1.8vw, 26px) !important;
 }
@@ -988,12 +988,12 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
   margin-block-start: 12px;
 }
 
-.home-redesign .home-room-list {
+.home-redesign :is(.home-room-list, .home-room-recommendations) {
   max-width: 1800px;
   padding-inline: clamp(12px, 1.5vw, 28px) !important;
 }
 
-.home-redesign .home-room-list > .grid {
+.home-redesign :is(.home-room-list > .grid, .home-room-grid) {
   column-gap: clamp(16px, 1.25vw, 22px) !important;
   row-gap: clamp(18px, 1.5vw, 24px) !important;
 }
@@ -1036,7 +1036,7 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 
 /* Responsive layout refinements: keep the RoomCard internals untouched. */
 @media (min-width: 641px) {
-  .home-redesign .home-room-list > .grid {
+  .home-redesign :is(.home-room-list > .grid, .home-room-grid) {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)) !important;
     column-gap: clamp(12px, 1.2vw, 16px) !important;
     row-gap: clamp(24px, 2vw, 32px) !important;
@@ -1044,7 +1044,7 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 }
 
 @media (min-width: 390px) and (max-width: 640px) {
-  .home-redesign .home-room-list > .grid {
+  .home-redesign :is(.home-room-list > .grid, .home-room-grid) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     column-gap: 8px !important;
     row-gap: 14px !important;
@@ -1056,7 +1056,7 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 }
 
 @media (max-width: 389px) {
-  .home-redesign .home-room-list > .grid {
+  .home-redesign :is(.home-room-list > .grid, .home-room-grid) {
     grid-template-columns: minmax(0, 1fr) !important;
     column-gap: 0 !important;
     row-gap: 16px !important;

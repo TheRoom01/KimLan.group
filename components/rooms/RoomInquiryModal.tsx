@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { REFERRAL_SOURCES, vietnamesePhone } from "@/lib/consultation";
+import styles from "./RoomInquiryModal.module.css";
 import { readApiResponse } from "@/lib/api/client";
 import RoomInquiryTurnstile, { type RoomInquiryTurnstileHandle } from "@/components/rooms/RoomInquiryTurnstile";
 
 type Props = {
   open: boolean;
-  room: {
+  room?: {
     id: string;
     code: string;
     type: string;
@@ -16,6 +18,7 @@ type Props = {
     image: string | null;
     href: string;
   };
+  mode?: "room" | "general";
   onClose: () => void;
 };
 
@@ -37,9 +40,13 @@ function createRequestKey() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-white/15 bg-white/[.06] px-3.5 py-2.5 text-[16px] text-[#F3E7D6] outline-none placeholder:text-white/40 focus:border-[#C9A46A]/70 focus:ring-2 focus:ring-[#C9A46A]/20";
+const inputClass = `mt-1.5 min-h-11 w-full rounded-xl border px-3.5 py-2.5 text-[16px] outline-none ${styles.input}`;
 
-export default function RoomInquiryModal({ open, room, onClose }: Props) {
+export default function RoomInquiryModal({ open, room, mode = "room", onClose }: Props) {
+  const general = mode === "general";
+  const dialogRef = useRef<HTMLElement>(null);
+  const [referralSource, setReferralSource] = useState("");
+  const [referralDetail, setReferralDetail] = useState("");
   const [mounted, setMounted] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -61,7 +68,16 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape" && !submitting) onClose(); };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !submitting) onClose();
+      if (event.key === "Tab") {
+        const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not([tabindex="-1"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]') || []).filter(element => element.getClientRects().length);
+        const first = elements[0], last = elements[elements.length - 1];
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
     window.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
@@ -69,12 +85,22 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
     };
   }, [open, onClose, submitting]);
 
-  if (!open || !mounted) return null;
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => previous?.focus();
+  }, [open, mounted]);
+
+  if (!open || !mounted || (!general && !room)) return null;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (requestType === "viewing" && !viewingDate) {
+    if (name.trim().length < 2 || (general && !vietnamesePhone(phone))) {
+      setError("Vui lòng nhập họ tên và số điện thoại Việt Nam hợp lệ."); return;
+    }
+    if (!general && requestType === "viewing" && !viewingDate) {
       setError("Vui lòng chọn ngày muốn xem phòng.");
       return;
     }
@@ -91,12 +117,15 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
         signal: AbortSignal.timeout(30_000),
         body: JSON.stringify({
           request_key: requestKey,
-          room_id: room.id,
+          room_id: general ? null : room!.id,
+          consultation_kind: general ? "general_consultation" : "room_consultation",
+          referral_source: general ? referralSource || null : null,
+          referral_detail: general ? referralDetail || null : null,
           guest_name: name,
           guest_phone: phone,
-          request_type: requestType,
-          viewing_date: requestType === "viewing" ? viewingDate : null,
-          preferred_time: requestType === "viewing" ? preferredTime || null : null,
+          request_type: general ? "consultation" : requestType,
+          viewing_date: !general && requestType === "viewing" ? viewingDate : null,
+          preferred_time: !general && requestType === "viewing" ? preferredTime || null : null,
           notes: notes || null,
           website,
           captcha_token: captchaToken,
@@ -117,32 +146,32 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
 
   return createPortal(
     <div className="fixed inset-0 z-[2147483000] flex items-end justify-center bg-black/65 sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="room-inquiry-title" className="max-h-[94dvh] w-full max-w-xl overflow-y-auto overscroll-contain rounded-t-[26px] border border-[#C9A46A]/35 bg-[#2D1B14] text-[#F3E7D6] shadow-[0_30px_100px_rgba(0,0,0,.65)] sm:rounded-[26px]">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#2D1B14]/95 px-5 py-4 backdrop-blur-sm">
+      <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="room-inquiry-title" className={`${styles.modal} outline-none max-h-[94dvh] w-full max-w-xl overflow-y-auto overscroll-contain rounded-t-[26px] border shadow-[0_30px_100px_rgba(0,0,0,.65)] sm:rounded-[26px]`}>
+        <div className={`${styles.header} sticky top-0 z-10 flex items-center justify-between gap-3 border-b px-5 py-4`}>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#C9A46A]">Liên hệ phòng</p>
-            <h2 id="room-inquiry-title" className="mt-1 text-lg font-semibold">Tư vấn hoặc đặt lịch xem phòng</h2>
+            <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#704526]">{general ? "The Room SG" : "Liên hệ phòng"}</p>
+            <h2 id="room-inquiry-title" className="mt-1 text-lg font-semibold">{general ? "TƯ VẤN PHÒNG" : "Tư vấn hoặc đặt lịch xem phòng"}</h2>
           </div>
-          <button type="button" aria-label="Đóng" disabled={submitting} onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/15 text-xl hover:bg-white/10 disabled:opacity-50">×</button>
+          <button type="button" aria-label="Đóng" disabled={submitting} onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#d9c6b3] text-xl hover:bg-black/5 disabled:opacity-50">×</button>
         </div>
 
         <div className="p-5 sm:p-6">
-          <div className="mb-5 flex gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-3">
-            {room.image ? <img src={room.image} alt="" className="h-[76px] w-[92px] shrink-0 rounded-xl object-cover" /> : <div className="grid h-[76px] w-[92px] shrink-0 place-items-center rounded-xl bg-white/[.06] text-2xl" aria-hidden="true">⌂</div>}
+          {general ? <p className={`${styles.muted} mb-5 text-sm leading-6`}>Để lại thông tin, The Room SG sẽ hỗ trợ tìm phòng phù hợp với nhu cầu của bạn.</p> : room ? <div className={`${styles.group} mb-5 flex gap-3 rounded-2xl border p-3`}>
+            {room.image ? <img src={room.image} alt="" className="h-[76px] w-[92px] shrink-0 rounded-xl object-cover" /> : <div className="grid h-[76px] w-[92px] shrink-0 place-items-center rounded-xl bg-[#efe4d5] text-2xl" aria-hidden="true">⌂</div>}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold">{room.type || "Phòng cho thuê"} <span className="font-normal text-[#D8C7B5]">· {room.code}</span></p>
-              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#D8C7B5]">{room.address}</p>
-              <p className="mt-1 text-sm font-bold text-[#E7C58F]">{room.price ? `${room.price.toLocaleString("vi-VN")} đ/tháng` : "Liên hệ để biết giá"}</p>
+              <p className="truncate text-sm font-bold">{room.type || "Phòng cho thuê"} <span className="font-normal text-[#71675e]">· {room.code}</span></p>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#71675e]">{room.address}</p>
+              <p className="mt-1 text-sm font-bold text-[#704526]">{room.price ? `${room.price.toLocaleString("vi-VN")} đ/tháng` : "Liên hệ để biết giá"}</p>
             </div>
-            <a href={room.href} target="_blank" rel="noreferrer" className="self-start text-xs font-semibold text-[#E7C58F] underline underline-offset-2">Chi tiết</a>
-          </div>
+            <a href={room.href} target="_blank" rel="noreferrer" className="self-start text-xs font-semibold text-[#704526] underline underline-offset-2">Chi tiết</a>
+          </div> : null}
 
           {succeeded ? (
-            <div role="status" aria-live="polite" className="rounded-2xl border border-emerald-300/25 bg-emerald-950/35 p-5 text-center">
-              <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-emerald-400/15 text-xl text-emerald-200">✓</span>
+            <div role="status" aria-live="polite" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+              <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-emerald-100 text-xl text-emerald-800">✓</span>
               <p className="mt-3 font-semibold">Đã nhận yêu cầu</p>
-              <p className="mt-1 text-sm leading-6 text-emerald-100/80">{successMessage}</p>
-              <button type="button" onClick={onClose} className="mt-4 min-h-11 rounded-xl bg-[#C9A46A] px-5 font-bold text-[#241206]">Đóng</button>
+              <p className="mt-1 text-sm leading-6 text-emerald-900">{successMessage}</p>
+              <button type="button" onClick={onClose} className={`${styles.primary} mt-4 min-h-11 rounded-xl px-5 font-bold`}>Đóng</button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -151,28 +180,34 @@ export default function RoomInquiryModal({ open, room, onClose }: Props) {
                 <label className="text-sm font-medium">Số điện thoại *<input className={inputClass} value={phone} onChange={(event) => setPhone(event.target.value)} minLength={9} maxLength={24} autoComplete="tel" inputMode="tel" required placeholder="09xx xxx xxx" /></label>
               </div>
 
-              <fieldset>
+              {!general ? <fieldset>
                 <legend className="text-sm font-medium">Bạn cần hỗ trợ gì?</legend>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <label className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm ${requestType === "consultation" ? "border-[#C9A46A]/60 bg-[#C9A46A]/15" : "border-white/12 bg-white/[.03]"}`}><input type="radio" name="request_type" value="consultation" checked={requestType === "consultation"} onChange={() => setRequestType("consultation")} className="accent-[#C9A46A]" />Tư vấn thêm</label>
-                  <label className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm ${requestType === "viewing" ? "border-[#C9A46A]/60 bg-[#C9A46A]/15" : "border-white/12 bg-white/[.03]"}`}><input type="radio" name="request_type" value="viewing" checked={requestType === "viewing"} onChange={() => setRequestType("viewing")} className="accent-[#C9A46A]" />Đặt lịch xem</label>
+                  <label className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm ${requestType === "consultation" ? "border-[#704526] bg-[#efe4d5]" : "border-[#d9c6b3] bg-white"}`}><input type="radio" name="request_type" value="consultation" checked={requestType === "consultation"} onChange={() => setRequestType("consultation")} className="accent-[#704526]" />Tư vấn thêm</label>
+                  <label className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm ${!general && requestType === "viewing" ? "border-[#704526] bg-[#efe4d5]" : "border-[#d9c6b3] bg-white"}`}><input type="radio" name="request_type" value="viewing" checked={requestType === "viewing"} onChange={() => setRequestType("viewing")} className="accent-[#704526]" />Đặt lịch xem</label>
                 </div>
-              </fieldset>
+              </fieldset> : <fieldset><legend className="text-sm font-medium">Bạn cần hỗ trợ gì?</legend><label className={`${styles.group} mt-2 flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm`}><input type="radio" checked readOnly name="general_support" className="accent-[#704526]" />Tư vấn tìm phòng</label></fieldset>}
 
-              {requestType === "viewing" ? <div className="grid gap-4 sm:grid-cols-2">
+              {!general && requestType === "viewing" ? <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-medium">Ngày muốn xem *<input className={inputClass} type="date" min={localDateValue()} value={viewingDate} onChange={(event) => setViewingDate(event.target.value)} required /></label>
-                <label className="text-sm font-medium">Khung giờ mong muốn<select className={inputClass} value={preferredTime} onChange={(event) => setPreferredTime(event.target.value)}><option value="">Linh động</option><option value="Sáng (08:00–12:00)">Sáng (08:00–12:00)</option><option value="Chiều (12:00–17:00)">Chiều (12:00–17:00)</option><option value="Tối (17:00–20:00)">Tối (17:00–20:00)</option></select></label>
+                <label className="text-sm font-medium">Khung giờ mong muốn<select aria-label="Khung giờ mong muốn" className={inputClass} style={{ colorScheme: "light" }} value={preferredTime} onChange={(event) => setPreferredTime(event.target.value)}><option value="">Linh động</option><option value="Sáng (08:00–12:00)">Sáng (08:00–12:00)</option><option value="Chiều (12:00–17:00)">Chiều (12:00–17:00)</option><option value="Tối (17:00–20:00)">Tối (17:00–20:00)</option></select></label>
               </div> : null}
 
-              <label className="text-sm font-medium">Ghi chú tùy chọn<textarea className={`${inputClass} min-h-[88px] resize-y`} value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} rows={3} placeholder="Thời gian tiện liên hệ hoặc yêu cầu thêm" /></label>
+              <label className="block text-sm font-medium">Ghi chú nhu cầu<textarea className={`${inputClass} min-h-[88px] resize-y`} value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={2000} rows={3} placeholder={general ? "Khu vực, ngân sách, loại phòng, yêu cầu thêm…" : "Thời gian tiện liên hệ hoặc yêu cầu thêm"} /></label>
+              {general && <>
+                <fieldset><legend className="text-sm font-medium">Bạn biết đến The Room SG từ đâu?</legend>
+                  <div className="mt-2 flex flex-wrap gap-2">{REFERRAL_SOURCES.map(source => <label key={source} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm ${referralSource === source ? "border-[#704526] bg-[#efe4d5]" : "border-[#d9c6b3] bg-white"}`}><input type="radio" name="referral_source" value={source} checked={referralSource === source} onChange={() => setReferralSource(source)} className="accent-[#704526]" />{source}</label>)}</div>
+                </fieldset>
+                <label className="block text-sm font-medium">Kênh hoặc nguồn giới thiệu cụ thể<input className={inputClass} value={referralDetail} onChange={event => setReferralDetail(event.target.value)} maxLength={300} placeholder="VD: Tên nhóm Facebook, tài khoản TikTok, người giới thiệu..." /></label>
+              </>}
               <label className="sr-only" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} /></label>
 
               <RoomInquiryTurnstile ref={turnstileRef} />
 
-              {error ? <p role="alert" className="rounded-xl border border-red-300/20 bg-red-950/35 px-3.5 py-3 text-sm text-red-200">{error}</p> : null}
-              <div className="sticky bottom-0 -mx-5 -mb-5 border-t border-white/10 bg-[#2D1B14]/95 px-5 py-4 backdrop-blur-sm sm:-mx-6 sm:-mb-6 sm:px-6">
-                <button type="submit" disabled={submitting} className="min-h-12 w-full rounded-xl bg-[#C9A46A] px-5 font-bold text-[#241206] transition hover:bg-[#D9B77F] disabled:cursor-wait disabled:opacity-60">{submissionStatus === "verifying" ? "Đang xác minh…" : submissionStatus === "submitting" ? "Đang gửi yêu cầu…" : "Gửi yêu cầu"}</button>
-                <p className="mt-2 text-center text-[11px] leading-4 text-[#D8C7B5]">Thông tin sẽ được gửi đến người phụ trách phòng này.</p>
+              {error ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-800">{error}</p> : null}
+              <div className={`${styles.footer} sticky bottom-0 -mx-5 -mb-5 border-t px-5 py-4 sm:-mx-6 sm:-mb-6 sm:px-6`}>
+                <button type="submit" disabled={submitting} className={`${styles.primary} min-h-12 w-full rounded-xl px-5 font-bold transition disabled:cursor-wait disabled:opacity-60`}>{submissionStatus === "verifying" ? "Đang xác minh…" : submissionStatus === "submitting" ? "Đang gửi yêu cầu…" : general ? "Gửi yêu cầu tư vấn" : "Gửi yêu cầu"}</button>
+                <p className="mt-2 text-center text-[11px] leading-4 text-[#71675e]">{general ? "Thông tin sẽ được gửi đến bộ phận tư vấn The Room SG." : "Thông tin sẽ được gửi đến người phụ trách phòng này."}</p>
               </div>
             </form>
           )}

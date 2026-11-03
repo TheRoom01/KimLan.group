@@ -7,16 +7,16 @@ import { snapshotRoom, normalizedRoomIdentity } from "../../../lib/zalo-import/r
 
 async function main() {
   const image = (color: string) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="${color}"/></svg>`)}`;
-  const old = { id: "fixture-room", house_number: "219/89A", address: "Trần Văn Đang", district: "Quận 3", room_code: "L01", price: 5500000, room_type: "1PN", available_from: "2026-11-01" };
-  const row = { matched_room_id: old.id, images: [{ temp_image_url: image("#bce3ce"), selected: true }], videos: [],
-    room_payload: { ...old, price: 5800000, room_type: "Studio", _room_import: { version: 1, type: "UPDATE", identity_key: normalizedRoomIdentity(old), reason: "Fixture", candidate_ids: [old.id], conflicting_pending_ids: [],
+  const old = { id: "fixture-room", house_number: "219/89A", address: "Trần Văn Đang", district: "Quận 3", room_code: "L01", description: "Mô tả cũ", price: 5500000, room_type: "1PN", available_from: "2026-11-01" };
+  const row = { matched_room_id: old.id, images: [{ id: "new-image", temp_image_url: image("#bce3ce"), selected: true }], videos: [{id: "new-video", temp_video_url: "about:blank", selected: true}],
+    room_payload: { ...old, description: "Mô tả mới", price: 5800000, room_type: "Studio", _room_import: { version: 1, type: "UPDATE", identity_key: normalizedRoomIdentity(old), reason: "Fixture", candidate_ids: [old.id], conflicting_pending_ids: [],
       snapshot: snapshotRoom(old, { water_fee_value: 150000 }, [{ id: "old", type: "image", url: image("#cbd5e1"), content_hash: "old-content" }]),
-      presence: { "room.price": "value", "room.room_type": "value" }, uncertain_fields: [], image_hashes: { [image("#bce3ce")]: "new-content" } } }, detail_payload: { water_fee_value: null } };
+      presence: { "room.description": "value", "room.price": "value", "room.room_type": "value" }, uncertain_fields: [], image_hashes: { [image("#bce3ce")]: "new-content" } } }, detail_payload: { water_fee_value: null } };
   const script = buildSync({ stdin: { contents: `
     import React, {useState} from 'react'; import {createRoot} from 'react-dom/client';
     import Comparison from './app/admin/zalo-imports/RoomUpdateComparison';
     const row=${JSON.stringify(row)};
-    function App(){const [selected,setSelected]=useState([]);return <><Comparison row={row} selected={selected} onSelect={setSelected}/><output aria-label="Trường đã chọn">{JSON.stringify(selected)}</output></>}
+    function App(){const [selected,setSelected]=useState([]);return <><Comparison row={row} selected={selected} onSelect={setSelected}/><output style={{overflowWrap:"anywhere"}} aria-label="Trường đã chọn">{JSON.stringify(selected)}</output></>}
     createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: process.cwd(), loader: "tsx" },
     bundle: true, write: false, platform: "browser", define: { "process.env.NODE_ENV": '"development"' }, tsconfig: path.resolve("tsconfig.json"), logLevel: "silent" }).outputFiles[0].text;
   const directory = path.resolve(".zalo-reader/offline-room-update-ui");
@@ -30,20 +30,31 @@ async function main() {
     await page.setContent(html);
     await page.getByRole("heading", { name: "CẬP NHẬT PHÒNG · L01" }).waitFor();
     assert.equal(await page.getByRole("link", { name: "Xem phòng hiện tại" }).getAttribute("href"), "/rooms/fixture-room");
-    const price = page.getByRole("row").filter({ has: page.getByRole("checkbox", { name: "Áp dụng Giá thuê", exact: true }) });
+    const price = page.getByRole("row").filter({ has: page.getByRole("checkbox", { name: "Lấy Zalo mới: Giá thuê", exact: true }) });
     assert.match(await price.innerText(), /5\.500\.000 đ[\s\S]*5\.800\.000 đ/);
     assert.equal(await price.locator("td").last().evaluate(element => getComputedStyle(element).color), "rgb(21, 128, 61)");
-    const missing = page.getByRole("row").filter({ has: page.getByRole("checkbox", { name: "Áp dụng Tiền nước", exact: true }) });
+    const missing = page.getByRole("row").filter({ has: page.getByRole("checkbox", { name: "Lấy Zalo mới: Tiền nước", exact: true }) });
     assert.match(await missing.innerText(), /150\.000 đ[\s\S]*Không có thông tin mới/);
-    assert.equal(await missing.getByRole("checkbox").isDisabled(), true);
-    assert.match(await page.locator("body").innerText(), /ẢNH ĐÃ THAY ĐỔI/);
-    assert.match(await page.locator("body").innerText(), /MEDIA_UNVERIFIED[\s\S]*Album cũ được giữ nguyên/);
-    assert.equal(await page.getByRole("checkbox",{name:"Áp dụng album ảnh mới",exact:true}).isChecked(),false);
-    await page.getByRole("checkbox", { name: "Áp dụng Giá thuê", exact: true }).check();
-    await page.getByRole("checkbox", { name: "Áp dụng album ảnh mới", exact: true }).check();
-    assert.deepEqual(JSON.parse(await page.getByLabel("Trường đã chọn").innerText()), ["room.price", "images"]);
+    assert.equal(await missing.getByRole("checkbox", {name: "Lấy Zalo mới: Tiền nước", exact: true}).isDisabled(), true);
+    await page.getByRole("checkbox", { name: "Lấy Zalo mới: Giá thuê", exact: true }).check();
+    assert.equal(await page.getByRole("checkbox", {name: "Giữ dữ liệu cũ: Giá thuê", exact: true}).isChecked(), false);
+    await page.getByRole("checkbox", {name: "Giữ dữ liệu cũ: Giá thuê", exact: true}).check();
+    assert.equal(await page.getByRole("checkbox", {name: "Lấy Zalo mới: Giá thuê", exact: true}).isChecked(), false);
+    await page.getByRole("checkbox", {name: "Lấy Zalo mới: Mô tả", exact: true}).check();
+    assert.equal(await page.getByRole("checkbox", {name: "Giữ dữ liệu cũ: Mô tả", exact: true}).isChecked(), true);
+    assert.ok(JSON.parse(await page.getByLabel("Trường đã chọn").innerText()).includes("both:room.description"));
+    await page.getByRole("button", {name: "Chọn ảnh mới 1", exact: true}).click();
+    let chosen = JSON.parse(await page.getByLabel("Trường đã chọn").innerText());
+    assert.ok(chosen.includes("media:image:old:old"));
+    assert.ok(chosen.includes("media:image:new:new-image"));
+    await page.getByRole("button", {name: "Bỏ chọn ảnh cũ 1", exact: true}).click();
+    chosen = JSON.parse(await page.getByLabel("Trường đã chọn").innerText());
+    assert.ok(!chosen.includes("media:image:old:old"));
+    assert.ok(chosen.includes("media:image:new:new-image"));
+    await page.getByRole("button", {name: "Chọn video mới 1", exact: true}).click();
+    assert.ok(JSON.parse(await page.getByLabel("Trường đã chọn").innerText()).includes("media:video:new:new-video"));
     await page.screenshot({ path: path.join(directory, "desktop.png"), fullPage: true });
-    await page.getByRole("button", { name: "Album cũ ảnh 1, xem toàn màn hình" }).click();
+    await page.getByRole("button", { name: "Xem ảnh", exact: true }).first().click();
     assert.equal(await page.getByRole("dialog", { name: "Xem album toàn màn hình" }).isVisible(), true);
     await page.keyboard.press("Escape");
     assert.equal(await page.getByRole("dialog").count(), 0);

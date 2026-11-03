@@ -62,6 +62,8 @@ type RoomCardProps = {
   isOpening?: boolean;
 };
 
+export type { Room as RoomCardRoom };
+
 function roomAmenityLabels(room: Room): string[] {
   const rawDetail = room.room_detail ?? room.room_details;
   const detail = Array.isArray(rawDetail) ? rawDetail[0] : rawDetail;
@@ -163,6 +165,8 @@ function publicHouseNumber(value?: string | null) {
 
   // không có số nhà => vẫn hiện ...
   if (!s) return "...";
+  // The public API may already have masked this value; do not mask it twice.
+  if (s === ".." || s === "...") return s;
 
   if (s.includes("/")) {
     const first = s.split("/")[0]?.trim();
@@ -365,7 +369,7 @@ const isLoggedAdmin =
 // Admin L2 phải liên hệ đúng người đã tạo phòng, không phải tài khoản L2
 // đang xem card. Admin L1 vẫn giữ fallback hiện tại.
 // Anon VIP: chỉ nhận contact đã được HomeClient truyền từ Link Giỏ hàng.
-// Anon thường: currentAdminPhone = null nên không hiện nút Admin.
+// Anon thường dùng hotline công khai; Link Giỏ hàng vẫn dùng contact được truyền xuống.
 const contactPhone = isLoggedAdmin
   ? String(
       (safeAdminLevel === 2
@@ -374,7 +378,7 @@ const contactPhone = isLoggedAdmin
       room.zalo_phone ||
       ""
     ).trim() || null
-  : String(currentAdminPhone ?? "").trim() || null;
+  : String(currentAdminPhone ?? "").trim() || "0967467587";
 
 const contactPhones = useMemo(
   () => extractContactPhones(contactPhone),
@@ -388,7 +392,7 @@ const contactName = isLoggedAdmin
         : currentAdminName || room.creator_admin_name) ||
       ""
     ).trim() || "Liên hệ"
-  : String(currentAdminName ?? "").trim() || "Liên hệ";
+  : String(currentAdminName ?? "").trim() || "The Room SG";
 
   useEffect(() => {
   console.log("[ROOM ADMIN CONTACT]", {
@@ -584,7 +588,7 @@ useEffect(() => {
       observer.disconnect();
       window.removeEventListener("resize", updateCopyPosition);
     };
-  }, [fullAddressText]);
+  }, [fullAddressText, safeAdminLevel]);
 
     async function handleCopyAddress(
       e: React.MouseEvent<HTMLButtonElement>
@@ -1262,8 +1266,26 @@ return (
             </div>
           </div>
 
+        {contactPhones.length > 0 && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setAdminPhone(contactPhones.map((phone) => phone.dial).join("|"));
+            }}
+            title={contactName}
+            aria-label="Liên hệ"
+            className="home-room-contact absolute bottom-2 left-2 z-30 grid h-9 w-9 place-items-center rounded-full border border-white/40 bg-black/55 text-white shadow backdrop-blur-md transition-colors hover:bg-black/75"
+          >
+            <span className="grid place-items-center text-[14px]">
+              <span className="text-[12px] leading-none">☎️</span>
+            </span>
+          </button>
+        )}
           {updatedAt && (
-            <div className="pointer-events-none absolute bottom-2 right-2 z-20 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold leading-none text-white/95 shadow backdrop-blur-md">
+            <div style={{ transform: "scale(0.85)", transformOrigin: "bottom right" }}
+              className="pointer-events-none absolute bottom-2 right-2 z-20 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold leading-none text-white/95 shadow backdrop-blur-md">
               Cập nhật: {formatTimeAgo(updatedAt)}
             </div>
           )}
@@ -1299,7 +1321,7 @@ return (
               {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
             </div>
             <div
-              className="home-room-amenities relative z-20 min-w-0 flex-1 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              className="home-room-amenities relative z-20 min-w-0 flex-1 cursor-grab touch-auto select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
               title={amenities.join(" · ") || "Tiện ích đang cập nhật"}
               onPointerDown={startAmenityDrag}
               onPointerMove={moveAmenityDrag}
@@ -1453,6 +1475,7 @@ return (
               {district && `, ${district}`}
           </span>
 
+              {isAdmin && (
               <button
                 ref={addressCopyOffsetRef}
                 type="button"
@@ -1492,6 +1515,7 @@ return (
                   </svg>
                 )}
               </button>
+              )}
         </p>
 
         <div className="mt-1 min-w-0">
@@ -1508,6 +1532,7 @@ return (
           </div>
         </div>
         <div className="home-room-actions relative z-20 mt-3 flex w-full min-w-0 items-center justify-between gap-2">
+        {!currentUserIdValue && !isAdmin && (
         <button
           type="button"
           onPointerDown={(event) => event.stopPropagation()}
@@ -1520,27 +1545,11 @@ return (
         >
           <span aria-hidden="true" className="shrink-0">✦</span><span className="min-w-0 break-words text-center leading-tight">Đi xem/Tư vấn</span>
         </button>
-        {contactPhones.length > 0 && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              setAdminPhone(contactPhones.map((phone) => phone.dial).join("|"));
-            }}
-            title={contactName}
-            aria-label="Liên hệ"
-            className="ai-admin-button ai-admin-gradient-border relative z-20 ml-auto shrink-0 rounded-full p-[1px] transition-all duration-50 hover:scale-[1.05] active:scale-[0.95]"
-          >
-            <span aria-hidden="true" className="ai-admin-gradient-border__track" />
-            <span className="relative z-10 flex h-full items-center justify-center rounded-full bg-[#141516]/75 px-1 text-[14px] font-bold leading-none text-white backdrop-blur-[20px]">
-              <span className="text-[12px] leading-none">☎️</span>
-            </span>
-          </button>
         )}
+
         </div>
         <div
-            className="home-room-toolbar relative z-20 mt-1 min-w-0 cursor-grab touch-pan-x select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="home-room-toolbar relative z-20 mt-1 min-w-0 cursor-grab touch-auto select-none overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             onPointerDown={startToolbarDrag}
             onPointerMove={moveToolbarDrag}
             onPointerUp={finishToolbarDrag}

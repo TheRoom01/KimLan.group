@@ -8,7 +8,10 @@ type Status = "new" | "contacted" | "scheduled" | "completed" | "cancelled";
 type RoomRequest = {
   id: string;
   room_id: string | null;
-  room_code_snapshot: string;
+  consultation_kind: "room_consultation" | "general_consultation";
+  referral_source: string | null;
+  referral_detail: string | null;
+  room_code_snapshot: string | null;
   room_type_snapshot: string | null;
   address_snapshot: string | null;
   price_snapshot: number | null;
@@ -46,6 +49,7 @@ export default function RoomConsultRequestsClient({
 }) {
   const [requests, setRequests] = useState<RoomRequest[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | Status>(focusRequestId ? "all" : "new");
+  const [kindFilter, setKindFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState<RequestTypeFilter>("all");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -59,7 +63,7 @@ export default function RoomConsultRequestsClient({
     setLoading(true);
     setError("");
     try {
-      const query = new URLSearchParams({ status: statusFilter, request_type: typeFilter, page: String(page) });
+      const query = new URLSearchParams({ status: statusFilter, request_type: typeFilter, consultation_kind: kindFilter, page: String(page) });
       if (focusRequestId) query.set("request_id", focusRequestId);
       const result = await readApiResponse<{ requests: RoomRequest[]; total: number }>(await fetch(`/api/admin/room-consult-requests?${query}`, { cache: "no-store" }));
       setRequests(result.requests ?? []);
@@ -69,7 +73,7 @@ export default function RoomConsultRequestsClient({
     } finally {
       setLoading(false);
     }
-  }, [focusRequestId, page, statusFilter, typeFilter]);
+  }, [focusRequestId, page, statusFilter, typeFilter, kindFilter]);
 
   useEffect(() => { void loadRequests(); }, [loadRequests]);
 
@@ -121,6 +125,7 @@ export default function RoomConsultRequestsClient({
             <option value="cancelled">Đã hủy</option>
             <option value="all">Tất cả</option>
           </select>
+          <select aria-label="Lọc nhóm tư vấn" value={kindFilter} onChange={event => { setPage(1); setKindFilter(event.target.value); }} className={`${SELECT_CLASS} min-w-0 flex-1 sm:flex-none`}><option value="all">Mọi nhóm tư vấn</option><option value="general_consultation">Tư vấn chung</option><option value="room_consultation">Tư vấn phòng</option></select>
           <select aria-label="Lọc loại yêu cầu" value={typeFilter} onChange={(event) => { setPage(1); setTypeFilter(event.target.value as RequestTypeFilter); }} className={`${SELECT_CLASS} min-w-0 flex-1 sm:flex-none`}>
             <option value="all">Mọi nhu cầu</option>
             <option value="consultation">Tư vấn</option>
@@ -137,10 +142,10 @@ export default function RoomConsultRequestsClient({
           {requests.map((item) => <article key={item.id} className="grid gap-4 rounded-2xl border border-[#ddcbb7] bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:p-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-bold text-[#3e2b1d]">{item.request_type === "viewing" ? "Đặt lịch xem phòng" : "Tư vấn phòng"} · {item.room_code_snapshot}</h2>
+                <h2 className="font-bold text-[#3e2b1d]">{item.consultation_kind === "general_consultation" ? "Tư vấn chung" : `${item.request_type === "viewing" ? "Đặt lịch xem phòng" : "Tư vấn phòng"} · ${item.room_code_snapshot || "Phòng đã xóa"}`}</h2>
                 <span className="rounded-full bg-[#f5ead9] px-2.5 py-1 text-[11px] font-bold text-[#705035]">{STATUS_LABEL[item.status]}</span>
               </div>
-              <p className="mt-1 text-sm text-[#806348]">{item.room_type_snapshot || "Phòng cho thuê"}{item.address_snapshot ? ` · ${item.address_snapshot}` : ""}</p>
+              {item.consultation_kind !== "general_consultation" && <p className="mt-1 text-sm text-[#806348]">{item.room_type_snapshot || "Phòng cho thuê"}{item.address_snapshot ? ` · ${item.address_snapshot}` : ""}</p>}
               {item.price_snapshot ? <p className="mt-1 text-sm font-bold text-[#795626]">{Number(item.price_snapshot).toLocaleString("vi-VN")} đ/tháng</p> : null}
               <div className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
                 <p><span className="text-[#806348]">Khách: </span><b>{item.guest_name}</b></p>
@@ -149,11 +154,13 @@ export default function RoomConsultRequestsClient({
                 {item.preferred_time ? <p><span className="text-[#806348]">Khung giờ: </span><b>{item.preferred_time}</b></p> : null}
                 <p className="text-xs text-[#9a7e63]">Gửi lúc {formatDate(item.created_at)}</p>
               </div>
-              {item.notes ? <p className="mt-3 whitespace-pre-wrap rounded-xl bg-[#faf5ed] p-3 text-sm leading-5 text-[#634a33]">{item.notes}</p> : null}
+              {item.referral_source && <p className="mt-2 break-words text-sm"><span className="text-[#806348]">Nguồn khách: </span>{item.referral_source}</p>}
+              {item.referral_detail && <p className="mt-1 break-words text-sm"><span className="text-[#806348]">Kênh cụ thể: </span>{item.referral_detail}</p>}
+              {item.notes ? <p className="mt-3 break-words whitespace-pre-wrap rounded-xl bg-[#faf5ed] p-3 text-sm leading-5 text-[#634a33]">{item.notes}</p> : null}
             </div>
             <div className="flex flex-row items-center gap-2 sm:flex-col sm:items-stretch">
               {item.room_id ? <a href={`/rooms/${encodeURIComponent(item.room_id)}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl border border-[#dac9b6] px-3 text-xs font-bold text-[#684324] hover:bg-[#fff8ed]">Mở phòng <ExternalLink size={13} /></a> : null}
-              <select aria-label={`Cập nhật trạng thái ${item.room_code_snapshot}`} value={item.status} disabled={updatingId === item.id} onChange={(event) => void updateStatus(item.id, event.target.value as Status)} className={SELECT_CLASS}>
+              <select aria-label={`Cập nhật trạng thái ${item.room_code_snapshot || item.guest_name}`} value={item.status} disabled={updatingId === item.id} onChange={(event) => void updateStatus(item.id, event.target.value as Status)} className={SELECT_CLASS}>
                 {(Object.keys(STATUS_LABEL) as Status[]).map((status) => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}
               </select>
             </div>

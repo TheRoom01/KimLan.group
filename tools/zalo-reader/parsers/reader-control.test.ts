@@ -31,6 +31,15 @@ async function main() {
   await assert.rejects(controlService.reportReaderControl(db, { requestId: latest, actualEnabled: false, error: "secret text" }));
   assert.equal(writes, before);
 
+  await controlService.requestOpenZalo(db, "admin");
+  const openId = row.open_request_id;
+  assert.equal(row.request_id, latest, "open command must not supersede Start/Stop");
+  assert.equal(row.desired_enabled, false, "Open never enables scans");
+  await controlService.reportReaderControl(db, { actualEnabled: false, openRequestId: randomUUID() });
+  assert.notEqual(row.open_applied_request_id, openId, "stale open ACK cannot confirm a newer request");
+  await controlService.reportReaderControl(db, { actualEnabled: false, openRequestId: openId });
+  assert.equal(row.open_applied_request_id, openId);
+
   let actual = false; const applied: boolean[] = []; const reports: any[] = []; const immediateRuns: string[] = [];
   const command = { request_id: randomUUID(), applied_request_id: null as string | null, desired_enabled: true as boolean | null };
   const deps = { read: async () => command, actual: () => actual, apply: (enabled: boolean) => { applied.push(enabled); actual = enabled; }, runNow: async (id: string) => { immediateRuns.push(id); }, report: async (body: any) => { reports.push(body); } };
@@ -51,6 +60,23 @@ async function main() {
   await syncReaderControl(deps);
   assert.equal(applied.length, scheduleChanges, "Start on an enabled schedule must not re-run scheduler enable/preflight");
   assert.equal(immediateRuns.at(-1), command.request_id, "enabled schedule still starts the requested immediate run");
+  let opened = 0;
+  const opening = { ...command, desired_enabled: false, request_id: null, applied_request_id: null, open_request_id: randomUUID(), open_applied_request_id: null as string | null };
+  actual = false;
+  const schedulesBeforeOpen = applied.length;
+  const scansBeforeOpen = immediateRuns.length;
+  await syncReaderControl({ ...deps, read: async () => opening, openZalo: async () => { opened++; } });
+  assert.equal(opened, 1);
+  assert.equal(applied.length, schedulesBeforeOpen);
+  assert.equal(immediateRuns.length, scansBeforeOpen);
+  assert.ok(reports.some(body => body.openRequestId === opening.open_request_id && !body.openError));
+  opening.open_applied_request_id = opening.open_request_id;
+  await syncReaderControl({ ...deps, read: async () => opening, openZalo: async () => { opened++; } });
+  assert.equal(opened, 1, "acknowledged Open is not replayed");
+  opening.open_request_id = randomUUID();
+  await syncReaderControl({ ...deps, read: async () => opening, openZalo: async () => { throw new Error("private error"); } });
+  assert.ok(reports.some(body => body.openRequestId === opening.open_request_id && body.openError === "ZALO_OPEN_FAILED"));
+
   const directory = path.resolve(".zalo-reader/offline-control-launch", randomUUID());
   const requestId = randomUUID(); let launches = 0;
   const launch = async () => { launches++; };
@@ -85,6 +111,10 @@ async function main() {
   level = 2; assert.equal((await admin.POST(request({ enabled: true }, "https://evil.test"))).status, 403);
   assert.equal((await admin.POST(request({ enabled: "true" }))).status, 400);
   assert.equal((await admin.POST(request({ enabled: false }))).status, 200);
+  assert.equal((await admin.POST(request({ action: "open_zalo" }))).status, 200);
+  assert.equal(row.desired_enabled, false);
+  assert.equal((await admin.POST(request({ action: "execute_code" }))).status, 400);
+  assert.equal((await admin.POST(request({ action: "open_zalo", enabled: true }))).status, 400);
   secretOK = false; assert.equal((await internal.GET(request({}))).status, 401);
   secretOK = true; assert.equal((await internal.GET(request({}))).status, 200);
   console.log("Reader control: admin/secret auth, origin, superseded commands, heartbeat, Start/Stop, retry, offline: PASS");

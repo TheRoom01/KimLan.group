@@ -3,6 +3,7 @@ param([ValidateSet('Install','Upgrade','Remove','Status')][string]$Action='Statu
 $ErrorActionPreference='Stop'
 $taskName='KimLan-ZaloReader-Control'
 $immediateTaskName='KimLan-ZaloReader-Now'
+$browserTaskName='KimLan-ZaloReader-Browser'
 . (Join-Path $PSScriptRoot 'scheduler-authorization.ps1')
 . (Join-Path $PSScriptRoot 'hidden-task-action.ps1')
 switch($Action) {
@@ -13,7 +14,7 @@ switch($Action) {
    $taskUser=[Security.Principal.WindowsIdentity]::GetCurrent()
    $ownerSid=([Security.Principal.NTAccount]$reader.Principal.UserId).Translate([Security.Principal.SecurityIdentifier]).Value
    if($ownerSid -ne $taskUser.User.Value){throw 'Use the Windows account that owns the Reader task.'}
-   foreach($existingName in @($taskName,$immediateTaskName)){
+   foreach($existingName in @($taskName,$immediateTaskName,$browserTaskName)){
      $existing=Get-ScheduledTask -TaskName $existingName -ErrorAction SilentlyContinue
      if($existing){
        $existingOwner=([Security.Principal.NTAccount]$existing.Principal.UserId).Translate([Security.Principal.SecurityIdentifier]).Value
@@ -39,10 +40,12 @@ switch($Action) {
      $nodePath=(Get-Command node.exe -ErrorAction Stop).Source
      $immediateAction=New-ReaderHiddenTaskAction -Mode Immediate -NodePath $nodePath
      $immediateSettings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -DisallowHardTerminate -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+     $browserAction=New-ReaderHiddenTaskAction -Mode Browser -NodePath $nodePath
+     Register-ScheduledTask -TaskName $browserTaskName -Action $browserAction -Principal $principal -Settings $immediateSettings -Force | Out-Null
      Register-ScheduledTask -TaskName $immediateTaskName -Action $immediateAction -Principal $principal -Settings $immediateSettings -Force | Out-Null
      Register-ScheduledTask -TaskName $taskName -Action $actionDef -Trigger @($trigger,$logonTrigger) -Principal $principal -Settings $settings -Force | Out-Null
    }
  }
- 'Remove' { if($PSCmdlet.ShouldProcess($taskName,'Remove UI control polling and on-demand task only')){Unregister-ScheduledTask -TaskName $taskName -Confirm:$false;Unregister-ScheduledTask -TaskName $immediateTaskName -Confirm:$false -ErrorAction SilentlyContinue} }
- 'Status' {Get-ScheduledTask -TaskName $taskName,$immediateTaskName;Get-ScheduledTaskInfo -TaskName $taskName}
+ 'Remove' { if($PSCmdlet.ShouldProcess($taskName,'Remove UI control polling and on-demand task only')){Unregister-ScheduledTask -TaskName $browserTaskName -Confirm:$false -ErrorAction SilentlyContinue;Unregister-ScheduledTask -TaskName $taskName -Confirm:$false;Unregister-ScheduledTask -TaskName $immediateTaskName -Confirm:$false -ErrorAction SilentlyContinue} }
+ 'Status' {Get-ScheduledTask -TaskName $taskName,$immediateTaskName,$browserTaskName;Get-ScheduledTaskInfo -TaskName $taskName}
 }

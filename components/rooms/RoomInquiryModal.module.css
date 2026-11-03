@@ -1,0 +1,29 @@
+.modal {
+  --inquiry-bg: #fbf7f1;
+  --inquiry-text: #38291f;
+  --inquiry-muted: #71675e;
+  --inquiry-primary: #704526;
+  --inquiry-group: #efe4d5;
+  --inquiry-border: #d9c6b3;
+  background: var(--inquiry-bg);
+  color: var(--inquiry-text);
+  border-color: var(--inquiry-border);
+  color-scheme: light;
+}
+.header, .group { background: var(--inquiry-group); border-color: var(--inquiry-border); }
+.muted { color: var(--inquiry-muted); }
+.accent { color: var(--inquiry-primary); }
+/* Outrank the existing global transparent-input reset without changing other forms. */
+.modal .input.input {
+  background: #fff;
+  color: var(--inquiry-text);
+  border: 1px solid var(--inquiry-border);
+  border-radius: 0.75rem;
+  color-scheme: light;
+}
+.modal .input::placeholder { color: var(--inquiry-muted); opacity: 1; }
+.modal .input.input:focus { border-color: var(--inquiry-primary); box-shadow: 0 0 0 3px #70452620; }
+.modal .input option { background: #fffaf3; color: var(--inquiry-text); }
+.primary { background: var(--inquiry-primary); color: #fff; }
+.primary:hover { background: #59371e; }
+.footer { background: var(--inquiry-bg); border-color: var(--inquiry-border); padding-bottom: max(1rem, env(safe-area-inset-bottom)); }

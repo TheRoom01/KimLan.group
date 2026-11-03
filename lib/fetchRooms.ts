@@ -235,7 +235,7 @@ export async function fetchRooms(
     roomTypes?.length ? roomTypes : roomType?.trim() ? [roomType.trim()] : [];
 
   const role = adminLevel === 2 ? 2 : adminLevel === 1 ? 1 : 0;
-  const normalizedSearch = normalizeSearchKeyword(search);
+  const normalizedSearch = normalizeSearchKeyword(search, adminLevel === 1 || adminLevel === 2);
 
   // ✅ Parse cursor theo đúng SQL:
   // - updated_desc dùng {updated_at, id}

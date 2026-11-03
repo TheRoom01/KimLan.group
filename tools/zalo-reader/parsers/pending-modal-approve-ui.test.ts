@@ -53,7 +53,7 @@ async function main(){
     let calls=await writes();assert.equal(calls.filter((call:any)=>call.url.endsWith('/draft')).at(-1).body.room_payload.price,6800000);assert.equal(calls.at(-1).body.mode,'create_room');
     assert.equal(calls.filter((call:any)=>call.url.endsWith('/draft')).at(-1).body.manualReviewOnly,true);
     await page.evaluate(()=>{(window as any).failApprove=false});await page.getByRole('button',{name:'Duyệt',exact:true}).click();await page.getByText('Đã đóng',{exact:true}).waitFor();await page.waitForFunction(()=>(window as any).refreshes===1);
-    await load(true);await page.getByRole('checkbox',{name:'Áp dụng Giá thuê',exact:true}).check();await page.getByRole('button',{name:'Duyệt',exact:true}).click();await page.getByText('Đã đóng',{exact:true}).waitFor();
+    await load(true);await page.getByRole('checkbox',{name:'Lấy Zalo mới: Giá thuê',exact:true}).check();await page.getByRole('button',{name:'Duyệt',exact:true}).click();await page.getByText('Đã đóng',{exact:true}).waitFor();
     await page.waitForFunction(()=>(window as any).refreshes===1);calls=await writes();assert.equal(calls.at(-1).body.mode,'update_room');assert.deepEqual(calls.at(-1).body.selectedFields,['room.price']);assert.equal(calls.at(-1).body.expectedRoomPayload.server_revision,42,'UPDATE approves exactly the saved snapshot');
     await load(false,true);await page.getByRole('button',{name:'Duyệt',exact:true}).click();
     await page.getByText(/Lỗi: Lưu nháp nếu vừa sửa dữ liệu[\s\S]*Địa chỉ và mã phòng đã đủ[\s\S]*Phân tích lại dữ liệu/).waitFor();
@@ -70,7 +70,7 @@ async function main(){
     await page.getByRole('dialog',{name:'Chọn cách duyệt phòng'}).waitFor();
     assert.equal(await page.getByRole('button',{name:'1. Vẫn cập nhật thông tin phòng cũ',exact:true}).isDisabled(),true);
     await page.getByRole('button',{name:'Hủy',exact:true}).last().click();assert.equal((await writes()).length,0,'cancel choice never saves');
-    await page.getByRole('checkbox',{name:'Áp dụng Giá thuê',exact:true}).check();
+    await page.getByRole('checkbox',{name:'Lấy Zalo mới: Giá thuê',exact:true}).check();
     await page.getByRole('button',{name:'Duyệt',exact:true}).click();
     await page.screenshot({path:path.join(directory,'choose-code.png')});
     await page.getByRole('button',{name:'1. Vẫn cập nhật thông tin phòng cũ',exact:true}).click();

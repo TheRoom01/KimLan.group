@@ -20,7 +20,7 @@ declare
   v_detail public.room_details%rowtype;
   v_review jsonb; v_snapshot jsonb; v_key text; v_scope text; v_field text;
   v_room_patch jsonb := '{}'::jsonb; v_detail_patch jsonb := '{}'::jsonb;
-  v_set text; v_detail_exists boolean; v_media_count integer;
+  v_set text; v_detail_exists boolean; v_media_count integer; v_both boolean; v_value jsonb; v_old jsonb;
 begin
   if p_actor_id is null or cardinality(p_selected_fields) is null or cardinality(p_selected_fields) = 0 then
     raise exception 'EMPTY_SELECTION: Hãy chọn trường cần cập nhật.';
@@ -62,19 +62,36 @@ begin
   ) then raise exception 'ROOM_CHANGED: Album phòng đã thay đổi. Hãy kiểm tra lại.'; end if;
 
   foreach v_key in array p_selected_fields loop
-    if v_key in ('images', 'videos') then continue; end if;
+    if v_key in ('images', 'videos') or v_key like 'media:%' then continue; end if;
+    if v_key like 'old:%' then
+      if split_part(v_key, ':', 2) !~ '^(room|detail)\.[a-z_]+$' then raise exception 'INVALID_FIELD'; end if;
+      continue;
+    end if;
+    v_both := v_key like 'both:%';
+    if v_both then v_key := substr(v_key, 6); end if;
     v_scope := split_part(v_key, '.', 1); v_field := split_part(v_key, '.', 2);
     if not (coalesce(v_review->'presence', '{}'::jsonb) ? v_key) or coalesce(v_review->'uncertain_fields', '[]'::jsonb) ? v_key then
       raise exception 'MISSING_NEW_VALUE: Trường không có dữ liệu mới đã xác minh.';
     end if;
+    v_value := case when v_scope = 'room' then v_pending.room_payload->v_field else v_pending.detail_payload->v_field end;
+    if v_both then
+      if v_key not in ('room.description','room.chinh_sach','detail.other_fee_note','detail.other_amenities') then
+        raise exception 'INVALID_MERGE: Trường này chỉ được chọn một giá trị.';
+      end if;
+      v_old := v_snapshot->v_scope->v_field;
+      if coalesce(v_old #>> '{}', '') <> '' and coalesce(v_value #>> '{}', '') <> '' and v_old is distinct from v_value then
+        v_value := to_jsonb((v_old #>> '{}') || E'\n\n' || (v_value #>> '{}'));
+      elsif coalesce(v_value #>> '{}', '') = '' then v_value := v_old;
+      end if;
+    end if;
     if v_scope = 'room' and v_field = any(array['room_type','ward','price','status','available_from','description','chinh_sach']) then
-      v_room_patch := v_room_patch || jsonb_build_object(v_field, v_pending.room_payload->v_field);
+      v_room_patch := v_room_patch || jsonb_build_object(v_field, v_value);
     elsif v_scope = 'detail' and v_field = any(array[
       'electric_fee_value','electric_fee_unit','water_fee_value','water_fee_unit','service_fee_value','service_fee_unit',
       'parking_fee_value','parking_fee_unit','other_fee_value','other_fee_note','has_elevator','has_stairs','shared_washer',
       'private_washer','shared_dryer','private_dryer','has_parking','has_basement','fingerprint_lock','free_time','allow_pet',
       'allow_cat','allow_dog','no_pet','short_term','long_term','other_amenities','detail_json','has_balcony','has_window']) then
-      v_detail_patch := v_detail_patch || jsonb_build_object(v_field, v_pending.detail_payload->v_field);
+      v_detail_patch := v_detail_patch || jsonb_build_object(v_field, v_value);
     else raise exception 'INVALID_FIELD: Trường không được phép cập nhật.';
     end if;
   end loop;
@@ -88,7 +105,7 @@ begin
     execute 'update public.room_details set ' || v_set || ' where room_id = $2' using v_detail_patch, v_room.id;
   end if;
   foreach v_key in array array['images', 'videos'] loop
-    if not v_key = any(p_selected_fields) then continue; end if;
+    if not v_key = any(p_selected_fields) and not exists(select 1 from unnest(p_selected_fields) k where k like ('media:' || case when v_key = 'images' then 'image' else 'video' end || ':%')) then continue; end if;
     v_field := case when v_key = 'images' then 'image' else 'video' end;
     if not exists(select 1 from jsonb_array_elements(p_media) m where m->>'type' = v_field) then raise exception 'EMPTY_MEDIA: Không được xóa album vì thiếu media mới.'; end if;
     delete from public.room_media where room_id = v_room.id and type = v_field;

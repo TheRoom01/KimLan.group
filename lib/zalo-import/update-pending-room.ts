@@ -42,11 +42,21 @@ export async function updatePendingRoom(params: {
   try {
     for (const type of ["image", "video"] as const) {
       if (!(type === "image" ? patch.images : patch.videos)) continue;
+      const selections = selectedFields.filter(key => key.startsWith(`media:${type}:`));
+      const oldIds = selections.filter(key => key.startsWith(`media:${type}:old:`)).map(key => key.split(":")[3]);
+      const newIds = selections.filter(key => key.startsWith(`media:${type}:new:`)).map(key => key.split(":")[3]);
+      for (const id of oldIds) {
+        const old = review.snapshot.media.find(item => item.id === id && item.type === type);
+        if (!old) throw new Error("Media cũ không thuộc phòng đang đối chiếu.");
+        media.push({ ...old, provider: "r2", _selectionKey: `media:${type}:old:${id}`, sort_order: media.length });
+      }
       const rows = await supabase.from(type === "image" ? "zalo_import_images" : "zalo_import_videos")
         .select("*").eq("batch_id", pending.batch_id).eq("selected", true).order("sort_order");
       if (rows.error) throw rows.error;
-      if (!rows.data?.length) throw new Error(`Không có ${type === "image" ? "ảnh" : "video"} mới hợp lệ; không được xóa media cũ vì thiếu nguồn.`);
-      for (const row of rows.data) {
+      const chosenRows = selections.length ? (rows.data || []).filter(row => newIds.includes(String(row.id))) : rows.data || [];
+      if (newIds.some(id => !chosenRows.some(row => String(row.id) === id))) throw new Error("Media mới đã thay đổi; hãy tải lại và chọn lại.");
+      if (!chosenRows.length && !oldIds.length) throw new Error(`Không có ${type === "image" ? "ảnh" : "video"} mới hợp lệ; không được xóa media cũ vì thiếu nguồn.`);
+      for (const row of chosenRows) {
         const extension = String(row.temp_r2_key || "").match(/\.([a-z0-9]+)$/i)?.[1] || (type === "image" ? "webp" : "mp4");
         const toKey = type === "image" ? makeRoomImageKey(roomId, randomUUID(), extension) : `rooms/${roomId}/videos/${randomUUID()}.${extension}`;
         const fromKey = String(row.temp_r2_key || "");
@@ -55,11 +65,21 @@ export async function updatePendingRoom(params: {
         const mime = extension === "jpg" ? "image/jpeg" : extension === "mov" ? "video/quicktime" : `${type}/${extension}`;
         const copied = await copyR2Object({ fromKey, toKey, contentType: row.mime_type || mime, cacheControl: "public, max-age=31536000, immutable" });
         keys.push(copied.key);
-        media.push({ type, provider: "r2", url: copied.url, path: copied.url, is_cover: type === "image" && !media.some(item => item.type === "image"), sort_order: Number(row.sort_order ?? media.length) });
+        media.push({ _selectionKey: `media:${type}:new:${row.id}`, type, provider: "r2", url: copied.url, path: copied.url, is_cover: type === "image" && !media.some(item => item.type === "image"), sort_order: selections.length ? media.length : Number(row.sort_order ?? media.length) });
+      }
+    }
+    // Token order is the order in which the administrator selected items.
+    const orderedTokens = selectedFields.filter(key => key.startsWith("media:"));
+    if (orderedTokens.length) {
+      // Reorder by the explicit choice sequence across both sources.
+      for (const type of ["image", "video"] as const) {
+        const tokens = orderedTokens.filter(key => key.startsWith(`media:${type}:`));
+        const items = media.filter(item => item.type === type);
+        if (tokens.length) items.forEach(item => { item.sort_order = orderedTokens.indexOf(item._selectionKey); });
       }
     }
     media.sort((a, b) => a.sort_order - b.sort_order);
-    media.forEach((item, index) => { item.sort_order = index; });
+    media.forEach((item, index) => { item.sort_order = index; item.is_cover = item.type === "image" && media.findIndex(entry => entry.type === "image") === index; delete item._selectionKey; });
     // All DB checks and mutations run in ONE transaction under row locks.
     // No fallback to non-atomic REST updates when the RPC is not installed.
     rpcAttempted = true;

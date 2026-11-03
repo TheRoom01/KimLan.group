@@ -111,6 +111,9 @@ type Props = {
     detail_payload?: Record<string, any>
     images?: any[]
     videos?: any[]
+    status?: string
+    matched_room_id?: string | null
+    matched_reason?: string | null
   }) => void | Promise<void>
 
   // ✅ onSaved nhận room mới để trang admin cập nhật ngay
@@ -1742,6 +1745,7 @@ const applyAutoReadCandidate = (
           .filter(Boolean)
 
         await onPendingSaved?.({
+          ...(json.status ? { status: json.status, matched_room_id: json.matched_room_id, matched_reason: json.matched_reason } : {}),
           room_payload:
             json?.room_payload ?? roomPayload,
           detail_payload:

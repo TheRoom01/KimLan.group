@@ -1,0 +1,70 @@
+@property --tr-consult-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.consultButton {
+  position: relative;
+  isolation: isolate;
+  border-color: #a56b3f;
+  background: #ee4c49;
+  color: #eec53e;
+  box-shadow: 0 0 8px #e8bd8029;
+  transition: box-shadow 180ms ease;
+}
+
+/* Only paint a small border ring; no JS, oversized layer, or animated blur. */
+@supports (mask-composite: exclude) or (-webkit-mask-composite: xor) {
+  .consultButton::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 2px;
+    pointer-events: none;
+    background: conic-gradient(
+      from var(--tr-consult-border-angle),
+      #a56b3f 0deg,
+      #c8874b 90deg,
+      #e8bd80 145deg,
+      #fff4de 180deg,
+      #e8bd80 205deg,
+      #c8874b 260deg,
+      #a56b3f 360deg
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: consultBorderOrbit 3s linear infinite;
+    transition: filter 180ms ease;
+  }
+}
+
+.consultButton:hover,
+.consultButton:focus-visible {
+  box-shadow: 0 0 10px #e8bd8047;
+}
+
+.consultButton:hover::before,
+.consultButton:focus-visible::before {
+  filter: brightness(1.18);
+}
+
+.consultButton:focus-visible {
+  outline: 2px solid #e8bd80;
+  outline-offset: 3px;
+}
+
+@keyframes consultBorderOrbit {
+  to { --tr-consult-border-angle: 360deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .consultButton,
+  .consultButton::before {
+    animation: none;
+    transition: none;
+  }
+}

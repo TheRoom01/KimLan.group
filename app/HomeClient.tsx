@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import FilterBar, { SortMode } from "@/components/FilterBar";
 import { trackVisitorEvent } from "@/lib/analytics/client";
 import RoomList from "@/components/RoomList";
+import dynamic from "next/dynamic";
 import Pagination from "@/components/Pagination";
 import { fetchRooms, type UpdatedDescCursor } from "@/lib/fetchRooms";
 import { supabase } from "@/lib/supabase";
@@ -18,6 +19,10 @@ import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 import { getSavedRoomIds } from "@/lib/savedRooms";
 import { normalizeRoomFeatures, matchesRoomFeatures, type RoomFeature } from "@/lib/rooms/features";
 import { roomMatchesSearch, normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
+import { hasRecommendationFilters, ROOM_RECOMMENDATIONS_ENABLED, type RecommendationFilters } from "@/lib/rooms/recommendations";
+
+const RoomInquiryModal = dynamic(() => import("@/components/rooms/RoomInquiryModal"), { ssr: false });
+const RoomRecommendations = dynamic(() => import("@/components/rooms/RoomRecommendations"));
 
 type InitialProps = {
   initialRooms: any[];
@@ -336,6 +341,7 @@ const HomeClient = ({
   const didRestoreFromStorageRef = useRef(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [badgeFilter, setBadgeFilter] = useState<RoomBadge | null>(null);
+  const [generalInquiryOpen, setGeneralInquiryOpen] = useState(false);
   const [total, setTotal] = useState<number | null>(
     typeof initialTotal === "number" ? initialTotal : null
   );
@@ -478,6 +484,14 @@ const filterSig = useMemo(() => {
 ]);
 
 // ================== VIP State ==================
+const recommendationFilters: RecommendationFilters = {
+  search: appliedSearch, priceFilterActive,
+  minPrice: priceFilterActive ? minPriceApplied : null,
+  maxPrice: priceFilterActive ? maxPriceApplied : null,
+  districts: selectedDistricts, roomTypes: selectedRoomTypes, move: moveFilter,
+  petPolicies: petFilters, contractTerms: termFilters, features: featureFilters,
+  status: statusFilter, badge: badgeFilter, sortMode,
+};
 useEffect(() => {
   if (typeof window === "undefined") return;
 
@@ -965,7 +979,7 @@ const persistBlockedRef = useRef(false);
   );
 
   const savedFilteredRooms = useMemo(() => {
-    const query = normalizeSearchKeyword(appliedSearch);
+    const query = normalizeSearchKeyword(appliedSearch, adminLevel === 1 || adminLevel === 2);
       const needle = query;
     const filtered = savedRooms.filter((room) => {
       if (needle && !roomMatchesSearch(room, needle, adminLevel === 1 || adminLevel === 2)) return false;
@@ -3755,6 +3769,7 @@ return (
           openingRoomId={openingRoomId}
           isRefreshing={isRefreshing}
           title={isSavedView ? "Phòng đã lưu" : "Phòng phù hợp"}
+          total={typeof total === "number" ? total : undefined}
           stableCardWidth={isSavedView}
           emptyMessage={isSavedView && savedRoomIds.length === 0
             ? "Bạn chưa lưu phòng nào."
@@ -3767,6 +3782,15 @@ return (
             </button>
           ) : null}
         />
+        {ROOM_RECOMMENDATIONS_ENABLED && hasRecommendationFilters(recommendationFilters) && !isSavedView && !loading && !isRefreshing && !showSkeleton && !fetchError && search === appliedSearch && (
+          <RoomRecommendations
+            filters={recommendationFilters}
+            excludeIds={visibleRooms.map(room => String(room.id))}
+            adminLevel={adminLevel} currentUserId={currentUserId}
+            currentAdminPhone={roomContactPhone} currentAdminName={roomContactName}
+            onNavigate={handleNavigateToRoom} openingRoomId={openingRoomId}
+          />
+        )}
      
     </div>
 
@@ -3784,7 +3808,7 @@ return (
         goPrev={handleGoPrev}
         hasNext={visibleHasNext}
         loading={loading}
-        total={typeof total === "number" ? total : undefined}
+        onConsult={() => setGeneralInquiryOpen(true)}
       />
     </div>
 
@@ -3809,6 +3833,7 @@ return (
       />
     )}
 
+    {generalInquiryOpen && <RoomInquiryModal open mode="general" onClose={() => setGeneralInquiryOpen(false)} />}
     {openingRoomId ? <RoomModalLoadingSkeleton /> : null}
 
     <div

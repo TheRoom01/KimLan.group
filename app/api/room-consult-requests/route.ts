@@ -1,3 +1,4 @@
+import { REFERRAL_SOURCES, vietnamesePhone } from "@/lib/consultation";
 import { apiError, apiSuccess } from "@/lib/api/response";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getRegistrationClientIp, verifyTurnstileToken } from "@/lib/owner/registrationSecurity";
@@ -26,6 +27,13 @@ export async function POST(request: Request) {
   }
 
   const requestKey = String(body.request_key ?? "").trim();
+  const kind = body.consultation_kind == null ? "room_consultation" : String(body.consultation_kind);
+  if (kind !== "room_consultation" && kind !== "general_consultation") return apiError("INVALID_INPUT", "Loại yêu cầu không hợp lệ", 400);
+  const general = kind === "general_consultation";
+  const referralSource = String(body.referral_source ?? "").trim();
+  const referralDetail = String(body.referral_detail ?? "").trim();
+  if (referralSource && !REFERRAL_SOURCES.some(source => source === referralSource)) return apiError("INVALID_INPUT", "Nguồn giới thiệu không hợp lệ", 400);
+  if (referralDetail.length > 300) return apiError("INVALID_INPUT", "Kênh giới thiệu quá dài", 400);
   const roomId = String(body.room_id ?? "").trim();
   const name = String(body.guest_name ?? "").trim();
   const phone = String(body.guest_phone ?? "").trim();
@@ -36,12 +44,13 @@ export async function POST(request: Request) {
   const captchaToken = body.captcha_token == null ? "" : String(body.captcha_token).trim();
 
   if (String(body.website ?? "").trim()) return apiError("INVALID_INPUT", "Không thể xác thực yêu cầu", 400);
-  if (!UUID_RE.test(requestKey) || !UUID_RE.test(roomId)) return apiError("INVALID_INPUT", "Thông tin phòng không hợp lệ", 400);
+  if (!UUID_RE.test(requestKey) || (general ? !!roomId : !UUID_RE.test(roomId))) return apiError("INVALID_INPUT", "Thông tin phòng không hợp lệ", 400);
   if (name.length < 2 || name.length > 120) return apiError("INVALID_INPUT", "Họ tên cần có từ 2 đến 120 ký tự", 400);
-  if (!PHONE_RE.test(phone) || phone.replace(/\D/g, "").length < 9 || phone.replace(/\D/g, "").length > 14) {
+  if ((general && !vietnamesePhone(phone)) || !PHONE_RE.test(phone) || phone.replace(/\D/g, "").length < 9 || phone.replace(/\D/g, "").length > 14) {
     return apiError("INVALID_INPUT", "Số điện thoại chưa đúng định dạng", 400);
   }
   if (requestType !== "consultation" && requestType !== "viewing") return apiError("INVALID_INPUT", "Nhu cầu không hợp lệ", 400);
+  if (general && (requestType !== "consultation" || viewingDateRaw || preferredTime)) return apiError("INVALID_INPUT", "Tư vấn chung không gắn lịch xem phòng", 400);
   if (requestType === "viewing") {
     const parsedDate = new Date(`${viewingDateRaw}T00:00:00.000Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(viewingDateRaw) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== viewingDateRaw) {
@@ -64,14 +73,14 @@ export async function POST(request: Request) {
     // This RPC is intentionally executable only by service_role. The public
     // route verifies Turnstile first, then calls it with the server-only key.
     const supabase = createSupabaseAdminClient();
-    const { data, error } = await supabase.rpc("submit_room_consult_request_v1", {
+    const { data, error } = await supabase.rpc(general ? "submit_general_consult_request_v1" : "submit_room_consult_request_v1", {
       p_request_key: requestKey,
-      p_room_id: roomId,
+      ...(general ? { p_referral_source: referralSource || null, p_referral_detail: referralDetail || null } : { p_room_id: roomId }),
       p_guest_name: name,
       p_guest_phone: phone,
-      p_request_type: requestType,
-      p_viewing_date: requestType === "viewing" ? viewingDateRaw : null,
-      p_preferred_time: requestType === "viewing" ? preferredTime || null : null,
+      ...(!general ? { p_request_type: requestType,
+        p_viewing_date: requestType === "viewing" ? viewingDateRaw : null,
+        p_preferred_time: requestType === "viewing" ? preferredTime || null : null } : {}),
       p_notes: notes || null,
     });
 
@@ -93,7 +102,7 @@ export async function POST(request: Request) {
         return apiError("INVALID_INPUT", "Thông tin gửi chưa hợp lệ. Vui lòng kiểm tra lại.", 400);
       }
       if (message.includes("NO_ADMIN_RECIPIENT")) {
-        return apiError("DATABASE_ERROR", "Chưa tìm thấy bộ phận phụ trách phòng này. Vui lòng liên hệ trực tiếp.", 503);
+        return apiError("DATABASE_ERROR", "Chưa tìm thấy bộ phận phụ trách. Vui lòng liên hệ trực tiếp.", 503);
       }
       if (message.includes("RATE_LIMITED")) {
         return apiError("INVALID_INPUT", "Bạn đã gửi nhiều yêu cầu trong thời gian ngắn. Vui lòng thử lại sau.", 429);

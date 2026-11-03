@@ -1,0 +1,188 @@
+{
+  "functions": [
+    {
+      "proname": "anon_home_search_query",
+      "definition": "CREATE OR REPLACE FUNCTION public.anon_home_search_query(p_query text)\n RETURNS text\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\r\ndeclare q text := btrim(coalesce(p_query,''));\r\nbegin\r\n  if q ~* '^[0-9]+\\s+(tháng|thang)\\s+[0-9]+' or q ~ '^(3/2|30/4|2/9|19/5)\\s*(,|$)' then return q; end if;\r\n  return btrim(regexp_replace(q, '^(?:(?:số\\s*nhà|so\\s*nha|số|so)\\s*[:.]?\\s*)?[0-9]+[[:alpha:]]*(?:\\s*[/\\-]\\s*[0-9]+[[:alpha:]]*)*\\s*[,;]?\\s+(?=[[:alpha:]])', '', 'i'));\r\nend;\r\n$function$\n"
+    },
+    {
+      "proname": "norm_room_search_text",
+      "definition": "CREATE OR REPLACE FUNCTION public.norm_room_search_text(t text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE\nAS $function$\n  select trim(\n    regexp_replace(\n      regexp_replace(\n        regexp_replace(\n          regexp_replace(\n            lower(coalesce(t, '')),\n            '[,.;:]+',\n            ' ',\n            'g'\n          ),\n          '\\m(phường|phuong|p)\\M',\n          ' ',\n          'g'\n        ),\n        '\\m(quận|quan|q)\\M',\n        ' ',\n        'g'\n      ),\n      '\\s+',\n      ' ',\n      'g'\n    )\n  );\n$function$\n"
+    },
+    {
+      "proname": "public_house_number_v1",
+      "definition": "CREATE OR REPLACE FUNCTION public.public_house_number_v1(p_value text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE PARALLEL SAFE\n SET search_path TO ''\nAS $function$\n  select case\n    when nullif(btrim(p_value), '') is null then '...'\n    when strpos(p_value, '/') > 0 then\n      case\n        when nullif(btrim(split_part(p_value, '/', 1)), '') is null then '..'\n        else btrim(split_part(p_value, '/', 1)) || '/..'\n      end\n    when btrim(p_value) ~ '^[0-9]+$' then '..'\n    when substring(btrim(p_value) from '^([0-9]+)') is not null then\n      substring(btrim(p_value) from '^([0-9]+)') || '...'\n    else '...'\n  end;\n$function$\n"
+    },
+    {
+      "proname": "room_content_search_document",
+      "definition": "CREATE OR REPLACE FUNCTION public.room_content_search_document(p_house text, p_description text, p_amenities text, p_include_house boolean)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\n  select case when p_include_house then public.norm_room_search_text(concat_ws(' ',p_description,p_amenities))\n    else coalesce((select string_agg(token,' ' order by ordinal)\n      from regexp_split_to_table(public.norm_room_search_text(concat_ws(' ',p_description,p_amenities)),'\\s+') with ordinality as words(token,ordinal)\n      where public.norm_room_search_text(p_house)='' or\n        regexp_replace(token,'^[^[:alnum:]]+|[^[:alnum:]]+$','','g')<>public.norm_room_search_text(p_house)), '') end;\n$function$\n"
+    }
+  ],
+  "view": " SELECT r.id,\n    r.property_id,\n    p.code AS property_code,\n    p.name AS property_name,\n    r.room_type,\n    r.room_code,\n    r.address,\n    r.house_number,\n    r.ward,\n    r.district,\n    r.price,\n    r.status,\n    r.description,\n    r.created_at,\n    r.updated_at,\n    r.gallery_urls,\n    COALESCE(rd.has_elevator, false) AS has_elevator,\n    COALESCE(rd.has_stairs, false) AS has_stairs,\n    COALESCE(rd.allow_pet, false) AS allow_pet,\n    COALESCE(rd.allow_cat, false) AS allow_cat,\n    COALESCE(rd.allow_dog, false) AS allow_dog,\n    COALESCE(rd.no_pet, false) AS no_pet,\n    COALESCE(rd.short_term, false) AS short_term,\n    COALESCE(rd.long_term, true) AS long_term\n   FROM rooms r\n     JOIN properties p ON p.id = r.property_id\n     LEFT JOIN room_details rd ON rd.room_id = r.id\n  WHERE r.lifecycle_status = 'active'::text AND r.publish_status = 'published'::text AND COALESCE(r.is_hidden, false) = false AND p.approval_status = 'approved'::text AND p.lifecycle_status = 'active'::text;",
+  "detailColumns": [
+    {
+      "type": "uuid",
+      "table": "room_details",
+      "column": "id"
+    },
+    {
+      "type": "uuid",
+      "table": "room_details",
+      "column": "room_id"
+    },
+    {
+      "type": "numeric",
+      "table": "room_details",
+      "column": "electric_fee_value"
+    },
+    {
+      "type": "text",
+      "table": "room_details",
+      "column": "electric_fee_unit"
+    },
+    {
+      "type": "numeric",
+      "table": "room_details",
+      "column": "water_fee_value"
+    },
+    {
+      "type": "text",
+      "table": "room_details",
+      "column": "water_fee_unit"
+    },
+    {
+      "type": "numeric",
+      "table": "room_details",
+      "column": "service_fee_value"
+    },
+    {
+      "type": "text",
+      "table": "room_details",
+      "column": "service_fee_unit"
+    },
+    {
+      "type": "numeric",
+      "table": "room_details",
+      "column": "parking_fee_value"
+    },
+    {
+      "type": "text",
+      "table": "room_details",
+      "column": "parking_fee_unit"
+    },
+    {
+      "type": "numeric",
+      "table": "room_details",
+      "column": "other_fee_value"
+    },
+    {
+      "type": "text",
+      "table": "room_details",
+      "column": "other_fee_note"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "has_elevator"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "has_stairs"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "shared_washer"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "private_washer"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "shared_dryer"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "private_dryer"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "has_parking"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "has_basement"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "fingerprint_lock"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "allow_pet"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "allow_cat"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "allow_dog"
+    },
+    {
+      "type": "text",
+      "table": "room_details",
+      "column": "other_amenities"
+    },
+    {
+      "type": "jsonb",
+      "table": "room_details",
+      "column": "detail_json"
+    },
+    {
+      "type": "timestamptz",
+      "table": "room_details",
+      "column": "created_at"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "no_pet"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "short_term"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "long_term"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "free_time"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "has_balcony"
+    },
+    {
+      "type": "bool",
+      "table": "room_details",
+      "column": "has_window"
+    }
+  ]
+}

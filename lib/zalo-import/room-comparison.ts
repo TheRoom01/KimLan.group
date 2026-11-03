@@ -121,6 +121,13 @@ export function comparisonFields(room: any, detail: any) {
       : stableJson(oldValue) === stableJson(newValue) ? "same" : "changed", clear: review.presence[key] === "clear" };
   });
 }
+export const MERGE_UPDATE_FIELDS = ["room.description", "room.chinh_sach", "detail.other_fee_note", "detail.other_amenities"];
+export function mergeUpdateText(oldValue: any, newValue: any) {
+  return [...new Set([oldValue, newValue].filter(value => value != null && value !== "").map(String))].join("\n\n");
+}
+export function mediaSelectionKey(type: "image" | "video", source: "old" | "new", id: string) {
+  return `media:${type}:${source}:${id}`;
+}
 export function selectedUpdatePatch(room: any, detail: any, selected: string[]) {
   const review = getImportReview(room);
   if (!review || review.type !== "UPDATE" || !review.snapshot || normalizedRoomIdentity(room) !== canonicalStoredIdentity(review.identity_key)) throw new Error("Cần xác minh lại khóa phòng UPDATE.");
@@ -129,10 +136,20 @@ export function selectedUpdatePatch(room: any, detail: any, selected: string[]) 
   const patch = { room: {} as Record<string, any>, detail: {} as Record<string, any>, images: false, videos: false };
   for (const key of selected) {
     if (key === "images" || key === "videos") { patch[key] = true; continue; }
-    const field = fields.find(item => item.key === key);
+    if (key.startsWith("media:")) {
+      if (!/^media:(image|video):(old|new):[^:]+$/.test(key)) throw new Error("Lựa chọn media không hợp lệ.");
+      patch[key.split(":")[1] === "image" ? "images" : "videos"] = true;
+      continue;
+    }
+    const keepOld = key.startsWith("old:");
+    const both = key.startsWith("both:");
+    const fieldKey = keepOld || both ? key.slice(key.indexOf(":") + 1) : key;
+    const field = fields.find(item => item.key === fieldKey);
+    if (keepOld) { if (!field) throw new Error("Trường cũ không hợp lệ."); continue; }
+    if (both && !MERGE_UPDATE_FIELDS.includes(fieldKey)) throw new Error("Trường này chỉ được chọn một giá trị.");
     if (!field || field.state === "missing" || field.state === "uncertain") throw new Error(`Trường ${key} không có dữ liệu mới đã xác minh.`);
-    const [scope, name] = key.split(".");
-    (patch[scope as "room" | "detail"])[name] = field.newValue;
+    const [scope, name] = fieldKey.split(".");
+    (patch[scope as "room" | "detail"])[name] = both ? mergeUpdateText(field.oldValue, field.newValue) : field.newValue;
   }
   return patch;
 }

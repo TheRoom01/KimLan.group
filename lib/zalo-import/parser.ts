@@ -1,4 +1,4 @@
-import { vacancyDateFromText, withoutStructuredAmenities } from "./listing-fields";
+import { applyImportAmenityDefaults, vacancyDateFromText, withoutStructuredAmenities } from "./listing-fields";
 import { normalizedStreetKey } from "../rooms/street";
 export { normalizedStreetKey } from "../rooms/street";
 export type ParsedZaloRoom = {
@@ -4050,6 +4050,7 @@ if (petDenied) {
     preliminaryScore += 2;
   }
 
+  Object.assign(detailPayload, applyImportAmenityDefaults(detailPayload, sourceFieldMap));
   detailPayload.other_amenities = withoutStructuredAmenities(detailPayload.other_amenities || "", detailPayload.has_window === true, detailPayload.has_balcony === true);
   // Keep the existing source map contract; attach review evidence separately.
   roomPayload._parse_review = {
@@ -4059,8 +4060,8 @@ if (petDenied) {
         room_code: /ma phong|\bp\./, status: /trong|da thue|het phong/, room_type: /studio|duplex|\d\s*pn/ };
       const literal = value == null || typeof value === "boolean" ? "" : normalizeForCompare(String(value));
       const snippet = text.split("\n").filter(line => (literal && normalizeForCompare(line).includes(literal)) || labels[field]?.test(normalizeForCompare(line))).join("\n");
-      return [field, { kind: field === "available_from" && roomPayload.available_from_text && !/\d{4}/.test(roomPayload.available_from_text) ? "inferred" : "extracted",
-        text: snippet || text, value }];
+      return [field, { kind: String(sourceFieldMap[field]).startsWith("Mặc định") ? "inferred" : field === "available_from" && roomPayload.available_from_text && !/\d{4}/.test(roomPayload.available_from_text) ? "inferred" : "extracted",
+        text: String(sourceFieldMap[field]).startsWith("Mặc định") ? "" : snippet || text, value }];
     })),
     missing: ["house_number", "address", "district", "room_code", "room_type", "price", "status"]
       .filter(field => roomPayload[field] == null || roomPayload[field] === ""),

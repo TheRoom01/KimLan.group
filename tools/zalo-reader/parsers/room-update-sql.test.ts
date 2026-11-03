@@ -77,6 +77,7 @@ async function main() {
     };
     const dependencies: Record<string, any> = {
       "node:crypto": crypto, crypto,
+      "@/lib/zalo-import/pending-location": { applyPendingLocation: async () => null },
       "@/lib/zalo-import/room-comparison": comparison, "./room-comparison": comparison,
       "@/lib/zalo-import/error-message": { zaloImportErrorMessage },
       "@/lib/r2/zalo-temp": { copyR2Object() { throw new Error("unselected media must never be copied"); }, deleteR2Keys: async () => {}, makeRoomImageKey() {} },
@@ -99,7 +100,7 @@ async function main() {
     assert.equal((await request("create_room")).status, 409, "UPDATE cannot use CREATE even through a forged HTTP request");
     assert.equal((await request("update_status")).status, 409, "new UPDATE cannot bypass field selection through legacy mode");
     const response = await request("update_room", ["room.price"]);
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 200, await response.clone().text());
     assert.equal((await response.json()).roomId, roomId);
     assert.equal(Number((await scalar("select price from rooms where id=$1", [roomId])).price), 5800000);
     assert.equal((await scalar("select count(*)::int n from rooms")).n, 1);
@@ -122,6 +123,23 @@ async function main() {
     assert.equal(detail.other_fee_note, "", "an explicit, selected clear is applied");
     assert.equal((await scalar("select status from pending_room_versions where id=$1", [pendingId])).status, "Đã duyệt");
     await assert.rejects(approve(fixture, ["room.price"]), /PENDING_CHANGED/);
+
+    fixture = await reset();
+    fixture.payload.description = "Mô tả mới";
+    fixture.payload._room_import.presence["room.description"] = "value";
+    await q("update pending_room_versions set room_payload=$1 where id=$2", [fixture.payload, pendingId]);
+    await approve(fixture, ["both:room.description", "old:room.price"]);
+    current = await scalar("select * from rooms where id=$1", [roomId]);
+    assert.equal(current.description, "Giữ mô tả cũ\n\nMô tả mới");
+    assert.equal(Number(current.price), 5500000);
+    fixture = await reset();
+    await assert.rejects(approve(fixture, ["both:room.price"]), /INVALID_MERGE/);
+    fixture = await reset();
+    const oldMedia = fixture.payload._room_import.snapshot!.media[0];
+    await approve(fixture, [`media:image:old:${oldMedia.id}`, "media:image:new:new-id"], [
+      { ...oldMedia, sort_order: 0, is_cover: true }, { type: "image", url: "new-picked", path: "new-picked", sort_order: 1 },
+    ]);
+    assert.deepEqual((await q("select url from room_media where room_id=$1 order by sort_order", [roomId])).rows.map((row: any) => row.url), ["old-image", "new-picked"]);
 
     fixture = await reset();
     await q("update rooms set price=6200000 where id=$1", [roomId]);
@@ -167,6 +185,32 @@ async function main() {
     await db.exec("set role authenticated");
     await assert.rejects(approve(fixture, ["room.price"]), /permission denied/i, "RPC cannot bypass admin endpoint");
     await db.exec("reset role");
+    // Exercise storage selection + HTTP approval + the real transaction together.
+    endpointFixture = await reset();
+    const oldId = endpointFixture.payload._room_import.snapshot!.media[0].id;
+    let copies = 0;
+    dependencies["@/lib/r2/zalo-temp"].copyR2Object = async () => { copies++; return { key: "copied-key", url: "copied-new-image" }; };
+    const service = dependencies["@/lib/zalo-import/update-pending-room"];
+    const mixedAdapter = { ...adapter, from(table: string) {
+      if (table === "pending_room_versions") return adapter.from(table);
+      assert.equal(table, "zalo_import_images");
+      const query = { select() { return this; }, eq() { return this; }, order() {
+        return Promise.resolve({ data: [
+          { id: "picked", temp_r2_key: `zalo-temp/${batchId}/picked.webp`, sort_order: 1 },
+          { id: "unselected", temp_r2_key: `zalo-temp/${batchId}/unselected.webp`, sort_order: 2 },
+        ], error: null });
+      } }; return query;
+    } };
+    await service.updatePendingRoom({ supabase: mixedAdapter, pendingId, actorUserId: actorId,
+      expectedRoomPayload: endpointFixture.payload, expectedDetailPayload: endpointFixture.detailPayload,
+      selectedFields: ["media:image:new:picked", `media:image:old:${oldId}`] });
+    assert.equal(copies, 1, "only the selected new item is copied");
+    assert.deepEqual((await q("select url from room_media where room_id=$1 order by sort_order", [roomId])).rows.map((row: any) => row.url), ["copied-new-image", "old-image"], "new and old media preserve click order");
+    endpointFixture = await reset();
+    await assert.rejects(service.updatePendingRoom({ supabase: mixedAdapter, pendingId, actorUserId: actorId,
+      expectedRoomPayload: endpointFixture.payload, expectedDetailPayload: endpointFixture.detailPayload,
+      selectedFields: ["media:image:old:another-room-media"] }), /không thuộc phòng/);
+
     console.log("Offline PostgreSQL transaction integration: selected update, no CREATE, missing values, explicit clear, snapshots, rejection, deleted target, media rollback, duplicate Pending, TEST/RPC protection PASS");
   } finally { await db.close(); }
 }

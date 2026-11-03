@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { readReaderControl, requestReaderControl } from "@/lib/zalo-reader/control-service";
+import { readReaderControl, requestReaderControl, requestOpenZalo } from "@/lib/zalo-reader/control-service";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ ok: false }, { status: 403 });
   if (req.headers.get("origin") && req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ ok: false }, { status: 403 });
   const body = await req.json().catch(() => null);
-  if (!body || typeof body.enabled !== "boolean") return NextResponse.json({ ok: false }, { status: 400 });
-  try { return NextResponse.json({ ok: true, control: await requestReaderControl(createSupabaseAdminClient(), body.enabled, user.id) }); }
+  if (!body || (body.action !== "open_zalo" && typeof body.enabled !== "boolean") || (body.action != null && body.action !== "open_zalo") || (body.action === "open_zalo" && body.enabled != null)) return NextResponse.json({ ok: false }, { status: 400 });
+  try { return NextResponse.json({ ok: true, control: body.action === "open_zalo" ? await requestOpenZalo(createSupabaseAdminClient(), user.id) : await requestReaderControl(createSupabaseAdminClient(), body.enabled, user.id) }); }
   catch { return NextResponse.json({ ok: false, error: "Không gửi được lệnh Reader. Kiểm tra cấu hình điều khiển." }, { status: 503 }); }
 }

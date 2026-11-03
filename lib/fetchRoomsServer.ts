@@ -246,7 +246,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_cursor: cursorId ? String(cursorId) : null,
 
   // 3) filter/search
-  p_search: normalizeSearchKeyword(search) ? normalizeSearchKeyword(search) : null,
+  p_search: normalizeSearchKeyword(search, adminLevel === 1 || adminLevel === 2) ? normalizeSearchKeyword(search, adminLevel === 1 || adminLevel === 2) : null,
   p_min_price: minPriceValue,
   p_max_price: maxPriceValue,
   p_districts: Array.isArray(districts) && districts.length ? districts : null,

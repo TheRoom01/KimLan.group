@@ -1,3 +1,4 @@
+import { resolveZaloImportRoom } from "../../../lib/zalo-import/resolve";
 import * as availability from "../../../lib/rooms/availability";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,6 +16,7 @@ async function main(){
   class Query {
     filters:Array<(row:any)=>boolean>=[];op="select";payload:any;
     constructor(readonly table:string){}
+    ilike(){return this} in(){return this} range(start:number,end:number){const result=this.result();return Promise.resolve({...result,data:result.data.slice(start,end+1)})}
     select(){return this}eq(key:string,value:any){this.filters.push(row=>row[key]===value);return this}order(){return this}
     insert(value:any){assert.notEqual(this.table,"rooms","manual Imports must use admin_upsert_room_v3, never raw INSERT");
       if(this.table==="room_details")for(const row of Array.isArray(value)?value:[value])for(const key of ['no_pet','short_term','long_term','free_time','has_balcony','has_window'])assert.equal(typeof row[key],'boolean',`${key} is NOT NULL in the real schema`);
@@ -67,7 +69,7 @@ async function main(){
   reset();tables.zalo_import_videos=[];tables.pending_room_versions[0].room_payload._manual_video_required=true;const beforeEmpty=rpcCalls;
   await assert.rejects(publish,/thêm video thủ công/);assert.equal(rpcCalls,beforeEmpty,"missing-video draft never creates a main room/building");assert.equal(tables.rooms.length,0);
   const draftModule={exports:{} as any};
-  const draftDeps={...deps,"@/lib/zalo-import/room-comparison":comparison,
+  const draftDeps={...deps,"@/lib/zalo-import/resolve":{resolveZaloImportRoom},"@/lib/zalo-import/room-comparison":comparison,
     "@/lib/supabase/server":{createSupabaseServerClient:async()=>({auth:{getUser:async()=>({data:{user:{id:"admin"}}})},rpc:async()=>({data:2,error:null})})},
     "next/server":{NextResponse:{json:(body:any,options:any)=>Response.json(body,options)}}};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync("app/api/admin/zalo-imports/[id]/draft/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
@@ -123,10 +125,13 @@ async function main(){
   const fork=tables.pending_room_versions[0];fork.matched_room_id="main";
   const oldRoom={...fork.room_payload,id:"main"};tables.rooms.push({...oldRoom});
   fork.room_payload._room_import={version:1,type:"UPDATE",identity_key:comparison.normalizedRoomIdentity(oldRoom),reason:"fixture",candidate_ids:["main"],conflicting_pending_ids:[],snapshot:comparison.snapshotRoom(oldRoom,null,[]),presence:{},uncertain_fields:[]};
-  const originalKey=fork.room_payload._room_import.identity_key;
+  const originalReview=structuredClone(fork.room_payload._room_import);
   const editCode=await saveOrder({room_payload:{room_code:"503B"}});assert.equal(editCode.status,200);
-  assert.equal(fork.room_payload.room_code,"503B");assert.equal(fork.room_payload._room_import.identity_key,originalKey);assert.equal(fork.matched_room_id,"main");assert.equal(fork.auto_approve_enabled,false);
-  const changedAddress=await saveOrder({room_payload:{room_code:"503C",house_number:"999"}});assert.equal(changedAddress.status,409,"only code may change in this flow");
+  assert.equal(fork.room_payload.room_code,"503B");assert.equal(fork.room_payload._room_import.type,"CREATE");assert.equal(fork.matched_room_id,null);assert.equal(fork.auto_approve_enabled,false);
+  const changedAddress=await saveOrder({room_payload:{room_code:"503C",house_number:"999"}});assert.equal(changedAddress.status,200,"edited address is automatically reclassified");
+  assert.equal(fork.room_payload._room_import.type,"CREATE");
+  // Legacy staged UPDATE forks remain supported by the publisher.
+  fork.room_payload={...oldRoom,room_code:"503B",_room_import:originalReview};fork.matched_room_id="main";fork.status="Trùng phòng";
   await assert.rejects(publish,/không được tạo phòng mới/);
   const forkPublish=(expected=structuredClone(fork.room_payload))=>loaded.exports.publishPendingRoom({pendingId:"pending",actorUserId:"admin",source:"manual",supabase:db,actorSupabase:actor,createFromUpdate:true,expectedRoomPayload:expected,expectedDetailPayload:fork.detail_payload});
   await assert.rejects(()=>forkPublish({...fork.room_payload,room_code:"stale"}),/Bản nháp đã đổi/);

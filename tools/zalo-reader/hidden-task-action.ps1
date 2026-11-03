@@ -1,5 +1,5 @@
 function New-ReaderHiddenTaskAction {
-  param([Parameter(Mandatory=$true)][ValidateSet('Control','Hourly','Immediate')][string]$Mode, [string]$NodePath)
+  param([Parameter(Mandatory=$true)][ValidateSet('Control','Hourly','Immediate','Browser')][string]$Mode, [string]$NodePath)
   $launcher=Join-Path $PSScriptRoot 'hidden-task.vbs'
   $readerRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
   $arguments='//B //Nologo "'+$launcher+'" '+$Mode

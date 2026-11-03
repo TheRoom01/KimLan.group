@@ -1,3 +1,4 @@
+import { connectReaderBrowser, ensureReaderBrowser, getReaderZaloPage, isZaloPage } from "./browser-session";
 import { chromium, Page } from "playwright";
 import fs from "fs";
 import path from "path";
@@ -16163,18 +16164,23 @@ export async function runReader() {
 
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
 
-  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
+  // Official scans share the independently hosted window with the admin.
+  if (config.officialReader) await ensureReaderBrowser(process.cwd());
+  const sharedBrowser = config.officialReader ? await connectReaderBrowser(PROFILE_DIR) : null;
+  if (config.officialReader && !sharedBrowser) throw new Error("READER_BROWSER_DISCONNECTED");
+  const context = sharedBrowser ? sharedBrowser.contexts()[0] : await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
     viewport: { width: 1400, height: 900 },
   });
+  if (!context) { await sharedBrowser?.close(); throw new Error("READER_BROWSER_CONTEXT_MISSING"); }
+  const closeReaderConnection = () => sharedBrowser ? sharedBrowser.close() : context.close();
 
   let previewStage = "khởi tạo Chrome";
   const previewOutputPaths: string[] = [];
 
   try {
-  const page =
-    context.pages()[0] ||
-    (await context.newPage());
+  const page = sharedBrowser ? await getReaderZaloPage(context, false) :
+    context.pages()[0] || (await context.newPage());
 
   /**
    * tsx/esbuild có thể chèn helper __name vào callback page.evaluate().
@@ -16202,7 +16208,8 @@ export async function runReader() {
 
   previewStage = "mở trang Zalo Web";
   if (process.env.ZALO_READER_VIDEO_PROBE === "1") await page.addInitScript(VIDEO_OBJECT_OBSERVER);
-  await page.goto(
+  if (sharedBrowser) await page.evaluate("globalThis.__name = globalThis.__name || Object;");
+  if (!sharedBrowser || !isZaloPage(page.url())) await page.goto(
     "https://chat.zalo.me",
     {
       waitUntil: "domcontentloaded",
@@ -16566,7 +16573,7 @@ export async function runReader() {
         console.log("\nDebug hoàn tất. Đang đóng Zalo Reader...");
       }
 
-      await context.close();
+      await closeReaderConnection();
       return;
     }
 
@@ -16607,7 +16614,7 @@ export async function runReader() {
     await sleep(idleIntervalMs);
   }
   } catch (error: any) {
-    if (config.officialReader) { await context.close(); throw error; }
+    if (config.officialReader) { await closeReaderConnection(); throw error; }
     if (!config.previewOnly && !config.stagingOnlyImport) {
       throw error;
     }
@@ -16618,7 +16625,7 @@ export async function runReader() {
     await waitForPreviewEnter(
       "Chrome được giữ mở. Hãy kiểm tra Zalo/selector trong cửa sổ; nhấn Enter để đóng..."
     );
-    await context.close();
+    await closeReaderConnection();
     process.exitCode = 1;
   }
 }

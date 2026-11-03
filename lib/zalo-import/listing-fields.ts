@@ -18,3 +18,17 @@ export function withoutStructuredAmenities(text: string, window: boolean, balcon
     return parts.some(redundant) ? parts.filter(item => item.trim() && !redundant(item)).map(item => item.trim()).join(", ") : line;
   }).filter(line => line.trim()).join("\n");
 }
+
+/** Import-time suggestions only. Never call while saving an admin's form. */
+export function applyImportAmenityDefaults<T extends Record<string, any>>(detail: T, sourceFields?: Record<string, any>): T {
+  const next: Record<string, any> = { ...detail };
+  for (const field of ["free_time", "fingerprint_lock"]) {
+    next[field] = true;
+    if (sourceFields && !sourceFields[field]) sourceFields[field] = "Mặc định khi lấy dữ liệu phòng";
+  }
+  if (next.has_balcony === true) {
+    next.has_window = true;
+    if (sourceFields && !sourceFields.has_window) sourceFields.has_window = "Mặc định từ phòng có ban công";
+  }
+  return next as T;
+}

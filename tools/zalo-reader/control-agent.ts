@@ -1,16 +1,30 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { openReaderZalo } from "./browser-session";
 
-type Control = { request_id: string | null; applied_request_id: string | null; desired_enabled: boolean | null };
+type Control = { request_id: string | null; applied_request_id: string | null; desired_enabled: boolean | null; open_request_id?: string | null; open_applied_request_id?: string | null };
 export async function syncReaderControl(deps: {
   read: () => Promise<Control>; actual: () => boolean;
   apply: (enabled: boolean) => void;
   runNow: (requestId: string) => Promise<void>;
-  report: (body: { actualEnabled: boolean; requestId?: string; error?: string }) => Promise<void>;
+  openZalo?: () => Promise<void>;
+  report: (body: { actualEnabled: boolean; requestId?: string; error?: string; openRequestId?: string; openError?: string }) => Promise<void>;
 }) {
-  const command = await deps.read();
+  let command = await deps.read();
   let actual = deps.actual();
+  if (command.open_request_id && command.open_request_id !== command.open_applied_request_id) {
+    try {
+      if (!deps.openZalo) throw new Error("OPEN_NOT_SUPPORTED");
+      await deps.openZalo();
+      await deps.report({ actualEnabled: actual, openRequestId: command.open_request_id });
+    } catch {
+      await deps.report({ actualEnabled: actual, openRequestId: command.open_request_id, openError: "ZALO_OPEN_FAILED" });
+    }
+    // Opening/login can take time; apply the latest Start/Stop, not a stale command.
+    command = await deps.read();
+    actual = deps.actual();
+  }
   if (!command.request_id || command.request_id === command.applied_request_id || typeof command.desired_enabled !== "boolean") {
     await deps.report({ actualEnabled: actual });
     return;
@@ -78,6 +92,7 @@ async function main() {
       // controller's job/time limit. The runner's lock still prevents overlap.
       powershell(["-Command", "Start-ScheduledTask -TaskName 'KimLan-ZaloReader-Now' -ErrorAction Stop"]);
     }),
+    openZalo: () => openReaderZalo(root),
     report: async body => {
       const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
       if (!response.ok) throw new Error("CONTROL_REPORT_FAILED");

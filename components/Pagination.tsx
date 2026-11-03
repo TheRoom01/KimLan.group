@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import styles from "./Pagination.module.css";
 
 type PaginationProps = {
   goNext: () => void;
@@ -8,7 +9,7 @@ type PaginationProps = {
   hasNext: boolean;
   loading: boolean;
 
-  total?: number;
+  onConsult: () => void;
 };
 
 const glassBtn =
@@ -19,37 +20,32 @@ const Pagination = ({
   goPrev,
   hasNext,
   loading,
-  total,
+  onConsult,
 }: PaginationProps) => {
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-4 py-3">
-      <div className="relative flex items-center justify-between gap-2">
+    <div className="mx-auto w-full max-w-[1240px] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-2">
 
         {/* PREV */}
         <button
           type="button"
           onClick={goPrev}
           disabled={loading}
-          className={`${glassBtn} ${
+          className={`${glassBtn} justify-self-start ${
             loading ? "cursor-not-allowed opacity-40" : ""
           }`}
         >
           ← Trước
         </button>
 
-        {/* TOTAL */}
-        {typeof total === "number" && (
-          <div className="rounded-2xl border border-white/20 bg-[rgba(255,255,255,0.07)] px-3 py-2 text-[12px] tracking-wide font-semibold text-black/80 backdrop-blur-[24px] shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] sm:px-4 sm:text-[11px]">
-            Tổng {total.toLocaleString("vi-VN")} phòng
-          </div>
-        )}
+        <button type="button" onClick={onConsult} className={`${styles.consultButton} min-h-11 rounded-2xl border px-4 py-2 text-xs font-bold sm:text-sm`}>Cần Tư Vấn</button>
 
         {/* NEXT */}
         <button
           type="button"
           onClick={goNext}
           disabled={loading || !hasNext}
-          className={`${glassBtn} ${
+          className={`${glassBtn} justify-self-end ${
             loading || !hasNext ? "cursor-not-allowed opacity-40" : ""
           }`}
         >

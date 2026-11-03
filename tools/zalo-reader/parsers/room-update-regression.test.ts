@@ -37,6 +37,11 @@ const fields = comparisonFields(payload, detail);
 assert.equal(fields.find(field => field.field === "price")?.state, "changed");
 assert.equal(comparisonFields({ ...payload, price: old.price }, detail).find(field => field.field === "price")?.state, "same");
 assert.equal(fields.find(field => field.field === "water_fee_value")?.state, "missing");
+const mergedRoom = { ...payload, description: "Mới", _room_import: { ...review, presence: { ...presence, "room.description": "value" }, snapshot: { ...review.snapshot!, room: { ...review.snapshot!.room, description: "Cũ" } } } };
+assert.equal(selectedUpdatePatch(mergedRoom, detail, ["both:room.description"]).room.description, "Cũ\n\nMới");
+assert.deepEqual(selectedUpdatePatch(payload, detail, ["old:room.price"]).room, {});
+assert.throws(() => selectedUpdatePatch(payload, detail, ["both:room.price"]), /một giá trị/);
+assert.equal(selectedUpdatePatch(payload, detail, ["media:image:old:old-id", "media:image:new:new-id"]).images, true);
 const patch = selectedUpdatePatch(payload, detail, ["room.price", "detail.has_elevator", "detail.other_fee_note"]);
 assert.deepEqual(patch.room, { price: 5800000 });
 assert.deepEqual(patch.detail, { has_elevator: false, other_fee_note: "" });
@@ -106,6 +111,17 @@ async function main() {
   assert.equal(resolved.roomPayload.price, 5800000);
   assert.equal(resolved.roomPayload._room_import.snapshot.room.price, 5500000);
   assert.equal(resolved.detailPayload.water_fee_value, null, "do not replace missing source with old values");
+  // Saving edited identity uses the latest draft, without parsing source text.
+  for (const change of [{ room_code: "L02" }, { address: "Lê Văn Sỹ" }, { house_number: "219/90" }]) {
+    const edited = { ...incoming, ...change, price: 6200000, _room_import: review };
+    const result = await resolveZaloImportRoom({ supabase, roomPayload: edited, detailPayload: detail,
+      excludePendingId: "edited-pending", skipInheritance: true });
+    assert.equal(result.roomPayload._room_import.type, "CREATE");
+    assert.equal(result.roomPayload._room_import.snapshot, null);
+    assert.equal(result.roomPayload._room_import.identity_key, normalizedRoomIdentity(edited));
+    assert.equal(result.roomPayload.price, 6200000);
+    assert.equal(result.detailPayload.water_fee_value, null);
+  }
   tables.pending_room_versions.push(activePending);
   const duplicate = await resolveZaloImportRoom({ supabase, roomPayload: incoming, detailPayload: detail });
   assert.equal(duplicate.roomPayload._room_import.type, "NEEDS_REVIEW");
