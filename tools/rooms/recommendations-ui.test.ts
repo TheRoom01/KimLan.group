@@ -36,7 +36,7 @@ async function main() {
         <Recommendations filters={filters} excludeIds={[excluded]} adminLevel={level} currentUserId={level?'verified-user':null} onNavigate={navigate}/>
         <footer style={{position:'fixed',bottom:0,width:'100%',height:70,background:'#ddd'}}>Trước · Cần Tư Vấn · Sau</footer>
       </div>};createRoot(document.getElementById('root')).render(<App/>);
-    `},bundle:true,write:false,outfile:path.join(directory,"app.js"),platform:"browser",logLevel:"silent",define:{"process.env.NODE_ENV":'"development"',"process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL":'""',"process.env.NEXT_PUBLIC_R2_PUBLIC_URL":'""',"process.env.NEXT_PUBLIC_ROOM_RECOMMENDATIONS_ENABLED":JSON.stringify(enabled?"true":"false")},plugins:[{name:"offline-dependencies",setup(builder){
+    `},bundle:true,write:false,outfile:path.join(directory,"app.js"),platform:"browser",logLevel:"silent",define:{"process.env.NEXT_PUBLIC_ROOM_CARD_IMAGE_OPTIMIZATION":'"false"',"process.env.NODE_ENV":'"development"',"process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL":'""',"process.env.NEXT_PUBLIC_R2_PUBLIC_URL":'""',"process.env.NEXT_PUBLIC_ROOM_RECOMMENDATIONS_ENABLED":JSON.stringify(enabled?"true":"false")},plugins:[{name:"offline-dependencies",setup(builder){
       builder.onResolve({filter:/^next\/(image|link|dynamic)$/},args=>({path:args.path,namespace:"fixture"}));
       builder.onResolve({filter:/^@\/lib\/supabase$/},()=>({path:"supabase",namespace:"fixture"}));
       builder.onResolve({filter:/RoomInquiryTurnstile$/},()=>({path:"turnstile",namespace:"fixture"}));
