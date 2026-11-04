@@ -185,7 +185,9 @@ export async function main(args = process.argv.slice(2)) {
     cycleAttempted = true;
     await reader.runReader();
   } catch (error: any) {
-    const code = /LOGIN|login|đăng nhập/.test(String(error?.message)) ? "LOGIN_REQUIRED" : /PROFILE/.test(String(error?.message)) ? "PROFILE_IN_USE" : "READER_RUN_FAILED";
+    const message = String(error?.message || "");
+    const preflightCode = message.match(/^(READER_(?:BROWSER_[A-Z_]+|API_UNREACHABLE|DATABASE_NOT_READY))(?::|$)/)?.[1];
+    const code = preflightCode || (/LOGIN|login|đăng nhập/.test(message) ? "LOGIN_REQUIRED" : /PROFILE/.test(message) ? "PROFILE_IN_USE" : "READER_RUN_FAILED");
     await session?.finishGroup(code);
     for (const group of OFFICIAL_ZALO_GROUPS) if (!session?.summaries.some(summary => summary.groupKey === group.key)) {
       try { await report({ runId: session?.runId || randomUUID(), groupKey: group.key, groupName: group.name, groupId: group.groupId,

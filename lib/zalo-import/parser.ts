@@ -1688,7 +1688,7 @@ function extractAddressParts(
 
     if (
       street.length < 2 ||
-      !normalizedStreetKey(street) || /^(?:gia|dien|nuoc|dich vu|phi|coc|hoa hong|phong|room|trong|tang|lau|trieu|tr|studio|duplex)\b/.test(
+      !normalizedStreetKey(street) || /^(?:gia|dien(?!\s+bien\s+phu\b)|nuoc|dich vu|phi|coc|hoa hong|phong|room|trong|tang|lau|trieu|tr|studio|duplex)\b/.test(
         normalizedStreet
       )
     ) {
@@ -2697,8 +2697,16 @@ function pickOtherAmenitiesFromZaloText(
   for (const line of lines) {
     const normalizedLine =
       normalizeForCompare(
-        line
+        cleanListPrefix(line)
       );
+
+    // Preserve unmodelled building information while keeping addresses, fees,
+    // room listings, policies, contacts and sales copy in their own fields.
+    if (extractAddressParts(line).houseNumber || looksLikeRoomMarkerText(line) ||
+      /^(?:dia chi|vi tri|ma phong|phuong|quan|q\.?\s*\d|p\.?\s*\d)\b/.test(normalizedLine) ||
+      /^(?:(?:phi|tien)\s*)?(?:dien|nuoc|dich vu|dv|quan ly|ql|xe|giu xe|gui xe|parking|internet|wifi|rac)\b/.test(normalizedLine) ||
+      /\b(?:coc|hoa hong|hop dong|chinh sach|lien he|hotline|zalo|phone|thuong (?:sale|nong|them|\d)|sale|chot|khuyen mai)\b|@|https?:\/\//.test(normalizedLine) ||
+      /^(?:dia chi|vi tri|ma phong|phuong|quan|q\.?\s*\d|p\.?\s*\d|du an|toa nha|thong tin|tien ich)\s*[:\-]?\s*$/.test(normalizedLine)) continue;
 
     /*
      * Nội thất phải giữ nguyên cả dòng.
@@ -2740,48 +2748,12 @@ function pickOtherAmenitiesFromZaloText(
           part
         );
 
-      const isOtherAmenity =
-        /\bcamera\b/.test(
-          normalizedPart
-        ) ||
-        /\ban ninh\b/.test(
-          normalizedPart
-        ) ||
-        /\bgio giac tu do\b/.test(
-          normalizedPart
-        ) ||
-        /\btu do gio giac\b/.test(
-          normalizedPart
-        ) ||
-        /\bra vao tu do\b/.test(
-          normalizedPart
-        ) ||
-        /\bbao ve\b/.test(
-          normalizedPart
-        ) ||
-        /\bpccc\b/.test(
-          normalizedPart
-        ) ||
-        /\bphong chay\b/.test(
-          normalizedPart
-        ) ||
-        /\ble tan\b/.test(
-          normalizedPart
-        ) ||
-        /\bkhoa cong\b/.test(
-          normalizedPart
-        );
-
-      if (!isOtherAmenity) {
-        continue;
-      }
-
       /*
        * Những tiện ích đã có field riêng không đưa
        * vào other_amenities nếu đứng riêng.
        */
       const onlyStructuredAmenity =
-        /^(co\s+)?(thang may|thang bo|may giat chung|may giat rieng|ham xe|gui xe)$/.test(
+        /^(?:(?:co|khong|ko)\s+)?(?:thang\s*:?\s*(?:may|bo)|cau thang bo|may giat (?:chung|rieng)|may say (?:chung|rieng)|ham xe|gui xe|ban cong|cua so|khoa van tay|van tay|gio giac tu do|gio tu do|ra vao tu do|khong gio gioi nghiem|(?:cho|khong cho|cam) (?:nuoi )?(?:pet|thu cung|cho|meo)|ngan han|dai han)$/.test(
           normalizedPart
         );
 
@@ -3651,7 +3623,7 @@ if (
     sourceFieldMap.has_elevator = "Tin Zalo";
   }
 
-  if (/thang bộ|thang bo|cầu thang bộ|cau thang bo/i.test(textNoTone)) {
+  if (/thang bộ|thang bo|cầu thang bộ|cau thang bo|\bthang\s*:?\s*bo\b/i.test(textNoTone)) {
     detailPayload.has_stairs = true;
     sourceFieldMap.has_stairs = "Tin Zalo";
   }

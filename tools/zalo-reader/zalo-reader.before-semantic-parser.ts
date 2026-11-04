@@ -1742,10 +1742,6 @@ async function openGroup(
     }
   }
 
-  await search.click({
-    timeout: 10_000,
-  });
-
   /*
    * Xóa từ khóa cũ trước khi tìm nhóm mới.
    */

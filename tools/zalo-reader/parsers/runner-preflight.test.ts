@@ -7,7 +7,7 @@ import * as official from '../../../lib/zalo-reader/official';
 
 // Execute the actual runner with an in-memory filesystem and fake HTTP/Reader.
 // No live browser, real API, checkpoint or production data is accessed.
-async function scenario(options: { cycle?: any; unavailable?: boolean; notReady?: boolean; profileBusy?: boolean; readerFails?: boolean; reportFails?: boolean; control?: boolean } = {}) {
+async function scenario(options: { cycle?: any; unavailable?: boolean; notReady?: boolean; profileBusy?: boolean; browserError?: string; readerFails?: boolean; reportFails?: boolean; control?: boolean } = {}) {
   const root = path.resolve('.zalo-reader/offline-preflight-fixture');
   const directory = path.join(root, '.zalo-reader/official');
   const cycleFile = path.join(directory, 'cycle-state.json');
@@ -33,7 +33,7 @@ async function scenario(options: { cycle?: any; unavailable?: boolean; notReady?
     '../../lib/zalo-reader/official': official,
     './official-runtime': { OfficialSession: Session, acquireReaderLock: () => () => { released++; },
       atomicJson: (file: string, value: any) => files.set(file, JSON.stringify(value)), setOfficialSession() {}, safeConsole: () => () => {} },
-    './browser-session': { ensureReaderBrowser: async () => { if (options.profileBusy) throw new Error('PROFILE_IN_USE'); } },
+    './browser-session': { ensureReaderBrowser: async () => { if (options.browserError) throw new Error(options.browserError); if (options.profileBusy) throw new Error('PROFILE_IN_USE'); } },
     './parsers': {}, './zalo-reader.before-semantic-parser': { runReader: async () => { readerCalls++; if (options.readerFails) throw new Error('READER_FIXTURE_FAILURE'); } },
   };
   const module = { exports: {} as any };
@@ -53,9 +53,14 @@ async function scenario(options: { cycle?: any; unavailable?: boolean; notReady?
   try { await module.exports.main(options.control ? ['--production', '--report-enabled'] : ['--production', '--confirm-production', '--scheduled']); } catch (caught) { error = caught; }
   assert.equal(released, options.control ? 0 : 1, 'runner lock is released on scans; status control never acquires the scan lock');
   assert.equal(files.get(checkpointFile), '{"receipt":"keep"}', 'no checkpoint reset');
-  return { error, readerCalls, fetchCalls, logs, cycle: files.get(cycleFile) ? JSON.parse(files.get(cycleFile)!) : null };
+  return { error, readerCalls, fetchCalls, logs, failures: files.get(path.join(directory, 'failures.jsonl')), cycle: files.get(cycleFile) ? JSON.parse(files.get(cycleFile)!) : null };
 }
 async function main() {
+  for (const code of ['READER_BROWSER_TASK_UNAVAILABLE', 'READER_BROWSER_NOT_READY', 'READER_BROWSER_PROFILE_MISMATCH']) {
+    const failed = await scenario({ browserError: code });
+    assert.equal(JSON.parse(failed.failures!).code, code, 'retain actionable browser failure instead of generic run failure');
+    assert.equal(failed.readerCalls, 0); assert.equal(failed.cycle, null);
+  }
   const control = await scenario({ control: true });
   assert.equal(control.error, undefined); assert.equal(control.readerCalls, 0); assert.equal(control.fetchCalls, 1); assert.equal(control.cycle, null, 'production status control never starts a scan');
   const unavailable = await scenario({ unavailable: true });
