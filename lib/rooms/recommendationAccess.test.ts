@@ -53,3 +53,10 @@ test("empty results do no auth work; address query failures never return raw dat
   assert.equal(c.lookups.length, 0);
   await assert.rejects(() => recommendationRoomsForViewer(publicRooms, c.viewer, c.server), /Cannot load/);
 });
+
+test("admin address hydration covers all twenty recommendation IDs", async () => {
+  const c=clients(1);
+  const rooms=Array.from({length:20},(_,i)=>({id:`room-${i}`,house_number:'..'}));
+  await recommendationRoomsForViewer(rooms,c.viewer,c.server);
+  assert.equal(c.lookups.find(q=>q.table==='rooms')?.ids?.length,20);
+});

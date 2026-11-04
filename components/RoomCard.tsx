@@ -1,6 +1,7 @@
 "use client";
 
 import { roomStatusLabel } from "@/lib/rooms/availability";
+import { canOptimizeRoomCardImage } from "@/lib/rooms/cardImages";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import Image from "next/image";
 import Link from "next/link";
@@ -540,35 +541,25 @@ useEffect(() => {
     if (!textElement || !button || !container) return;
 
     const updateCopyPosition = () => {
-      const textNodes: Text[] = [];
-      const walker = document.createTreeWalker(textElement, NodeFilter.SHOW_TEXT);
-      let node = walker.nextNode();
-      while (node) {
-        textNodes.push(node as Text);
-        node = walker.nextNode();
-      }
-
       let lastLineTop = -Infinity;
       let lastLineRight = 0;
       let hasHiddenCharacters = false;
       const textBottom = textElement.getBoundingClientRect().bottom;
-      for (const textNode of textNodes) {
-        for (let index = 0; index < textNode.length; index += 1) {
-          const range = document.createRange();
-          range.setStart(textNode, index);
-          range.setEnd(textNode, index + 1);
-          const rect = range.getBoundingClientRect();
-          if (!rect.width) continue;
-          if (rect.bottom > textBottom + 1) {
-            hasHiddenCharacters = true;
-            continue;
-          }
-          if (rect.top > lastLineTop + 1) {
-            lastLineTop = rect.top;
-            lastLineRight = rect.right;
-          } else if (Math.abs(rect.top - lastLineTop) <= 1) {
-            lastLineRight = Math.max(lastLineRight, rect.right);
-          }
+      // Measure line fragments once, rather than force a layout read for every
+      // character. Preserve the same last-line/clamped copy-button placement.
+      const range = document.createRange();
+      range.selectNodeContents(textElement);
+      for (const rect of Array.from(range.getClientRects())) {
+        if (!rect.width) continue;
+        if (rect.bottom > textBottom + 1) {
+          hasHiddenCharacters = true;
+          continue;
+        }
+        if (rect.top > lastLineTop + 1) {
+          lastLineTop = rect.top;
+          lastLineRight = rect.right;
+        } else if (Math.abs(rect.top - lastLineTop) <= 1) {
+          lastLineRight = Math.max(lastLineRight, rect.right);
         }
       }
 
@@ -583,10 +574,9 @@ useEffect(() => {
     updateCopyPosition();
     const observer = new ResizeObserver(updateCopyPosition);
     observer.observe(container);
-    window.addEventListener("resize", updateCopyPosition);
+    observer.observe(textElement);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", updateCopyPosition);
     };
   }, [fullAddressText, safeAdminLevel]);
 
@@ -1060,9 +1050,9 @@ async function updateRoomStatus(nextStatus: string) {
   }
 }
 
-const roomMetaLabelColor = "#fff6ec";
-const roomMetaValueColor = "#f8e9d8";
-const roomMetaDividerColor = "rgba(229,201,169,0.9)";
+const roomMetaLabelColor = "var(--room-card-text, #fff6ec)";
+const roomMetaValueColor = "var(--room-card-text, #f8e9d8)";
+const roomMetaDividerColor = "var(--room-card-muted, rgba(229,201,169,0.9))";
 const visibleRoomBadges = normalizeRoomBadges(room.badges);
 
 return (
@@ -1201,10 +1191,12 @@ return (
                   src={mainSrc}
                   alt={room.room_type ?? "Hình phòng"}
                   fill
-                  sizes="(max-width: 440px) 60vw, 264px"
+                  sizes={index === 0
+                    ? "(max-width: 389px) 60vw, (max-width: 640px) 30vw, 60vw"
+                    : "auto, 1080px"}
                   className="object-cover object-[50%_40%]"
                   loading={index === 0 ? "eager" : "lazy"}
-                  unoptimized
+                  unoptimized={!canOptimizeRoomCardImage(mainSrc)}
                   onError={() => {
                     setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));
                   }}
@@ -1234,9 +1226,9 @@ return (
                         : "Hình phòng"
                     }
                     fill
-                    sizes="(max-width: 440px) 20vw, 88px"
+                    sizes="auto, 720px"
                     className="object-cover"
-                     unoptimized
+                    unoptimized={!canOptimizeRoomCardImage(sub1Src)}
                     onError={() => setSub1Ok(false)}
                   />
                 </div>
@@ -1248,9 +1240,9 @@ return (
                     src={sub2Src}
                     alt={room.room_type ?? "Hình phòng"}
                     fill
-                    sizes="(max-width: 440px) 20vw, 88px"
+                    sizes="auto, 720px"
                     className="object-cover"
-                     unoptimized
+                    unoptimized={!canOptimizeRoomCardImage(sub2Src)}
                     onError={() => setSub2Ok(false)}
                   />
 
@@ -1284,7 +1276,7 @@ return (
           </button>
         )}
           {updatedAt && (
-            <div style={{ transform: "scale(0.85)", transformOrigin: "bottom right" }}
+            <div suppressHydrationWarning style={{ transform: "scale(0.85)", transformOrigin: "bottom right" }}
               className="pointer-events-none absolute bottom-2 right-2 z-20 rounded-md bg-black/55 px-2 py-1 text-[11px] font-semibold leading-none text-white/95 shadow backdrop-blur-md">
               Cập nhật: {formatTimeAgo(updatedAt)}
             </div>

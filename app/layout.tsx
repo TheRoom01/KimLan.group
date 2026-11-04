@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 
 import "./globals.css";
+import "./public-theme.css";
+import { PUBLIC_THEME_BOOTSTRAP } from "@/lib/publicTheme";
 import "./room-share-visual-sync.css";
 import LazyAuthControls from "@/components/LazyAuthControls";
 import ClientErrorOverlay from './_debug/ClientErrorOverlay';
@@ -141,6 +143,7 @@ export default function RootLayout({
   return (
     <html lang="vi" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: PUBLIC_THEME_BOOTSTRAP }} />
         <Script
           id="gtm-head"
           strategy="afterInteractive"

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import React, { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
+import FilterChoicePanel from "@/components/FilterChoicePanel";
 import type { RoomFeature } from "@/lib/rooms/features";
 
 export type SortMode = "updated_desc" | "price_asc" | "price_desc";
@@ -43,7 +44,6 @@ type FilterBarProps = {
   loading?: boolean;
   featureFilters: RoomFeature[];
   setFeatureFilters: React.Dispatch<React.SetStateAction<RoomFeature[]>>;
-  onResetAll?: () => void;
 };
 
 const PRICE_MIN = 3_000_000;
@@ -112,10 +112,11 @@ const FilterBar = ({
   statusFilter,
   setStatusFilter,
   loading = false,
-  onResetAll,
   featureFilters,
   setFeatureFilters,
 }: FilterBarProps) => {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const panelId = useId();
   const [openFilter, setOpenFilter] = useState<"district" | "roomType" | "amenities" | "sort" | null>(null);
  const [minInput, setMinInput] = useState(formatMoneyInput(priceDraft[0]));
 const [maxInput, setMaxInput] = useState(formatMoneyInput(priceDraft[1]));
@@ -143,6 +144,8 @@ useEffect(() => {
   const [dragging, setDragging] = useState<"min" | "max" | null>(null);
   const draggingRef = useRef<"min" | "max" | null>(null);
   const openPanelRef = useRef<HTMLDivElement | null>(null);
+  const districtButtonRef = useRef<HTMLButtonElement | null>(null);
+  const amenitiesButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const filterRowRef = useRef<HTMLDivElement | null>(null);
 const filterButtonsRef = useRef<HTMLDivElement | null>(null);
@@ -398,7 +401,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
  return (
   <section className="home-filter w-full max-w-[1440px] mx-auto px-4 md:px-6 py-5 space-y-5">
     {/* Search */}
-    <div className="relative">
+    <div className="home-search relative">
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -412,14 +415,20 @@ const toggleStatus = (value: RoomStatusFilter) => {
           aria-label="Xoá tìm kiếm"
           title="Xoá tìm kiếm"
           onClick={() => setSearch("")}
-          className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[#F8EAD8]/75 backdrop-blur-xl hover:bg-white/18 hover:text-white"
+          className="home-search-clear absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[#F8EAD8]/75 backdrop-blur-xl hover:bg-white/18 hover:text-white"
         >
           ×
         </button>
       )}
+      <button type="button" className="home-filter-toggle" aria-expanded={panelOpen} aria-controls={panelId}
+        onClick={() => { setPanelOpen(value => !value); closeAllFilters(); }}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg>
+        <span>Bộ lọc</span>
+      </button>
     </div>
 
-    {/* Overlay bắt click-outside */}
+    <div id={panelId} hidden={!panelOpen} className="home-filter-controls">
+        {/* Overlay bắt click-outside */}
     {openFilter !== null && (
       <div
         className="fixed inset-0 z-[1000] bg-black/25 backdrop-blur-[1px]"
@@ -440,8 +449,11 @@ const toggleStatus = (value: RoomStatusFilter) => {
       📍 Bản đồ
     </a>
     {/* QUẬN */}
-    <div className="relative z-[1500]">
+    <div className={`relative ${openFilter === "district" ? "z-[1600]" : "z-[1500]"}`}>
       <button
+        ref={districtButtonRef}
+        aria-expanded={openFilter === "district"}
+        aria-haspopup="dialog"
         type="button"
         onClick={() =>
           setOpenFilter((v) => (v === "district" ? null : "district"))
@@ -461,27 +473,8 @@ const toggleStatus = (value: RoomStatusFilter) => {
       </button>
 
       {openFilter === "district" && (
-        <div
-          ref={(el) => {
-            if (openFilter === "district") openPanelRef.current = el;
-          }}
-          className="home-filter-panel absolute left-0 mt-3 z-[9999] w-[210px] rounded-3xl border border-white/35 bg-[rgba(255,255,255,0.0015)] text-white backdrop-blur-[36px] shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_35px_rgba(255,210,150,0.10),inset_0_1px_0_rgba(255,255,255,0.35)] p-3"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <div className="text-[14px] font-semibold text-white">Chọn quận</div>
-
-            <button
-              type="button"
-              className="text-[11px] text-[#FFE7BE]/75 hover:text-white"
-              onClick={() => setSelectedDistricts([])}
-            >
-              Clear
-            </button>
-          </div>
-
-          <div className="liquid-glass-scroll max-h-64 overflow-y-auto space-y-0.5 pr-2">
+        <FilterChoicePanel title="Chọn quận" width={210} anchorRef={districtButtonRef} panelRef={openPanelRef}
+          onClear={() => setSelectedDistricts([])} onClose={closeAllFilters}>
             {districts.map((d) => {
               const checked = selectedDistricts.includes(d);
               return (
@@ -509,8 +502,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
                 </label>
               );
             })}
-          </div>
-        </div>
+        </FilterChoicePanel>
       )}
     </div>
 
@@ -588,8 +580,11 @@ const toggleStatus = (value: RoomStatusFilter) => {
     </div>
 
     {/* TIỆN NGHI */}
-    <div className="relative z-[1500] flex flex-wrap items-start gap-2">
+    <div className={`relative ${openFilter === "amenities" ? "z-[1600]" : "z-[1500]"}`}>
       <button
+        ref={amenitiesButtonRef}
+        aria-expanded={openFilter === "amenities"}
+        aria-haspopup="dialog"
         type="button"
         onClick={() =>
           setOpenFilter((v) => (v === "amenities" ? null : "amenities"))
@@ -605,33 +600,9 @@ const toggleStatus = (value: RoomStatusFilter) => {
       </button>
 
       {openFilter === "amenities" && (
-        <div
-          className="home-filter-panel absolute left-0 top-full mt-3 z-[9999] w-max min-w-[260px] max-w-[min(92vw,340px)] max-h-[min(72dvh,520px)] overflow-y-auto rounded-3xl border border-white/25 bg-[linear-gradient(rgba(255,255,255,0.015),rgba(255,255,255,0.015))] text-white backdrop-blur-[24px] shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.35)] p-3"
-          ref={(el) => {
-            if (openFilter === "amenities") openPanelRef.current = el;
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-[15px] font-semibold text-white">
-                Tiện Nghi
-              </div>
-
-              <button
-                type="button"
-                className="text-[12px] text-[#FFE7BE]/75 hover:text-white"
-                onClick={() => {
-                  setMoveFilter(null);
-                  setPetFilters([]);
-                  setTermFilters([]);
-                  setFeatureFilters([]);
-                }}
-              >
-                Clear
-              </button>
-            </div>
-
+        <FilterChoicePanel title="Tiện nghi" anchorRef={amenitiesButtonRef} panelRef={openPanelRef}
+          onClear={() => { setMoveFilter(null); setPetFilters([]); setTermFilters([]); setFeatureFilters([]); }}
+          onClose={closeAllFilters}>
             <div className="grid grid-cols-1 gap-2">
               <div className="space-y-1.5">
                 <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
@@ -750,25 +721,14 @@ const toggleStatus = (value: RoomStatusFilter) => {
               </div>
             </div>
 
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                className="rounded-xl border border-white/20 bg-white/12 px-4 py-1.5 text-[13px] font-semibold text-white backdrop-blur-xl hover:bg-white/20"
-                onClick={() => setOpenFilter(null)}
-              >
-                Xong
-              </button>
-            </div>
-        </div>
+        </FilterChoicePanel>
       )}
     </div>
   </div>
 
   {/* RIGHT: Sắp Xếp */}
   <div
-    className={`relative z-[1500] shrink-0 ${
-      openFilter === "amenities" ? "invisible pointer-events-none" : ""
-    }`}
+    className="relative z-[1500] shrink-0"
   >
     <button
       type="button"
@@ -908,24 +868,6 @@ const toggleStatus = (value: RoomStatusFilter) => {
           />
         </div>
 
-        <div className="shrink-0">
-          <button
-            type="button"
-            className="rounded-2xl border border-white/25 bg-[rgba(215,215,215,0.27)] px-[9px] py-[5px] text-[9.5px] tracking-wide font-semibold text-white backdrop-blur-[28px] shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] whitespace-nowrap hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40"
-            onClick={() => {
-              const resetVal: [number, number] = [PRICE_MIN, PRICE_MAX];
-              setPriceDraft(resetVal);
-              setPriceApplied(resetVal);
-              setMinInput(formatMoneyInput(resetVal[0]));
-              setMaxInput(formatMoneyInput(resetVal[1]));
-              onResetAll?.();
-            }}
-            disabled={loading}
-          >
-            Xóa bộ lọc
-          </button>
-        </div>
-
         <div className="w-fit shrink-0 text-right">
           <div className="mb-1 text-right text-xs text-[#EAD8C0]/70">
             {formatMillionLabel(priceApplied[1])}
@@ -1010,6 +952,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
       </div>
     </div>
 
+    </div>
   </section>
 );
 };

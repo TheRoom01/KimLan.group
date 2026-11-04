@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { RECOMMENDATION_LIMIT } from "./recommendations";
 
 type RoomAddress = { id: string; house_number?: string | null };
 
@@ -20,7 +21,7 @@ export async function recommendationRoomsForViewer<T extends RoomAddress>(
   if (membership?.level !== 1 && membership?.level !== 2) return rooms;
 
   // One bounded batch for the public rooms already selected by the RPC.
-  const ids = [...new Set(rooms.map(room => room.id))].slice(0, 10);
+  const ids = [...new Set(rooms.map(room => room.id))].slice(0, RECOMMENDATION_LIMIT);
   const { data: addresses, error: addressError } = await server
     .from("rooms").select("id,house_number").in("id", ids);
   if (addressError) throw new Error("Cannot load recommendation addresses");

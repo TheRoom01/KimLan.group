@@ -21,8 +21,9 @@ test("Home keeps SSR data and does not repeat retired public RPCs", async () => 
   assert.doesNotMatch(client, /flushSync/);
   assert.doesNotMatch(client, /prefetchRoomDetail/);
   assert.match(roomCard, /<Link\s+[\s\S]*?href=\{href\}/);
-  assert.match(roomCard, /pointer-events-none relative z-20 line-clamp-2/);
-  assert.match(roomCard, /pointer-events-auto relative z-30/);
+  assert.match(roomCard, /home-room-address pointer-events-none relative z-20/);
+  assert.match(roomCard, /WebkitLineClamp: 2/);
+  assert.match(roomCard, /pointer-events-auto absolute bottom-0 z-30/);
   assert.match(roomCard, /current\?\.id === toastId \? null : current/);
   assert.match(page, /const minPrice = parseOptionalNumber\(minRaw\)/);
   assert.match(page, /const maxPrice = parseOptionalNumber\(maxRaw\)/);

@@ -30,7 +30,11 @@
     "test:zalo-lookback": "tsx tools/zalo-reader/parsers/phase3-message-lookback-smoke-test.ts",
     "patch:zalo-reader-final": "node tools/zalo-reader/apply-final-building-room-architecture.mjs",
     "map:geocode": "tsx tools/map/geocode-properties.ts",
-    "test:performance": "node --test tools/performance/performance-regression-smoke-test.mjs"
+    "test:performance": "node --test tools/performance/performance-regression-smoke-test.mjs",
+    "test:room-list-scroll": "tsx tools/performance/room-list-scroll.test.ts",
+    "test:public-theme": "tsx tools/performance/public-theme-layout.test.ts",
+    "test:room-card": "tsx tools/performance/room-card.test.ts",
+    "test:room-recommendations": "tsx lib/rooms/recommendations.test.ts && tsx lib/rooms/recommendationAccess.test.ts && tsx tools/rooms/recommendations-route.test.ts && node --no-wasm-tier-up --import tsx tools/rooms/recommendations-sql.test.ts && tsx tools/rooms/recommendations-ui.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.975.0",

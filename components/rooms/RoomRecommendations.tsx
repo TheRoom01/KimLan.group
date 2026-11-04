@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import RoomCard from "@/components/RoomCard";
 import RoomCardSkeleton from "@/components/RoomCardSkeleton";
 import { hasRecommendationFilters, recommendationLabels, RECOMMENDATION_LIMIT, ROOM_RECOMMENDATIONS_ENABLED, type RecommendedRoom, type RecommendationFilters } from "@/lib/rooms/recommendations";
@@ -29,6 +29,8 @@ export default function RoomRecommendations(props: Props) {
 function RecommendationsForFilter({ requestKey, ...props }: Props & { requestKey: string }) {
   const sentinel = useRef<HTMLDivElement>(null);
   const roomGrid = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: number; x: number; y: number; left: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
   const [nearEnd, setNearEnd] = useState(false);
   const [rooms, setRooms] = useState<RecommendedRoom[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,6 +111,33 @@ function RecommendationsForFilter({ requestKey, ...props }: Props & { requestKey
     const gap = parseFloat(getComputedStyle(target).columnGap) || 0;
     target.scrollBy({ left: direction * (width + gap), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   };
+  const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    suppressClick.current = false;
+    if (event.pointerType !== "mouse" || event.button !== 0 ||
+      (event.target as HTMLElement).closest("button,input,textarea,select,.home-room-toolbar,.home-room-amenities")) return;
+    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, left: event.currentTarget.scrollLeft, moved: false };
+  };
+  const moveDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || current.id !== event.pointerId) return;
+    const delta = event.clientX - current.x;
+    if (!current.moved && (Math.abs(delta) < 6 || Math.abs(delta) < Math.abs(event.clientY - current.y))) return;
+    if (!current.moved) {
+      current.moved = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.dataset.dragging = "true";
+    }
+    event.preventDefault();
+    event.currentTarget.scrollLeft = current.left - delta;
+  };
+  const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || current.id !== event.pointerId) return;
+    suppressClick.current = current.moved && event.type !== "pointercancel";
+    drag.current = null;
+    delete event.currentTarget.dataset.dragging;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
 
   return <div ref={sentinel} className={`home-room-recommendations ${styles.anchor}`}>
     {loading || rooms?.length || loadError ? <section className={styles.section} aria-labelledby="room-recommendations-title" aria-busy={loading}>
@@ -126,7 +155,10 @@ function RecommendationsForFilter({ requestKey, ...props }: Props & { requestKey
         <p>Chưa tải được phòng đề xuất. Vui lòng thử lại.</p>
         <button type="button" onClick={() => setAttempt(value => value + 1)} className={styles.retry}>Thử lại</button>
       </div> : null}
-      <div ref={roomGrid} className={styles.rail} role="group" aria-label="Danh sách phòng đề xuất, cuộn ngang" tabIndex={0}>
+      <div ref={roomGrid} className={styles.rail} role="group" aria-label="Danh sách phòng đề xuất, cuộn ngang" tabIndex={0}
+        onPointerDownCapture={startDrag} onPointerMoveCapture={moveDrag} onPointerUpCapture={endDrag} onPointerCancelCapture={endDrag}
+        onDragStart={event=>event.preventDefault()}
+        onClickCapture={event=>{if(suppressClick.current){suppressClick.current=false;event.preventDefault();event.stopPropagation()}}}>
         {loading ? Array.from({ length: 3 }, (_, i) => <RoomCardSkeleton key={i} />)
           : rooms?.map((room, index) => {
             const card = <RoomCard room={room} adminLevel={props.adminLevel} currentUserId={props.currentUserId}

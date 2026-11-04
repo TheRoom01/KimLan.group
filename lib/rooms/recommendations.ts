@@ -1,11 +1,15 @@
 import type { RoomCardRoom } from "@/components/RoomCard";
-import type { RoomFeature } from "./features";
+import { roomFeatureStatusTokens, type RoomFeature } from "./features";
 import { normalizeHomeSearchKeyword } from "./search";
 import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 
-export const RECOMMENDATION_LIMIT = 10;
+export const RECOMMENDATION_LIMIT = 20;
 export const RECOMMENDATION_PRICE_EXTENSION = 2_000_000;
 export const ROOM_RECOMMENDATIONS_ENABLED = process.env.NEXT_PUBLIC_ROOM_RECOMMENDATIONS_ENABLED !== "false";
+
+export function isLastRecommendationPage(pageIndex: number, displayPageIndex: number, total: number | null, hasNext: boolean, pageSize = 20) {
+  return pageIndex === displayPageIndex && (total !== null ? (displayPageIndex + 1) * pageSize >= total : !hasNext);
+}
 
 export type RecommendationFilters = {
   search: string;
@@ -69,7 +73,7 @@ function expandRoomTypes(values: string[]) {
   return [...new Set(values.flatMap(value => /^([12])\s*Phòng ngủ$/i.test(value) ? [value, `${value[0]}PN`] : [value]))];
 }
 
-export function recommendationRpcParams(filters: RecommendationFilters, excludeIds: string[]) {
+export function recommendationRpcParams(filters: RecommendationFilters, excludeIds: string[], viewerIsAdmin = false) {
   const prices = recommendationPrices(filters);
   return {
     p_search: normalizeHomeSearchKeyword(filters.search, false) || null,
@@ -79,6 +83,21 @@ export function recommendationRpcParams(filters: RecommendationFilters, excludeI
     p_features: filters.features, p_statuses: filters.status ? filters.status.split(",").map(s => s.trim()).filter(Boolean) : ["Đang trống", "Sắp trống"],
     p_badge: filters.badge, p_exclude_ids: [...new Set(excludeIds)].slice(0, 20),
     p_center_lat: filters.center?.latitude ?? null, p_center_lng: filters.center?.longitude ?? null,
+    // Original list parameters, without price expansion or district/type aliases.
+    // Membership is checked in SQL before LIMIT, independently of visited pages.
+    p_main_filters: {
+      search: normalizeHomeSearchKeyword(filters.search, viewerIsAdmin) || null,
+      includeHouse: viewerIsAdmin,
+      minPrice: filters.priceFilterActive ? filters.minPrice : null,
+      maxPrice: filters.priceFilterActive ? filters.maxPrice : null,
+      districts: filters.districts, roomTypes: filters.roomTypes, move: filters.move,
+      petPolicies: filters.petPolicies, contractTerms: filters.contractTerms,
+      statuses: [
+        ...(filters.status ? filters.status.split(",").map(value=>value.trim()).filter(Boolean) : []),
+        ...(filters.badge ? [`__badge:${filters.badge}`] : []),
+        ...roomFeatureStatusTokens(filters.features),
+      ],
+    },
   };
 }
 
