@@ -398,6 +398,11 @@ export async function publishPendingRoom(params: {
   }
 
   const importReview = getImportReview((pending as any).room_payload);
+  if (params.source === "manual" && params.expectedRoomPayload &&
+    (stableJson(params.expectedRoomPayload) !== stableJson((pending as any).room_payload) ||
+      stableJson(params.expectedDetailPayload || {}) !== stableJson((pending as any).detail_payload || {}))) {
+    throw new Error("Bản nháp đã đổi. Hãy mở lại và kiểm tra trước khi duyệt.");
+  }
   const correctedUpdate = params.source === "manual" && params.createFromUpdate === true;
   if (correctedUpdate) {
     if (!isUpdateCodeChange((pending as any).room_payload) || importReview?.snapshot?.room.id !== (pending as any).matched_room_id) throw new Error("Hãy nhập mã phòng mới khác mã phòng cũ, giữ nguyên địa chỉ trước khi tạo phòng.");

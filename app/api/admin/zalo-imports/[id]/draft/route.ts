@@ -955,7 +955,7 @@ export async function PATCH(
     // Reclassify the saved draft itself; source text is only an optional parser input.
     const identityChanged = normalizedRoomIdentity(nextRoomPayload) !== canonicalStoredIdentity(originalReview?.identity_key || null);
     let identityUpdate: Record<string, any> = {};
-    if (!originalReview || identityChanged) {
+    if (!originalReview || identityChanged || originalReview.type === "NEEDS_REVIEW") {
       const resolved = await resolveZaloImportRoom({
         supabase, roomPayload: nextRoomPayload, detailPayload: nextDetailPayload,
         excludePendingId: pendingId, skipInheritance: true,

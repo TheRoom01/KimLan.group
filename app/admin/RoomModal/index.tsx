@@ -10,8 +10,8 @@ import type { Room, TabKey, RoomStatus } from '../../types/room'
 import type { RoomForm, RoomDetail } from './types'
 import { supabase } from '@/lib/supabase'
 import { normalizeRoomBadges, type RoomBadge } from '@/lib/roomBadges'
-import { getImportReview, isUpdateCodeChange, importReviewInstructions } from '@/lib/zalo-import/room-comparison'
-import { requestCodeChoice, type CodeApprovalMode } from "@/app/admin/zalo-imports/request-code-choice";
+import { getImportReview, normalizedRoomIdentity, canonicalStoredIdentity, comparisonFields, importReviewInstructions } from '@/lib/zalo-import/room-comparison'
+import { type CodeApprovalMode } from "@/app/admin/zalo-imports/request-code-choice";
 import RoomUpdateComparison from '@/app/admin/zalo-imports/RoomUpdateComparison'
 
 import TabButton from './TabButton'
@@ -1576,24 +1576,20 @@ const applyAutoReadCandidate = (
     if (saving || uploading || pendingApprovalRef.current) return
     if (pendingRoomPayload?.is_test_import === true) { setErrorMsg('Không được duyệt bản nháp TEST.'); return }
     const review = getImportReview(pendingRoomPayload)
-    if (review?.type === 'NEEDS_REVIEW' || (pendingMatchedRoomId && !review)) {
-      setErrorMsg(`Lưu nháp nếu vừa sửa dữ liệu, sau đó đóng form chỉnh sửa. ${importReviewInstructions(pendingRoomPayload || {})}`); return
-    }
-    let approvalMode: CodeApprovalMode | undefined;
-    if (isUpdateCodeChange({ ...pendingRoomPayload, ...roomForm })) {
-      const choice = await requestCodeChoice(String(review?.snapshot?.room.room_code || ''), roomForm.room_code, pendingUpdateFields.length > 0);
-      if (!choice) return;
-      approvalMode = choice;
-    }
-    if (review?.type === 'UPDATE' && approvalMode !== 'create_room_new_code' && pendingUpdateFields.length === 0) {
+    const currentKey = normalizedRoomIdentity(roomForm)
+    if (!currentKey) { setErrorMsg('Vui lòng nhập đủ số nhà, tên đường, quận và mã phòng trước khi duyệt.'); return }
+    const identityChanged = currentKey !== canonicalStoredIdentity(review?.identity_key || null)
+    if (review?.type === 'UPDATE' && !identityChanged && pendingUpdateFields.length === 0) {
       setErrorMsg('Hãy chọn các trường muốn cập nhật trong phần so sánh bên dưới.'); return
     }
-    if (!approvalMode && !window.confirm(review?.type === 'UPDATE'
+    if (!window.confirm(identityChanged || review?.type === 'NEEDS_REVIEW'
+      ? 'Lưu dữ liệu mới nhất, đối chiếu lại địa chỉ và mã phòng, rồi duyệt theo kết quả mới?'
+      : review?.type === 'UPDATE'
       ? `Lưu chỉnh sửa và duyệt cập nhật ${pendingUpdateFields.length} trường đã chọn vào phòng hiện tại?`
       : 'Lưu các chỉnh sửa hiện tại và duyệt đăng phòng mới lên app?')) return
     pendingApprovalRef.current = true
     setApprovingPending(true)
-    try { await handleSubmit(undefined, true, approvalMode) }
+    try { await handleSubmit(undefined, true) }
     catch (error: any) { setErrorMsg(error?.message || 'Chưa duyệt được import.') }
     finally { pendingApprovalRef.current = false; setApprovingPending(false) }
   }
@@ -1758,13 +1754,19 @@ const applyAutoReadCandidate = (
           const savedRoom = json?.room_payload ?? roomPayload
           const savedDetail = json?.detail_payload ?? detailForm
           const review = getImportReview(savedRoom)
-          if (review?.type === 'NEEDS_REVIEW') throw new Error('Bản nháp cần xác minh phòng đích trước khi duyệt.')
+          if (review?.type === 'NEEDS_REVIEW') throw new Error(importReviewInstructions(savedRoom))
+          const originalReview = getImportReview(pendingRoomPayload)
+          const reclassified = review?.identity_key !== originalReview?.identity_key ||
+            review?.snapshot?.room.id !== originalReview?.snapshot?.room.id || originalReview?.type !== 'UPDATE'
+          const selectedFields = review?.type === 'UPDATE' && reclassified
+            ? comparisonFields(savedRoom, savedDetail).filter(field => field.state !== 'missing' && field.state !== 'uncertain').map(field => field.key)
+            : pendingUpdateFields
           updateImportTask(pendingId, 'Đã lưu nháp. Đang duyệt và chuyển media…')
           const approval = await fetch(`/api/admin/zalo-imports/${pendingId}/approve`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(review?.type === 'UPDATE'
-              ? { mode: approvalMode || 'update_room', selectedFields: pendingUpdateFields, expectedRoomPayload: savedRoom, expectedDetailPayload: savedDetail }
-              : { mode: 'create_room' }),
+              ? { mode: approvalMode || 'update_room', selectedFields, expectedRoomPayload: savedRoom, expectedDetailPayload: savedDetail }
+              : { mode: 'create_room', expectedRoomPayload: savedRoom, expectedDetailPayload: savedDetail }),
           })
           const result = await approval.json().catch(() => ({}))
           if (!approval.ok || !result?.ok) throw new Error(result?.error || 'Duyệt import thất bại.')
@@ -2402,12 +2404,12 @@ const stopBackdropEvents = (e: any) => {
             />
           )}
 
-      {isPending && isUpdateCodeChange({ ...pendingRoomPayload, ...roomForm }) && (
+      {isPending && normalizedRoomIdentity(roomForm) !== canonicalStoredIdentity(getImportReview(pendingRoomPayload)?.identity_key || null) && (
         <p style={{ margin: '12px 0', padding: 12, borderRadius: 10, background: '#eff6ff', color: '#1e40af' }}>
-          Mã phòng đã đổi từ {String(getImportReview(pendingRoomPayload)?.snapshot?.room.room_code || '')} thành {roomForm.room_code}. Khi duyệt, bạn có thể chọn cập nhật phòng cũ hoặc tạo phòng mới.
+          Khi duyệt, hệ thống sẽ lưu địa chỉ và mã phòng hiện tại, đối chiếu lại rồi tạo phòng mới hoặc cập nhật phòng khớp với thông tin đã sửa.
         </p>
       )}
-      {isPending && getImportReview(pendingRoomPayload)?.type === 'UPDATE' && (
+      {isPending && getImportReview(pendingRoomPayload)?.type === 'UPDATE' && normalizedRoomIdentity(roomForm) === canonicalStoredIdentity(getImportReview(pendingRoomPayload)?.identity_key || null) && (
         <RoomUpdateComparison
           row={{room_payload:{...pendingRoomPayload,...roomForm},detail_payload:detailForm,
             images:(roomForm.media || []).filter((item:any)=>item.type==='image').map((item:any)=>({...item,temp_image_url:item.url})),

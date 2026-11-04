@@ -147,6 +147,9 @@ async function main(){
   const execute=()=>vm.runInNewContext(ts.transpileModule(`(async()=>{${pendingPropertyBranch}})()`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
   await execute();assert.equal(context.roomPayload.property_id,"matched-building");
   context.roomPayload.property_id=null;result={match_status:"ambiguous",candidates:[{id:"one"},{id:"two"}]};await assert.rejects(execute(),/Có nhiều tòa nhà/);assert.equal(context.unresolvedCandidates.length,2);assert.equal(context.roomPayload.property_id,null,"ambiguous buildings must be selected, never guessed");
+  reset("chosen-building");
+  await assert.rejects(()=>loaded.exports.publishPendingRoom({pendingId:"pending",actorUserId:"admin",source:"manual",supabase:db,actorSupabase:actor,expectedRoomPayload:{room_code:"outdated"},expectedDetailPayload:{}}),/Bản nháp đã đổi/);
+  assert.equal(tables.rooms.length,0,"outdated CREATE snapshot cannot publish a different saved draft");
   console.log("Imports manual publish: authenticated /admin RPC, matched building, selected ambiguous building, video-only upload, empty-media preflight, Vietnamese errors, canonical statuses, saved media order for CREATE/UPDATE: PASS (offline)");
 }
 main().catch(error=>{console.error(error);process.exitCode=1});
