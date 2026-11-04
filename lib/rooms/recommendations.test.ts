@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isLastRecommendationPage, RECOMMENDATION_LIMIT } from "./recommendations";
 import { test } from "node:test";
 import { hasRecommendationFilters, parseRecommendationRequest, recommendationLabels, recommendationPrices, recommendationRpcParams, type RecommendationFilters } from "./recommendations";
 
@@ -6,6 +7,26 @@ export const defaultRecommendationFilters: RecommendationFilters = {
   search: "", priceFilterActive: false, minPrice: 3_000_000, maxPrice: 30_000_000,
   districts: [], roomTypes: [], move: null, petPolicies: [], contractTerms: [], features: [], status: null, badge: null, sortMode: "updated_desc",
 };
+
+test("only the final settled page can show recommendations (40 and 50 matches)", () => {
+  assert.equal(RECOMMENDATION_LIMIT,20);
+  assert.equal(isLastRecommendationPage(0,0,40,false),false,'prefetch must not make page one appear final');
+  assert.equal(isLastRecommendationPage(1,1,40,false),true);
+  assert.equal(isLastRecommendationPage(1,1,50,false),false);
+  assert.equal(isLastRecommendationPage(2,2,50,false),true);
+  assert.equal(isLastRecommendationPage(2,1,50,false),false,'old page still being displayed');
+  assert.equal(isLastRecommendationPage(0,0,0,false),true);
+  assert.equal(isLastRecommendationPage(0,0,null,true),false);
+});
+
+test("SQL receives original filters separately from expanded recommendations", () => {
+  const f={...defaultRecommendationFilters,search:'257/17 Phan Xích Long',priceFilterActive:true,minPrice:5e6,maxPrice:7e6,districts:['Quận 1']};
+  const p=recommendationRpcParams(f,[],true);
+  assert.equal(p.p_max_price,9e6);assert.equal(p.p_main_filters.maxPrice,7e6);
+  assert.deepEqual(p.p_districts,['Quận 1','1']);assert.deepEqual(p.p_main_filters.districts,['Quận 1']);
+  assert.equal(p.p_main_filters.includeHouse,true);assert.match(p.p_main_filters.search!,/^257\/17/);
+  assert.equal(recommendationRpcParams(f,[],false).p_main_filters.includeHouse,false);
+});
 test("only MAX is extended: 5–7 → 5–9, 8–12 → 8–14, 10–15 → 10–17", () => {
   for (const [min,max,expected] of [[5,7,9],[8,12,14],[10,15,17]]) {
     const filters = { ...defaultRecommendationFilters, priceFilterActive: true, minPrice: min*1e6, maxPrice: max*1e6 };

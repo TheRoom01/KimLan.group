@@ -40,3 +40,9 @@ tools/zalo-reader/state.json
 
 .vercel
 .env*
+
+# Local, synthetic room-list performance measurements and screenshots
+.cache/room-list-performance/
+
+# Local UI verification artifacts
+.cache/light-theme/

@@ -381,12 +381,12 @@ const canSeePrivateFields =
   
 //=========== Màu modal chi tiết =========//
   const ROOM_THEME = {
-  modalBg: "#a06a29be",
-  modalBgInner: "#74573094",
-  modalText: "#fcf6ef",
-  modalMutedText: "rgba(255, 246, 234, 0.9)",
-  modalBorder: "rgba(255,233,214,0.14)",
-  modalAccent: "#38BDF8",
+  modalBg: "var(--room-modalBg, #a06a29be)",
+  modalBgInner: "var(--room-modalBgInner, #74573094)",
+  modalText: "var(--room-modalText, #fcf6ef)",
+  modalMutedText: "var(--room-modalMutedText, rgba(255, 246, 234, 0.9))",
+  modalBorder: "var(--room-modalBorder, rgba(255,233,214,0.14))",
+  modalAccent: "var(--room-modalAccent, #38BDF8)",
   modalAccentSoft: "rgba(56,189,248,0.18)",
 
   shareBg: "rgba(86,57,36,0.30)",
@@ -1687,7 +1687,7 @@ return (
   {/* ===== BOTTOM: PHẦN THÔNG TIN CUỘN ===== */}
   <div
     ref={scrollRef}
-    className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-transparent pb-3 [-webkit-overflow-scrolling:touch]"
+    className="home-detail-content flex-1 min-h-0 overflow-y-auto overscroll-contain bg-transparent pb-3 [-webkit-overflow-scrolling:touch]"
   >
     <div className="px-3 space-y-2 text-sm text-white">
       {showOpenBrowserBar && (

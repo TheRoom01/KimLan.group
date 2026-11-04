@@ -24,6 +24,8 @@ type RoomListProps = {
   emptyMessage?: string;
   emptyAction?: React.ReactNode;
   stableCardWidth?: boolean;
+  hasRecommendations?: boolean;
+  onResetAll?: () => void;
 };
 
 const RoomList = ({
@@ -42,6 +44,9 @@ const RoomList = ({
   emptyMessage = "Không có phòng phù hợp.",
   emptyAction,
   stableCardWidth = false,
+  hasRecommendations = false,
+  onResetAll,
+  loading,
 }: RoomListProps) => {
   if (fetchError) {
     return (
@@ -57,13 +62,14 @@ const RoomList = ({
   const showInitialSkeleton = showSkeleton && !hasRooms;
 
   return (
-    <main className="home-room-list relative z-0 w-full max-w-none px-2 sm:px-3 lg:px-4 pb-36 pt-2">
-      <div id="phong" className="mx-auto mb-3 flex max-w-[1800px] flex-wrap items-end justify-between gap-2 px-1 sm:px-2">
+    <main className={`home-room-list relative z-0 w-full max-w-none px-2 sm:px-3 lg:px-4 ${hasRecommendations ? "pb-4" : "pb-36"} pt-2`}>
+      <div id="phong" className="home-list-heading mx-auto mb-3 flex max-w-[1800px] flex-wrap items-end justify-between gap-2 px-1 sm:px-2">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#c9a46a]">The Room SG</p>
           <h2 className="mt-0.5 text-lg font-semibold text-[#f3e7d6] sm:text-xl">{title}</h2>
         </div>
-        {typeof total === "number" ? <span className="shrink-0 rounded-full border border-[#c9a46a]/30 bg-[#c9a46a]/10 px-3 py-1.5 text-xs font-semibold text-[#f3e7d6]">Tổng {total.toLocaleString("vi-VN")} phòng</span> : null}
+        {onResetAll ? <button type="button" className="home-reset-filters" disabled={loading} onClick={onResetAll}>Xóa bộ lọc</button> : null}
+        {typeof total === "number" ? <span className="home-list-total shrink-0 rounded-full border border-[#c9a46a]/30 bg-[#c9a46a]/10 px-3 py-1.5 text-xs font-semibold text-[#f3e7d6]">Tổng {total.toLocaleString("vi-VN")} phòng</span> : null}
       </div>
       {isRefreshing && hasRooms && (
         <div className="mb-3 rounded-[15px] border border-[rgba(197,165,130,0.16)] bg-[rgba(45,27,20,0.35)] px-4 py-2 text-sm text-[#A0856E] backdrop-blur-[20px]">

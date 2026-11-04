@@ -23,7 +23,7 @@ async function main() {
       window.finish=(i,data,status)=>window.pending[i].finish(data,status);
       const mainRoom={id:excluded,house_number:'257/17',room_code:'MAIN',room_type:'Studio',address:'Đường mẫu',district:'Quận 1',price:7000000,status:'Đang trống',updated_at:'2026-11-03',room_detail:{has_window:true},image_urls:[]};
       const mainRooms=Array.from({length:20},(_,i)=>({...mainRoom,house_number:i===1?'123':mainRoom.house_number,id:i===0?excluded:'00000000-0000-4000-8000-'+String(100+i).padStart(12,'0')}));
-      function App(){const[filters,setFilters]=useState(base);const[level,setLevel]=useState(0);const navigate=href=>window.navigations.push(href);return <div className='home-redesign'>
+      function App(){const[filters,setFilters]=useState(base);const[level,setLevel]=useState(0);const navigate=href=>window.navigations.push(href);return <div className='home-redesign pb-32'>
         <nav style={{position:'fixed',top:0,left:0,right:0,maxWidth:'100%',display:'flex',flexWrap:'wrap',zIndex:99999,background:'white',padding:8}}>
           <button onClick={()=>setFilters({...base,districts:['Quận 1'],priceFilterActive:true,minPrice:5000000,maxPrice:7000000})}>Quận 1 giá 5–7</button>
           <button onClick={()=>setFilters({...base,districts:['Quận 3']})}>Quận 3</button>
@@ -31,8 +31,8 @@ async function main() {
           <button onClick={()=>setFilters(base)}>Xóa bộ lọc</button>
           <button onClick={()=>setLevel(1)}>Admin L1</button><button onClick={()=>setLevel(2)}>Admin L2</button><button onClick={()=>setLevel(0)}>Anon</button>
         </nav><div style={{paddingTop:100}}/><RoomList fetchError='' showSkeleton={false} roomsToRender={mainRooms} adminLevel={level} currentUserId={level?'verified-user':null}
-          pageIndex={0} loading={false} hasNext={true} goPrev={()=>{}} goNext={()=>{}} onNavigate={navigate} total={100}/>
-        <div style={{height:2800}}>Danh sách chính · Tổng 100 phòng · Trang 1</div>
+          pageIndex={0} loading={false} hasNext={true} goPrev={()=>{}} goNext={()=>{}} onNavigate={navigate} total={100} hasRecommendations/>
+
         <Recommendations filters={filters} excludeIds={[excluded]} adminLevel={level} currentUserId={level?'verified-user':null} onNavigate={navigate}/>
         <footer style={{position:'fixed',bottom:0,width:'100%',height:70,background:'#ddd'}}>Trước · Cần Tư Vấn · Sau</footer>
       </div>};createRoot(document.getElementById('root')).render(<App/>);
@@ -79,10 +79,10 @@ async function main() {
     await page.waitForTimeout(150);assert.equal(await calls(),0);
     await page.getByRole('button',{name:'Quận 1 giá 5–7',exact:true}).click();await page.waitForTimeout(200);assert.equal(await calls(),0,'not loaded above lazy boundary');
     await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForFunction(()=>(window as any).calls.length===1);
-    await page.evaluate(data=>(window as any).finish(0,data),[fixture(1),fixture(2),fixture(2),fixture(3),...Array.from({length:8},(_,i)=>fixture(i+4))]);
-    const section=page.getByRole('region',{name:'✨ Đề xuất phòng phù hợp với bạn'});await section.waitFor();
+    await page.evaluate(data=>(window as any).finish(0,data),[fixture(1),fixture(2),fixture(2),fixture(3),...Array.from({length:25},(_,i)=>fixture(i+4))]);
+    const section=page.getByRole('region',{name:/Đề xuất thêm phòng phù hợp/});await section.waitFor();
     await section.getByText('Khoảng giá: 5.000.000 – 9.000.000đ',{exact:true}).waitFor();
-    assert.equal(await section.locator('.home-room-card').count(),10,'excluded and duplicate IDs removed; ten cards maximum');
+    assert.equal(await section.locator('.home-room-card').count(),20,'excluded and duplicate IDs removed; twenty cards maximum');
     assert.equal(await section.locator('.home-room-address').nth(1).innerText(),await page.locator('.home-room-list .home-room-address').nth(1).innerText(),'numeric house masks match the main list without double-masking');
     await page.waitForFunction(()=>document.querySelector('.home-room-recommendations [data-match-list-card="true"]'));
     await compareCards();
@@ -91,6 +91,17 @@ async function main() {
     await page.waitForFunction(()=>{const e=document.querySelector('[data-match-list-card="true"]');return e&&e.scrollLeft>100});
     await section.getByRole('button',{name:'Cuộn đề xuất sang trái',exact:true}).click();
     await page.waitForFunction(()=>{const e=document.querySelector('[data-match-list-card="true"]');return e&&e.scrollLeft<1});
+    await rail.evaluate(e=>{e.scrollLeft=0});
+    await rail.evaluate(e=>e.scrollIntoView({block:'center'}));
+    const dragBox=await rail.boundingBox();assert(dragBox);
+    const beforeDrag=await page.evaluate(()=>(window as any).navigations.length);
+    await page.mouse.move(dragBox.x+Math.min(600,dragBox.width-20),dragBox.y+70);await page.mouse.down();
+    await page.mouse.move(dragBox.x+30,dragBox.y+70,{steps:12});await page.mouse.up();
+    assert(await rail.evaluate(e=>e.scrollLeft)>50,'dragging directly on a card scrolls the recommendation rail');
+    assert.equal(await page.evaluate(()=>(window as any).navigations.length),beforeDrag,'drag must not open a room');
+    assert.equal(await section.evaluate(e=>getComputedStyle(e).boxShadow),'none','outer frame removed');
+    const gap=await section.evaluate(e=>{const list=document.querySelector('.home-room-list .grid');const cards=list?.children;const bottom=cards?.length?cards[cards.length-1].getBoundingClientRect().bottom:0;return e.getBoundingClientRect().top-bottom});
+    assert(gap<50,'recommendations sit close to the last main card row');
     await rail.focus();await page.keyboard.press('ArrowRight');
     await page.waitForFunction(()=>{const e=document.querySelector('[data-match-list-card="true"]');return e&&e.scrollLeft>0});
     await rail.evaluate(e=>{e.scrollLeft=0});
@@ -102,7 +113,7 @@ async function main() {
     await section.getByRole('button',{name:'Liên hệ',exact:true}).first().click();await page.locator('a[href="tel:0967467587"]').first().waitFor();
     await page.locator('div.fixed.inset-0').last().click({position:{x:4,y:100}});await page.locator('a[href="tel:0967467587"]').first().waitFor({state:'detached'});
     await section.getByRole('button',{name:/Đi xem\/Tư vấn/}).first().click();await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'Đóng',exact:true}).click();
-    assert.equal(await page.getByText('Danh sách chính · Tổng 100 phòng · Trang 1',{exact:true}).count(),1);
+    assert.equal(await page.getByText('Tổng 100 phòng',{exact:true}).count(),1);
     await section.screenshot({path:path.join(directory,'desktop.png')});
     await page.setViewportSize({width:1920,height:1080});await page.waitForTimeout(100);await compareCards();
     await page.setViewportSize({width:375,height:844});await page.waitForTimeout(100);await compareCards();

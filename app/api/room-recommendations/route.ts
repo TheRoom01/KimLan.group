@@ -22,8 +22,17 @@ export async function POST(request: Request) {
     // Service-role-only INVOKER RPC returns an explicit public projection.
     // No service key, caller-supplied role or private room record reaches the browser.
     const server = createSupabaseAdminClient();
+    const viewer = await createSupabaseServerClient();
+    // Derive list search semantics from the signed session, never request data.
+    const { data: { user }, error: authError } = await viewer.auth.getUser();
+    let viewerIsAdmin = false;
+    if (!authError && user) {
+      const { data: level, error: levelError } = await viewer.rpc("get_my_admin_level");
+      if (levelError) throw new Error("Cannot verify recommendation viewer");
+      viewerIsAdmin = Number(level) === 1 || Number(level) === 2;
+    }
     const { data, error } = await server
-      .rpc("fetch_room_recommendations_v1", recommendationRpcParams(parsed.filters, parsed.excludeIds))
+      .rpc("fetch_room_recommendations_v2", recommendationRpcParams(parsed.filters, parsed.excludeIds, viewerIsAdmin))
       .abortSignal(request.signal);
     if (error) {
       if (error.code === "PGRST202" || error.code === "42883") {
@@ -32,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Chưa tải được phòng đề xuất" }, { status: 502, headers });
     }
     const rooms = Array.isArray(data) ? data as RecommendedRoom[] : [];
-    const visibleRooms = rooms.length ? await recommendationRoomsForViewer(rooms, await createSupabaseServerClient(), server) : rooms;
+    const visibleRooms = rooms.length ? await recommendationRoomsForViewer(rooms, viewer, server) : rooms;
     return NextResponse.json({ data: visibleRooms }, { headers });
   } catch {
     return NextResponse.json({ error: "Chưa tải được phòng đề xuất" }, { status: 503, headers });

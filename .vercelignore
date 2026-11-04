@@ -45,3 +45,4 @@ tools/zalo-reader/state.json
 *.zip
 kimlan-semantic-parser-fix-v4-cumulative/
 tsconfig.tsbuildinfo
+.cache/

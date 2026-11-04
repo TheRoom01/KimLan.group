@@ -499,6 +499,7 @@ const handleSendReset = async () => {
       ? createPortal(
           <div
               ref={menuRef}
+              data-public-auth-menu="true"
               className="
                 fixed z-[9999]
                 max-h-[72vh] overflow-y-auto

@@ -20,7 +20,7 @@ async function main() {
       create table rooms(id uuid primary key,property_id uuid,owner_id uuid,room_code text,room_type text,house_number text,address text,ward text,district text,
         price bigint,status text,description text,created_at timestamptz,updated_at timestamptz,gallery_urls jsonb,
         lifecycle_status text default 'active',publish_status text default 'published',is_hidden boolean default false,
-        badges text[] default '{}',available_from date,search_public_address_text text,link_zalo text,zalo_phone text,chinh_sach text);
+        badges text[] default '{}',available_from date,search_public_address_text text,search_address_text text,link_zalo text,zalo_phone text,chinh_sach text);
       create table room_details(${detail});
       create table admin_users(user_id uuid primary key,phone text,full_name text);
       create table room_media(id uuid,room_id uuid,type text,url text,is_cover bool,sort_order int,created_at timestamptz);
@@ -29,6 +29,8 @@ async function main() {
     await db.exec(`create view public.room_full_public as ${schema.view}`);
     const migration = fs.readdirSync("supabase/migrations").find(name => name.endsWith("_room_recommendations.sql"))!;
     await db.exec(fs.readFileSync(path.join("supabase/migrations", migration), "utf8"));
+    const v2Migration=fs.readdirSync("supabase/migrations").find(name=>name.endsWith("_room_recommendations_final_page_exclusion.sql"))!;
+    await db.exec(fs.readFileSync(path.join("supabase/migrations",v2Migration),"utf8"));
     const near = randomUUID(), far = randomUUID(), missing = randomUUID(), unapproved = randomUUID();
     for (const [id,lat,lng,approval] of [[near,10.7626,106.6819,"approved"],[far,10.8626,106.7819,"approved"],[missing,null,null,"approved"],[unapproved,10.7626,106.6819,"pending"]]) {
       await db.query("insert into properties values($1,'P','Fixture',$4,'active',$2,$3)",[id,lat,lng,approval]);
@@ -94,6 +96,23 @@ async function main() {
     await db.exec("grant usage on schema public,extensions to service_role;grant select on all tables in schema public to service_role;alter table rooms enable row level security;set role service_role;");
     assert((await fetch({min:5e6,max:9e6})).length>0);
     await db.exec("reset role;set role anon");await assert.rejects(()=>fetch(),/permission denied/);await db.exec("reset role");
+    // All 50 matches must be excluded, even when only the last 20 IDs are sent.
+    const matching:string[]=[];
+    for(let n=0;n<50;n++)matching.push(await add('MATCH-'+n,near,6e6,'Quận 7'));
+    for(let n=0;n<25;n++)await add('EXTRA-'+n,near,8e6,'Quận 7');
+    const mainFilters={search:null,includeHouse:false,minPrice:5e6 as number|null,maxPrice:7e6 as number|null,districts:['Quận 7'],roomTypes:[],move:null,petPolicies:[],contractTerms:[],statuses:[]};
+    const v2=async(main=mainFilters)=> (await db.query(`select fetch_room_recommendations_v2(p_min_price=>5000000,p_max_price=>9000000,p_districts=>array['Quận 7'],p_exclude_ids=>$1,p_main_filters=>$2::jsonb) as data`,[matching.slice(30),JSON.stringify(main)])).rows[0].data as Array<{id:string;price:number}>;
+    const outside=await v2();assert.equal(outside.length,20);assert(outside.every(row=>!matching.includes(row.id)&&Number(row.price)===8e6));
+    assert.equal((await v2({...mainFilters,maxPrice:9e6})).length,0,'all candidate prices already match the original filter');
+    assert.equal((await v2({...mainFilters,minPrice:null,maxPrice:null})).length,0,'district-only results must not reappear as recommendations');
+    const aliasId=await add('ALIAS',near,6e6,'7');
+    const aliasResult=(await db.query(`select fetch_room_recommendations_v2(p_min_price=>5000000,p_max_price=>7000000,p_districts=>array['Quận 7','7'],p_main_filters=>$1::jsonb) as data`,[JSON.stringify(mainFilters)])).rows[0].data;
+    assert.deepEqual(aliasResult.map((row:{id:string})=>row.id),[aliasId],'original district aliases must not be broadened when testing membership');
+    await db.exec("update rooms set search_address_text=public.norm_room_search_text(concat_ws(' ',house_number,address,ward,district))");
+    const privateMiss=(await db.query(`select fetch_room_recommendations_v2(p_min_price=>5000000,p_max_price=>7000000,p_districts=>array['Quận 7'],p_main_filters=>$1::jsonb) as data`,[JSON.stringify({...mainFilters,search:'999/1 Phan Xích Long',includeHouse:true})])).rows[0].data;
+    assert.equal(privateMiss.length,0,'Home fuzzy admin address matching still includes this street; those matches must remain excluded');
+    await db.exec('set role anon');await assert.rejects(()=>v2(),/permission denied/);await db.exec('reset role');
+    console.log('Recommendation v2: 50 full-filter matches excluded before LIMIT, 20 outside matches, no-price filter, service-only permissions PASS');
     // Query shape at the requested scale, using disposable PostgreSQL only.
     await db.query(`insert into rooms(id,property_id,room_code,room_type,price,status,address,district,created_at,updated_at,search_public_address_text)
       select gen_random_uuid(),$1,'LOAD-'||n,'Studio',6000000,'Đang trống','Phan Xích Long','Quận 1',now(),now()-n*interval '1 second','phan xích long'

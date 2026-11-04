@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 import FilterBar, { SortMode } from "@/components/FilterBar";
 import { trackVisitorEvent } from "@/lib/analytics/client";
 import RoomList from "@/components/RoomList";
@@ -14,12 +15,12 @@ import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
 import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
-import AdminNotificationCenter from "@/components/admin/AdminNotificationCenter";
+import HeaderNotifications from "@/components/HeaderNotifications";
 import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 import { getSavedRoomIds } from "@/lib/savedRooms";
 import { normalizeRoomFeatures, matchesRoomFeatures, type RoomFeature } from "@/lib/rooms/features";
 import { roomMatchesSearch, normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
-import { hasRecommendationFilters, ROOM_RECOMMENDATIONS_ENABLED, type RecommendationFilters } from "@/lib/rooms/recommendations";
+import { hasRecommendationFilters, isLastRecommendationPage, ROOM_RECOMMENDATIONS_ENABLED, type RecommendationFilters } from "@/lib/rooms/recommendations";
 
 const RoomInquiryModal = dynamic(() => import("@/components/rooms/RoomInquiryModal"), { ssr: false });
 const RoomRecommendations = dynamic(() => import("@/components/rooms/RoomRecommendations"));
@@ -334,7 +335,7 @@ const HomeClient = ({
       delete document.documentElement.dataset.homeHydrated;
     };
   }, []);
-  
+
 
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const listQsRef = useRef<string>("");        // qs ổn định của list
@@ -351,7 +352,7 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
   const replaceStateLastTsRef = useRef(0);
   const replaceStateTimerRef = useRef<number | null>(null);
 
- 
+
 
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
@@ -370,9 +371,9 @@ const vipTimerRef = useRef<number | null>(null);
 
 const [vipAdminPhone, setVipAdminPhone] = useState<string | null>(null);
 const [vipAdminName, setVipAdminName] = useState<string | null>(null);
- 
+
   // ================== FILTER ==================
-  
+
     const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
   const [priceApplied, setPriceApplied] = useState<[number, number]>(PRICE_DEFAULT);
   const [priceFilterActive, setPriceFilterActive] = useState(false);
@@ -433,7 +434,7 @@ const [featureFilters, setFeatureFilters] = useState<RoomFeature[]>([]);
   lastFilterSigRef.current = sig;
   prevAppliedSearchRef.current = next.search.trim();
 }, []);
-  
+
   //-----------------appliedSearch------------
   const [search, setSearch] = useState("");
 
@@ -633,7 +634,7 @@ useEffect(() => {
 
       const msLeft = expiresAtMs - Date.now();
       clearVipTimer();
-      
+
       vipTimerRef.current = window.setTimeout(() => {
         localStorage.removeItem(VIP_ACCESS_KEY);
         clearVipAccess();
@@ -885,7 +886,7 @@ if (dirty) {
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
-  
+
   // ✅ skip FILTER CHANGE mỗi khi ta "hydrate state" (initial / popstate / restore)
   const skipNextFilterEffectRef = useRef(false);
 
@@ -908,7 +909,7 @@ const makeListKey = useCallback(() => {
   return qs ? `${pathname}?${qs}` : pathname;
 }, [pathname]);
 
-const saveScrollToHistory = useCallback(() => {
+const saveScrollToHistory = useCallback((immediate = false) => {
   const el = scrollRef.current;
   if (!el) return;
 
@@ -939,7 +940,7 @@ const saveScrollToHistory = useCallback(() => {
   };
 
   // Nếu gọi quá dày, gộp lại thành 1 lần
-  if (now - replaceStateLastTsRef.current < MIN_INTERVAL_MS) {
+  if (!immediate && now - replaceStateLastTsRef.current < MIN_INTERVAL_MS) {
     if (replaceStateTimerRef.current) return;
 
     replaceStateTimerRef.current = window.setTimeout(() => {
@@ -950,6 +951,10 @@ const saveScrollToHistory = useCallback(() => {
     return;
   }
 
+  if (replaceStateTimerRef.current) {
+    clearTimeout(replaceStateTimerRef.current);
+    replaceStateTimerRef.current = null;
+  }
   doReplace();
 
 }, [makeListKey]);
@@ -1042,6 +1047,9 @@ const persistBlockedRef = useRef(false);
   );
   const visibleRooms = isSavedView ? savedPageRooms : roomsToRender;
   const visibleHasNext = isSavedView ? savedPageIndex + 1 < savedPageCount : hasNext;
+  const showRecommendations = ROOM_RECOMMENDATIONS_ENABLED && hasRecommendationFilters(recommendationFilters)
+    && !isSavedView && !loading && !isRefreshing && !showSkeleton && !fetchError && search === appliedSearch
+    && isLastRecommendationPage(pageIndex, displayPageIndex, total, visibleHasNext, LIMIT);
 
   useEffect(() => {
     if (!isSavedView) return;
@@ -1565,6 +1573,22 @@ debugSetItem(HOME_STATE_KEY, JSON.stringify(payload));
   });
 }, [persistNow]);
 
+// Persist list data on data/filter changes; scroll only saves the small state.
+// Existing cache formats and navigation snapshots remain the source of restore.
+useEffect(() => {
+  persistSoon();
+}, [pages, persistSoon]);
+
+// Keep navigation's callback stable for memoized cards while using the latest
+// filter/data snapshot when the user actually opens a room.
+const captureNavigationSnapshotRef = useRef(() => {});
+useLayoutEffect(() => {
+  captureNavigationSnapshotRef.current = () => {
+    writeBackSnapshotNow();
+    persistNow();
+  };
+}, [writeBackSnapshotNow, persistNow]);
+
 // save on unmount
 useEffect(() => {
   return () => {
@@ -1636,8 +1660,8 @@ const onNavToDetailCapture = useCallback(
     const el = scrollRef.current;
     if (el) lastScrollTopRef.current = el.scrollTop;
 
-    // ✅ lưu scroll vào history state của entry hiện tại (để popstate restore ổn định)
-    saveScrollToHistory();
+    // Flush the exact position before leaving, including a pending throttle.
+    saveScrollToHistory(true);
 
     writeBackSnapshotNow();
    }
@@ -1802,7 +1826,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
   ]
 );
  // ================== HYDRATE (ONCE) ==================
-useEffect(() => {
+useLayoutEffect(() => {
   if (didHydrateOnceRef.current) return;
   didHydrateOnceRef.current = true;
   // ✅ chặn FILTER CHANGE effect chạy ngay sau hydrate
@@ -1870,7 +1894,7 @@ if ((!url.qs || url.qs.length === 0) && backHint?.qs) {
     });
   });
 }
-  
+
 // Home mặc định dùng luôn dữ liệu SSR. Cache/invalidation phía server chịu
 // trách nhiệm về độ mới; không xóa UI rồi gọi lại đúng RPC sau hydration.
 if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
@@ -1950,7 +1974,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
       return;
     }
   }
-} 
+}
 
     // 2) try restore from sessionStorage (match qs)
   let restored: PersistState | null = null;
@@ -2309,7 +2333,7 @@ useEffect(() => {
     const snap = readBackSnapshot();
     if (snap) {
       applyBackSnapshot(snap);
-      didApplyBackOnceRef.current = true;   
+      didApplyBackOnceRef.current = true;
 
       try {
         sessionStorage.removeItem(HOME_BACK_SNAPSHOT_KEY);
@@ -2508,7 +2532,7 @@ queueMicrotask(() => {
 });
 
     fetchPageRef.current(url.nextPage);
-    didApplyBackOnceRef.current = true; 
+    didApplyBackOnceRef.current = true;
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -2708,7 +2732,7 @@ const lastRows = debugRows.slice(-5);
 cursorsRef.current[targetIndex + 1] = res.nextCursor ?? null;
 
 const nextHasNext = Boolean(res.nextCursor) && deduped.length === LIMIT;
-setHasNext(nextHasNext);
+if (targetIndex === pageIndexRef.current) setHasNext(nextHasNext);
 
 // ✅ DEBUG PAGINATION RESULT
 if (debugEnabled) {
@@ -2753,7 +2777,7 @@ if (targetIndex === pageIndexRef.current) {
       // ❌ đừng prefetch khi vừa reset/filter
      if (targetIndex !== pageIndexRef.current) return;
       const shouldPrefetch = Boolean(res.nextCursor) && deduped.length === LIMIT;
-      
+
       if (shouldPrefetch) {
         const nextIdx = targetIndex + 1;
 
@@ -2822,22 +2846,18 @@ if (targetIndex === pageIndexRef.current) {
    fetchPageRef.current = fetchPage;
     }, [fetchPage]);
 
-    // ================== APPLY PENDING SCROLL (after render) ==================
-useEffect(() => {
+    // Apply cached scroll after DOM layout, before paint: no visible frame at 0
+    // on a remount. Keep it pending while a fallback page is still loading.
+useLayoutEffect(() => {
   const st = pendingScrollTopRef.current;
   if (st == null) return;
 
   const el = scrollRef.current;
   if (!el) return;
-
-  // chờ layout ổn định (list render xong + skeleton tắt)
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      el.scrollTop = st;
-      lastScrollTopRef.current = st;
-      pendingScrollTopRef.current = null;
-    });
-  });
+  if (loading || showSkeleton) return;
+  el.scrollTop = st;
+  lastScrollTopRef.current = st;
+  pendingScrollTopRef.current = null;
 }, [
   displayPageIndex,
   roomsToRender.length,
@@ -2880,6 +2900,7 @@ useEffect(() => {
     if (!el) return;
 
     let raf = 0;
+    let positionTimer = 0;
     const onScroll = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
@@ -2889,7 +2910,11 @@ useEffect(() => {
         // ✅ update history scroll (throttle theo raf)
         saveScrollToHistory();
 
-        persistSoon();
+        // No pages serialization or full list writes while scrolling.
+        if (!positionTimer) positionTimer = window.setTimeout(() => {
+          positionTimer = 0;
+          writeLiteNow();
+        }, 200);
       });
     };
 
@@ -2897,8 +2922,9 @@ useEffect(() => {
     return () => {
       el.removeEventListener("scroll", onScroll);
       if (raf) cancelAnimationFrame(raf);
+      if (positionTimer) clearTimeout(positionTimer);
     };
-}, [persistSoon, saveScrollToHistory]);
+}, [writeLiteNow, saveScrollToHistory]);
 
 const resetAllFiltersAndReload = useCallback(() => {
   if (filterApplyTimerRef.current) {
@@ -3429,7 +3455,9 @@ const handleNavigateToRoom = useCallback((href: string) => {
     lastPageIndexRef.current = pageIndex;
     lastDisplayPageIndexRef.current = displayPageIndex;
 
-    saveScrollToHistory();
+    saveScrollToHistory(true);
+    // Keyboard and programmatic Link activation also need an exact snapshot.
+    captureNavigationSnapshotRef.current();
     const qsRaw = window.location.search.replace(/^\?/, "");
     const qsCanonical = canonicalQs(qsRaw);
 
@@ -3503,7 +3531,7 @@ const handleGoPrev = isSavedView ? () => goToSavedPage(savedPageIndex - 1) : goP
 return (
   <div className="home-redesign relative flex h-screen flex-col overflow-hidden bg-[#241206] text-[#F3E7D6]">
     {/* BACKGROUND FIXED TOÀN MÀN HÌNH */}
-    <div className="fixed inset-0 z-0 pointer-events-none">
+    <div className="home-background fixed inset-0 z-0 pointer-events-none">
       <img
         src="/bg-glass.jpg"
         alt=""
@@ -3534,7 +3562,8 @@ return (
           <div className="flex min-w-0 items-center gap-2 md:gap-3">
             <LogoIntroButton logoSrc="/logo-ui.webp" />
 
-            <div className="min-w-0 leading-tight text-[#E5C9A9] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+            <ThemeToggle />
+            <div className="home-brand-copy min-w-0 leading-tight text-[#E5C9A9] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
               <div className="truncate text-base font-semibold md:text-xl">
                 The Room SG
               </div>
@@ -3545,7 +3574,7 @@ return (
           </div>
 
     {/* RIGHT: ACCOUNT */}
-        <div className="relative z-[3000] flex shrink-0 items-center gap-2 whitespace-nowrap">
+        <div className="home-header-actions relative z-[3000] flex shrink-0 items-center gap-2 whitespace-nowrap">
           <button
             type="button"
             onClick={toggleSavedView}
@@ -3571,7 +3600,7 @@ return (
               shadow-[0_10px_26px_rgba(0,0,0,0.35)]
             "
           />
-          {currentUserId && (adminLevel === 1 || adminLevel === 2) ? <AdminNotificationCenter /> : null}
+          <HeaderNotifications signedIn={!!currentUserId} adminLevel={adminLevel} />
         </div>
 
         </div>
@@ -3625,7 +3654,6 @@ return (
               sortMode={sortMode}
               setSortMode={setSortMode}
               total={total}
-              onResetAll={resetAllFiltersAndReload}
             />
       </div>
           {debugEnabled && pageDebug && (
@@ -3751,7 +3779,7 @@ return (
           </div>
         </div>
       )}
-      
+
         <RoomList
           fetchError={isSavedView ? savedRoomsError : fetchError}
           showSkeleton={isSavedView ? savedRoomsLoading : showSkeleton}
@@ -3771,6 +3799,8 @@ return (
           title={isSavedView ? "Phòng đã lưu" : "Phòng phù hợp"}
           total={typeof total === "number" ? total : undefined}
           stableCardWidth={isSavedView}
+          hasRecommendations={showRecommendations}
+          onResetAll={resetAllFiltersAndReload}
           emptyMessage={isSavedView && savedRoomIds.length === 0
             ? "Bạn chưa lưu phòng nào."
             : isSavedView
@@ -3782,7 +3812,7 @@ return (
             </button>
           ) : null}
         />
-        {ROOM_RECOMMENDATIONS_ENABLED && hasRecommendationFilters(recommendationFilters) && !isSavedView && !loading && !isRefreshing && !showSkeleton && !fetchError && search === appliedSearch && (
+        {showRecommendations && (
           <RoomRecommendations
             filters={recommendationFilters}
             excludeIds={visibleRooms.map(room => String(room.id))}
@@ -3791,7 +3821,7 @@ return (
             onNavigate={handleNavigateToRoom} openingRoomId={openingRoomId}
           />
         )}
-     
+
     </div>
 
     <div
