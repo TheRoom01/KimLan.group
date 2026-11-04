@@ -3,7 +3,7 @@
 import { roomStatusLabel } from "@/lib/rooms/availability";
 import { canOptimizeRoomCardImage } from "@/lib/rooms/cardImages";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
-import Image from "next/image";
+import RoomCardImage from "@/components/rooms/RoomCardImage";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Fragment, memo, useEffect, useMemo, useState } from "react";
@@ -459,9 +459,10 @@ const contactName = isLoggedAdmin
   // 0: đang dùng thumb chính
   // 1: fallback sang thumb_url / ảnh đầu
   // 2: fallback sang video_url hoặc no-image
-  const [mainErrorStage, setMainErrorStage] = useState<0 | 1 | 2>(0);
-  const [sub1Ok, setSub1Ok] = useState(true);
-  const [sub2Ok, setSub2Ok] = useState(true);
+  const [mainImageFailure, setMainImageFailure] = useState<{ primary: string; fallback: string; stage: 1 | 2 } | null>(null);
+  const mainErrorStage = mainImageFailure?.primary === mainPrimary && mainImageFailure.fallback === mainFallback1 ? mainImageFailure.stage : 0;
+  const [failedSub1, setFailedSub1] = useState<string | null>(null);
+  const [failedSub2, setFailedSub2] = useState<string | null>(null);
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
   const adminPhones = useMemo(
     () => extractContactPhones(adminPhone),
@@ -497,8 +498,8 @@ useEffect(() => {
       ? mainFallback1
       : FALLBACK;
 
-  const sub1Src = sub1Ok ? subImage1 : FALLBACK;
-  const sub2Src = sub2Ok ? subImage2 : FALLBACK;
+  const sub1Src = failedSub1 === subImage1 ? FALLBACK : subImage1;
+  const sub2Src = failedSub2 === subImage2 ? FALLBACK : subImage2;
 
   const price =
     (room as any).price ??
@@ -1187,7 +1188,7 @@ return (
                   preload="metadata"
                 />
               ) : (
-                <Image
+                <RoomCardImage
                   src={mainSrc}
                   alt={room.room_type ?? "Hình phòng"}
                   fill
@@ -1198,7 +1199,10 @@ return (
                   loading={index === 0 ? "eager" : "lazy"}
                   unoptimized={!canOptimizeRoomCardImage(mainSrc)}
                   onError={() => {
-                    setMainErrorStage((s) => (s < 2 ? ((s + 1) as 0 | 1 | 2) : 2));
+                    setMainImageFailure(previous => {
+                      if (mainErrorStage === 2) return previous;
+                      return { primary: mainPrimary, fallback: mainFallback1, stage: mainErrorStage === 0 && mainFallback1 !== mainPrimary ? 1 : 2 };
+                    });
                   }}
                 />
               )}
@@ -1218,7 +1222,7 @@ return (
             <div className="grid grid-rows-2 gap-1 relative h-full">
               {showImages[1] && (
                 <div className="relative w-full h-full overflow-hidden">
-                  <Image
+                  <RoomCardImage
                     src={sub1Src}
                     alt={
                       room.room_code
@@ -1229,21 +1233,21 @@ return (
                     sizes="auto, 720px"
                     className="object-cover"
                     unoptimized={!canOptimizeRoomCardImage(sub1Src)}
-                    onError={() => setSub1Ok(false)}
+                    onError={() => setFailedSub1(subImage1)}
                   />
                 </div>
               )}
 
               {showImages[2] && (
                 <div className="relative w-full h-full">
-                  <Image
+                  <RoomCardImage
                     src={sub2Src}
                     alt={room.room_type ?? "Hình phòng"}
                     fill
                     sizes="auto, 720px"
                     className="object-cover"
                     unoptimized={!canOptimizeRoomCardImage(sub2Src)}
-                    onError={() => setSub2Ok(false)}
+                    onError={() => setFailedSub2(subImage2)}
                   />
 
                   <div className="absolute inset-0 bg-black/30" />

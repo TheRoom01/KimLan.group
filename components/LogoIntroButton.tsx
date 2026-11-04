@@ -22,6 +22,7 @@ export default function LogoIntroButton({ logoSrc = "/logo-ui.webp" }: Props) {
      {/* Cụm thương hiệu: LOGO */}
       <Image
         src={logoSrc}
+        unoptimized
         alt="Logo"
         width={56}
         height={56}

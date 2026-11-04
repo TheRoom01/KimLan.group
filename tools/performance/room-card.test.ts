@@ -15,10 +15,11 @@ declare global {
 }
 
 async function main() {
-  assert.equal(canOptimizeRoomCardImage('https://cdn.canhodichvu.pro/a.webp'), true);
+  assert.equal(canOptimizeRoomCardImage('https://cdn.canhodichvu.pro/a.webp'), false);
+  assert.equal(canOptimizeRoomCardImage('https://cdn.canhodichvu.pro/a.webp', true), true);
   assert.equal(canOptimizeRoomCardImage('https://unknown-legacy.example/a.webp'), false);
   assert.equal(canOptimizeRoomCardImage('//unknown-legacy.example/a.webp'), false);
-  assert.equal(canOptimizeRoomCardImage('/no-image.webp'), true);
+  assert.equal(canOptimizeRoomCardImage('/no-image.webp', true), false);
   const root = process.cwd(); const output = path.join(root, '.cache/room-list-performance');
   fs.mkdirSync(output, { recursive: true });
   const baseline = process.argv.includes('--baseline'); const label = baseline ? 'main' : 'optimized';
@@ -77,10 +78,8 @@ async function main() {
     const measured = await page.evaluate(()=>window.measurements);
     if (!baseline) { assert.equal(measured.characters,0); assert.ok(measured.lines>0); }
     assert.equal(images.length,3,'three source images remain in order');
-    if (!baseline) for (let i=0;i<images.length;i++) { assert.ok(images[i].srcSet);assert.ok(String(images[i].src).includes(encodeURIComponent(room.image_urls[i])));assert.equal(images[i].decoding,'async'); }
-    if (!baseline) for (const image of images.slice(1)) {
-      assert.ok(Number(new URL(image.currentSrc).searchParams.get('w')) <= 384,'lazy image uses its layout width instead of the original 1024px');
-    }
+    if (!baseline) for (let i=0;i<images.length;i++) { assert.equal(images[i].srcSet,null);assert.equal(images[i].src,room.image_urls[i]);assert.equal(images[i].decoding,'async'); }
+    if (!baseline) images.forEach((image,index)=>assert.equal(image.loading,index===0?'eager':'lazy'));
     const report = {label,positions,measurements:measured,imageAttributes:images.map(({src,srcSet,sizes,loading,decoding})=>({src,srcSet,sizes,loading,decoding}))};
     fs.writeFileSync(path.join(output,`${label}-card.json`),JSON.stringify(report,null,2));
     if (!baseline && fs.existsSync(path.join(output,'main-card.json'))) {
@@ -89,7 +88,7 @@ async function main() {
     }
     await page.screenshot({path:path.join(output,`${label}-card.png`)});
     console.log(JSON.stringify({label,measurements:measured,positions}));
-    console.log('RoomCard: copy full address, short/clamped address at three widths, equivalent button position, responsive image order and legacy hosts PASS (offline)');
+    console.log('RoomCard: copy full address, short/clamped address at three widths, equivalent button position, direct CDN image order, lazy decoding and legacy hosts PASS (offline)');
   } finally { await browser.close(); }
 }
 main().catch(error=>{console.error(error);process.exitCode=1});
