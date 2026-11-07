@@ -8,7 +8,7 @@ async function main() {
     window.control={desired_enabled:null,actual_enabled:false,request_id:null,applied_request_id:null,heartbeat_at:new Date().toISOString(),last_error:null};
     window.sent=[];window.fail=false;window.setInterval=fn=>{window.refresh=fn;return 1};window.clearInterval=()=>{};
     window.fetch=async(url,options={})=>{if(options.method==='POST'){if(window.fail)return{ok:false,json:async()=>({ok:false,error:'Mất kết nối API'})};const body=JSON.parse(options.body);if(body.action==='open_zalo'){window.control={...window.control,open_request_id:'open-'+Date.now()};}else{window.sent.push(body.enabled);window.control={...window.control,desired_enabled:body.enabled,request_id:'command-'+window.sent.length};}}return{ok:true,json:async()=>({ok:true,control:{...window.control}})}};
-    createRoot(document.getElementById('root')).render(<Controls/>);`, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", define: { "process.env.NODE_ENV": '"development"' } });
+    createRoot(document.getElementById('root')).render(<Controls reportOpen={false} onToggleReport={()=>{}}/>);`, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", define: { "process.env.NODE_ENV": '"development"' } });
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });

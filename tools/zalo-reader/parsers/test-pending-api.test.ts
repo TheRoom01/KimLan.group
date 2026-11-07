@@ -10,13 +10,13 @@ import { normalizedRoomIdentity } from "../../../lib/zalo-import/room-comparison
 import { parseZaloRoomText } from "../../../lib/zalo-import/parser";
 import { resolveZaloImportRoom } from "../../../lib/zalo-import/resolve";
 import { findImportBaseline, assessIncomingChange } from "../../../lib/zalo-import/incoming-change";
-import { CONTROLLED_ZALO_GROUP_ID, CONTROLLED_ZALO_GROUP_NAME, isControlledZaloTarget, shouldAutoPublishZaloImport, makeTestPendingIdentity } from "../../../lib/zalo-reader/controlled-staging";
+import { CONTROLLED_ZALO_GROUP_ID, CONTROLLED_ZALO_GROUP_NAME, isControlledZaloTarget, makeTestPendingIdentity } from "../../../lib/zalo-reader/controlled-staging";
 
 // Execute the real handler with in-memory DB/Storage substitutes: no network or credentials.
 async function main() {
   const tables: Record<string, Array<Record<string, any>>> = {
     zalo_import_batches: [], pending_room_versions: [], zalo_import_images: [], zalo_import_videos: [],
-    rooms: [], room_details: [], room_media: [], zalo_reader_runs: [],
+    rooms: [], room_details: [], room_media: [], zalo_reader_runs: [], zalo_deleted_import_sources: [],
   };
   let uploads = 0;
   let officialRequestActive = false, officialRpcCalls = 0;
@@ -73,17 +73,23 @@ async function main() {
         assert.equal(name,"finalize_zalo_official_source_v1");officialRpcCalls++;
         assert.equal(args.p_pending.auto_approve_enabled,false);
         assert.equal(args.p_pending.status,"Chờ duyệt");
-        tables.zalo_import_batches.push(structuredClone(args.p_batch));
-        tables.pending_room_versions.push(structuredClone(args.p_pending));
+        const previous = tables.pending_room_versions.find(row => row.id === args.p_pending.id);
+        if (previous) {
+          assert.equal(previous.status, "Từ chối");
+          Object.assign(previous, structuredClone(args.p_pending));
+          Object.assign(tables.zalo_import_batches.find(batch => batch.id === previous.batch_id)!, structuredClone(args.p_batch));
+        } else {
+          tables.zalo_import_batches.push(structuredClone(args.p_batch));
+          tables.pending_room_versions.push(structuredClone(args.p_pending));
+        }
         tables.zalo_import_images.push(...structuredClone(args.p_images));tables.zalo_import_videos.push(...structuredClone(args.p_videos));
         return {data:{pending_id:args.p_pending.id,created:true},error:null};
       } }) },
     "@/lib/zalo-import/parser": { parseZaloRoomText },
     "@/lib/zalo-import/resolve": { resolveZaloImportRoom },
     "@/lib/zalo-import/incoming-change": { findImportBaseline, assessIncomingChange },
-    "@/lib/zalo-import/quality": { evaluateZaloImportQuality: () => ({ score_fraction: 0.8, eligible: officialRequestActive, auto_import: {} }), readZaloAutoImportSettings: () => ({ enabled: true, dryRun: false }) },
-    "@/lib/zalo-import/publish-pending-room": { publishPendingRoom: () => { throw new Error("test must never publish"); } },
-    "@/lib/zalo-reader/controlled-staging": { isControlledZaloTarget, shouldAutoPublishZaloImport, makeTestPendingIdentity },
+    "@/lib/zalo-import/quality": { evaluateZaloImportQuality: () => ({ score_fraction: 0.8, eligible: true, auto_import: {} }), readZaloAutoImportSettings: () => ({ enabled: true, dryRun: false }) },
+    "@/lib/zalo-reader/controlled-staging": { isControlledZaloTarget, makeTestPendingIdentity },
     "@/lib/r2/zalo-temp": {
       makeZaloTempImageKey: (batch: string, id: string) => `test/${batch}/${id}`,
       uploadBufferToR2: async ({ key }: { key: string }) => { uploads += 1; return { key, url: `https://example.test/${key}` }; },
@@ -163,7 +169,7 @@ async function main() {
     require: (name: string) => dependencies[name], console,
   });
   await assert.rejects(() => publishModule.exports.publishPendingRoom({
-    pendingId: identity.pendingId, actorUserId: "fixture-admin", supabase: { from: (table: string) => new Query(table) },
+    pendingId: identity.pendingId, actorUserId: "fixture-admin", source: "manual", supabase: { from: (table: string) => new Query(table) },
   }), /TEST/);
   const formalUpdate = await request({ testImportToPending: false, sourceMessageId: "new-formal-source", sourceHash: "new-formal-hash" });
   assert.equal(formalUpdate.status, 200);
@@ -323,8 +329,37 @@ async function main() {
   assert.equal(JSON.stringify(untouchedTestRows),untouchedBefore);
   assert.equal(JSON.stringify(tables.rooms.filter(row=>row.id==="main-room")),mainBefore);
   officialRequestActive=false;
-  await assert.rejects(()=>publishModule.exports.publishPendingRoom({pendingId:"official",actorUserId:"fixture-admin",source:"auto",
-    supabase:{from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{id:"official",room_payload:{_reader_manual_review:true}},error:null})})}}),/OFFICIAL_MANUAL_REVIEW_REQUIRED/);
-  console.log("Pending test API: create/update, real draft protection, missing video, empty media rejection, official dedup PASS (offline)");
+  for (const source of ["auto", "draft_auto"]) {
+    await assert.rejects(() => publishModule.exports.publishPendingRoom({ pendingId: "official", actorUserId: "fixture-admin", source,
+      supabase: { from: () => { throw new Error("retired publish source must never reach DB"); } } }), /ZALO_AUTO_APPROVE_DISABLED/);
+  }
+  const legacyCreate = await request({ stagingOnly: false, testImportToPending: false, sourceMessageId: "eligible-legacy-create",
+    sourceHash: "eligible-legacy-create-hash", rawText: body.rawText.replace("10 Nguyễn", "87 Nguyễn"), expectedVideoCount: 0 });
+  assert.equal(legacyCreate.status, 200);
+  assert.equal(legacyCreate.body.autoImport.eligible, true);
+  assert.equal(legacyCreate.body.autoImport.enabled, false);
+  assert.equal(legacyCreate.body.autoImport.published, false);
+  const legacyPending = tables.pending_room_versions.find(row => row.id === legacyCreate.body.pendingVersionId)!;
+  assert.equal(legacyPending.status, "Chờ duyệt");
+  assert.equal(legacyPending.auto_approve_enabled, false);
+  assert.equal(legacyPending.auto_approve_at, null);
+  const replayRequest = { ...officialBody, officialTrial: false, officialRunId: productionRunId, sourceMessageId: "production-source-43", rawText: productionText,
+    sourceRoomKey: normalizedRoomIdentity(parseZaloRoomText(productionText).roomPayload), expectedVideoCount: 0 };
+  productionRow.status = "Từ chối";
+  const reimport = await request(replayRequest);
+  assert.equal(reimport.status, 200);
+  assert.equal(reimport.body.duplicate, false);
+  assert.equal(reimport.body.pendingVersionId, productionRow.id);
+  assert.equal(productionRow.status, "Chờ duyệt");
+  tables.zalo_deleted_import_sources.push({ pending_id: productionRow.id, source_hash: productionBatch.source_hash, group_name: productionBatch.group_name,
+    source_message_id: productionBatch.source_message_id, is_test: false });
+  tables.pending_room_versions = tables.pending_room_versions.filter(row => row.id !== productionRow.id);
+  tables.zalo_import_batches = tables.zalo_import_batches.filter(row => row.id !== productionBatch.id);
+  const beforeDeletedRetry = [uploads, officialRpcCalls];
+  const deletedRetry = await request(replayRequest);
+  assert.equal(deletedRetry.status, 200);
+  assert.equal(deletedRetry.body.reasonCode, "PENDING_DELETED");
+  assert.deepEqual([uploads, officialRpcCalls], beforeDeletedRetry);
+  console.log("Pending test API: create/update, draft protection, media validation, reimport rejected and skip deleted PASS (offline)");
 }
 void main().catch((error) => { console.error(error); process.exitCode = 1; });

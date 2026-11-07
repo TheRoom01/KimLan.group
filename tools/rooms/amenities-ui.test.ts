@@ -15,10 +15,11 @@ async function main(){
   await editor.getByRole('button',{name:'Ban công',exact:true}).click();await editor.getByRole('button',{name:'Cửa sổ',exact:true}).click();
   assert.equal(await editor.getByRole('button',{name:'Ban công',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(JSON.parse(await page.getByLabel('Chi tiết',{exact:true}).innerText()).has_window,true);
+  await page.getByRole('button',{name:'Bộ lọc',exact:true}).click();
   await page.getByRole('button',{name:'Tiện Nghi',exact:true}).click();await page.getByRole('checkbox',{name:'Ban công',exact:true}).check();await page.getByRole('checkbox',{name:'Cửa sổ',exact:true}).check();
   assert.deepEqual(JSON.parse(await page.getByLabel('Bộ lọc',{exact:true}).innerText()),['balcony','window']);
   await page.getByRole('button',{name:'Clear',exact:true}).click();assert.deepEqual(JSON.parse(await page.getByLabel('Bộ lọc',{exact:true}).innerText()),[]);
-  await page.getByPlaceholder('Tìm đường, phường, quận, mô tả, tiện nghi...').fill('BBQ');
+  await page.getByPlaceholder('Tìm đường, phường, quận, mã phòng...').fill('BBQ');
   await page.screenshot({path:path.join(dir,'desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:path.join(dir,'mobile.png'),fullPage:true});
   console.log('Amenities editor toggles / Filterbar both features / Clear / search hint / mobile width: PASS (offline UI)');

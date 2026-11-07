@@ -12,10 +12,12 @@
 .home-redesign .home-filter { margin-top: 8px; padding-block: 0; }
 .home-redesign .home-filter { display: flex; flex-direction: column; gap: 10px; }
 .home-redesign .home-filter > * { margin-block: 0 !important; }
-.home-search > input { padding-right: 148px !important; }
-.home-search-clear { right: 106px; }
+.home-search[data-has-filters="true"] { --home-filter-count-width: 24px; }
+.home-search > input { padding-right: calc(148px + var(--home-filter-count-width, 0px)) !important; }
+.home-search-clear { right: calc(106px + var(--home-filter-count-width, 0px)); }
 .home-filter-toggle { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 5px 12px; border: 1px solid #e5c9a970; border-radius: 10px; background: #392517; color: #f3e7d6; font-size: 13px !important; font-weight: 650; cursor: pointer; }
 .home-filter-toggle[aria-expanded="true"] { background: #a67c52; color: #fffdfa; }
+.home-filter-count { display: grid; place-items: center; min-width: 18px; height: 18px; border-radius: 999px; background: #f1d09a; color: #432918; font-size: 11px; font-weight: 750; line-height: 1; }
 .home-filter-controls { position: relative; padding: 12px; border: 1px solid #e5c9a940; border-radius: 14px; background: #392517; }
 .home-filter-controls[hidden] { display: none; }
 .home-filter-controls .home-price-range { margin-top: 12px; }
@@ -84,7 +86,15 @@
   .home-redesign .home-room-card .home-room-price { font-size: 16px !important; }
 }
 
-[data-room-theme="light"] :is(.home-redesign, [data-home-detail="true"]) {
+.room-history { color-scheme: dark; }
+.room-history :is(input, select) { border-color: var(--room-border, #80634a); }
+.room-history :is(select, option) {
+  background-color: var(--room-surface, #392517);
+  color: var(--room-text, #fff4e5);
+}
+.room-history :is(input, select):focus-visible { outline: 2px solid var(--room-accent, #e0b77a); outline-offset: 2px; }
+
+[data-room-theme="light"] :is(.home-redesign, [data-home-detail="true"], .room-history) {
   --room-bg: #cbb094; --room-surface: #fffdfa; --room-text: #3f352e;
   --room-card-surface: #f4e5d2;
   --room-muted: #82766a; --room-accent: #a67c52; --room-border: #d8d0c5;
@@ -169,5 +179,30 @@ html[data-room-theme="light"] .fixed.inset-0[data-home-detail="true"] > div.rela
 html[data-room-theme="light"] .fixed.inset-0[data-home-detail="true"] > div.relative.flex.flex-col.overflow-hidden[class*="md:w-[720px]"] .home-detail-content div[class*="rounded-"][class*="border"][class*="backdrop-blur"] {
   background: #f6efe6 !important; border-color: var(--room-border) !important; backdrop-filter: none; box-shadow: none;
 }
-html[data-room-theme="light"]:has(.home-redesign) [data-public-auth-menu="true"] { background: #fffdfa; color: #3f352e; backdrop-filter: none; border-color: #d8d0c5; box-shadow: 0 8px 24px #3f352e26; }
-html[data-room-theme="light"]:has(.home-redesign) [data-public-auth-menu="true"] button { color: #3f352e; }
+[data-public-auth-menu="true"] {
+  --auth-menu-muted: #dcc9b7;
+  --auth-menu-row: #4a3222;
+  --auth-menu-hover: #59402c;
+  --auth-menu-danger: #fecaca;
+  --auth-menu-focus: #e0b77a;
+  background: #392517;
+  color: #fff4e5;
+  border-color: #80634a;
+}
+[data-room-theme="light"] [data-public-auth-menu="true"] {
+  --auth-menu-muted: #6e6054;
+  --auth-menu-row: #f6efe6;
+  --auth-menu-hover: #efe2d4;
+  --auth-menu-danger: #9f2430;
+  --auth-menu-focus: #80542f;
+  background: #fffdfa;
+  color: #3f352e;
+  border-color: #d8d0c5;
+  box-shadow: 0 8px 24px #3f352e26;
+}
+[data-public-auth-menu="true"] .auth-menu-muted { color: var(--auth-menu-muted); }
+[data-public-auth-menu="true"] .auth-menu-device { background: var(--auth-menu-row); }
+[data-public-auth-menu="true"] :is(button, a) { color: inherit; }
+[data-public-auth-menu="true"] .auth-menu-danger { color: var(--auth-menu-danger); }
+[data-public-auth-menu="true"] :is(button, a):hover { background: var(--auth-menu-hover); }
+[data-public-auth-menu="true"] :is(button, a):focus-visible { outline: 2px solid var(--auth-menu-focus); outline-offset: -2px; }

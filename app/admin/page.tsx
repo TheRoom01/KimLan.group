@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import AdminClient from "./AdminClient";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getAdminRequestContext } from "./request-context";
 import { attachRoomBadges } from "@/lib/roomBadges";
 
 const PAGE_SIZE = 20;
@@ -13,7 +13,8 @@ export default async function AdminPage({
   }>;
 }) {
 
-  const supabase = await createSupabaseServerClient();
+  const { supabase, level } = await getAdminRequestContext();
+  if (!level) redirect("/");
   const params = await searchParams;
 
   const report =
@@ -21,25 +22,7 @@ export default async function AdminPage({
       ? params.report
       : null;
 
-  // 1) Must be logged in
-  const { data: u, error: userErr } = await supabase.auth.getUser();
-  const user = u?.user;
-
-  if (userErr || !user) {
-    redirect("/");
-  }
-
-  // 2) Only level 1 or 2 can access /admin
-  const { data: levelData, error: levelErr } =
-    await supabase.rpc("get_my_admin_level");
-
-  const level = Number(levelData ?? 0);
-
-  if (levelErr || (level !== 1 && level !== 2)) {
-    redirect("/");
-  }
-
-  // 3) SSR initial table page (page=1, search="")
+  // SSR initial table page (page=1, search="")
   const offset = 0;
 
   const rpcName =
@@ -55,24 +38,12 @@ export default async function AdminPage({
 
   if (rpcErr) {
     console.error(`${rpcName} error:`, rpcErr);
-    return <AdminClient initialRooms={[]} initialTotal={0} />;
+    return <AdminClient key={report ?? ""} initialRooms={[]} initialTotal={0} adminLevel={level} report={report} initialLoadFailed />;
   }
 
   const rooms = await attachRoomBadges(supabase, ((rpcData as any)?.data ?? []) as any[]);
   const total = Number((rpcData as any)?.total_count ?? (rpcData as any)?.total ?? 0);
-  const { count: roomConsultNewCount, error: roomConsultCountError } = await supabase
-    .from("room_consult_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "new");
-
   return (
-    <>
-      <AdminClient
-        initialRooms={rooms}
-        initialTotal={total}
-        report={report ?? null}
-        roomConsultNewCount={roomConsultCountError ? 0 : roomConsultNewCount ?? 0}
-      />
-    </>
+    <AdminClient key={report ?? ""} initialRooms={rooms} initialTotal={total} adminLevel={level} report={report} />
   );
 }

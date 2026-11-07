@@ -6,7 +6,6 @@ import {
   CONTROLLED_ZALO_GROUP_NAME,
   isControlledZaloTarget,
   selectControlledStagingRooms,
-  shouldAutoPublishZaloImport,
   makeTestPendingIdentity,
 } from "../../../lib/zalo-reader/controlled-staging";
 import { makeZaloSourceHash } from "../../../lib/zalo-reader/request";
@@ -292,27 +291,6 @@ const duplicateSourceHash = selectControlledStagingRooms({
 assert.equal(duplicateSourceHash.rooms.length, 1);
 assert.equal(duplicateSourceHash.excludedDuplicateSources, 1);
 
-assert.equal(
-  shouldAutoPublishZaloImport({
-    stagingOnly: true,
-    eligible: true,
-    enabled: true,
-    dryRun: false,
-  }),
-  false,
-  "staging-only always blocks auto-publish even if environment settings enable it"
-);
-assert.equal(
-  shouldAutoPublishZaloImport({
-    stagingOnly: false,
-    eligible: true,
-    enabled: true,
-    dryRun: false,
-  }),
-  true,
-  "regular import behavior remains controlled by its existing settings"
-);
-
 const hashInput = {
   groupName: CONTROLLED_ZALO_GROUP_NAME,
   senderName: "sender",
@@ -363,7 +341,7 @@ assert.match(readerSource, /readerStartedAtMs:\s*roomUnit\.readerStartedAtMs/);
 assert.match(readerSource, /Staging trial đã kết thúc sau đúng một lượt/);
 assert.match(readerSource, /safeMediaSourceLabel\(src\)/);
 assert.match(serviceSource, /isControlledZaloTarget\(/);
-assert.match(serviceSource, /shouldAutoPublishZaloImport\(/);
+assert.doesNotMatch(serviceSource, /publishPendingRoom\(/);
 assert.match(serviceSource, /auto_approve_enabled:\s*false/);
 assert.ok(
   serviceSource.indexOf('.eq(\n          "source_hash"') <
@@ -395,7 +373,6 @@ assert.equal(newSourceTestSelection.selectedImportedRooms, 0);
 assert.equal(newSourceTestSelection.selectedRooms, 10);
 assert.equal(newSourceTestSelection.excludedAlreadyImported, 10);
 assert.match(serviceSource, /testImportToPending && uploadedImages\.length === 0 && uploadedVideos\.length === 0/);
-assert.match(serviceSource, /!testImportToPending && shouldAutoPublishZaloImport/);
 assert.match(serviceSource, /eq\("room_payload->>is_test_import", "true"\)/);
 const pendingResultGuard = readerSource.indexOf("if (config.testImportToPending) {", readerSource.indexOf("if (result?.testingOnly)"));
 assert.match(readerSource.slice(pendingResultGuard, pendingResultGuard + 340), /continue;/);

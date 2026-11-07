@@ -1,3 +1,4 @@
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { NextResponse } from "next/server";
 import { preserveConfirmedFields } from "@/lib/zalo-import/reparse-review";
 
@@ -54,7 +55,7 @@ async function assertAdmin() {
   );
 
   if (
-    levelError ||
+    !canAccessZaloImports(user) || levelError ||
     (level !== 1 && level !== 2)
   ) {
     return {

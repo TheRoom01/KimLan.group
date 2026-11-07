@@ -7,10 +7,9 @@ import ts from 'typescript';
 
 // Execute the real tracking modules with mocked hooks/transport. No network or
 // production writes; effect replay models React StrictMode's setup replay.
-function harness(storage = new Map(), clock = { now: 1_800_000 }, locks, transport = { ok: true }) {
+function harness(storage = new Map(), clock = { now: 1_800_000 }, browserCrypto = { randomUUID }) {
   const events = [];
   let active;
-  let segment = null;
   const react = {
     useRef(initial) {
       const index = active.cursor++;
@@ -34,18 +33,19 @@ function harness(storage = new Map(), clock = { now: 1_800_000 }, locks, transpo
     vm.runInNewContext(output, {
       exports, require(name) {
         if (name === 'react') return react;
-        if (name === 'next/navigation') return { usePathname: () => segment === null ? '/' : `/${segment}` };
         if (name === './client' || name === '@/lib/analytics/client') return modules.client;
+        if (name === '../filterOptions') return load('lib/filterOptions.ts');
+        if (name === '../rooms/features') return load('lib/rooms/features.ts');
+        if (name === '../rooms/search') return load('lib/rooms/search.ts');
         throw new Error('Unexpected import: ' + name);
       },
-      window: {}, crypto: { randomUUID }, Date: { now: () => clock.now }, navigator: { locks },
+      window: {}, crypto: browserCrypto, Date: { now: () => clock.now },
       localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
-      fetch: (_url, options) => { events.push(JSON.parse(options.body)); return Promise.resolve({ ok: transport.ok }); },
+      fetch: (_url, options) => { events.push(JSON.parse(options.body)); return Promise.resolve({ ok: true }); },
     });
     return exports;
   }
   modules.client = load('lib/analytics/client.ts');
-  const tracker = load('components/VisitorTracker.tsx').default;
   const room = load('lib/analytics/useRoomView.ts').useRoomView;
   function mount(fn) {
     const instance = { cursor: 0, refs: [], deps: [], effects: [] };
@@ -58,48 +58,31 @@ function harness(storage = new Map(), clock = { now: 1_800_000 }, locks, transpo
     };
   }
   return {
-    events, root: mount(tracker), room: () => mount(room),
-    home: modules.client.trackHomePageView,
-    segment(value) { segment = value; },
+    events, room: () => mount(room), track: modules.client.trackVisitorEvent,
+    activity: () => load('lib/analytics/activity.ts'),
     count(action) { return events.filter(e => e.action === action).length; },
   };
 }
 
-test('opening and closing an intercepted modal never adds a Home page view', async () => {
-  const h = harness();
-  h.root();
-  assert.equal(h.count('page_view'), 1);
-  const detail = h.room();
-  h.segment('rooms/room-a'); h.root();
-  detail('room-a');
-  h.root(); // Main slot remains on home, even while URL points to /rooms/a.
-  detail('room-a'); // Render update is not a new opening.
-  await new Promise(setImmediate);
-  h.segment(null); h.root(); // Back closes modal and restores the existing home.
-  await new Promise(setImmediate);
-  assert.equal(h.count('page_view'), 1);
-  assert.equal(h.count('room_view'), 1);
-  assert.equal(new Set(h.events.map(e => e.visitorId)).size, 1);
+test('opening the listing no longer wires up page view tracking', () => {
+  const layout = fs.readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(layout, /VisitorTracker|trackHomePageView/);
 });
 
 test('rapid reopen and room changes are distinct views, not throttled', () => {
   const h = harness();
-  h.segment('map');
-  h.root();
   h.room()('room-a');
-  h.root();
   const reopened = h.room();
   reopened('room-a');
   reopened('room-b');
   assert.equal(h.count('page_view'), 0);
   assert.equal(h.count('room_view'), 3);
   assert.equal(new Set(h.events.map(e => e.id)).size, h.events.length);
+  assert.equal(new Set(h.events.map(e => e.visitorId)).size, 1);
 });
 
 test('direct room load counts once; loading state and effect replay do not duplicate', () => {
   const h = harness();
-  h.segment('rooms');
-  h.root();
   const detail = h.room();
   detail(undefined);
   assert.equal(h.events.length, 0);
@@ -109,60 +92,52 @@ test('direct room load counts once; loading state and effect replay do not dupli
   assert.equal(h.count('room_view'), 1);
 });
 
-test('only Home counts, not map, Reports or admin', () => {
-  const h = harness();
-  h.root();
-  h.segment('map'); h.root();
-  h.segment('reports'); h.root();
-  h.segment('admin'); h.root();
-  h.segment(null); h.root();
-  assert.equal(h.count('page_view'), 1);
+test('opening a shared room works when the browser has no randomUUID', () => {
+  const h = harness(undefined, undefined, {});
+  assert.doesNotThrow(() => h.room()('room-a'));
   assert.equal(h.count('room_view'), 0);
 });
 
-test('reloads share cooldown; exactly 30 minutes after last counted visit permits another', async () => {
+test('only identical meaningful search/filter submissions are throttled', () => {
+  const h = harness();
+  h.track('filter_use', undefined, {minPrice: undefined});
+  h.track('filter_use', undefined, {minPrice: 3000000});
+  h.track('filter_use', undefined, {minPrice: 3000000});
+  h.track('filter_use', undefined, {minPrice: 4000000});
+  h.track('keyword_search', undefined, {keyword: 'studio'});
+  h.track('keyword_search', undefined, {keyword: 'studio'});
+  h.track('keyword_search', undefined, {}); // Search with a redacted contact detail still counts.
+  assert.deepEqual(h.events.map(e => e.details), [{minPrice: 3000000}, {minPrice: 4000000}, {keyword: 'studio'}, {}]);
+});
+
+test('reloads reuse the pseudonymous browser id', () => {
   const storage = new Map();
-  const clock = { now: 1_800_000 };
-  const first = harness(storage, clock);
-  await first.home();
-  assert.equal(first.count('page_view'), 1);
-  clock.now += 29 * 60 * 1000;
-  const reloaded = harness(storage, clock);
-  await reloaded.home();
-  assert.equal(reloaded.count('page_view'), 0);
-  clock.now += 60 * 1000;
-  await reloaded.home();
-  assert.equal(reloaded.count('page_view'), 1);
-  await reloaded.home();
-  assert.equal(reloaded.count('page_view'), 1);
+  const first = harness(storage);
+  const reloaded = harness(storage);
+  first.room()('room-a');
+  reloaded.room()('room-a');
+  assert.equal(first.events[0].visitorId, reloaded.events[0].visitorId);
 });
 
-test('simultaneous tabs serialize through the browser lock and share one Home view', async () => {
-  let queue = Promise.resolve();
-  const locks = { request(_key, callback) { queue = queue.then(callback); return queue; } };
-  const storage = new Map();
-  const clock = { now: 1_800_000 };
-  const a = harness(storage, clock, locks);
-  const b = harness(storage, clock, locks);
-  await Promise.all([a.home(), b.home()]);
-  assert.equal(a.count('page_view') + b.count('page_view'), 1);
-});
-
-test('failed delivery does not start a 30-minute cooldown', async () => {
-  const transport = { ok: false };
-  const h = harness(new Map(), { now: 1_800_000 }, undefined, transport);
-  await h.home();
-  transport.ok = true;
-  await h.home();
-  assert.equal(h.count('page_view'), 2); // First failed request, then successful retry.
-  await h.home();
-  assert.equal(h.count('page_view'), 2);
-});
-
-test('blocked storage retains in-memory protection without breaking navigation', async () => {
+test('blocked storage retains an in-memory browser id without breaking navigation', () => {
   const storage = { get() { throw new Error('Blocked'); }, set() { throw new Error('Blocked'); } };
   const h = harness(storage);
-  await h.home();
-  await h.home();
-  assert.equal(h.count('page_view'), 1);
+  h.room()('room-a');
+  h.room()('room-b');
+  assert.equal(h.count('room_view'), 2);
+  assert.equal(new Set(h.events.map(e => e.visitorId)).size, 1);
+});
+
+test('activity payloads retain supported filter values and strip contact or private address details', () => {
+  const { customerSearchDetails, customerFilterDetails, changedCustomerFilters } = harness().activity();
+  const plain = value => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(customerSearchDetails('P.13')), {keyword: 'phường 13', ward: '13'});
+  assert.deepEqual(plain(customerSearchDetails('Phường Đức Nhuận')), {keyword: 'phường đức nhuận', ward: 'đức nhuận'});
+  assert.deepEqual(plain(customerSearchDetails('258 Hoàng Văn Thụ')), {keyword: 'hoàng văn thụ'});
+  for (const search of ['thử customer@example.com', 'liên hệ 0912 345 678', 'https://example.com']) {
+    assert.deepEqual(plain(customerSearchDetails(search)), {});
+  }
+  const before = customerFilterDetails({minPrice: 3000000, districts: ['Quận 1']});
+  const after = customerFilterDetails({minPrice: 3000000, districts: ['Quận 1', 'injected phone'], roomTypes: ['Studio'], amenities: ['balcony', 'extra']});
+  assert.deepEqual(plain(changedCustomerFilters(before, after)), {roomTypes: ['Studio'], amenities: ['balcony']});
 });

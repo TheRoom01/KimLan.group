@@ -137,36 +137,6 @@ function clampInt(
   );
 }
 
-function parseBooleanEnv(
-  value: string | undefined,
-  fallback: boolean
-) {
-  if (value == null || value === "") {
-    return fallback;
-  }
-
-  const normalized =
-    String(value).trim().toLowerCase();
-
-  if (
-    ["1", "true", "yes", "on"].includes(
-      normalized
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    ["0", "false", "no", "off"].includes(
-      normalized
-    )
-  ) {
-    return false;
-  }
-
-  return fallback;
-}
-
 function uniqueStrings(values: string[]) {
   return Array.from(
     new Set(
@@ -219,16 +189,6 @@ function matchesAny(
 export function readZaloAutoImportSettings(
   groupName: string
 ): ZaloAutoImportSettings {
-  const enabled = parseBooleanEnv(
-    process.env.ZALO_AUTO_IMPORT_ENABLED,
-    false
-  );
-
-  const dryRun = parseBooleanEnv(
-    process.env.ZALO_AUTO_IMPORT_DRY_RUN,
-    true
-  );
-
   const minScore = clampInt(
     process.env.ZALO_AUTO_IMPORT_MIN_SCORE,
     1,
@@ -266,8 +226,8 @@ export function readZaloAutoImportSettings(
   ).trim();
 
   return {
-    enabled,
-    dryRun,
+    enabled: false,
+    dryRun: true,
     minScore,
     minImages,
     allowedGroups,

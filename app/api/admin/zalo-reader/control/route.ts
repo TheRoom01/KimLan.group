@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { readReaderControl, requestReaderControl, requestOpenZalo } from "@/lib/zalo-reader/control-service";
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function admin() {
   const db = await createSupabaseServerClient();
   const auth = await db.auth.getUser();
-  if (auth.error || !auth.data.user) return null;
+  if (auth.error || !auth.data.user || !canAccessZaloImports(auth.data.user)) return null;
   const level = await db.rpc("get_my_admin_level");
   return !level.error && [1, 2].includes(Number(level.data)) ? auth.data.user : null;
 }

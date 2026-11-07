@@ -17,11 +17,6 @@ import {
 
 type AnySupabase = SupabaseClient<any, any, any>;
 
-type PublishSource =
-  | "manual"
-  | "auto"
-  | "draft_auto";
-
 export type PublishPendingRoomResult = {
   locationWarning?: string | null;
   roomId: string;
@@ -110,20 +105,6 @@ function toBoolean(
   }
 
   return fallback;
-}
-
-function getErrorMessage(
-  error: unknown
-) {
-  if (
-    error instanceof Error
-  ) {
-    return error.message;
-  }
-
-  return String(
-    error || "Unknown error"
-  );
 }
 
 function buildRoomInsertPayload(params: {
@@ -327,13 +308,15 @@ async function bestEffortRollback(params: {
 export async function publishPendingRoom(params: {
   pendingId: string;
   actorUserId: string;
-  source: PublishSource;
+  source: "manual";
   supabase?: AnySupabase;
-  actorSupabase?: AnySupabase;
+  actorSupabase: AnySupabase;
   createFromUpdate?: boolean;
   expectedRoomPayload?: Record<string, any>;
   expectedDetailPayload?: Record<string, any>;
 }): Promise<PublishPendingRoomResult> {
+  if (params.source !== "manual") throw new Error("ZALO_AUTO_APPROVE_DISABLED");
+
   const pendingId = String(
     params.pendingId || ""
   ).trim();
@@ -354,7 +337,7 @@ export async function publishPendingRoom(params: {
 
   const supabase =
     params.supabase ||
-    createSupabaseAdminClient();
+    createSupabaseAdminClient({ source: "zalo_import", actorUserId });
 
   const {
     data: pending,
@@ -383,9 +366,7 @@ export async function publishPendingRoom(params: {
   if ((pending as any).room_payload?.is_test_import === true || (pending as any).batch?.parser_result?.test_import === true) {
     throw new Error("Bản nháp TEST chỉ để kiểm tra; không được publish hoặc tạo phòng chính.");
   }
-  if (params.source !== "manual" && ((pending as any).room_payload?._reader_manual_review === true || (pending as any).batch?.parser_result?.official_source)) {
-    throw new Error("OFFICIAL_MANUAL_REVIEW_REQUIRED: Phòng từ Reader chính thức phải được admin duyệt thủ công.");
-  }
+  if (!params.actorSupabase) throw new Error("Thiếu phiên admin để xác định tòa nhà. Hãy đăng nhập lại và duyệt lại.");
 
   if (
     ["Đã duyệt", "Từ chối", "Hết hạn"].includes(
@@ -398,12 +379,12 @@ export async function publishPendingRoom(params: {
   }
 
   const importReview = getImportReview((pending as any).room_payload);
-  if (params.source === "manual" && params.expectedRoomPayload &&
+  if (params.expectedRoomPayload &&
     (stableJson(params.expectedRoomPayload) !== stableJson((pending as any).room_payload) ||
       stableJson(params.expectedDetailPayload || {}) !== stableJson((pending as any).detail_payload || {}))) {
     throw new Error("Bản nháp đã đổi. Hãy mở lại và kiểm tra trước khi duyệt.");
   }
-  const correctedUpdate = params.source === "manual" && params.createFromUpdate === true;
+  const correctedUpdate = params.createFromUpdate === true;
   if (correctedUpdate) {
     if (!isUpdateCodeChange((pending as any).room_payload) || importReview?.snapshot?.room.id !== (pending as any).matched_room_id) throw new Error("Hãy nhập mã phòng mới khác mã phòng cũ, giữ nguyên địa chỉ trước khi tạo phòng.");
     if (!params.expectedRoomPayload || stableJson(params.expectedRoomPayload) !== stableJson((pending as any).room_payload) || stableJson(params.expectedDetailPayload || {}) !== stableJson((pending as any).detail_payload || {})) throw new Error("Bản nháp đã đổi. Hãy mở lại và kiểm tra trước khi duyệt.");
@@ -415,99 +396,6 @@ export async function publishPendingRoom(params: {
   const identityCheck = await resolveZaloImportRoom({ supabase, roomPayload: (pending as any).room_payload || {},
     detailPayload: (pending as any).detail_payload || {}, sourceFieldMap: (pending as any).source_field_map || {}, excludePendingId: pendingId });
   if (identityCheck.roomPayload._room_import?.type !== "CREATE") throw new Error("Phòng hoặc Pending trùng đã xuất hiện. Hãy phân tích lại trước khi duyệt.");
-
-  if (
-    params.source !== "manual" &&
-    (pending as any).matched_room_id
-  ) {
-    throw new Error(
-      "Pending này đang khớp với phòng đã tồn tại; tự động duyệt không được tạo phòng mới."
-    );
-  }
-
-  /*
-   * draft_auto chỉ được gọi bởi cron sau khi:
-   * - admin đã lưu một thay đổi thật;
-   * - đủ 3 phút;
-   * - cron đã claim bản ghi bằng processing_at.
-   *
-   * Nguồn "auto" cũ của Zalo Reader vẫn giữ nguyên,
-   * không bị buộc phải có lịch 3 phút.
-   */
-  if (
-    params.source ===
-    "draft_auto"
-  ) {
-    const scheduledAt =
-      new Date(
-        String(
-          (pending as any)
-            .auto_approve_at ||
-            ""
-        )
-      ).getTime();
-
-    const scheduledActor =
-      String(
-        (pending as any)
-          .auto_approve_actor_id ||
-          ""
-      ).trim();
-
-    const processingAt =
-      String(
-        (pending as any)
-          .auto_approve_processing_at ||
-          ""
-      ).trim();
-
-    if (
-      String(
-        (pending as any)
-          .status || ""
-      ) !== "Chờ duyệt"
-    ) {
-      throw new Error(
-        "Pending không còn ở trạng thái Chờ duyệt."
-      );
-    }
-
-    if (
-      !(pending as any)
-        .auto_approve_enabled
-    ) {
-      throw new Error(
-        "Lịch tự duyệt đã bị hủy."
-      );
-    }
-
-    if (
-      scheduledActor !==
-      actorUserId
-    ) {
-      throw new Error(
-        "Admin tự duyệt không khớp với người đã lưu bản nháp."
-      );
-    }
-
-    if (!processingAt) {
-      throw new Error(
-        "Pending chưa được cron claim để tự duyệt."
-      );
-    }
-
-    if (
-      !Number.isFinite(
-        scheduledAt
-      ) ||
-      scheduledAt >
-        Date.now()
-    ) {
-      throw new Error(
-        "Pending chưa đến thời điểm tự duyệt."
-      );
-    }
-  }
 
   const batch =
     (pending as any).batch || {};
@@ -580,31 +468,19 @@ export async function publishPendingRoom(params: {
   let roomCreated = false;
 
   try {
-    if(params.source === "manual" && !params.actorSupabase) throw new Error("Thiếu phiên admin để xác định tòa nhà. Hãy đăng nhập lại và duyệt lại.");
-    // Use the exact same authenticated RPC as /admin -> Add room. It resolves
-    // the building, asks for ambiguous matches, and creates an unclaimed one
-    // only when no building matches. Never call this at Reader import time.
-    const roomInsert = params.source === "manual"
-      ? await params.actorSupabase!.rpc("admin_upsert_room_v3", {p_room_id:roomId,p_payload:buildRoomInsertPayload({roomId,actorUserId,roomPayload})})
-      : await supabase
-      .from("rooms")
-      .insert(
-        buildRoomInsertPayload({
-          roomId,
-          actorUserId,
-          roomPayload,
-        })
-      )
-      .select("id")
-      .single();
+    // Use the admin session for the same authorization as Add room.
+    const roomInsert = await params.actorSupabase.rpc("admin_upsert_room_v3", {
+      p_room_id: roomId,
+      p_payload: buildRoomInsertPayload({ roomId, actorUserId, roomPayload }),
+    });
 
     if (roomInsert.error) {
       throw roomInsert.error;
     }
 
     roomCreated = true;
-    if(params.source === "manual" && (!roomInsert.data?.property_id || roomInsert.data?.id !== roomId)) throw new Error("Không xác minh được tòa nhà của phòng mới. Hãy tải lại Imports trước khi duyệt lại.");
-    if(params.source === "manual") roomPayload.property_id=roomInsert.data.property_id;
+    if (!roomInsert.data?.property_id || roomInsert.data?.id !== roomId) throw new Error("Không xác minh được tòa nhà của phòng mới. Hãy tải lại Imports trước khi duyệt lại.");
+    roomPayload.property_id = roomInsert.data.property_id;
 
     const detailInsert = await supabase
       .from("room_details")
@@ -859,11 +735,6 @@ export async function publishPendingRoom(params: {
       videoCount: videoMediaCount,
     };
   } catch (error) {
-    const errorMessage =
-      getErrorMessage(
-        error
-      );
-
     if (roomCreated) {
       await bestEffortRollback({
         supabase,
@@ -871,23 +742,6 @@ export async function publishPendingRoom(params: {
         finalKeys,
       });
     }
-
-    const autoFailurePatch =
-      params.source ===
-      "draft_auto"
-        ? {
-            auto_approve_enabled:
-              false,
-            auto_approve_at:
-              null,
-            auto_approve_actor_id:
-              null,
-            auto_approve_processing_at:
-              null,
-            auto_approve_last_error:
-              errorMessage,
-          }
-        : {};
 
     await Promise.allSettled([
       supabase
@@ -900,7 +754,6 @@ export async function publishPendingRoom(params: {
           approved_room_id: null,
           approved_at: null,
           approved_by: null,
-          ...autoFailurePatch,
         })
         .eq("id", pendingId),
 

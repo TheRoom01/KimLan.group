@@ -1,3 +1,4 @@
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { readPendingLocation } from "@/lib/zalo-import/pending-location";
 import { normalizeRoomStatus, requireAvailabilityDate } from "@/lib/rooms/availability";
 import { runSettledPool } from "@/lib/async-pool";
@@ -11,9 +12,6 @@ import { resolveZaloImportRoom } from "@/lib/zalo-import/resolve";
 import { getImportReview, normalizedRoomIdentity, canonicalStoredIdentity, ROOM_UPDATE_FIELDS, DETAIL_UPDATE_FIELDS, stableJson } from "@/lib/zalo-import/room-comparison";
 
 export const runtime = "nodejs";
-
-const AUTO_APPROVE_DELAY_MS =
-  3 * 60 * 1000;
 
 const ACTIVE_PROCESSING_WINDOW_MS =
   5 * 60 * 1000;
@@ -89,7 +87,7 @@ async function assertAdmin() {
   );
 
   if (
-    levelErr ||
+    !canAccessZaloImports(user) || levelErr ||
     (level !== 1 && level !== 2)
   ) {
     return {
@@ -739,6 +737,7 @@ export async function PATCH(
             false,
           auto_approve_at:
             null,
+          auto_approve_actor_id: null,
           auto_approve_processing_at:
             null,
           last_admin_activity_at:
@@ -984,7 +983,6 @@ export async function PATCH(
         new_status: resolved.matchedRoom ? (nextRoomPayload as any).status || null : null,
       };
     }
-    const savedReview = getImportReview(nextRoomPayload);
 
     const nextRevision =
       Math.max(
@@ -994,81 +992,6 @@ export async function PATCH(
             0
         )
       ) + 1;
-
-    const missingRequiredFields =
-      [
-        [
-          "room_code",
-          "mã phòng",
-        ],
-        [
-          "house_number",
-          "số nhà",
-        ],
-        [
-          "address",
-          "tên đường",
-        ],
-        [
-          "district",
-          "quận/huyện",
-        ],
-      ]
-        .filter(
-          ([key]) =>
-            !String(
-              (
-                nextRoomPayload as any
-              )[key] ||
-                ""
-            ).trim()
-        )
-        .map(
-          (
-            [, label]
-          ) => label
-        );
-
-    let autoApproveReason:
-      string | null = null;
-
-    if (body?.manualReviewOnly === true || (pendingRow.room_payload as any)?._reader_manual_review === true) {
-      autoApproveReason = "Phòng từ Reader chính thức phải được duyệt thủ công.";
-    } else if (savedReview && savedReview.type !== "CREATE") {
-      autoApproveReason = "Bản cập nhật/cần xác minh phải duyệt thủ công từng trường.";
-    } else if (
-      String(identityUpdate.status ?? pendingRow.status) !== "Chờ duyệt"
-    ) {
-      autoApproveReason =
-        "Phòng không ở trạng thái Chờ duyệt.";
-    } else if (
-      String(
-        (Object.hasOwn(identityUpdate, "matched_room_id") ? identityUpdate.matched_room_id : pendingRow.matched_room_id) ||
-          ""
-      ).trim()
-    ) {
-      autoApproveReason =
-        "Phòng đang khớp với một phòng đã tồn tại.";
-    } else if (
-      missingRequiredFields
-        .length > 0
-    ) {
-      autoApproveReason =
-        `Còn thiếu ${missingRequiredFields.join(
-          ", "
-        )}.`;
-    }
-
-    const canAutoApprove =
-      !autoApproveReason;
-
-    const autoApproveAt =
-      canAutoApprove
-        ? new Date(
-            now.getTime() +
-              AUTO_APPROVE_DELAY_MS
-          ).toISOString()
-        : null;
 
     const {
       error: updErr,
@@ -1086,14 +1009,9 @@ export async function PATCH(
           nextRevision,
         last_admin_activity_at:
           nowIso,
-        auto_approve_enabled:
-          canAutoApprove,
-        auto_approve_at:
-          autoApproveAt,
-        auto_approve_actor_id:
-          canAutoApprove
-            ? admin.user.id
-            : null,
+        auto_approve_enabled: false,
+        auto_approve_at: null,
+        auto_approve_actor_id: null,
         auto_approve_processing_at:
           null,
         auto_approve_last_error:
@@ -1159,8 +1077,7 @@ export async function PATCH(
             nowIso,
           draft_revision:
             nextRevision,
-          auto_approve_at:
-            autoApproveAt,
+          auto_approve_at: null,
         },
       })
       .eq(
@@ -1215,12 +1132,9 @@ export async function PATCH(
       ...identityUpdate,
       draft_revision:
         nextRevision,
-      auto_approve_enabled:
-        canAutoApprove,
-      auto_approve_at:
-        autoApproveAt,
-      auto_approve_reason:
-        autoApproveReason,
+      auto_approve_enabled: false,
+      auto_approve_at: null,
+      auto_approve_reason: "Phòng chờ admin duyệt.",
       room_payload:
         nextRoomPayload,
       detail_payload:

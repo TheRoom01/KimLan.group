@@ -1,5 +1,5 @@
-import { roomFeatureStatusTokens, type RoomFeature } from "@/lib/rooms/features";
-import { normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
+import { type RoomFeature } from "@/lib/rooms/features";
+import { roomListFilterRpcParams } from "@/lib/rooms/listFilters";
 import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -136,27 +136,8 @@ export async function fetchRoomsServer(
   error?: string;
 }> {
   const {
-    limit,
-    cursor,
-    adminLevel,
-    search,
-    minPrice,
-    maxPrice,
-    districts,
-    roomType,
-    roomTypes,
-    move,
-    petPolicies,
-    contractTerms,
-    status,
-    badge,
-    sortMode,
-    anonSessionId,
+    limit, cursor, adminLevel, anonSessionId,
   } = params;
-
-  const effectiveRoomTypes =
-    roomTypes?.length ? roomTypes : roomType?.trim() ? [roomType.trim()] : [];
-
   const role = adminLevel === 2 ? 2 : adminLevel === 1 ? 1 : 0;
 
   // ✅ Parse cursor theo đúng SQL:
@@ -194,49 +175,6 @@ export async function fetchRoomsServer(
 const cursorUpdatedAt: string | null = toTimestampOrNull(cursorObj?.updated_at);
 const cursorCreatedAt: string | null = toTimestampOrNull((cursorObj as any)?.created_at);
 
-// RPC expects: 'elevator' | 'stairs' | null
-const pMove =
-  move === "elevator" ? "elevator" :
-  move === "stairs"   ? "stairs"   :
-  null;
-
-const pPetPolicies =
-  Array.isArray(petPolicies) && petPolicies.length
-    ? Array.from(
-        new Set(
-          petPolicies.filter(
-            (x): x is "cat" | "dog" | "nopet" =>
-              x === "cat" || x === "dog" || x === "nopet"
-          )
-        )
-      )
-    : null;
-
-const pContractTerms =
-  Array.isArray(contractTerms) && contractTerms.length
-    ? Array.from(
-        new Set(
-          contractTerms.filter(
-            (x): x is "short" | "long" =>
-              x === "short" || x === "long"
-          )
-        )
-      )
-    : null;
-
-const minPriceValue =
-  minPrice == null
-    ? null
-    : Number.isFinite(Number(minPrice))
-      ? Number(minPrice)
-      : null;
-const maxPriceValue =
-  maxPrice == null
-    ? null
-    : Number.isFinite(Number(maxPrice))
-      ? Number(maxPrice)
-      : null;
-
 const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 1) bắt buộc
   p_role: role,
@@ -245,28 +183,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   // 2) cursor (uuid) — dùng cho sort giá + fallback
   p_cursor: cursorId ? String(cursorId) : null,
 
-  // 3) filter/search
-  p_search: normalizeSearchKeyword(search, adminLevel === 1 || adminLevel === 2) ? normalizeSearchKeyword(search, adminLevel === 1 || adminLevel === 2) : null,
-  p_min_price: minPriceValue,
-  p_max_price: maxPriceValue,
-  p_districts: Array.isArray(districts) && districts.length ? districts : null,
-  p_room_types: Array.isArray(effectiveRoomTypes) && effectiveRoomTypes.length ? effectiveRoomTypes : null,
-  p_move: pMove,
-  p_pet_policies: pPetPolicies,
-  p_contract_terms: pContractTerms,
-
-  // 4) statuses
-  p_statuses: status || badge || params.featureFilters?.length
-    ? [
-        ...(status ? String(status).split(",").map((value) => value.trim()).filter(Boolean) : []),
-        ...(badge ? [`__badge:${badge}`] : []),
-        ...roomFeatureStatusTokens(params.featureFilters),
-      ]
-    : null,
-
-  // 5) sort + keyset cursor (updated_desc cần 2 khóa)
-  p_sort: sortMode ?? "updated_desc",
-p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
+  ...roomListFilterRpcParams(params),
+  p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
 p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
 p_cursor_id: cursorId ? String(cursorId) : null,
 p_anon_session_id: anonSessionId ?? null,

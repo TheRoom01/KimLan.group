@@ -10,6 +10,6 @@ export function useRoomView(roomId?: string) {
     lastRoom.current = roomId;
     // Room openings only affect room metrics, never Home page views.
     // Ref survives effect replay (StrictMode), unlike a time-based throttle.
-    trackVisitorEvent("room_view", roomId, crypto.randomUUID());
+    trackVisitorEvent("room_view", roomId);
   }, [roomId]);
 }

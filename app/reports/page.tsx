@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import VisitorReport from "./VisitorReport";
+import StaffAuditReport from "./StaffAuditReport";
 
 function card(title: string, value: number) {
   return (
@@ -220,7 +221,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       >
         Reports
       </h1>
+      <nav className="mb-5 flex flex-wrap gap-2" aria-label="Nhật ký">
+        <Link href="/reports/room-history" className="inline-flex rounded-xl bg-[#744722] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5d381d]">
+          Lịch sử thao tác phòng
+        </Link>
+        <Link href="/reports/audit-retention" className="inline-flex rounded-xl bg-[#744722] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5d381d]">
+          Nhật ký và lưu trữ
+        </Link>
+      </nav>
       <VisitorReport days={days} />
+      <StaffAuditReport />
 
       <div
         style={{

@@ -5,7 +5,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { OFFICIAL_ZALO_GROUPS as GROUPS, initializeCheckpoint, checkpointWindow, commitSource, advanceWatermark,
   selectIncrementalSources, verifiedProcessingReceipt, verifiedGroupIdentity, readerHealth, redactReaderLog } from "../../../lib/zalo-reader/official";
-import { officialSourceIdentity, existingOfficialReceipt } from "../../../lib/zalo-reader/official-request";
+import { officialSourceIdentity, existingOfficialReceipt, deletedOfficialReceipt } from "../../../lib/zalo-reader/official-request";
 import { cleanStatusEvent, readerSecretMatches } from "../../../lib/zalo-reader/status-service";
 import { OfficialSession, acquireReaderLock } from "../official-runtime";
 import { validateOfficialConfig, runOfflineFixture } from "../official-runner";
@@ -20,6 +20,7 @@ async function main() {
   const selected=selectIncrementalSources(rooms,cp,now,10,20);
   assert.deepEqual(selected.rooms.map(room=>room.markerMessageId),rooms.slice(10,20).map(room=>room.markerMessageId));
   assert.equal(selected.messages,10);
+  assert.equal(selected.roomsRead,25);
   assert.equal(selectIncrementalSources([candidate(26,{warnings:["ROOM_MARKER_MISSING"]})],cp,now,10,20).rooms.length,0);
   const multi=Array.from({length:21},(_,i)=>candidate(30,{sourceHash:`multi-${i}`}));
   assert.equal(selectIncrementalSources(multi,cp,now,10,20).rooms.length,0,"do not split a source across the budget");
@@ -49,6 +50,15 @@ async function main() {
   assert.notEqual(officialSourceIdentity({...identityInput,trial:true},room).pendingId,identity.pendingId);
   const orphanDb={from:()=>{const query:any={select:()=>query,eq:()=>query,maybeSingle:async()=>({data:null}),then:(resolve:any)=>resolve({data:[{id:identity.batchId,parser_result:{}}]})};return query;}};
   await assert.rejects(()=>existingOfficialReceipt(orphanDb,identity,GROUPS[0].name,room),/REQUIRES_REVIEW/);
+  const deletedDb = { from: () => {
+    const query = { select: () => query, eq: () => query, then: (resolve: (value: unknown) => void) =>
+      resolve({ data: [{ pending_id: "deleted-room", source_hash: "legacy-hash", source_room: room }], error: null }) };
+    return query;
+  } };
+  assert.equal(await deletedOfficialReceipt(deletedDb, identity, GROUPS[0].name, room), "deleted-room");
+  const sibling = { ...room, room_code: "403" };
+  const siblingIdentity = officialSourceIdentity({ ...identityInput, sourceRoomKey: normalizedRoomIdentity(sibling)! }, sibling);
+  assert.equal(await deletedOfficialReceipt(deletedDb, siblingIdentity, GROUPS[0].name, sibling), undefined);
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),"zalo-official-offline-"));
   try {
     const release=acquireReaderLock(directory); assert.throws(()=>acquireReaderLock(directory),/ALREADY_RUNNING/); release(); acquireReaderLock(directory)();
@@ -78,7 +88,8 @@ async function main() {
   applyImportFilters(query,importFilters({group:GROUPS[0].name,type:"UPDATE",readFrom:"2026-10-30"}));
   assert.equal(calls.length,3);assert.throws(()=>importFilters({group:"unrelated"}));
   const source=fs.readFileSync("lib/zalo-reader/import-service.ts","utf8");
-  assert.ok(source.indexOf('if (officialIdentity) {\n      // Keep all')<source.indexOf('let autoPublished = false'));
+  assert.match(source, /finalize_zalo_official_source_v1/);
+  assert.doesNotMatch(source, /publishPendingRoom\(/);
   const fixture=await runOfflineFixture("tools/zalo-reader/fixtures/official-two-groups.json",process.cwd());
   assert.equal(fixture.summaries.length,2);assert.equal(fixture.summaries[0].counters.pending_created,1);assert.equal(fixture.summaries[1].counters.pending_created,1);
   console.log("Official Reader incremental/identity/lock/status/offline runner: PASS");

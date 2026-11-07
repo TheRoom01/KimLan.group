@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { trackVisitorEvent } from "@/lib/analytics/client";
+import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { usePathname, useRouter } from "next/navigation";
 
 type AuthView = "login" | "forgot" | "sent";
@@ -80,6 +81,7 @@ export default function AuthControls() {
   const [authView, setAuthView] = useState<AuthView>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authMsg, setAuthMsg] = useState("");
@@ -203,6 +205,7 @@ useEffect(() => {
   const openAuth = () => {
     setAuthMsg("");
     setPassword("");
+    setShowPassword(false);
     setForgotEmail(email);
     setAuthView("login");
     setAuthOpen(true);
@@ -212,96 +215,60 @@ useEffect(() => {
     setAuthOpen(false);
     setAuthMsg("");
     setPassword("");
+    setShowPassword(false);
     setAuthView("login");
   };
 
   // ===== login/logout/reset =====
 const handleLogin = async () => {
-  if (loginLockRef.current) return;
+  if (loginLockRef.current || !canLogin) return;
   loginLockRef.current = true;
-
-  if (!canLogin) {
-    loginLockRef.current = false;
-    return;
-  }
 
   setAuthLoading(true);
   setAuthMsg("");
+  let signedIn = false;
 
-  const doLogin = async () => {
-    return supabase.auth.signInWithPassword({
+  try {
+    const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password: password.trim(),
     });
-  };
-
-  try {
-    let { error } = await doLogin();
-
     if (error) {
-      setAuthLoading(false);
       setAuthMsg(error.message);
-      loginLockRef.current = false;
       return;
     }
+    signedIn = true;
 
-    const r = await fetch("/api/device/register", {
+    const response = await fetch("/api/device/register", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        forceEvict: false,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ forceEvict: false }),
     });
+    const result = await response.json().catch(() => null);
 
-    // ❌ vượt limit → mở device manager, KHÔNG logout
-    if (r.status === 403) {
-      const s = await fetch("/api/device/list");
-      const body = await s.json();
-
-      setDevices(body?.devices || []);
+    if (response.status === 403 && result?.status === "limit_reached") {
+      setDevices(Array.isArray(result.devices) ? result.devices : []);
       setShowDeviceManager(true);
-
-      setAuthLoading(false);
-      loginLockRef.current = false;
       return;
     }
-
-    // ❌ lỗi register → retry flow
-    if (!r.ok) {
-      await fetch("/api/device/logout", { method: "POST" });
-
-      const retry = await doLogin();
-
-      if (retry.error) {
-        await supabase.auth.signOut();
-        setAuthLoading(false);
-        setAuthMsg(retry.error.message || "Login failed");
-        loginLockRef.current = false;
-        return;
-      }
-
-      const r2 = await fetch("/api/device/register", { method: "POST" });
-
-      if (!r2.ok) {
-        await supabase.auth.signOut();
-        setAuthLoading(false);
-        setAuthMsg("Không thể đăng ký thiết bị sau retry");
-        loginLockRef.current = false;
-        return;
-      }
+    if (!response.ok || result?.ok !== true) {
+      throw new Error(response.status === 401
+        ? "Phiên đăng nhập chưa được xác nhận. Vui lòng đăng nhập lại."
+        : "Chưa thể đăng ký thiết bị. Vui lòng thử lại.");
     }
 
-    setAuthLoading(false);
     setShowDeviceManager(false);
     closeAuth();
-    loginLockRef.current = false;
     window.location.assign("/");
-  } catch {
-    await supabase.auth.signOut();
+  } catch (error) {
+    if (signedIn) {
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    }
+    setAuthMsg(error instanceof TypeError
+      ? "Lỗi mạng khi đăng nhập. Vui lòng thử lại."
+      : error instanceof Error ? error.message : "Chưa thể đăng nhập. Vui lòng thử lại.");
+  } finally {
     setAuthLoading(false);
-    setAuthMsg("Lỗi mạng khi đăng nhập");
     loginLockRef.current = false;
   }
 };
@@ -503,10 +470,7 @@ const handleSendReset = async () => {
               className="
                 fixed z-[9999]
                 max-h-[72vh] overflow-y-auto
-                rounded-3xl border border-white/35
-                bg-[linear-gradient(rgba(255,255,255,0.12),rgba(255,255,255,0.05))]
-                p-2 text-white
-                backdrop-blur-[45px]
+                rounded-3xl border p-2
                 shadow-[0_35px_120px_rgba(0,0,0,0.75),0_0_50px_rgba(255,255,255,0.06),inset_0_1px_0_rgba(255,255,255,0.45)]
               "
               style={{
@@ -522,10 +486,8 @@ const handleSendReset = async () => {
                 onClick={() => {
                   closeMenu();
                   router.push("/admin");
-                  trackVisitorEvent("admin_click");
                 }}
-                className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85
-hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                className="block w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors"
               >
                 Admin
               </button>
@@ -537,21 +499,21 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                     closeMenu();
                     router.push("/reports");
                   }}
-                  className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                  className="block w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors"
                 >
                   Báo cáo
                 </button>
               )}
 
-              <a
-                href="https://canhodichvu.pro/admin/zalo-imports"
+              {canAccessZaloImports(user) && <a
+                href="/admin/zalo-imports"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={closeMenu}
-                className="block w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-semibold text-white/85 transition-all hover:bg-white/10 hover:text-white"
+                className="block w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors"
               >
                 Trang duyệt phòng
-              </a>
+              </a>}
 
               <button
                 type="button"
@@ -559,8 +521,7 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                   closeMenu();
                   setChangePwOpen(true);
                 }}
-                className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-semibold text-white/85
-hover:bg-white/10 hover:text-white rounded-xl transition-all"
+                className="block w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors"
               >
                 Đổi mật khẩu
               </button>
@@ -574,33 +535,32 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                 className="
                   block w-full whitespace-nowrap rounded-xl
                   px-3 py-2 text-left text-sm font-semibold
-                  text-red-300 transition-all
-                  hover:bg-red-500/10 hover:text-red-200
+                  auth-menu-danger transition-colors
                 "
               >
                 Đăng xuất
               </button>
 
-              <div className="px-3 py-2 text-xs text-white/60">
+              <div className="auth-menu-muted px-3 py-2 text-xs">
                 Thiết bị đang đăng nhập
               </div>
 
               {loadingDevices ? (
-                <div className="px-3 py-2 text-xs text-white/50">Đang tải...</div>
+                <div className="auth-menu-muted px-3 py-2 text-xs">Đang tải...</div>
               ) : devices.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-white/50">
+                <div className="auth-menu-muted px-3 py-2 text-xs">
                   Chưa có thiết bị nào.
                 </div>
               ) : (
                 devices.map((d) => (
                   <div key={d.id} className="px-1 py-1">
-                    <div className="flex items-start justify-between gap-3 rounded-2xl bg-white/5 px-3 py-2">
+                    <div className="auth-menu-device flex items-start justify-between gap-3 rounded-2xl px-3 py-2">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-white">
+                        <div className="text-sm font-semibold">
                           {getDeviceLabel(d)}
                         </div>
 
-                        <div className="mt-1 text-[11px] text-white/50">
+                        <div className="auth-menu-muted mt-1 text-[11px]">
                           last seen: {formatLastSeen(d.last_seen_at)}
                         </div>
                       </div>
@@ -609,8 +569,7 @@ hover:bg-white/10 hover:text-white rounded-xl transition-all"
                         type="button"
                         className="
                           shrink-0 rounded-xl px-2.5 py-1
-                          text-xs font-semibold text-red-300
-                          transition hover:bg-red-500/10 hover:text-red-200
+                          auth-menu-danger text-xs font-semibold transition-colors
                           pointer-events-auto relative z-[99999]
                         "
                         onClick={async (e) => {
@@ -745,19 +704,34 @@ const controls = (
                   className="w-full border rounded-lg px-3 py-2 text-sm"
                 />
 
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Mật khẩu"
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
+                <div className="relative">
+                  <input
+                    id="public-login-password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    aria-label="Mật khẩu"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mật khẩu"
+                    className="w-full rounded-lg border py-2 pl-3 pr-12 text-sm"
+                  />
+                  <button
+                    type="button"
+                    aria-controls="public-login-password"
+                    aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    className="absolute inset-y-0 right-0 grid w-11 place-items-center rounded-r-lg text-stone-500 hover:bg-stone-100 hover:text-stone-800 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-stone-600"
+                  >
+                    {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+                  </button>
+                </div>
 
                 <button
                   type="button"
                   className="text-sm text-blue-600 hover:underline text-left"
                   onClick={() => {
                     setForgotEmail(email);
+                    setShowPassword(false);
                     setAuthView("forgot");
                   }}
                 >

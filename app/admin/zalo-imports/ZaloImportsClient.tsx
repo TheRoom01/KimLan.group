@@ -108,6 +108,7 @@ export default function ZaloImportsClient() {
   const [detailPending, setDetailPending] = useState<ImportRow | null>(null);
   const [openPendingModal, setOpenPendingModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
+  const reportedPendingRequest = useRef<AbortController | null>(null);
 
   function showToast(message: string, tone: "success" | "error" = "success") {
     const id = `notice-${Date.now()}-${Math.random()}`;
@@ -115,8 +116,28 @@ export default function ZaloImportsClient() {
     finishImportTask(id, message, tone === "error");
   }
 
+  async function openReportedPending(id: string) {
+    reportedPendingRequest.current?.abort();
+    const controller = new AbortController();
+    reportedPendingRequest.current = controller;
+    try {
+      const response = await fetch(`/api/admin/zalo-imports?pendingId=${encodeURIComponent(id)}`, { cache: "no-store", signal: controller.signal });
+      const result = await response.json();
+      if (controller.signal.aborted) return;
+      if (!response.ok || !result.ok) throw new Error("Không tải được bản chờ duyệt.");
+      const row = result.data?.[0] as ImportRow | undefined;
+      if (row) setDetailPending(row);
+      else showToast("Bản chờ duyệt này không còn trong danh sách.", "error");
+    } catch {
+      if (!controller.signal.aborted) showToast("Không tải được bản chờ duyệt. Vui lòng thử lại.", "error");
+    }
+  }
+
   const listRequest = useRef<AbortController | null>(null);
-  useEffect(() => () => listRequest.current?.abort(), []);
+  useEffect(() => () => {
+    listRequest.current?.abort();
+    reportedPendingRequest.current?.abort();
+  }, []);
   async function loadData(nextOffset = offset, nextStatus = status) {
     listRequest.current?.abort();
     const controller = new AbortController();
@@ -282,7 +303,7 @@ export default function ZaloImportsClient() {
   return (
     <main style={wrap}>
       <ImportTaskToasts />
-      <ZaloReaderStatus />
+      <ZaloReaderStatus onOpenPending={openReportedPending} />
       <div style={topBar}>
         <div>
           <h1 style={title}>Zalo Imports</h1>
@@ -705,7 +726,7 @@ function useImportActions({
     if (busyAction || isImportBusy(row.id)) return;
 
     const ok = window.confirm(
-      "Bạn có chắc muốn từ chối import này? Ảnh tạm trên R2 sẽ bị xoá."
+      "Từ chối phòng này? Reader sẽ thử nhập lại nếu tin gốc còn trong cửa sổ quét."
     );
 
     if (!ok) return;
@@ -750,7 +771,7 @@ function useImportActions({
     if (busyAction || isImportBusy(row.id)) return;
 
     const ok = window.confirm(
-      "Bạn có chắc muốn xoá hẳn import này? Dữ liệu pending và ảnh tạm R2 sẽ bị xoá."
+      "Xóa bản import này? Reader sẽ bỏ qua bản đã xóa khi gặp lại cùng nguồn."
     );
 
     if (!ok) return;

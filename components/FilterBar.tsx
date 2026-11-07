@@ -13,6 +13,8 @@ type FilterBarProps = {
   roomTypes: string[];
   total?: number | null;
   priceApplied: [number, number];
+  priceFilterActive: boolean;
+  badgeFilterActive: boolean;
 
   search: string;
   setSearch: React.Dispatch<React.SetStateAction<string>>;
@@ -95,6 +97,8 @@ const FilterBar = ({
   setSearch,
   priceDraft,
   priceApplied,
+  priceFilterActive,
+  badgeFilterActive,
   setPriceDraft,
   setPriceApplied,
   selectedDistricts,
@@ -398,10 +402,22 @@ const toggleStatus = (value: RoomStatusFilter) => {
     });
   };
 
+ const activeFilterCount = [
+   priceFilterActive,
+   badgeFilterActive,
+   selectedDistricts.length > 0,
+   selectedRoomTypes.length > 0,
+   moveFilter !== null,
+   petFilters.length > 0,
+   termFilters.length > 0,
+   selectedStatuses.length > 0,
+   featureFilters.length > 0,
+ ].filter(Boolean).length;
+
  return (
   <section className="home-filter w-full max-w-[1440px] mx-auto px-4 md:px-6 py-5 space-y-5">
     {/* Search */}
-    <div className="home-search relative">
+    <div className="home-search relative" data-has-filters={activeFilterCount > 0 ? "true" : undefined}>
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -421,9 +437,11 @@ const toggleStatus = (value: RoomStatusFilter) => {
         </button>
       )}
       <button type="button" className="home-filter-toggle" aria-expanded={panelOpen} aria-controls={panelId}
+        aria-label={activeFilterCount > 0 ? `Bộ lọc, ${activeFilterCount} nhóm đang áp dụng` : undefined}
         onClick={() => { setPanelOpen(value => !value); closeAllFilters(); }}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg>
         <span>Bộ lọc</span>
+        {activeFilterCount > 0 && <span className="home-filter-count" aria-hidden="true">{activeFilterCount}</span>}
       </button>
     </div>
 

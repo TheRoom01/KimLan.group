@@ -9,7 +9,6 @@ import LazyAuthControls from "@/components/LazyAuthControls";
 import ClientErrorOverlay from './_debug/ClientErrorOverlay';
 import InstallPrompt from "@/components/pwa/InstallPrompt";
 import PwaRegister from "@/components/pwa/PwaRegister";
-import VisitorTracker from "@/components/VisitorTracker";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -186,7 +185,6 @@ export default function RootLayout({
         </noscript>
 
         <LazyAuthControls />
-        <VisitorTracker />
         <PwaRegister />
         <InstallPrompt />
         {children}

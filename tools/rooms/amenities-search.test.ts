@@ -4,14 +4,16 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import {normalizeRoomFeatures,roomFeatureStatusTokens,matchesRoomFeatures} from '../../lib/rooms/features';
 import {normalizeHomeSearchKeyword,roomSearchableText,roomMatchesSearch,normalizeSearchKeyword} from '../../lib/rooms/search';
+import {readHomeListFilters,readHomeListPage,roomListFilterRpcParams} from '../../lib/rooms/listFilters';
 
 async function main(){
  assert.deepEqual(normalizeRoomFeatures('balcony,window,balcony,invalid'),['balcony','window']);
  assert.deepEqual(roomFeatureStatusTokens(['window']),['__amenity:window']);
  assert.equal(matchesRoomFeatures({has_balcony:true},['balcony','window']),false);
  assert.equal(matchesRoomFeatures({has_balcony:true,has_window:true},['balcony','window']),true);
- const room={house_number:'991A',room_code:'991A',address:'Sao Mai',ward:'Phường 13',district:'Quận 1',description:'Căn 991A: sân vườn riêng',room_detail:{other_amenities:'BBQ sân thượng'}};
+ const room={house_number:'991A',room_code:'A105',address:'Sao Mai',ward:'Phường 13',district:'Quận 1',description:'Căn 991A: sân vườn riêng',room_detail:{other_amenities:'BBQ sân thượng'}};
  assert.equal(roomMatchesSearch(room,'991a',false),false);assert.equal(roomMatchesSearch(room,'991a',true),true);
+ assert.equal(roomMatchesSearch(room,'A105',false),true);
  assert.equal(roomMatchesSearch(room,'SAO MAI',false),true);assert.equal(roomMatchesSearch(room,'SÂN VƯỜN',false),true);assert.equal(roomMatchesSearch(room,'bbq',false),true);
  for(const query of ['P.13','phường13','phuong 13'])assert.equal(roomMatchesSearch(room,query,false),true);
  for(const query of ['q1','Quận 1'])assert.equal(roomMatchesSearch(room,query,false),true);
@@ -20,7 +22,7 @@ async function main(){
  // Execute the real SSR fetch function with a recorded RPC, no database IO.
  const calls:any[]=[];const module={exports:{} as any};
  const dependencies:any={
-  '@/lib/rooms/search':{normalizeHomeSearchKeyword},'@/lib/rooms/features':{roomFeatureStatusTokens},
+  '@/lib/rooms/listFilters':{roomListFilterRpcParams},
   '@/lib/roomBadges':{attachRoomBadges:async(_db:any,rows:any[])=>rows},
  };
  vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/fetchRoomsServer.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
@@ -45,8 +47,8 @@ async function main(){
    if(node.name.getText(ast)==='buildQs')buildQs=node.initializer.arguments[0].getText(ast);
   }ts.forEachChild(node,visit);
  }visit(ast);assert.ok(readUrl&&buildQs&&signature);
- const context:any={URLSearchParams,window:{location:{search:'?q=Sao%20Mai&features=balcony,window&term=long'}},normalizeRoomFeatures,PRICE_DEFAULT:[3000000,30000000],ROOM_BADGES:[],
-  QS:{q:'q',min:'min',max:'max',d:'d',t:'t',m:'m',pet:'pet',term:'term',features:'features',s:'s',st:'st',badge:'badge',p:'p',c:'c'},parseList:(v:string)=>v?v.split(','):[],toListParam:(v:string[])=>v.join(','),decodeCursor:()=>null,encodeCursor:()=>'',canonicalQs:(qs:string)=>qs};
+ const context:any={URLSearchParams,window:{location:{search:'?q=Sao%20Mai&features=balcony,window&term=long'}},readHomeListFilters,readHomeListPage,roomListFilterRpcParams,
+  QS:{q:'q',min:'min',max:'max',d:'d',t:'t',m:'m',pet:'pet',term:'term',features:'features',s:'s',st:'st',badge:'badge',p:'p',c:'c'},toListParam:(v:string[])=>v.join(','),encodeCursor:()=>'',canonicalQs:(qs:string)=>qs};
  const execute=(code:string)=>vm.runInNewContext(ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
  const parsed=execute(`(${readUrl})()`);assert.equal(parsed.features.join(','),'balcony,window');
  const url=execute(`(${buildQs})({q:'Sao Mai',features:['balcony','window']})`);assert.equal(new URLSearchParams(url).get('features'),'balcony,window');
