@@ -1,42 +1,9 @@
-import { normalizeRoomFeatures } from "@/lib/rooms/features";
 import HomeClient from "./HomeClient";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
-import ContactFAB from "@/components/ContactFAB";
+import { readHomeListFilters, readHomeListPage } from "@/lib/rooms/listFilters";
 import { getCachedPublicRooms } from "@/lib/rooms/publicCache";
 import { cookies } from "next/headers";
-
-function firstString(v: string | string[] | undefined): string | null {
-  if (typeof v === "string") return v;
-  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
-  return null;
-}
-
-function parseCsv(v: string | null): string[] | null {
-  if (!v) return null;
-
-  const arr = v
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  return arr.length ? arr : null;
-}
-
-function parseOptionalNumber(v: string | null): number | null {
-  if (v == null || v.trim() === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function parseSortMode(
-  v: string | null
-): "updated_desc" | "price_asc" | "price_desc" {
-  if (v === "price_asc" || v === "price_desc" || v === "updated_desc") {
-    return v;
-  }
-  return "updated_desc";
-}
 
 export default async function HomePage({
   searchParams,
@@ -44,117 +11,67 @@ export default async function HomePage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = (await searchParams) ?? {};
+  const getParam = (key: string) => {
+    const value = sp[key];
+    return (Array.isArray(value) ? value[0] : value) ?? null;
+  };
+  const filters = readHomeListFilters(getParam);
+  const { nextPage, c } = readHomeListPage(getParam);
+  const savedView = getParam("view") === "saved";
 
   const cookieStore = await cookies();
-  const hasAuthCookie = cookieStore
-    .getAll()
+  const hasAuthCookie = cookieStore.getAll()
     .some(({ name }) => name.startsWith("sb-") && name.includes("-auth-token"));
   const supabase = hasAuthCookie ? await createSupabaseServerClient() : null;
-
-  // 1) Chỉ xác minh server khi request thực sự mang Supabase auth cookie.
-  const user = supabase
-    ? (await supabase.auth.getUser()).data.user ?? null
-    : null;
-
+  const user = supabase ? (await supabase.auth.getUser()).data.user ?? null : null;
   let adminLevel: 0 | 1 | 2 = 0;
-
-  // Khách công khai không cần trả thêm một RPC chỉ để nhận lại level 0.
-  if (user) {
+  if (user && supabase) {
     try {
-      const { data: lvlData } = await supabase!.rpc("get_my_admin_level");
-      const lvl = Number(lvlData ?? 0);
-      adminLevel = (lvl === 2 ? 2 : lvl === 1 ? 1 : 0) as 0 | 1 | 2;
+      const { data } = await supabase.rpc("get_my_admin_level");
+      const level = Number(data ?? 0);
+      if (level === 1 || level === 2) adminLevel = level;
     } catch {
       adminLevel = 0;
     }
   }
 
-  // 2) Read filters from URL (SSR must match client URL state)
-  const qRaw = firstString(sp.q);
-  const minRaw = firstString(sp.min);
-  const maxRaw = firstString(sp.max);
-   const dRaw = firstString(sp.d);
-  const rtRaw = firstString(sp.t) ?? firstString(sp.rt);
-  const stRaw = firstString(sp.st);
-  const badgeRaw = firstString(sp.badge);
-  const mRaw = firstString(sp.m);
-  const petRaw = firstString(sp.pet);
-  const termRaw = firstString(sp.term);
-  const sRaw = firstString(sp.s);
-  const savedView = firstString(sp.view) === "saved";
-
-  const search = qRaw ? qRaw.trim() : null;
-
-  // Không có min/max trên URL nghĩa là chưa bật lọc giá. Gửi null để RPC
-  // trả cả phòng có giá lẫn phòng chưa có giá.
-  const minPrice = parseOptionalNumber(minRaw);
-  const maxPrice = parseOptionalNumber(maxRaw);
-
-   const districts = parseCsv(dRaw);
-  const roomTypes = parseCsv(rtRaw);
-
-  const status = stRaw ? stRaw : null;
-
-  const move =
-    mRaw === "elevator" || mRaw === "stairs"
-      ? (mRaw as "elevator" | "stairs")
-      : null;
-
-  const petPoliciesRaw = parseCsv(petRaw);
-  const contractTermsRaw = parseCsv(termRaw);
-
-  const petPolicies =
-    petPoliciesRaw?.filter(
-      (v): v is "cat" | "dog" | "nopet" =>
-        v === "cat" || v === "dog" || v === "nopet"
-    ) ?? null;
-
-  const contractTerms =
-    contractTermsRaw?.filter(
-      (v): v is "short" | "long" =>
-        v === "short" || v === "long"
-    ) ?? [];
-
-  const sortMode = parseSortMode(sRaw);
-
-  // 3) Fetch first page on server using URL-derived filters
-  const LIMIT = 20;
   const fetchParams = {
-    limit: LIMIT,
+    limit: 20,
     cursor: null,
     adminLevel,
-    search,
-    minPrice,
-    maxPrice,
-    districts,
-    roomTypes,
-    move,
-    petPolicies,
-    contractTerms,
-    featureFilters: normalizeRoomFeatures(firstString(sp.features)),
-    status,
-    badge: badgeRaw === "budget_friendly" || badgeRaw === "new_listing" || badgeRaw === "featured" || badgeRaw === "exclusive" ? badgeRaw : null,
-    sortMode,
-  } as const;
-
-  const res = savedView
-    ? { data: [], nextCursor: null, total: 0, error: "" }
-    : user
-      ? await fetchRoomsServer(supabase!, fetchParams)
+    search: filters.search,
+    minPrice: filters.priceFilterActive ? filters.priceApplied[0] : null,
+    maxPrice: filters.priceFilterActive ? filters.priceApplied[1] : null,
+    districts: filters.selectedDistricts,
+    roomTypes: filters.selectedRoomTypes,
+    move: filters.moveFilter,
+    petPolicies: filters.petFilters,
+    contractTerms: filters.termFilters,
+    featureFilters: filters.featureFilters,
+    status: filters.statusFilter,
+    badge: filters.badgeFilter,
+    sortMode: filters.sortMode,
+  };
+  // A later page uses its URL cursor or back snapshot on the client. Avoid
+  // fetching and rendering page zero under that URL.
+  const res = savedView || nextPage > 0
+    ? { data: [], nextCursor: null, total: null, error: "" }
+    : adminLevel && supabase
+      ? await fetchRoomsServer(supabase, fetchParams)
       : await getCachedPublicRooms(fetchParams);
 
   return (
-    <>
-      <HomeClient
-        initialRooms={res.data}
-        initialNextCursor={res.nextCursor}
-        initialAdminLevel={adminLevel}
-        initialTotal={res.total ?? null}
-        initialError={res.error}
-        initialSavedView={savedView}
-      />
-
-      {false && <ContactFAB />}
-    </>
+    <HomeClient
+      key={JSON.stringify([filters, nextPage, c, savedView, adminLevel, user?.id ?? null])}
+      initialRooms={res.data}
+      initialNextCursor={res.nextCursor}
+      initialAdminLevel={adminLevel}
+      initialUserId={user?.id ?? null}
+      initialTotal={res.total ?? null}
+      initialError={res.error}
+      initialSavedView={savedView}
+      initialFilters={filters}
+      initialPageIndex={nextPage}
+    />
   );
 }

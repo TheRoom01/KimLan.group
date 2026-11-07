@@ -9037,7 +9037,14 @@ async function importIndexedDbRoomPreviews(
       }
     } catch (error: any) {
       failedCount += 1;
-      if (config.officialReader) getOfficialSession()!.fail(error instanceof StagingImportTransportError ? "API_UNAVAILABLE" : "IMPORT_FAILED", room.markerMessageId);
+      if (config.officialReader) {
+        const [code, ...details] = Array.isArray(error?.diagnosticCodes) ? error.diagnosticCodes : [];
+        getOfficialSession()!.fail(code || (error instanceof StagingImportTransportError ? "API_UNAVAILABLE" : "IMPORT_FAILED"),
+          room.markerMessageId, details, error?.pendingIds, {
+            text: rawText,
+            address: room.houseInfoText.split(/\r?\n/).find(line => /^\s*\d+[\p{L}\d/.-]*\s+\p{L}/u.test(line))?.trim(),
+          });
+      }
 
       console.error(
         `Import IndexedDB lỗi hoàn toàn, source message: ${room.markerMessageId}`,
@@ -15987,6 +15994,9 @@ async function sendBatch(params: {
         `Gửi staging import tới ${endpoint} thất bại (${detail}). Không tự retry phòng kế tiếp.`,
       );
     }
+    if (config.officialReader) {
+      throw Object.assign(new Error("API import unavailable"), { diagnosticCodes: ["API_UNAVAILABLE"] });
+    }
     throw error;
   }
 
@@ -16013,10 +16023,15 @@ async function sendBatch(params: {
     !res.ok ||
     !json?.ok
   ) {
-    throw new Error(
+    throw Object.assign(new Error(
       json?.error ||
         `Import failed HTTP ${res.status}`
-    );
+    ), { pendingIds: json?.code === "ROOM_PENDING_EXISTS" ? json.pendingIds : undefined, diagnosticCodes: [
+      ...[json?.code, json?.errorDetails?.code].filter(code => typeof code === "string" && /^[A-Z0-9_]{2,64}$/.test(code)),
+      ...mediaReport.errorCodes,
+      ...(typeof json?.stage === "string" && /^[a-z-]{2,40}$/.test(json.stage) ? [`STAGE_${json.stage.toUpperCase().replaceAll("-", "_")}`] : []),
+      `HTTP_${res.status}`,
+    ] });
   }
 
   if (json?.noChanges) {
@@ -16052,6 +16067,12 @@ async function sendBatch(params: {
      * API đã tạo bản Imports, vì vậy chỉ log cảnh báo.
      */
     if (isPartial) {
+      if (config.officialReader) {
+        json.diagnosticCodes = [...mediaReport.errorCodes];
+        if (serverImageCount !== expectedImageCount || serverVideoCount !== expectedVideoCount) {
+          json.diagnosticCodes.push("MEDIA_COUNT_MISMATCH");
+        }
+      }
       console.warn(
         [
           "Phòng đã được đưa lên Imports nhưng có lỗi media.",

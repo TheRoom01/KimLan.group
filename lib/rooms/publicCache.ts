@@ -11,6 +11,7 @@ import {
 } from "@/lib/fetchRoomsServer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { attachRoomBadges } from "@/lib/roomBadges";
+import { roomListFilterRpcParams } from "@/lib/rooms/listFilters";
 
 export const PUBLIC_ROOMS_CACHE_TAG = "public-rooms-v1";
 
@@ -39,11 +40,17 @@ export const getPublicRoomDetail = cache(async (roomId: string) => {
   return unstable_cache(
     async () => {
       const supabase = createPublicSupabaseClient();
-      const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+      const fetchDetail = () => supabase.rpc("fetch_room_detail_full_v1", {
         p_id: id,
         p_role: 0,
       });
+      let result = await fetchDetail();
+      if (result.error && [0, 502, 503, 504].includes(result.status)) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        result = await fetchDetail();
+      }
 
+      const { data, error } = result;
       if (error) throw new Error(error.message);
       if (!data || typeof data !== "object") return data ?? null;
       return (await attachRoomBadges(supabase, [data as Record<string, any>]))[0] ?? data;
@@ -128,7 +135,11 @@ export const getRoomDetailForRender = cache(async (roomId: string) => {
 
 export const getCachedPublicRooms = cache(async (params: FetchRoomsParams) => {
   const normalizedParams: FetchRoomsParams = { ...params, adminLevel: 0 };
-  const cacheKey = JSON.stringify(normalizedParams);
+  const cacheKey = JSON.stringify({
+    ...roomListFilterRpcParams(normalizedParams),
+    limit: normalizedParams.limit,
+    cursor: normalizedParams.cursor ?? null,
+  });
 
   return unstable_cache(
     async () => {
@@ -150,7 +161,7 @@ export const getCachedPublicRooms = cache(async (params: FetchRoomsParams) => {
       if (result.error) throw new Error(result.error);
       return result;
     },
-    ["public-room-list-v1", cacheKey],
+    ["public-room-list-v2", cacheKey],
     {
       revalidate: 30,
       tags: [PUBLIC_ROOMS_CACHE_TAG],

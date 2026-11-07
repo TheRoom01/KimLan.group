@@ -49,7 +49,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         return apiError("FORBIDDEN", "Bạn không có quyền xuất bản phòng này", 403);
       }
 
-      const admin = createSupabaseAdminClient();
+      const admin = createSupabaseAdminClient({ source: "owner_portal", actorUserId: user.id });
       const { data: property, error: propertyError } = await admin
         .from("properties")
         .select("approval_status, lifecycle_status")

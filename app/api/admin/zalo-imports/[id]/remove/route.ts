@@ -1,3 +1,4 @@
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -22,7 +23,7 @@ async function assertAdmin() {
 
   const level = Number(levelData ?? 0);
 
-  if (levelErr || (level !== 1 && level !== 2)) {
+  if (!canAccessZaloImports(user) || levelErr || (level !== 1 && level !== 2)) {
     return { ok: false as const, status: 403, error: "Forbidden" };
   }
 
@@ -70,30 +71,6 @@ export async function POST(
       );
     }
 
-    const { data: images, error: imgErr } = await supabase
-      .from("zalo_import_images")
-      .select("temp_r2_key")
-      .eq("batch_id", pending.batch_id);
-
-    if (imgErr) throw imgErr;
-
-    const tempKeys = (images ?? [])
-      .map((x: any) => String(x.temp_r2_key || "").trim())
-      .filter(Boolean);
-
-    let deleted = 0;
-
-    if (tempKeys.length > 0) {
-      deleted = await deleteR2Keys(tempKeys);
-    }
-
-    const delImages = await supabase
-      .from("zalo_import_images")
-      .delete()
-      .eq("batch_id", pending.batch_id);
-
-    if (delImages.error) throw delImages.error;
-
     const delPending = await supabase
       .from("pending_room_versions")
       .delete()
@@ -108,13 +85,26 @@ export async function POST(
 
     if (countErr) throw countErr;
 
-    if (Number(count ?? 0) === 0) {
-      const delBatch = await supabase
-        .from("zalo_import_batches")
-        .delete()
-        .eq("id", pending.batch_id);
-
-      if (delBatch.error) throw delBatch.error;
+    let deleted = 0;
+    if (count === 0 && pending.batch_id) {
+      try {
+        const [images, videos] = await Promise.all([
+          supabase.from("zalo_import_images").select("temp_r2_key").eq("batch_id", pending.batch_id),
+          supabase.from("zalo_import_videos").select("temp_r2_key,temp_thumb_r2_key").eq("batch_id", pending.batch_id),
+        ]);
+        if (images.error) throw images.error;
+        if (videos.error) throw videos.error;
+        const tempKeys = [
+          ...(images.data ?? []).map(image => image.temp_r2_key),
+          ...(videos.data ?? []).flatMap(video => [video.temp_r2_key, video.temp_thumb_r2_key]),
+        ].filter((key): key is string => typeof key === "string" && key.length > 0);
+        if (tempKeys.length) deleted = await deleteR2Keys(tempKeys);
+        // Media rows cascade with the batch. Keep media for sibling rooms.
+        const delBatch = await supabase.from("zalo_import_batches").delete().eq("id", pending.batch_id);
+        if (delBatch.error) throw delBatch.error;
+      } catch (cleanupError) {
+        console.warn("Could not clean up removed Zalo import batch", cleanupError);
+      }
     }
 
     return NextResponse.json({

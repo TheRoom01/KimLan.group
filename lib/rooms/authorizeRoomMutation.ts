@@ -12,6 +12,7 @@ export type RoomMutationAuthorization =
   | {
       allowed: true;
       isAdmin: boolean;
+      actorUserId: string;
       supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
     };
 
@@ -44,6 +45,7 @@ export async function authorizeRoomMutation(
     return {
       allowed: true,
       isAdmin: true,
+      actorUserId: user.id,
       supabase,
     };
   }
@@ -72,6 +74,7 @@ export async function authorizeRoomMutation(
   return {
     allowed: true,
     isAdmin: false,
+    actorUserId: user.id,
     supabase,
   };
 }

@@ -1,3 +1,4 @@
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { NextResponse } from "next/server";
 import { importFilters, applyImportFilters } from "@/lib/zalo-import/filters";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -33,7 +34,7 @@ async function assertAdmin() {
     await supabaseUser.rpc("get_my_admin_level");
 
   const level = Number(levelData ?? 0);
-  if (levelErr || (level !== 1 && level !== 2)) {
+  if (!canAccessZaloImports(user) || levelErr || (level !== 1 && level !== 2)) {
     return { ok: false as const, status: 403, error: "Forbidden" };
   }
 

@@ -82,7 +82,8 @@ async function main() {
       "@/lib/zalo-import/error-message": { zaloImportErrorMessage },
       "@/lib/r2/zalo-temp": { copyR2Object() { throw new Error("unselected media must never be copied"); }, deleteR2Keys: async () => {}, makeRoomImageKey() {} },
       "@/lib/supabase/admin": { createSupabaseAdminClient: () => adapter },
-      "@/lib/supabase/server": { createSupabaseServerClient: async () => ({ auth: { getUser: async () => ({ data: { user: { id: actorId } }, error: null }) }, rpc: async () => ({ data: 1, error: null }) }) },
+      "@/lib/zalo-import/access": { canAccessZaloImports: () => true },
+    "@/lib/supabase/server": { createSupabaseServerClient: async () => ({ auth: { getUser: async () => ({ data: { user: { id: actorId } }, error: null }) }, rpc: async () => ({ data: 1, error: null }) }) },
       "next/server": { NextResponse: { json: (body: unknown, options?: ResponseInit) => Response.json(body, options) } },
     };
     function load(file: string): any {

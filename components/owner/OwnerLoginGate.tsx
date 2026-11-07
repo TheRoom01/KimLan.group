@@ -521,6 +521,8 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
     setRegisterEmail("");
     setRegisterPassword("");
     setRegisterPasswordConfirm("");
+    setShowRegisterPassword(false);
+    setShowRegisterPasswordConfirm(false);
     setEmailOtp("");
     setResendCooldown(0);
     setCaptchaRequired(false);
@@ -531,6 +533,7 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
 
   function backToLogin() {
     setAuthMessage("");
+    setShowPassword(false);
     setAuthView("login");
   }
 
@@ -904,7 +907,8 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
                           }
                           disabled={authLoading}
                           className="grid w-12 shrink-0 place-items-center border-l border-[#b99472]/20 bg-[#f5e5cf] text-[#8a6547] transition hover:bg-[#ead5b8]"
-                          aria-label="Hiện hoặc ẩn mật khẩu"
+                          aria-controls="owner-register-password"
+                          aria-label={showRegisterPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                         >
                           {showRegisterPassword ? (
                             <EyeOff size={18} />
@@ -956,7 +960,8 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
                           }
                           disabled={authLoading}
                           className="grid w-12 shrink-0 place-items-center border-l border-[#b99472]/20 bg-[#f5e5cf] text-[#8a6547] transition hover:bg-[#ead5b8]"
-                          aria-label="Hiện hoặc ẩn mật khẩu xác nhận"
+                          aria-controls="owner-register-password-confirm"
+                          aria-label={showRegisterPasswordConfirm ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
                         >
                           {showRegisterPasswordConfirm ? (
                             <EyeOff size={18} />

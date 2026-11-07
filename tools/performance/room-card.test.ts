@@ -57,6 +57,14 @@ async function main() {
     // Every image is fulfilled locally. Inspect the actual Next Image DOM,
     // without reaching external media or triggering onError fallbacks.
     await page.getByRole('button',{name:'Copy địa chỉ',exact:true}).waitFor();
+    if (!baseline) {
+      await page.evaluate(() => window.setRoom(old => ({ ...old, is_hidden: true })));
+      await page.getByText('Đã ẩn', { exact: true }).waitFor();
+      assert.equal(await page.getByRole('button', { name: 'Đang trống', exact: true }).count(), 0);
+      await page.evaluate(() => window.setRoom(old => ({ ...old, is_hidden: false })));
+      await page.getByRole('button', { name: 'Đang trống', exact: true }).waitFor();
+      assert.equal(await page.getByText('Đã ẩn', { exact: true }).count(), 0);
+    }
     const images = await page.locator('.home-room-gallery img').evaluateAll(nodes=>nodes.map(node=>{
       const image=node as HTMLImageElement;return {src:image.getAttribute('src'),currentSrc:image.currentSrc,srcSet:image.getAttribute('srcset'),sizes:image.getAttribute('sizes'),loading:image.loading,decoding:image.decoding};
     }));

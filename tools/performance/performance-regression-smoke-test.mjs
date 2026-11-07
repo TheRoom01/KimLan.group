@@ -15,7 +15,7 @@ test("Home keeps SSR data and does not repeat retired public RPCs", async () => 
 
   assert.doesNotMatch(page, /get_public_filters/);
   assert.match(client, /pagesRef\.current = \[initialRooms \?\? \[\]\]/);
-  assert.match(client, /if \(pageFromUrl === 0 && !url\.c\)/);
+  assert.match(client, /initialPageUsable && pageFromUrl === 0 && makeFilterSigValue\(url\.filters\) === initialFilterSig/);
   assert.match(client, /const urlStatus = url\.st/);
   assert.match(client, /priceFilterActive \? minPriceApplied : undefined/);
   assert.doesNotMatch(client, /flushSync/);
@@ -25,10 +25,12 @@ test("Home keeps SSR data and does not repeat retired public RPCs", async () => 
   assert.match(roomCard, /WebkitLineClamp: 2/);
   assert.match(roomCard, /pointer-events-auto absolute bottom-0 z-30/);
   assert.match(roomCard, /current\?\.id === toastId \? null : current/);
-  assert.match(page, /const minPrice = parseOptionalNumber\(minRaw\)/);
-  assert.match(page, /const maxPrice = parseOptionalNumber\(maxRaw\)/);
+  assert.match(page, /readHomeListFilters\(getParam\)/);
+  assert.match(page, /minPrice: filters\.priceFilterActive \? filters\.priceApplied\[0\] : null/);
+  assert.match(page, /maxPrice: filters\.priceFilterActive \? filters\.priceApplied\[1\] : null/);
   assert.match(publicCache, /start_anon_session/);
-  assert.match(serverFetcher, /minPrice == null/);
+  assert.match(publicCache, /roomListFilterRpcParams\(normalizedParams\)/);
+  assert.match(serverFetcher, /roomListFilterRpcParams\(params\)/);
 });
 
 test("room detail is role-aware server loaded with a secure client fallback", async () => {

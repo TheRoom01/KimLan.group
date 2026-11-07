@@ -7,7 +7,7 @@ import { uploadDirect } from "@/lib/media/upload-direct";
 import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { useEffect, useState, useRef, type CSSProperties } from 'react'
 import type { Room, TabKey, RoomStatus } from '../../types/room'
-import type { RoomForm, RoomDetail } from './types'
+import type { MediaItem, RoomForm, RoomDetail } from './types'
 import { supabase } from '@/lib/supabase'
 import { normalizeRoomBadges, type RoomBadge } from '@/lib/roomBadges'
 import { getImportReview, normalizedRoomIdentity, canonicalStoredIdentity, comparisonFields, importReviewInstructions } from '@/lib/zalo-import/room-comparison'
@@ -26,6 +26,15 @@ import {
   mapWithConcurrency,
   prepareImageForUpload,
 } from '@/lib/media/uploadFileType'
+
+type MediaForSave = Pick<MediaItem, 'type' | 'url'>
+type StoredMedia = MediaForSave & { id: string; sort_order: number; is_cover: boolean }
+
+function mediaForSave(media: MediaItem[]): MediaForSave[] {
+  return media
+    .filter((item) => item?.url && (item.type === 'image' || item.type === 'video'))
+    .map(({ type, url }) => ({ type, url }))
+}
 
 /* ================= STORAGE KEY HELPERS ================= */
 // Symbols: func toSafeStorageKey
@@ -319,11 +328,7 @@ const [buildingLocationError, setBuildingLocationError] = useState<string | null
   const draftRoomIdRef = useRef<string>("");
   const initialRoomBadgesRef = useRef<RoomBadge[]>([]);
 
-    // ✅ NEW: nhớ danh sách media ban đầu để biết user có thật sự đổi ảnh không
-  const initialMediaSigRef = useRef<string>("");
-
-  // ✅ NEW (Patch 2): nhớ cover ban đầu để biết khi nào cần regenerate thumb.webp
-  const initialCoverUrlRef = useRef<string>("");
+  const initialMediaRef = useRef<{ roomId: string; displayed: MediaForSave[]; stored: StoredMedia[] } | null>(null)
   const initialPendingImageIdsRef = useRef<string[]>([]);
   const initialPendingVideoIdsRef = useRef<string[]>([]);
   const pendingEditActivityRef = useRef<string>("");
@@ -1035,11 +1040,11 @@ const detailSample =
   setBuildingLocationDirty(false)
   setBuildingLocationLoading(false)
   setBuildingLocationError(null)
+  initialMediaRef.current = null
 
     if (isPending) {
     initialRoomBadgesRef.current = []
     draftRoomIdRef.current = `zalo-pending-${String(pendingId || '').trim()}`
-    initialCoverUrlRef.current = ''
 
     const pendingImageMedia = (Array.isArray(pendingImages) ? pendingImages : [])
       .map((image: any) => ({
@@ -1120,7 +1125,6 @@ const detailSample =
   if (isNew || isCloneMode) {
     initialRoomBadgesRef.current = []
     draftRoomIdRef.current = genDraftId()
-    initialCoverUrlRef.current = ""
 
     setRoomForm({
       property_id: base.property_id ?? "",
@@ -1172,6 +1176,7 @@ const detailSample =
   initialRoomBadgesRef.current = fallbackBadges
   setRoomForm((prev) => ({ ...prev, badges: fallbackBadges }))
 
+  let active = true
   void (async () => {
     try {
       setBuildingLocationLoading(true)
@@ -1195,8 +1200,9 @@ const detailSample =
 
       const { data, error } = roomResult
 
-      if (error) {
-        setErrorMsg(error.message)
+      if (!active) return
+      if (error || !data) {
+        setErrorMsg(error?.message ?? 'Không tải được dữ liệu phòng.')
         return
       }
 
@@ -1204,6 +1210,7 @@ const detailSample =
       const roomBadgesResult = await supabase.rpc("get_room_badges_v1", {
         p_room_ids: [base.id],
       })
+      if (!active) return
       const loadedBadges = roomBadgesResult.error
         ? fallbackBadges
         : normalizeRoomBadges((roomBadgesResult.data as Array<{ room_id: string; badges: unknown }> | null)?.find((row) => row.room_id === base.id)?.badges)
@@ -1234,13 +1241,8 @@ const detailSample =
           roomOwnerId === currentUserId
         )
 
-      const mediaFromRpc = Array.isArray(room?.media)
-        ? room.media.map((m: any) => ({
-            type: m.type,
-            url: String(m.url),
-            path: String(m.url),
-          }))
-        : []
+      const storedMedia = Array.isArray(room.media) ? room.media as StoredMedia[] : []
+      const mediaFromRpc = storedMedia.map(({ type, url }) => ({ type, url, path: url }))
 
       const imageFallback = Array.isArray(room?.image_urls)
         ? room.image_urls.map((u: any) => ({
@@ -1251,6 +1253,13 @@ const detailSample =
         : []
 
       const nextMedia = mediaFromRpc.length ? mediaFromRpc : imageFallback
+      initialMediaRef.current = {
+        roomId: base.id,
+        displayed: mediaForSave(nextMedia),
+        stored: storedMedia
+          .map(({ id, type, url, sort_order, is_cover }) => ({ id, type, url, sort_order, is_cover }))
+          .sort((left, right) => left.id.localeCompare(right.id)),
+      }
 
       setRoomForm((prev) => ({
         ...prev,
@@ -1294,11 +1303,12 @@ const detailSample =
           : defaultDetailForm
       )
     } catch (e: any) {
-      setErrorMsg(e?.message ?? "Load phòng thất bại")
+      if (active) setErrorMsg(e?.message ?? "Load phòng thất bại")
     } finally {
-      setBuildingLocationLoading(false)
+      if (active) setBuildingLocationLoading(false)
     }
   })()
+  return () => { active = false }
 }, [editingRoom, isPending, pendingId, pendingRoomPayload, pendingDetailPayload, pendingImages, pendingVideos])
 
 /*
@@ -1775,7 +1785,7 @@ const applyAutoReadCandidate = (
           return
         }
 
-        finishImportTask(pendingId, json?.auto_approve_enabled ? 'Đã lưu nháp. Đã lên lịch tự duyệt sau 3 phút.' : `Đã lưu nháp. ${json?.auto_approve_reason || ''}`)
+        finishImportTask(pendingId, 'Đã lưu nháp. Phòng chờ admin duyệt.')
       } catch (e: any) {
         console.error('Lưu nháp pending thất bại:', e)
         if (!draftSaved) preserveImportForm(pendingId, { ...roomForm, ...(buildingLocationDirty ? { _pending_location: buildingLocation } : {}) }, detailForm, unresolvedCandidates)
@@ -1788,6 +1798,16 @@ const applyAutoReadCandidate = (
 
     return
   }
+
+  const initialMedia = isEdit ? initialMediaRef.current : null
+  if (isEdit && (!initialMedia || initialMedia.roomId !== editingRoom?.id)) {
+    setErrorMsg('Chưa tải xong ảnh và video của phòng. Vui lòng mở lại phòng nếu lỗi tiếp diễn.')
+    return
+  }
+  const nextMedia = mediaForSave(media)
+  const mediaChanged = initialMedia
+    ? JSON.stringify(nextMedia) !== JSON.stringify(initialMedia.displayed)
+    : nextMedia.length > 0
 
   let backgroundSave = false
 
@@ -1950,102 +1970,37 @@ if (buildingLocationDirty) {
   setBuildingLocationDirty(false)
 }
 
-    // =========================
-    // ✅ SYNC room_media (B7.6–B7.7)
-    // =========================
-    const normalized = (Array.isArray(media) ? media : [])
-      .filter((m: any) => m?.url && (m?.type === 'image' || m?.type === 'video'))
-      .map((m: any) => ({
-        type: m.type as 'image' | 'video',
-        url: String(m.url),
-      }))
-
-    const firstImageIndex = normalized.findIndex((m) => m.type === 'image')
-    const coverIndex = firstImageIndex >= 0 ? firstImageIndex : (normalized.length ? 0 : -1)
-
-    const rows = normalized.map((m, idx) => ({
-      room_id: roomId,
-      provider: 'r2',
-      type: m.type,
-      url: m.url,
-      is_cover: idx === coverIndex,
-      sort_order: idx,
-    }))
-
-  // replace-all để đảm bảo sort_order đúng 100%
-{
-  const del = await supabase.from('room_media').delete().eq('room_id', roomId)
-  if (del.error) throw del.error
-
-  if (rows.length > 0) {
-    const ins = await supabase.from('room_media').insert(rows)
-    if (ins.error) throw ins.error
+if (mediaChanged) {
+  const { data: membershipChanged, error: mediaError } = await supabase.rpc('sync_admin_room_media_v1', {
+    p_room_id: roomId,
+    p_media: nextMedia,
+    p_expected_media: initialMedia?.stored ?? [],
+  })
+  if (mediaError?.message === 'ROOM_MEDIA_CONFLICT') {
+    throw new Error('Ảnh hoặc video đã thay đổi từ phiên khác. Vui lòng mở lại phòng để tải danh sách mới.')
   }
+  if (mediaError) throw mediaError
 
-  // ✅ PRUNE R2: xoá ảnh đã bị remove khỏi DB + xoá thumb.webp cũ để tránh stale
-  // keep_urls chỉ lấy những ảnh/video còn tồn tại và thuộc R2
-  const keepUrls = (normalized || [])
-    .map((x: any) => String(x?.url || "").trim())
-    .filter(Boolean);
-
-  const roomCodeForR2 = String(updatedRoom?.room_code || roomForm?.room_code || "").trim();
-
- // ✅ NEW: chỉ prune khi user thật sự thay đổi danh sách media
-let shouldPrune = true;
-try {
-  const sigNow = JSON.stringify(
-    (normalized || [])
-      .map((m: any) => `${m.type}:${String(m.url).trim()}`)
-      .sort()
-  );
-
-  const sig0 = String(initialMediaSigRef.current || "");
-  // nếu đang edit và media không đổi -> không prune
-  if (isEdit && sig0 && sigNow === sig0) shouldPrune = false;
-
-  // safety: nếu vì lý do nào đó media đang rỗng (load lỗi) mà trước đó có sig0 -> không prune
-  if (isEdit && sig0 && (normalized || []).length === 0) shouldPrune = false;
-} catch {
-  // nếu so sánh lỗi thì thôi, đừng prune cho an toàn
-  shouldPrune = false;
-}
-
-if (shouldPrune) {
-  const pruneResp = await fetch(`/api/rooms/${roomId}/prune-r2`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      room_code: roomCodeForR2,
-      keep_urls: keepUrls,
-    }),
-  });
-
-    if (!pruneResp.ok) {
-      console.warn("prune-r2 failed", await pruneResp.text());
-    }
-   } else {
-    console.log("Skip prune-r2: media not changed (or unsafe to prune)");
-  }
-}
-
-    // ✅ Patch 2: nếu cover (ảnh đầu) đổi => regenerate thumb.webp theo cover mới
+  if (membershipChanged && nextMedia.length) {
     try {
-      const coverUrl = String(
-        normalized.find((m: any) => m?.type === "image" && m?.url)?.url ?? ""
-      ).trim();
-
-      const coverChanged =
-        !!coverUrl &&
-        (isNew || coverUrl !== String(initialCoverUrlRef.current || "").trim());
-
-      if (coverChanged) {
-        // chạy nền, không block UX save
-        void uploadThumbFromCover({ roomId, coverUrl });
-        initialCoverUrlRef.current = coverUrl;
-      }
-    } catch {
-      // ignore
+      const pruneResp = await fetch(`/api/rooms/${roomId}/prune-r2`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_code: updatedRoom.room_code || roomForm.room_code,
+          keep_urls: nextMedia.map(({ url }) => url),
+        }),
+      })
+      if (!pruneResp.ok) console.warn('prune-r2 failed', await pruneResp.text())
+    } catch (error) {
+      console.warn('prune-r2 failed', error)
     }
+  }
+
+  const coverUrl = nextMedia.find(({ type }) => type === 'image')?.url
+  const previousCoverUrl = initialMedia?.displayed.find(({ type }) => type === 'image')?.url
+  if (coverUrl && coverUrl !== previousCoverUrl) void uploadThumbFromCover({ roomId, coverUrl })
+}
 
 // Đồng bộ cache RSC sau khi rooms + media đã ghi xong. Đây là request chỉ chạy
 // khi save, không nằm trên đường đọc danh sách/modal thông thường.

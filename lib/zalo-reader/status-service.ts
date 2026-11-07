@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { OFFICIAL_ZALO_GROUPS, readerHealth } from "./official";
+import { cleanReaderImportIssues } from "./import-issues";
 
 export function readerSecretMatches(req: Request) {
   const expected = process.env.ZALO_READER_INTERNAL_SECRET || "";
@@ -13,17 +14,24 @@ export function cleanStatusEvent(body: any) {
     || !["running","idle","error","login_required","needs_review"].includes(body.status)
     || (body.groupId && (!/^g\d{10,30}$/.test(body.groupId) || (allowed.groupId && allowed.groupId !== body.groupId)))) throw new Error("INVALID_STATUS");
   const date = (value: any) => { const time = Date.parse(value); if (!Number.isFinite(time) || time > Date.now()+60000) throw new Error("INVALID_TIME"); return new Date(time).toISOString(); };
+  const issues = cleanReaderImportIssues(body.importIssues);
+  const issueSources = Object.fromEntries(issues.flatMap(issue =>
+    issue.sourceMessageId && issue.source ? [[issue.sourceMessageId, issue.source]] : []));
   return { run_id: body.runId, group_key: allowed.key, group_id: body.groupId || null, mode: body.mode, status: body.status,
     started_at: date(body.startedAt), heartbeat_at: date(body.heartbeatAt), finished_at: body.status === "running" ? null : date(body.heartbeatAt),
     window_from: body.windowFrom ? date(body.windowFrom) : null, window_to: body.windowTo ? date(body.windowTo) : null,
-    counters: Object.fromEntries(READER_COUNTERS.map(key => [key, Math.max(0, Math.min(10000000, Math.trunc(Number(body.counters?.[key]) || 0)))])),
+    counters: {
+      ...Object.fromEntries([...READER_COUNTERS, ...["rooms_read", "pending_with_issues"].filter(key => typeof body.counters?.[key] === "number")].map(key => [key, Math.max(0, Math.min(10000000, Math.trunc(Number(body.counters?.[key]) || 0)))])),
+      ...(Array.isArray(body.importIssues) ? { import_issues: issues.map(({ source: _source, ...issue }) => issue) } : {}),
+    },
+    ...(Object.keys(issueSources).length ? { import_issue_sources: issueSources } : {}),
     error_code: /^[A-Z0-9_]{2,80}$/.test(body.errorCode || "") ? body.errorCode : null };
 }
 export async function readReaderStatus(db: any) {
   const groups = await db.from("zalo_reader_groups").select("group_key,group_name,group_id,scheduler_enabled,next_expected_at");
   if (groups.error) throw groups.error;
   return Promise.all((groups.data || []).map(async (group: any) => {
-    const run = await db.from("zalo_reader_runs").select("run_id,mode,status,started_at,heartbeat_at,finished_at,counters,error_code")
+    const run = await db.from("zalo_reader_runs").select("run_id,mode,status,started_at,heartbeat_at,finished_at,counters,error_code,import_issue_sources")
       .eq("group_key", group.group_key).order("started_at", { ascending: false }).limit(1).maybeSingle();
     if (run.error) throw run.error;
     const health = readerHealth(run.data);

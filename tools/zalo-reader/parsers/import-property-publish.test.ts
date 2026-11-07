@@ -70,19 +70,21 @@ async function main(){
   await assert.rejects(publish,/thêm video thủ công/);assert.equal(rpcCalls,beforeEmpty,"missing-video draft never creates a main room/building");assert.equal(tables.rooms.length,0);
   const draftModule={exports:{} as any};
   const draftDeps={...deps,"@/lib/zalo-import/resolve":{resolveZaloImportRoom},"@/lib/zalo-import/room-comparison":comparison,
-    "@/lib/supabase/server":{createSupabaseServerClient:async()=>({auth:{getUser:async()=>({data:{user:{id:"admin"}}})},rpc:async()=>({data:2,error:null})})},
+    "@/lib/zalo-import/access": { canAccessZaloImports: () => true },
+    "@/lib/supabase/server":{createSupabaseServerClient:async()=>({auth:{getUser:async()=>({data:{user:{id:"admin" }}})},rpc:async()=>({data:2,error:null})})},
     "next/server":{NextResponse:{json:(body:any,options:any)=>Response.json(body,options)}}};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync("app/api/admin/zalo-imports/[id]/draft/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,
     {module:draftModule,exports:draftModule.exports,require:(name:string)=>{assert.ok(name in draftDeps,name);return(draftDeps as any)[name]},console,structuredClone,process:{env:{R2_PUBLIC_BASE_URL:"https://example.test"}}});
   delete tables.pending_room_versions[0].room_payload._reader_manual_review;
-  const saved=await draftModule.exports.PATCH(new Request("http://offline.test/draft",{method:"PATCH",body:JSON.stringify({manualReviewOnly:true,room_payload:{...tables.pending_room_versions[0].room_payload,property_id:"chosen-building",_pending_location:{latitude:10.8,longitude:106.7}},detail_payload:{},images:[],videos:[],
+  const saved=await draftModule.exports.PATCH(new Request("http://offline.test/draft",{method:"PATCH",body:JSON.stringify({room_payload:{...tables.pending_room_versions[0].room_payload,property_id:"chosen-building",_pending_location:{latitude:10.8,longitude:106.7}},detail_payload:{},images:[],videos:[],
     new_media:[{type:"video",url:"https://example.test/rooms/zalo-pending-pending/videos/manual.mp4",temp_r2_key:"rooms/zalo-pending-pending/videos/manual.mp4"}]})}),{params:Promise.resolve({id:"pending"})});
   assert.equal(saved.status,200);const draft=await saved.json();assert.equal(draft.videos.length,1);assert.equal(draft.room_payload._manual_video_required,false);assert.deepEqual(draft.room_payload._pending_location,{latitude:10.8,longitude:106.7});assert.equal(savedPoint,null,"draft does not mutate building coordinates");
-  assert.equal(draft.auto_approve_enabled,false,"manual media upload never schedules auto-publish");assert.equal(tables.rooms.length,0,"saving the draft still cannot create main-room data");
+  assert.equal(draft.auto_approve_enabled,false,"a legacy draft with valid data never schedules auto-publish");assert.equal(draft.auto_approve_at,null);assert.equal(tables.rooms.length,0,"saving the draft still cannot create main-room data");
   await publish();assert.equal((savedPoint as any)?.p_latitude,10.8);assert.equal((savedPoint as any)?.p_longitude,106.7);assert.equal(tables.rooms[0].property_id,"chosen-building");assert.equal(tables.room_media[0].type,"video");
   const endpointModule={exports:{} as any};const endpointDeps={...draftDeps,
     "@/lib/zalo-import/error-message":{zaloImportErrorMessage},
-    "@/lib/supabase/server":{createSupabaseServerClient:async()=>({auth:{getUser:async()=>({data:{user:{id:"admin"}}})},rpc:async(name:string,args:any)=>name==="get_my_admin_level"?{data:2,error:null}:actor.rpc(name,args)})},
+    "@/lib/zalo-import/access": { canAccessZaloImports: () => true },
+    "@/lib/supabase/server":{createSupabaseServerClient:async()=>({auth:{getUser:async()=>({data:{user:{id:"admin" }}})},rpc:async(name:string,args:any)=>name==="get_my_admin_level"?{data:2,error:null}:actor.rpc(name,args)})},
     "@/lib/zalo-import/publish-pending-room":loaded.exports,
     "@/lib/zalo-import/update-pending-room":{updatePendingRoom:()=>{throw new Error("CREATE must not call UPDATE")}},
   };

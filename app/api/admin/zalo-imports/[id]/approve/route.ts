@@ -1,3 +1,4 @@
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { normalizeRoomStatus as normalizeStatus, requireAvailabilityDate } from "@/lib/rooms/availability";
 import { applyPendingLocation } from "@/lib/zalo-import/pending-location";
 import { NextResponse } from "next/server";
@@ -40,7 +41,7 @@ async function assertAdmin() {
   );
 
   if (
-    levelError ||
+    !canAccessZaloImports(user) || levelError ||
     (level !== 1 && level !== 2)
   ) {
     return {
@@ -126,7 +127,7 @@ export async function POST(
     }
 
     const supabase =
-      createSupabaseAdminClient();
+      createSupabaseAdminClient({ source: "zalo_import", actorUserId: admin.user.id });
 
     if (mode === "update_room") {
       const updated = await updatePendingRoom({ supabase, pendingId, actorUserId: admin.user.id,

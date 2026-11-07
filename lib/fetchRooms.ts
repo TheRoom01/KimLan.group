@@ -1,5 +1,5 @@
-import { roomFeatureStatusTokens, type RoomFeature } from "@/lib/rooms/features";
-import { normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
+import { type RoomFeature } from "@/lib/rooms/features";
+import { roomListFilterRpcParams } from "@/lib/rooms/listFilters";
 import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import { supabase } from "./supabase";
 
@@ -125,59 +125,6 @@ const ADMIN_L2_KEYS = [
   "zalo_phone",
 ] as const;
 
-const expandDistrictLegacyValues = (districts?: string[] | null) => {
-  if (!districts || districts.length === 0) return null;
-
-  const out = new Set<string>();
-
-  for (const raw of districts) {
-    const v = String(raw).trim();
-    if (!v) continue;
-
-    // luôn giữ value chuẩn: "Quận 1", "Quận 10", ...
-    out.add(v);
-
-    /**
-     * Match tất cả:
-     * - "Quận 1"  -> 1
-     * - "Quận 10" -> 10
-     * - "Quận 3"  -> 3
-     * - ...
-     */
-    const match = v.match(/(\d+)/);
-    if (match?.[1]) {
-      out.add(match[1]); // số thuần cho DB legacy
-    }
-    }
-
-  return out.size ? Array.from(out) : null;
-};
-
-
-
-
-const expandRoomTypeLegacyValues = (roomTypes?: string[] | null) => {
-  if (!roomTypes || roomTypes.length === 0) return null;
-
-  const out = new Set<string>();
-
-  for (const raw of roomTypes) {
-    const v = String(raw).trim();
-    if (!v) continue;
-
-    // giữ value chuẩn trên UI
-    out.add(v);
-
-    // Mapping legacy: "1 Phòng ngủ" -> "1PN", "2 Phòng ngủ" -> "2PN"
-    if (/^1\s*Phòng ngủ$/i.test(v)) out.add("1PN");
-    if (/^2\s*Phòng ngủ$/i.test(v)) out.add("2PN");
-
-    // (optional) nếu UI có "Studio" mà DB có "STUDIO" hoặc "0PN" thì add thêm ở đây
-  }
-
-  return out.size ? Array.from(out) : null;
-};
-
 const ANON_SESSION_KEY = "anon_session_id_v1";
 let anonSessionPromise: Promise<string | null> | null = null;
 
@@ -213,29 +160,9 @@ export async function fetchRooms(
   total?: number;
 }> {
     const {
-    limit,
-    cursor,
-    adminLevel,
-    search,
-    minPrice,
-    maxPrice,
-    districts,
-    roomType,
-    roomTypes,
-    move,
-    petPolicies,
-    contractTerms,
-    sortMode,
-    status,
-    currentUserId,
-    badge,
+    limit, cursor, adminLevel, currentUserId,
   } = params;
-
-  const effectiveRoomTypes =
-    roomTypes?.length ? roomTypes : roomType?.trim() ? [roomType.trim()] : [];
-
   const role = adminLevel === 2 ? 2 : adminLevel === 1 ? 1 : 0;
-  const normalizedSearch = normalizeSearchKeyword(search, adminLevel === 1 || adminLevel === 2);
 
   // ✅ Parse cursor theo đúng SQL:
   // - updated_desc dùng {updated_at, id}
@@ -283,47 +210,6 @@ const toTimestampOrNull = (v: unknown): string | null => {
 const cursorUpdatedAt: string | null = toTimestampOrNull(cursorObj?.updated_at);
 const cursorCreatedAt: string | null = toTimestampOrNull((cursorObj as any)?.created_at);
 
-// RPC expects: 'elevator' | 'stairs' | null
-const pMove =
-  move === "elevator" ? "elevator" :
-  move === "stairs"   ? "stairs"   :
-  null;
-
-const pPetPolicies =
-  Array.isArray(petPolicies) && petPolicies.length
-    ? Array.from(
-        new Set(
-          petPolicies.filter(
-            (x): x is "cat" | "dog" | "nopet" =>
-              x === "cat" || x === "dog" || x === "nopet"
-          )
-        )
-      )
-    : null;
-
-const pContractTerms =
-  Array.isArray(contractTerms) && contractTerms.length
-    ? Array.from(
-        new Set(
-          contractTerms.filter(
-            (x): x is "short" | "long" =>
-              x === "short" || x === "long"
-          )
-        )
-      )
-    : null;
-const minPriceValue =
-  minPrice == null
-    ? null
-    : Number.isFinite(Number(minPrice))
-      ? Number(minPrice)
-      : null;
-const maxPriceValue =
-  maxPrice == null
-    ? null
-    : Number.isFinite(Number(maxPrice))
-      ? Number(maxPrice)
-      : null;
 const anonSessionId = await getAnonSessionId(adminLevel);
 if (params.vipAccessTokenHash) {
   console.log(
@@ -344,35 +230,8 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
   p_vip_token_hash:
   params.vipAccessTokenHash ?? null,
 
-  // 3) filter/search
-  p_search: normalizedSearch ? normalizedSearch : null,
-  p_min_price: minPriceValue,
-  p_max_price: maxPriceValue,
-  p_districts: expandDistrictLegacyValues(districts) ?? null,
-  p_room_types: expandRoomTypeLegacyValues(roomTypes) ?? null,
-  p_move: pMove,
-  p_pet_policies: pPetPolicies,
-  p_contract_terms: pContractTerms,
-
-  // 4) statuses
-  p_statuses:
-  typeof status === "string" || badge || params.featureFilters?.length
-    ? Array.from(
-        new Set(
-          [
-            ...(typeof status === "string" ? status.split(",") : []),
-            ...(badge ? [`__badge:${badge}`] : []),
-        ...roomFeatureStatusTokens(params.featureFilters),
-          ]
-            .map((value) => value.trim())
-            .filter(Boolean)
-        )
-      )
-    : null,
-
-  // 5) sort + keyset cursor (updated_desc cần 2 khóa)
-    p_sort: (sortMode ?? "updated_desc") as any,
-    p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
+  ...roomListFilterRpcParams(params),
+  p_cursor_updated_at: cursorUpdatedAt ? cursorUpdatedAt : null,
     p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
     p_cursor_id: cursorId ? String(cursorId) : null, 
     p_anon_session_id: anonSessionId,

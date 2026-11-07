@@ -24,20 +24,6 @@ export function isControlledZaloTarget(input: {
   );
 }
 
-export function shouldAutoPublishZaloImport(input: {
-  stagingOnly: boolean;
-  eligible: boolean;
-  enabled: boolean;
-  dryRun: boolean;
-}) {
-  return (
-    !input.stagingOnly &&
-    input.eligible &&
-    input.enabled &&
-    !input.dryRun
-  );
-}
-
 export type StagingRoomCandidate = {
   markerMessageId?: unknown;
   markerTimestamp?: unknown;

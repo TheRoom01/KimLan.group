@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import ThemeToggle from "@/components/ThemeToggle";
 import FilterBar, { SortMode } from "@/components/FilterBar";
 import { trackVisitorEvent } from "@/lib/analytics/client";
+import { changedCustomerFilters, customerFilterDetails, customerSearchDetails } from "@/lib/analytics/activity";
 import RoomList from "@/components/RoomList";
 import dynamic from "next/dynamic";
 import Pagination from "@/components/Pagination";
@@ -20,6 +21,7 @@ import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 import { getSavedRoomIds } from "@/lib/savedRooms";
 import { normalizeRoomFeatures, matchesRoomFeatures, type RoomFeature } from "@/lib/rooms/features";
 import { roomMatchesSearch, normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
+import { DEFAULT_HOME_LIST_FILTERS, HOME_PRICE_DEFAULT as PRICE_DEFAULT, readHomeListFilters, readHomeListPage, roomListFilterRpcParams, type HomeListFilters } from "@/lib/rooms/listFilters";
 import { hasRecommendationFilters, isLastRecommendationPage, ROOM_RECOMMENDATIONS_ENABLED, type RecommendationFilters } from "@/lib/rooms/recommendations";
 
 const RoomInquiryModal = dynamic(() => import("@/components/rooms/RoomInquiryModal"), { ssr: false });
@@ -29,9 +31,12 @@ type InitialProps = {
   initialRooms: any[];
   initialNextCursor: string | UpdatedDescCursor | null;
   initialAdminLevel: 0 | 1 | 2;
+  initialUserId?: string | null;
   initialTotal?: number | null;
   initialError?: string;
   initialSavedView?: boolean;
+  initialFilters?: HomeListFilters;
+  initialPageIndex?: number;
 };
 
 const LIMIT = 20;
@@ -56,12 +61,6 @@ const QS = {
 
 const LIST_SEP = ",";
 
-// URLSearchParams đã tự encode/decode rồi => không encode/decode thủ công nữa
-function parseList(v: string | null) {
-  if (!v) return [];
-  return v.split(LIST_SEP).map((x) => x.trim()).filter(Boolean);
-}
-
 function toListParam(arr: string[]) {
   return arr.map((x) => String(x).trim()).filter(Boolean).join(LIST_SEP);
 }
@@ -78,22 +77,9 @@ function encodeCursor(c: UrlCursor): string | null {
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function decodeCursor(raw: string | null): UrlCursor {
-  if (!raw) return null;
-  const b64 = raw.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((raw.length + 3) % 4);
-
-  const json = typeof window === "undefined"
-    ? Buffer.from(b64, "base64").toString("utf8")
-    : decodeURIComponent(escape(atob(b64)));
-
-  return JSON.parse(json);
-}
-
-const PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
-
 function hasExplicitPriceFilter(qs: string) {
   const params = new URLSearchParams(qs.replace(/^\?/, ""));
-  return params.has(QS.min) || params.has(QS.max);
+  return readHomeListFilters(key => params.get(key)).priceFilterActive;
 }
 
 function makeFilterSigValue(args: {
@@ -110,21 +96,24 @@ function makeFilterSigValue(args: {
   statusFilter: string | null;
   badgeFilter?: RoomBadge | null;
 }) {
-  return [
-    args.search.trim(),
-    args.priceFilterActive ? "price:on" : "price:off",
-    args.priceApplied[0],
-    args.priceApplied[1],
-    args.selectedDistricts.join(","),
-    args.selectedRoomTypes.join(","),
-    args.moveFilter ?? "",
-    args.petFilters.join(","),
-    args.termFilters.join(","),
-    (args.featureFilters ?? []).join(","),
-    args.sortMode,
-    args.statusFilter ?? "",
-    args.badgeFilter ?? "",
-  ].join("|");
+  return JSON.stringify([args.search.trim(), roomListFilterRpcParams({
+    minPrice: args.priceFilterActive ? Math.min(...args.priceApplied) : null,
+    maxPrice: args.priceFilterActive ? Math.max(...args.priceApplied) : null,
+    districts: args.selectedDistricts,
+    roomTypes: args.selectedRoomTypes,
+    move: args.moveFilter,
+    petPolicies: args.petFilters,
+    contractTerms: args.termFilters,
+    featureFilters: args.featureFilters,
+    sortMode: args.sortMode,
+    status: args.statusFilter,
+    badge: args.badgeFilter,
+  })]);
+}
+
+function filterSigForQuery(qs: string) {
+  const params = new URLSearchParams(qs);
+  return makeFilterSigValue(readHomeListFilters(key => params.get(key)));
 }
 
 const HOME_BACK_HINT_KEY = "HOME_BACK_HINT_V1";
@@ -142,6 +131,12 @@ const HOME_DIRTY_KEY = "HOME_DIRTY_V1";
 
 const VIP_ACCESS_KEY = "VIP_ACCESS_V1";
 const VIP_PARAM_KEY = "vip";
+
+type ListingSnapshotKey = { filterSig: string; viewer: string };
+
+function matchesListingSnapshot(snapshot: ListingSnapshotKey, qs: string, viewer: string) {
+  return snapshot.viewer === viewer && snapshot.filterSig === filterSigForQuery(qs);
+}
 
 function readVipAccess() {
   if (typeof window === "undefined") return false;
@@ -164,7 +159,7 @@ function readVipAccess() {
   }
 }
 
-type BackSnapshot = {
+type BackSnapshot = ListingSnapshotKey & {
   qs: string;
 
   // ✅ filters
@@ -193,7 +188,7 @@ type BackSnapshot = {
   ts: number;
 };
 
-type PersistState = {
+type PersistState = ListingSnapshotKey & {
   qs: string;
   total: number | null;
   search: string;
@@ -217,7 +212,7 @@ type PersistState = {
   ts: number;
 };
 
-type PersistLiteState = {
+type PersistLiteState = ListingSnapshotKey & {
   qs: string; // canonical qs
   total: number | null;
 
@@ -248,12 +243,22 @@ const HomeClient = ({
   initialRooms,
   initialNextCursor,
   initialAdminLevel,
+  initialUserId = null,
   initialTotal,
   initialError = "",
   initialSavedView = false,
+  initialFilters = DEFAULT_HOME_LIST_FILTERS,
+  initialPageIndex = 0,
 }: InitialProps) => {
 
   const pathname = usePathname();
+  const [initialFilterSig] = useState(() => makeFilterSigValue(initialFilters));
+  const [initialPageUsable] = useState(() => {
+    if (initialPageIndex !== 0) return false;
+    if (typeof window === "undefined") return true;
+    const params = new URLSearchParams(window.location.search);
+    return initialFilterSig === filterSigForQuery(window.location.search) && readHomeListPage(key => params.get(key)).nextPage === 0;
+  });
   const [isSavedView, setIsSavedView] = useState(initialSavedView);
   const [savedRoomIds, setSavedRoomIds] = useState<string[]>([]);
   const [savedRooms, setSavedRooms] = useState<any[]>([]);
@@ -340,11 +345,11 @@ const HomeClient = ({
   const homePathRef = useRef<string>("");      // pathname của Home lúc mount
   const listQsRef = useRef<string>("");        // qs ổn định của list
   const didRestoreFromStorageRef = useRef(false);
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [badgeFilter, setBadgeFilter] = useState<RoomBadge | null>(null);
+  const [statusFilter, setStatusFilter] = useState(initialFilters.statusFilter);
+  const [badgeFilter, setBadgeFilter] = useState<RoomBadge | null>(initialFilters.badgeFilter);
   const [generalInquiryOpen, setGeneralInquiryOpen] = useState(false);
   const [total, setTotal] = useState<number | null>(
-    typeof initialTotal === "number" ? initialTotal : null
+    initialPageUsable && typeof initialTotal === "number" ? initialTotal : null
   );
   const cursorStackRef = useRef<(UrlCursor)[]>([]);
 const currentCursorRef = useRef<UrlCursor>(null);
@@ -356,13 +361,15 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
 
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState(initialUserId);
   const [currentAdminPhone, setCurrentAdminPhone] = useState<string | null>(null);
   const [currentAdminName, setCurrentAdminName] = useState<string | null>(null);
 
   // ================== ANON LOCK ==================
 const [isAnonLocked, setIsAnonLocked] = useState(false);
-const [isLoggedIn, setIsLoggedIn] = useState(false);
+const [isLoggedIn, setIsLoggedIn] = useState(Boolean(initialUserId));
+const [authResolving, setAuthResolving] = useState(false);
+const authResolvingRef = useRef(false);
 const [hasVipAccess, setHasVipAccess] = useState(false);
 const vipAccessTokenHashRef = useRef<string | null>(null);
 
@@ -374,9 +381,9 @@ const [vipAdminName, setVipAdminName] = useState<string | null>(null);
 
   // ================== FILTER ==================
 
-    const [priceDraft, setPriceDraft] = useState<[number, number]>(PRICE_DEFAULT);
-  const [priceApplied, setPriceApplied] = useState<[number, number]>(PRICE_DEFAULT);
-  const [priceFilterActive, setPriceFilterActive] = useState(false);
+    const [priceDraft, setPriceDraft] = useState(initialFilters.priceApplied);
+  const [priceApplied, setPriceApplied] = useState(initialFilters.priceApplied);
+  const [priceFilterActive, setPriceFilterActive] = useState(initialFilters.priceFilterActive);
   const setPriceAppliedFromUser = useCallback<
     React.Dispatch<React.SetStateAction<[number, number]>>
   >((next) => {
@@ -394,17 +401,25 @@ const [vipAdminName, setVipAdminName] = useState<string | null>(null);
   const roomTypes = useMemo(() => [...ROOM_TYPE_OPTIONS], []);
 
   const filterApplyTimerRef = useRef<number | null>(null);
-  const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
-  const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
-  const [moveFilter, setMoveFilter] = useState<"elevator" | "stairs" | null>(null);
-  const [petFilters, setPetFilters] = useState<("cat" | "dog" | "nopet")[]>([]);
-const [termFilters, setTermFilters] = useState<("short" | "long")[]>([]);
-const [featureFilters, setFeatureFilters] = useState<RoomFeature[]>([]);
-  const [sortMode, setSortMode] = useState<SortMode>("updated_desc");
+  const [selectedDistricts, setSelectedDistricts] = useState(initialFilters.selectedDistricts);
+  const [selectedRoomTypes, setSelectedRoomTypes] = useState(initialFilters.selectedRoomTypes);
+  const [moveFilter, setMoveFilter] = useState(initialFilters.moveFilter);
+  const [petFilters, setPetFilters] = useState(initialFilters.petFilters);
+const [termFilters, setTermFilters] = useState(initialFilters.termFilters);
+const [featureFilters, setFeatureFilters] = useState(initialFilters.featureFilters);
+  const [sortMode, setSortMode] = useState(initialFilters.sortMode);
   const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
-  const lastFilterSigRef = useRef<string>("");
-  const prevAppliedSearchRef = useRef<string>("");
+  const lastFilterSigRef = useRef(initialFilterSig);
+  const prevAppliedSearchRef = useRef(initialFilters.search);
+  const previousCustomerFilters = useRef<ReturnType<typeof customerFilterDetails> | null>(null);
   const pendingRestoredFilterSigRef = useRef<string | null>(null);
+  const [search, setSearch] = useState(initialFilters.search);
+  const [appliedSearch, setAppliedSearch] = useState(initialFilters.search);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAppliedSearch(search), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
  const armRestoredFilterSig = useCallback((next: {
   search: string;
@@ -430,48 +445,19 @@ const [featureFilters, setFeatureFilters] = useState<RoomFeature[]>([]);
     priceFilterActive: restoredPriceFilterActive,
   });
   setBadgeFilter(next.badgeFilter ?? null);
+  setAppliedSearch(next.search);
   pendingRestoredFilterSigRef.current = sig;
   lastFilterSigRef.current = sig;
   prevAppliedSearchRef.current = next.search.trim();
 }, []);
 
-  //-----------------appliedSearch------------
-  const [search, setSearch] = useState("");
-
-  function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(t);
-  }, [value, delayMs]);
-
-  return debounced;
-}
-
-// Debounce search input để fetch không bị trễ 1 nhịp + không spam request
-const appliedSearch = useDebouncedValue(search, 250);
-
-const filterSig = useMemo(() => {
-  return [
-    appliedSearch.trim(),
-    priceFilterActive ? "price:on" : "price:off",
-    minPriceApplied,
-    maxPriceApplied,
-    selectedDistricts.join(","),
-    selectedRoomTypes.join(","),
-    moveFilter ?? "",
-    petFilters.join(","),
-    termFilters.join(","),
-    featureFilters.join(","),
-    sortMode,
-    statusFilter ?? "",
-    badgeFilter ?? "",
-  ].join("|");
-}, [
+const filterSig = useMemo(() => makeFilterSigValue({
+  search: appliedSearch, priceApplied, priceFilterActive, selectedDistricts, selectedRoomTypes,
+  moveFilter, petFilters, termFilters, featureFilters, sortMode, statusFilter, badgeFilter,
+}), [
   appliedSearch,
   priceFilterActive,
-  minPriceApplied,
-  maxPriceApplied,
+  priceApplied,
   selectedDistricts,
   selectedRoomTypes,
   moveFilter,
@@ -710,7 +696,7 @@ useEffect(() => {
 }, [currentUserId]);
 
 // ================== PAGINATION (cache) ==================
- const initCursor: string | UpdatedDescCursor | null =
+ const initCursor: string | UpdatedDescCursor | null = !initialPageUsable ? null :
   initialNextCursor && typeof initialNextCursor === "object"
     ? {
         id: String((initialNextCursor as any).id),
@@ -728,8 +714,8 @@ useEffect(() => {
       : null;
 
   // ✅ IMPORTANT: phân biệt "chưa fetch" (undefined) vs "đã fetch nhưng rỗng" ([])
-  const [pages, setPages] = useState<any[][]>(() => [initialRooms ?? []]);
-  const pagesRef = useRef<any[][]>([initialRooms ?? []]);
+  const [pages, setPages] = useState<any[][]>(() => initialPageUsable ? [initialRooms ?? []] : []);
+  const pagesRef = useRef(pages);
   const [pageIndex, setPageIndex] = useState(0);
   const [displayPageIndex, setDisplayPageIndex] = useState(0);
   // ✅ luôn sync pageIndex/displayPageIndex mới nhất vào ref
@@ -759,9 +745,9 @@ useEffect(() => {
    const didHydrateOnceRef = useRef(false);
    const didApplyBackOnceRef = useRef(false);
     const [loading, setLoading] = useState(false);
-  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [showSkeleton, setShowSkeleton] = useState(!initialPageUsable && !initialSavedView);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [fetchError, setFetchError] = useState<string>(initialError);
+  const [fetchError, setFetchError] = useState(initialPageUsable ? initialError : "");
   const fetchPageRef = useRef<(targetIndex: number) => void>(() => {});
  const isReloadRef = useRef<boolean>(false);
 
@@ -788,7 +774,7 @@ useEffect(() => {
 } | null>(null);
 
 const pageIndexRef = useRef(0);
-useEffect(() => {
+useLayoutEffect(() => {
 pageIndexRef.current = pageIndex;
 }, [pageIndex]);
 
@@ -835,7 +821,6 @@ useEffect(() => {
     sessionStorage.setItem(DIRTY_SEEN_KEY, stamp);
 
     // ✅ FORCE REFRESH (client fetch), không dùng SSR cache nữa
-    filtersVersionRef.current += 1;     // drop mọi response cũ
     resetPagination(0);                // pagesRef[0] => undefined
     setTotal(null);
 
@@ -1122,6 +1107,7 @@ const persistBlockedRef = useRef(false);
     setOrDel(QS.max, typeof next.max === "number" ? String(next.max) : null);
     setOrDel(QS.d, next.d?.length ? toListParam(next.d) : null);
     setOrDel(QS.t, next.t?.length ? toListParam(next.t) : null);
+    params.delete("rt");
     setOrDel(QS.m, next.m ? next.m : null);
     setOrDel(QS.pet, next.pet?.length ? toListParam(next.pet) : null);
     setOrDel(QS.term, next.term?.length ? toListParam(next.term) : null);
@@ -1142,13 +1128,10 @@ const persistBlockedRef = useRef(false);
   []
 );
 
-  function canonicalQs(qs: string) {
-  const sp = new URLSearchParams(qs.replace(/^\?/, ""));
-  const entries = Array.from(sp.entries());
-  entries.sort(([aK, aV], [bK, bV]) => (aK === bK ? aV.localeCompare(bV) : aK.localeCompare(bK)));
-  const out = new URLSearchParams();
-  for (const [k, v] of entries) out.append(k, v);
-  return out.toString();
+function canonicalQs(qs: string) {
+  const params = new URLSearchParams(qs);
+  params.sort();
+  return params.toString();
 }
 
 // ================== DEBUG OVERLAY (Patch D1) ==================
@@ -1223,62 +1206,25 @@ const syncPageToUrl = useCallback(
 
 const readUrlState = useCallback(() => {
   const sp = new URLSearchParams(window.location.search);
-
-  const q = sp.get(QS.q) ?? "";
-  const minRaw = sp.get(QS.min);
-  const maxRaw = sp.get(QS.max);
-  const min = minRaw == null || minRaw.trim() === "" ? Number.NaN : Number(minRaw);
-  const max = maxRaw == null || maxRaw.trim() === "" ? Number.NaN : Number(maxRaw);
-  const d = parseList(sp.get(QS.d));
-  const t = parseList(sp.get(QS.t));
-  const m = (sp.get(QS.m) as "elevator" | "stairs" | null) || null;
-
-  const pet = parseList(sp.get(QS.pet)).filter(
-    (v): v is "cat" | "dog" | "nopet" =>
-      v === "cat" || v === "dog" || v === "nopet"
-  );
-
-  const term = parseList(sp.get(QS.term)).filter(
-    (v): v is "short" | "long" =>
-      v === "short" || v === "long"
-  );
-
-  const normalizedTerm: ("short" | "long")[] = term;
-
-  const s = (sp.get(QS.s) as SortMode) || "updated_desc";
-  const p = Number(sp.get(QS.p) ?? "0");
-
-  // ✅ cursor
-  const cRaw = sp.get(QS.c);
-  const c = decodeCursor(cRaw);
-
-  const minVal = Number.isFinite(min) ? min : PRICE_DEFAULT[0];
-  const maxVal = Number.isFinite(max) ? max : PRICE_DEFAULT[1];
-  const priceFilterActive = minRaw !== null || maxRaw !== null;
-  const nextPage = Number.isFinite(p) && p >= 0 ? p : 0;
-
-  const st = sp.get(QS.st) || null;
-  const badgeValue = sp.get(QS.badge);
-  const badge = ROOM_BADGES.some((item) => item.id === badgeValue) ? badgeValue as RoomBadge : null;
-  const qs = canonicalQs(sp.toString());
-
+  const get = (key: string) => sp.get(key);
+  const filters = readHomeListFilters(get);
   return {
-    qs,
-    q,
-    minVal,
-    maxVal,
-    priceFilterActive,
-    d,
-    t,
-    m,
-    pet,
-    term: normalizedTerm,
-    features: normalizeRoomFeatures(sp.get(QS.features)),
-    s,
-    st,
-    badge,
-    nextPage,
-    c,
+    qs: canonicalQs(sp.toString()),
+    filters,
+    q: filters.search,
+    minVal: filters.priceApplied[0],
+    maxVal: filters.priceApplied[1],
+    priceFilterActive: filters.priceFilterActive,
+    d: filters.selectedDistricts,
+    t: filters.selectedRoomTypes,
+    m: filters.moveFilter,
+    pet: filters.petFilters,
+    term: filters.termFilters,
+    features: filters.featureFilters,
+    s: filters.sortMode,
+    st: filters.statusFilter,
+    badge: filters.badgeFilter,
+    ...readHomeListPage(get),
   };
 }, []);
 
@@ -1366,6 +1312,12 @@ const debugSetItem = useCallback((key: string, value: string) => {
   return `${HOME_STATE_LITE_PREFIX}${c}`;
 }, []);
 
+const listingViewer = `${adminLevel}:${currentUserId ?? ""}`;
+const canPersistListing = useCallback((qs: string) => (
+  !authResolvingRef.current && search === appliedSearch &&
+  filterSig === lastFilterSigRef.current && filterSig === filterSigForQuery(qs)
+), [search, appliedSearch, filterSig]);
+
 const writeLiteNow = useCallback(() => {
   if (hydratingFromUrlRef.current) return;
   if (persistBlockedRef.current) return;
@@ -1373,12 +1325,15 @@ const writeLiteNow = useCallback(() => {
 
   // ✅ source-of-truth: lấy qs từ URL thật (không dùng listQsRef)
   const qsRaw = window.location.search.replace(/^\?/, "");
+  if (!canPersistListing(qsRaw)) return;
   listQsRef.current = qsRaw;
 
   const qs = canonicalQs(qsRaw);
 
 const payload: PersistLiteState = {
   qs,
+  filterSig,
+  viewer: listingViewer,
   total: typeof total === "number" ? total : null,
 
   search,
@@ -1405,9 +1360,15 @@ const v = JSON.stringify(payload);
 debugSetItem(k, v);
 
 }, [
+  canPersistListing,
+  filterSig,
+  listingViewer,
   hasNext,
   liteKeyForQs,
   moveFilter,
+  petFilters,
+  termFilters,
+  featureFilters,
   pathname,
   priceApplied,
   search,
@@ -1423,30 +1384,31 @@ const readLiteForQs = useCallback(
     try {
       const raw = sessionStorage.getItem(liteKeyForQs(urlQs || ""));
       if (!raw) return null;
-      const parsed = JSON.parse(raw) as { qs?: string; ts?: number };
+      const parsed = JSON.parse(raw) as PersistLiteState;
 
       const ttlOk = !!parsed?.ts && Date.now() - parsed.ts < 30 * 60 * 1000;
       const qsOk = canonicalQs(parsed?.qs || "") === canonicalQs(urlQs || "");
-      if (!ttlOk || !qsOk) return null;
+      if (!ttlOk || !qsOk || !matchesListingSnapshot(parsed, urlQs, listingViewer)) return null;
 
-      return parsed as any;
+      return parsed;
     } catch {
       return null;
     }
   },
-  [liteKeyForQs]
+  [liteKeyForQs, listingViewer]
 );
 
 const writeBackSnapshotNow = useCallback(() => {
   if (hydratingFromUrlRef.current) return;
 
-  const qsStable = (listQsRef.current || "").replace(/^\?/, "");
-  const qsFromUrl = window.location.search.replace(/^\?/, "");
-  const qsRaw = qsStable || qsFromUrl || "";
+  const qsRaw = window.location.search;
+  if (!canPersistListing(qsRaw)) return;
   const nextQs = canonicalQs(qsRaw);
 
   const payload: BackSnapshot = {
   qs: nextQs,
+  filterSig,
+  viewer: listingViewer,
 
   total: typeof total === "number" ? total : null,
   search,
@@ -1473,6 +1435,9 @@ const writeBackSnapshotNow = useCallback(() => {
 
   debugSetItem(HOME_BACK_SNAPSHOT_KEY, JSON.stringify(payload));
 }, [
+  canPersistListing,
+  filterSig,
+  listingViewer,
   displayPageIndex,
   hasNext,
   moveFilter,
@@ -1500,12 +1465,13 @@ const readBackSnapshot = useCallback((): BackSnapshot | null => {
       !!parsed?.ts && Date.now() - parsed.ts < HOME_BACK_SNAPSHOT_TTL;
     if (!ttlOk) return null;
     if (canonicalQs(parsed.qs || "") !== canonicalQs(window.location.search)) return null;
+    if (!matchesListingSnapshot(parsed, window.location.search, listingViewer)) return null;
 
     return parsed;
   } catch {
     return null;
   }
-}, []);
+}, [listingViewer]);
 
 const persistNow = useCallback(() => {
   if (hydratingFromUrlRef.current) return;
@@ -1514,6 +1480,7 @@ const persistNow = useCallback(() => {
 
   // ✅ source-of-truth: qs từ URL thật + canonical để match ổn định
   const qsRaw = window.location.search.replace(/^\?/, "");
+  if (!canPersistListing(qsRaw)) return;
   const qsCanonical = canonicalQs(qsRaw);
   listQsRef.current = qsCanonical;
 
@@ -1521,6 +1488,8 @@ const persistNow = useCallback(() => {
 
 const payload: PersistState = {
   qs: qsCanonical,
+  filterSig,
+  viewer: listingViewer,
   total: typeof total === "number" ? total : null,
 
   search,
@@ -1548,6 +1517,9 @@ const payload: PersistState = {
 debugSetItem(HOME_STATE_KEY, JSON.stringify(payload));
 
 }, [
+  canPersistListing,
+  filterSig,
+  listingViewer,
   hasNext,
   moveFilter,
   petFilters,
@@ -1705,22 +1677,24 @@ useEffect(() => {
 
    // ================== RESET PAGINATION ==================
  const resetPagination = useCallback((keepPage: number = 0) => {
+  filtersVersionRef.current += 1;
   inFlightRef.current = {};
 
   const nextPages: any[][] = new Array(keepPage + 1);
   pagesRef.current = nextPages;
   setPages(nextPages);
 
+  pageIndexRef.current = keepPage;
   setPageIndex(keepPage);
   setDisplayPageIndex(keepPage);
 
   cursorsRef.current = [null];
-  setHasNext(true);
+  setHasNext(false);
+  setTotal(null);
   setFetchError("");
   setLoading(false);
 
-  // chỉ reset trạng thái, chưa quyết định hiện skeleton hay không ở đây
-  setShowSkeleton(false);
+  setShowSkeleton(true);
   setIsRefreshing(false);
 }, []);
 
@@ -1743,6 +1717,8 @@ const endHydrationAfterTwoFrames = useCallback(() => {
     skipNextFilterEffectRef.current = true;
 
     hydratingFromUrlRef.current = true;
+    filtersVersionRef.current += 1;
+    pendingUrlFiltersRef.current = null;
     try {
       if (snap.qs) replaceUrlShallow(snap.qs);
 
@@ -1790,6 +1766,7 @@ const endHydrationAfterTwoFrames = useCallback(() => {
       // ================== PAGE ==================
       const pIdx = snap.pageIndex ?? 0;
       const dIdx = snap.displayPageIndex ?? pIdx;
+      pageIndexRef.current = pIdx;
       setPageIndex(pIdx);
       setDisplayPageIndex(dIdx);
 
@@ -1895,48 +1872,8 @@ if ((!url.qs || url.qs.length === 0) && backHint?.qs) {
   });
 }
 
-// Home mặc định dùng luôn dữ liệu SSR. Cache/invalidation phía server chịu
-// trách nhiệm về độ mới; không xóa UI rồi gọi lại đúng RPC sau hydration.
-if ((!url.qs || url.qs.length === 0) && !isBackFromDetail && !backHint?.qs) {
-  hydratingFromUrlRef.current = true;
-
-  try {
-    sessionStorage.removeItem(HOME_BACK_HINT_KEY);
-  } catch {}
-
-  setSearch("");
-  setPriceDraft(PRICE_DEFAULT);
-  setPriceApplied(PRICE_DEFAULT);
-  setPriceFilterActive(false);
-  setSelectedDistricts([]);
-  setSelectedRoomTypes([]);
-  setMoveFilter(null);
-  setSortMode("updated_desc");
-  setStatusFilter(null);
-
-  pagesRef.current = [initialRooms ?? []];
-  setPages([initialRooms ?? []]);
-
-  cursorsRef.current = [null, initCursor];
-  setHasNext(Boolean(initCursor));
-
-  setPageIndex(0);
-  setDisplayPageIndex(0);
-
-  setFetchError(initialError);
-  setLoading(false);
-  setShowSkeleton(false);
-  setTotal(typeof initialTotal === "number" ? initialTotal : null);
-
-  // ❌ không force clean URL ở đây nữa
-  // vì nếu flow back/hydrate bị lệch nhịp, dòng này sẽ kéo URL filtered về "/"
-
-  requestAnimationFrame(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = 0;
-    lastScrollTopRef.current = 0;
-  });
-
+// The unfiltered fast path has no storage or browser listing request.
+if (!url.qs && !isBackFromDetail && !backHint?.qs && initialPageUsable) {
   finishHydrate();
   return;
 }
@@ -2004,6 +1941,7 @@ if (!isReloadRef.current && !didApplyBackOnceRef.current) {
     !!restored &&
     ttlOk &&
     allowHeavyRestore &&
+    matchesListingSnapshot(restored, currentQs, listingViewer) &&
     restoredQs === currentQs;
 
   // ------------------ RESTORE FROM STORAGE ------------------
@@ -2061,7 +1999,8 @@ setFeatureFilters(restoredFeatures);
       cursorsRef.current = rest.cursors ?? [null];
       setHasNext(Boolean(rest.hasNext));
 
-      setPageIndex(rest.pageIndex ?? 0);
+      pageIndexRef.current = rest.pageIndex ?? 0;
+      setPageIndex(pageIndexRef.current);
       setDisplayPageIndex(rest.displayPageIndex ?? rest.pageIndex ?? 0);
 
       didRestoreFromStorageRef.current = true;
@@ -2141,16 +2080,19 @@ setFeatureFilters(liteFeatures);
     const pIdx = lite.pageIndex ?? 0;
     const dIdx = lite.displayPageIndex ?? pIdx;
 
-      cursorsRef.current = [null];
-      cursorsRef.current[pIdx] = (lite.currentCursor ?? null) as UrlCursor;
+      const reuseFirstPage = pIdx === 0 && initialPageUsable && makeFilterSigValue(url.filters) === initialFilterSig;
+      cursorsRef.current = reuseFirstPage ? [null, initCursor] : [null];
+      cursorsRef.current[pIdx] = lite.currentCursor ?? null;
 
+      pageIndexRef.current = pIdx;
       setPageIndex(pIdx);
       setDisplayPageIndex(dIdx);
-      setHasNext(Boolean(lite.hasNext));
+      setHasNext(reuseFirstPage ? Boolean(initCursor) : Boolean(lite.hasNext));
+      if (reuseFirstPage) setTotal(initialTotal ?? null);
 
       setFetchError("");
       setLoading(false);
-      setShowSkeleton(true);
+      setShowSkeleton(!reuseFirstPage);
 
       if (typeof lite.scrollTop === "number") {
         pendingScrollTopRef.current = lite.scrollTop;
@@ -2170,29 +2112,6 @@ setFeatureFilters(liteFeatures);
   }
 
   // ------------------ HYDRATE FROM URL (NO RESTORE) ------------------
-const hasAny =
-  url.qs.length > 0 &&
-  (new URLSearchParams(window.location.search).has(QS.q) ||
-    new URLSearchParams(window.location.search).has(QS.min) ||
-    new URLSearchParams(window.location.search).has(QS.max) ||
-    new URLSearchParams(window.location.search).has(QS.d) ||
-    new URLSearchParams(window.location.search).has(QS.t) ||
-    new URLSearchParams(window.location.search).has(QS.m) ||
-    new URLSearchParams(window.location.search).has(QS.pet) ||
-    new URLSearchParams(window.location.search).has(QS.term) ||
-    new URLSearchParams(window.location.search).has(QS.features) ||
-    new URLSearchParams(window.location.search).has(QS.s) ||
-    new URLSearchParams(window.location.search).has(QS.st) ||
-    new URLSearchParams(window.location.search).has(QS.badge) ||
-    new URLSearchParams(window.location.search).has(QS.p) ||
-    new URLSearchParams(window.location.search).has(QS.c));
-
-  if (!hasAny) {
-    // vẫn cần mở persist sau hydrate
-    finishHydrate();
-    return;
-  }
-
 hydratingFromUrlRef.current = true;
 
 // ✅ snapshot URL filters để fetch dùng ngay (không phụ thuộc timing setState)
@@ -2249,7 +2168,7 @@ const pageFromUrl = url.nextPage;
 
 // SSR đã tải đúng trang đầu theo query hiện tại. Dùng thẳng kết quả đó thay vì
 // xóa danh sách, hiện skeleton rồi gọi lại cùng một RPC sau hydration.
-if (pageFromUrl === 0 && !url.c) {
+if (initialPageUsable && pageFromUrl === 0 && makeFilterSigValue(url.filters) === initialFilterSig) {
   pagesRef.current = [initialRooms ?? []];
   setPages([initialRooms ?? []]);
 
@@ -2266,8 +2185,6 @@ if (pageFromUrl === 0 && !url.c) {
   finishHydrate();
   return;
 }
-
-filtersVersionRef.current += 1;
 
 resetPagination(pageFromUrl);
 // ✅ nếu URL có cursor thì dùng cursor đó cho page này
@@ -2397,15 +2314,10 @@ setFeatureFilters(liteFeatures);
   });
   skipNextFilterEffectRef.current = true;
 
-  // ✅ QUAN TRỌNG: clear cache cũ để tránh UI đúng nhưng list sai
-  pagesRef.current = [];
-  setPages([]);
-
-    cursorsRef.current = [null];
+    resetPagination(pIdx);
     cursorsRef.current[pIdx] = (lite.currentCursor ?? null) as UrlCursor;
     setHasNext(Boolean(lite.hasNext));
-
-    setPageIndex(pIdx);
+    setTotal(lite.total ?? null);
     setDisplayPageIndex(dIdx);
 
     setFetchError("");
@@ -2474,7 +2386,7 @@ setFeatureFilters(liteFeatures);
 hydratingFromUrlRef.current = true;
 
 const urlPrice: [number, number] = [url.minVal, url.maxVal];
-const urlStatus = isReloadRef.current ? null : url.st;
+const urlStatus = url.st;
 const urlPets = url.pet ?? [];
 const urlTerms = url.term ?? [];
 const urlFeatures = normalizeRoomFeatures(url.features);
@@ -2523,7 +2435,6 @@ armRestoredFilterSig({
   badgeFilter: url.badge,
 });
 
-filtersVersionRef.current += 1;
 resetPagination(url.nextPage);
 cursorsRef.current[url.nextPage] = url.c ?? null;
 
@@ -2565,6 +2476,9 @@ queueMicrotask(() => {
       setShowSkeleton(false);
       return;
     }
+    if (authResolving || authResolvingRef.current) return;
+    const pending = pendingUrlFiltersRef.current;
+    if (!pending && filterSig !== lastFilterSigRef.current) return;
     const myVersion = filtersVersionRef.current;
 
     if (pagesRef.current[targetIndex] !== undefined) {
@@ -2626,7 +2540,6 @@ queueMicrotask(() => {
     // ✅ alias để lát nữa render debug dễ hiểu
     const cursorUsedForThisPage = cursorForThisPage;
 
-      const pending = pendingUrlFiltersRef.current;
       const visiblePage = pagesRef.current[targetIndex] as any[] | undefined;
 
       const hasVisibleData = Array.isArray(visiblePage) && visiblePage.length > 0;
@@ -2663,8 +2576,8 @@ const res = await fetchRooms({
     ? (pending?.max ?? maxPriceApplied)
     : undefined,
   sortMode: pending?.sort ?? sortMode,
-  status: pending?.status ?? statusFilter,
-  badge: pending?.badge ?? badgeFilter,
+  status: pending ? pending.status : statusFilter,
+  badge: pending ? pending.badge : badgeFilter,
 
   districts: (pending?.districts ?? selectedDistricts).length
     ? (pending?.districts ?? selectedDistricts)
@@ -2674,7 +2587,7 @@ const res = await fetchRooms({
     ? (pending?.roomTypes ?? selectedRoomTypes)
     : undefined,
 
-  move: pending?.move ?? moveFilter ?? undefined,
+  move: pending ? pending.move : moveFilter,
 
   petPolicies: (pending?.pets ?? petFilters).length
     ? (pending?.pets ?? petFilters)
@@ -2686,12 +2599,8 @@ const res = await fetchRooms({
     : undefined,
 });
 
-// A stale response must not consume the next search's URL snapshot.
       if (myVersion !== filtersVersionRef.current) return;
-      if (pendingUrlFiltersRef.current === pending && targetIndex === pageIndexRef.current) {
-        pendingUrlFiltersRef.current = null;
-      }
-      if (typeof res.total === "number") setTotal(res.total);
+      if (targetIndex === pageIndexRef.current) setTotal(typeof res.total === "number" ? res.total : null);
 
       // dedup theo id
       const seen = new Set<string>();
@@ -2819,6 +2728,8 @@ if (targetIndex === pageIndexRef.current) {
   },
     [
       adminLevel,
+      authResolving,
+      filterSig,
       currentUserId,
       appliedSearch,
       minPriceApplied,
@@ -2868,6 +2779,7 @@ useLayoutEffect(() => {
 
   // ================== CENTRAL FETCH ==================
 useEffect(() => {
+  if (pageIndex !== pageIndexRef.current) return;
   // ✅ skip 1 vòng ngay sau hydrate restore
   if (didRestoreFromStorageRef.current) {
     didRestoreFromStorageRef.current = false;
@@ -3035,17 +2947,22 @@ const setSearchFromInput = useCallback<React.Dispatch<React.SetStateAction<strin
 useEffect(() => {
 
   const applied = appliedSearch.trim();
+  const customerFilters = customerFilterDetails({
+    minPrice: priceFilterActive ? minPriceApplied : undefined,
+    maxPrice: priceFilterActive ? maxPriceApplied : undefined,
+    districts: selectedDistricts,
+    roomTypes: selectedRoomTypes,
+    amenities: featureFilters,
+  });
 
   // ✅ nếu vừa restore/back/hydrate thì chờ đến đúng signature đã restore
   if (pendingRestoredFilterSigRef.current) {
-    if (filterSig !== pendingRestoredFilterSigRef.current) {
-      prevAppliedSearchRef.current = applied;
-      return;
-    }
-
+    if (filterSig !== pendingRestoredFilterSigRef.current) return;
     lastFilterSigRef.current = filterSig;
     prevAppliedSearchRef.current = applied;
+    previousCustomerFilters.current = customerFilters;
     pendingRestoredFilterSigRef.current = null;
+    pendingUrlFiltersRef.current = null;
     skipNextFilterEffectRef.current = false;
     return;
   }
@@ -3055,12 +2972,19 @@ useEffect(() => {
     skipNextFilterEffectRef.current = false;
     lastFilterSigRef.current = filterSig;
     prevAppliedSearchRef.current = applied;
+    previousCustomerFilters.current = customerFilters;
     return;
   }
 
   // ✅ không đổi filter thật sự -> không làm gì
+  const beforeCustomerFilters = previousCustomerFilters.current ?? customerFilters;
+  previousCustomerFilters.current = customerFilters;
   if (filterSig === lastFilterSigRef.current) return;
-  trackVisitorEvent("filter_use");
+  if (applied !== prevAppliedSearchRef.current) {
+    const details = customerSearchDetails(applied);
+    if (details) trackVisitorEvent("keyword_search", undefined, details);
+  }
+  trackVisitorEvent("filter_use", undefined, changedCustomerFilters(beforeCustomerFilters, customerFilters));
 
   // Clearing or changing search uses the current filters, never a pre-search list.
   prevAppliedSearchRef.current = applied;
@@ -3153,8 +3077,11 @@ useEffect(() => {
   appliedSearch,
   priceApplied,
   priceFilterActive,
+  minPriceApplied,
+  maxPriceApplied,
   selectedDistricts,
   selectedRoomTypes,
+  featureFilters,
   moveFilter,
   sortMode,
   statusFilter,
@@ -3172,6 +3099,7 @@ useEffect(() => {
 
 // ================== NEXT / PREV ==================
 const goNext = useCallback(() => {
+  if (filterSig !== lastFilterSigRef.current || search !== appliedSearch) return;
   if (loading || !hasNext) {
   if (debugEnabled) {
     pushPageDebug({
@@ -3251,6 +3179,8 @@ persistSoon();
 }, [
   loading,
   hasNext,
+  filterSig,
+  search,
   pageIndex,
   buildQs,
   replaceUrlShallow,
@@ -3276,9 +3206,10 @@ persistSoon();
 ]);
 
 const goPrev = useCallback(() => {
-  if (loading) return;
+  if (loading || filterSig !== lastFilterSigRef.current || search !== appliedSearch) return;
 
-  const next = Math.max(0, pageIndex - 1);
+  const previous = Math.max(0, pageIndex - 1);
+  const next = cursorsRef.current[previous] ? previous : 0;
 
   // ✅ page 0 -> cursor null, còn page khác -> cursor đã lưu ở cursorsRef[next]
   const prevCursor = (cursorsRef.current[next] ?? null) as UrlCursor;
@@ -3310,6 +3241,8 @@ persistSoon();
 
 }, [
   loading,
+  filterSig,
+  search,
   pageIndex,
   buildQs,
   replaceUrlShallow,
@@ -3326,87 +3259,55 @@ persistSoon();
   saveScrollToHistory,
 ]);
 
- // ================== AUTH CHANGE (KHÔNG refresh tự động) ==================
-const skipFirstAuthEffectRef = useRef(true);
-const lastSessionUserIdRef = useRef<string | null>(null);
-
+// A server-verified session already owns the SSR page. Re-fetch only if the
+// browser session changes, after resolving the new role and discarding its old cursor.
+const lastSessionUserIdRef = useRef(initialUserId);
 useEffect(() => {
-  let mounted = true;
-
-  // 1) Lấy session ban đầu để có baseline user id
-  supabase.auth.getSession().then(({ data }) => {
-    if (!mounted) return;
-
-    const uid = data.session?.user?.id ?? null;
-
-    console.log("[AUTH]", { uid: uid });
-    console.log("[ADMIN_PROFILE]", {
-  currentUserId,
-  currentAdminPhone,
-  currentAdminName,
-});
-
+  let active = true;
+  let sawAuthEvent = false;
+  const applySession = (uid: string | null) => {
+    if (!active || uid === lastSessionUserIdRef.current) return;
     lastSessionUserIdRef.current = uid;
+    authResolvingRef.current = Boolean(uid);
+    setAuthResolving(Boolean(uid));
     setCurrentUserId(uid);
-    setIsLoggedIn(!!uid);
+    setIsLoggedIn(Boolean(uid));
+    setAdminLevel(0);
+    const params = new URLSearchParams(window.location.search);
+    params.delete(QS.p);
+    params.delete(QS.c);
+    replaceUrlShallow(params.toString());
+    resetPagination(0);
+  };
 
-    // nếu không có session thì hạ quyền
-    if (!data.session) setAdminLevel(0);
+  void supabase.auth.getSession().then(({ data }) => {
+    if (!sawAuthEvent) applySession(data.session?.user?.id ?? null);
   });
-
-  // 2) Nghe auth events
   const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-    if (!mounted) return;
-
-    // Skip callback đầu tiên (thường là INITIAL_SESSION hoặc bắn ngay khi subscribe)
-    if (skipFirstAuthEffectRef.current) {
-      skipFirstAuthEffectRef.current = false;
-      const uid = session?.user?.id ?? null;
-
-        lastSessionUserIdRef.current = uid;
-        setCurrentUserId(uid);
-        setIsLoggedIn(!!uid);
-      return;
-    }
-
-    const nextUid = session?.user?.id ?? null;
-    setCurrentUserId(nextUid);
-    setIsLoggedIn(!!nextUid);
-    const prevUid = lastSessionUserIdRef.current;
-
-    // cập nhật baseline
-    lastSessionUserIdRef.current = nextUid;
-
-    // ✅ CHỈ coi là "auth đổi thật" khi user id thay đổi (login/logout/đổi user)
-    const userChanged = prevUid !== nextUid;
-    if (!userChanged) return;
-
-    // user logout -> hạ quyền
-    if (!session) setAdminLevel(0);
-
-    // auth đổi thật -> invalidate list
-    filtersVersionRef.current += 1;
-    resetPagination(pageIndex);
-    fetchPage(pageIndex);
-    persistSoon();
+    sawAuthEvent = true;
+    applySession(session?.user?.id ?? null);
   });
 
   return () => {
-    mounted = false;
+    active = false;
     sub.subscription.unsubscribe();
   };
-}, [resetPagination, pageIndex, persistSoon]);
+}, [replaceUrlShallow, resetPagination]);
 
 useEffect(() => {
-  if (!currentUserId) return;
+  if (!authResolving || !currentUserId) return;
   let active = true;
+  const finish = (level: number) => {
+    if (!active || lastSessionUserIdRef.current !== currentUserId) return;
+    authResolvingRef.current = false;
+    setAdminLevel(level === 1 || level === 2 ? level : 0);
+    setAuthResolving(false);
+  };
   void supabase.rpc("get_my_admin_level").then(({ data, error }) => {
-    if (!active) return;
-    const level = Number(data ?? 0);
-    setAdminLevel(!error && (level === 1 || level === 2) ? level : 0);
-  });
+    finish(error ? 0 : Number(data ?? 0));
+  }, () => finish(0));
   return () => { active = false; };
-}, [currentUserId]);
+}, [authResolving, currentUserId]);
 
  // ================== Khóa Anon ==================
 useEffect(() => {
@@ -3498,7 +3399,6 @@ const roomContactName = currentUserId
 
 const toggleSavedView = () => {
   const next = !isSavedView;
-  filtersVersionRef.current += 1;
   const params = new URLSearchParams(window.location.search);
   if (next) params.set("view", "saved");
   else params.delete("view");
@@ -3635,6 +3535,8 @@ return (
               setSearch={setSearchFromInput}
               priceDraft={priceDraft}
               priceApplied={priceApplied}
+              priceFilterActive={priceFilterActive}
+              badgeFilterActive={badgeFilter !== null}
               setPriceDraft={setPriceDraft}
               setPriceApplied={setPriceAppliedFromUser}
               selectedDistricts={selectedDistricts}

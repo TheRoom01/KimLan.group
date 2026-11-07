@@ -6,7 +6,7 @@ type Control = {
   desired_enabled: boolean | null; actual_enabled: boolean | null;
   request_id: string | null; applied_request_id: string | null; heartbeat_at: string | null; last_error: string | null;
 };
-export default function ZaloReaderControls() {
+export default function ZaloReaderControls({ reportOpen, onToggleReport }: { reportOpen: boolean; onToggleReport: () => void }) {
   const [control, setControl] = useState<Control | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,6 +38,7 @@ export default function ZaloReaderControls() {
       <button type="button" style={{ ...buttonStyle, background: "#166534", color: "white" }} disabled={busy || !control || !!error || (pending && control.desired_enabled === true)} onClick={() => void send(true)}>Start</button>
       <button type="button" style={{ ...buttonStyle, background: "#b91c1c", color: "white" }} disabled={busy || !control || !!error || (online && !pending && control.actual_enabled === false)} onClick={() => void send(false)}>Stop</button>
       <button type="button" style={{ ...buttonStyle, background: "#fff", color: "#075985" }} disabled={busy || !control || !!error || (opening && !control.open_error)} onClick={() => void send("open_zalo")}>Mở Zalo</button>
+      <button type="button" style={{ ...buttonStyle, background: reportOpen ? "#e0f2fe" : "#fff", color: "#075985" }} aria-expanded={reportOpen} aria-controls="zalo-import-report" onClick={onToggleReport}>Báo cáo</button>
       <span role="status">{busy ? "Đang gửi lệnh…" : pending
         ? `Đã gửi ${control?.desired_enabled ? "Start" : "Stop"} · chờ máy Reader xác nhận`
         : online ? (control?.actual_enabled ? "Lịch đọc đã bật" : "Lịch đọc đã tắt") : "Máy Reader chưa kết nối hoặc đang nghỉ"}</span>

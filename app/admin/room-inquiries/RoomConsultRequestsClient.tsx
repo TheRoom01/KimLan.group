@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, ExternalLink, RefreshCw } from "lucide-react";
 import { readApiResponse } from "@/lib/api/client";
+import { PanelLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 
 type Status = "new" | "contacted" | "scheduled" | "completed" | "cancelled";
 type RoomRequest = {
@@ -47,6 +50,7 @@ export default function RoomConsultRequestsClient({
   backHref: string;
   focusRequestId?: string;
 }) {
+  const router = useRouter();
   const [requests, setRequests] = useState<RoomRequest[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | Status>(focusRequestId ? "all" : "new");
   const [kindFilter, setKindFilter] = useState("all");
@@ -87,6 +91,8 @@ export default function RoomConsultRequestsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status }),
       }));
+      const previous = requests.find(request => request.id === id)?.status;
+      if (backHref === "/admin" && (previous === "new") !== (status === "new")) router.refresh();
       await loadRequests();
       setSuccess("Đã cập nhật trạng thái yêu cầu.");
     } catch (updateError) {
@@ -112,7 +118,7 @@ export default function RoomConsultRequestsClient({
     <main className="min-h-[70vh] p-1 text-[#432d1e] sm:p-3">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9c4a9] pb-4">
         <div>
-          <a href={backHref} className="inline-flex items-center gap-1 text-xs font-semibold text-[#806348] hover:text-[#4d3422]"><ArrowLeft size={14} /> Quay lại</a>
+          <Link href={backHref} className="inline-flex items-center gap-1 text-xs font-semibold text-[#806348] hover:text-[#4d3422]"><ArrowLeft size={14} /> Quay lại</Link>
           <h1 className="mt-2 text-xl font-black sm:text-2xl">Yêu cầu tư vấn / xem phòng</h1>
           <p className="mt-1 text-sm text-[#806348]">Danh sách phân trang, chỉ hiển thị các yêu cầu trong phạm vi bạn được phân quyền.</p>
         </div>
@@ -137,7 +143,7 @@ export default function RoomConsultRequestsClient({
 
       {error ? <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p> : null}
       {success ? <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{success}</p> : null}
-      {loading ? <div className="py-12 text-center text-sm text-[#806348]">Đang tải yêu cầu…</div> : requests.length === 0 ? <div className="py-14 text-center text-sm text-[#806348]">Chưa có yêu cầu trong trạng thái này.</div> : (
+      {loading ? <PanelLoadingSkeleton /> : requests.length === 0 ? <div className="py-14 text-center text-sm text-[#806348]">Chưa có yêu cầu trong trạng thái này.</div> : (
         <div className="mt-4 grid gap-3">
           {requests.map((item) => <article key={item.id} className="grid gap-4 rounded-2xl border border-[#ddcbb7] bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:p-5">
             <div className="min-w-0">

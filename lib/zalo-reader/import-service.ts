@@ -4,7 +4,7 @@ import {
 } from "crypto";
 
 import { NextResponse } from "next/server";
-import { officialSourceIdentity, confirmOfficialRun, existingOfficialReceipt } from "./official-request";
+import { officialSourceIdentity, confirmOfficialRun, existingOfficialReceipt, deletedOfficialReceipt } from "./official-request";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { parseZaloRoomText } from "@/lib/zalo-import/parser";
@@ -14,10 +14,8 @@ import {
   evaluateZaloImportQuality,
   readZaloAutoImportSettings,
 } from "@/lib/zalo-import/quality";
-import { publishPendingRoom } from "@/lib/zalo-import/publish-pending-room";
 import {
   isControlledZaloTarget,
-  shouldAutoPublishZaloImport,
   makeTestPendingIdentity,
 } from "@/lib/zalo-reader/controlled-staging";
 
@@ -951,11 +949,15 @@ export async function POST(
       sourceHash;
 
     const supabase =
-      createSupabaseAdminClient();
+      createSupabaseAdminClient({ source: "zalo_automation" });
+    let retryRejected = false;
     if (officialIdentity) {
       await confirmOfficialRun(supabase, officialIdentity, sentAt);
+      const deletedId = await deletedOfficialReceipt(supabase, officialIdentity, groupName, officialParsed!.roomPayload);
+      if (deletedId) return NextResponse.json({ ok: true, duplicate: true, skipped: true, pendingVersionId: deletedId, reasonCode: "PENDING_DELETED" });
       const receipt = await existingOfficialReceipt(supabase, officialIdentity, groupName, officialParsed!.roomPayload);
-      if (receipt) return NextResponse.json(receipt);
+      retryRejected = receipt?.status === "Từ chối";
+      if (receipt && !retryRejected) return NextResponse.json(receipt);
     }
 
     stage = "lookup-existing";
@@ -1098,7 +1100,7 @@ export async function POST(
       });
 
     const roomReview = resolved.roomPayload._room_import;
-    if (!testImportToPending || testNewSourcesOnly) {
+    if ((!testImportToPending || testNewSourcesOnly) && !retryRejected) {
       stage = "compare-new-source";
       const baseline = await findImportBaseline(supabase, resolved.roomPayload, resolved.matchedRoom);
       if (baseline) {
@@ -2157,13 +2159,9 @@ export async function POST(
               ? resolved.roomPayload
                   .status ?? null
               : null,
-          ...(officialReader || stagingOnly || roomReview?.type !== "CREATE"
-            ? {
-                auto_approve_enabled: false,
-                auto_approve_at: null,
-                auto_approve_actor_id: null,
-              }
-            : {}),
+          auto_approve_enabled: false,
+          auto_approve_at: null,
+          auto_approve_actor_id: null,
         },
         "pending_room_versions.insert"
       );
@@ -2179,6 +2177,17 @@ export async function POST(
       });
       if (finalized.error) throw finalized.error;
       if (!finalized.data?.pending_id) throw new Error("OFFICIAL_RECEIPT_MISSING");
+      const cleanupKeys: string[] = finalized.data.created
+        ? (finalized.data.replaced_media_keys ?? [])
+        : [...uploadedImages, ...uploadedVideos].flatMap(row => [
+            row.temp_r2_key,
+            "temp_thumb_r2_key" in row ? row.temp_thumb_r2_key : null,
+          ]).filter((key): key is string => typeof key === "string" && key.length > 0);
+      if (cleanupKeys.length) {
+        try { await deleteR2Keys(cleanupKeys); }
+        catch { console.warn("Could not clean up unused Zalo import media", { batchId }); }
+      }
+      if (finalized.data.deleted) return NextResponse.json({ ok: true, duplicate: true, skipped: true, pendingVersionId: finalized.data.pending_id, reasonCode: "PENDING_DELETED" });
       return NextResponse.json({ ok: true, duplicate: !finalized.data.created, batchId,
         pendingVersionId: finalized.data.pending_id, importType: roomReview?.type || "NEEDS_REVIEW",
           status: "Chờ duyệt", officialTrial, imageCount: uploadedImages.length, videoCount: uploadedVideos.length, manualVideoRequired,
@@ -2230,105 +2239,6 @@ export async function POST(
       }
     }
 
-    let autoPublished = false;
-    let autoPublishedRoomId:
-      string | null = null;
-    let autoPublishError:
-      string | null = null;
-
-    if (
-      !testImportToPending && shouldAutoPublishZaloImport({
-        stagingOnly,
-        eligible: importQuality.eligible,
-        enabled: autoImportSettings.enabled,
-        dryRun: autoImportSettings.dryRun,
-      }) && roomReview?.type === "CREATE"
-    ) {
-      try {
-        const published =
-          await publishPendingRoom({
-            pendingId:
-              pendingVersionId,
-
-            actorUserId:
-              autoImportSettings.ownerId,
-
-            source: "auto",
-            supabase,
-          });
-
-        autoPublished = true;
-        autoPublishedRoomId =
-          published.roomId;
-
-        importQuality.auto_import.published =
-          true;
-
-        importQuality.auto_import.published_room_id =
-          published.roomId;
-      } catch (publishError) {
-        autoPublishError =
-          getErrorMessage(
-            publishError
-          );
-
-        importQuality.auto_import.publish_error =
-          autoPublishError;
-
-        const failedRoomPayload = {
-          ...pendingRoomPayload,
-          import_quality:
-            importQuality,
-        };
-
-        const failedParserResult = {
-          ...batchParserResult,
-          room_payload:
-            failedRoomPayload,
-          import_quality:
-            importQuality,
-        };
-
-        await Promise.allSettled([
-          supabase
-            .from(
-              "pending_room_versions"
-            )
-            .update({
-              room_payload:
-                failedRoomPayload,
-            })
-            .eq(
-              "id",
-              pendingVersionId
-            ),
-
-          supabase
-            .from(
-              "zalo_import_batches"
-            )
-            .update({
-              parser_result:
-                failedParserResult,
-            })
-            .eq(
-              "id",
-              batchId
-            ),
-        ]);
-
-        console.error(
-          "Auto publish Zalo import failed:",
-          {
-            pendingVersionId,
-            batchId,
-            error:
-              autoPublishError,
-          }
-        );
-      }
-    }
-
     stage = "response";
 
     return NextResponse.json({
@@ -2365,23 +2275,12 @@ export async function POST(
         importQuality,
 
       autoImport: {
-        eligible:
-          importQuality.eligible,
-
-        enabled:
-          autoImportSettings.enabled,
-
-        dryRun:
-          autoImportSettings.dryRun,
-
-        published:
-          autoPublished,
-
-        roomId:
-          autoPublishedRoomId,
-
-        error:
-          autoPublishError,
+        eligible: importQuality.eligible,
+        enabled: false,
+        dryRun: true,
+        published: false,
+        roomId: null,
+        error: null,
       },
 
       videoUrls:

@@ -150,6 +150,7 @@ try {
   p_device_fingerprint: fingerprint,
   p_max_devices: 2,
   p_evict_oldest: false,
+  p_device_name: null,
 });
   const reg1 = firstRegistration.data;
   let eReg = firstRegistration.error;
@@ -170,6 +171,7 @@ let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
       p_device_fingerprint: fingerprint,
       p_max_devices: 2,
       p_evict_oldest: false,
+      p_device_name: null,
     });
 
     eReg = retry.error;
@@ -183,7 +185,7 @@ let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
   // ✅ hard limit: device #3 -> block access (do NOT evict others)
  if (regStatus === "limit_reached") {
   try {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
   } catch {}
 
   response.cookies.set({
@@ -217,7 +219,7 @@ let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
   if (!valid2) {
     // Kick this device: sign out + clear device cookies + redirect
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
     } catch {
       // ignore
     }

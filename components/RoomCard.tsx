@@ -30,6 +30,7 @@ type Room = {
   price: number;
   description?: string | null;
   status: "Trống" | "Đã thuê" | string;
+  is_hidden?: boolean | null;
   updated_at?: string | null;
 
   image_urls?: string[] | null;
@@ -1349,7 +1350,11 @@ return (
             </div>
           </div>
 
-          {isAdmin ? (
+          {safeAdminLevel === 1 && room.is_hidden === true ? (
+            <span className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} col-start-2 row-start-1 justify-self-end !border-[#e5e7eb] !bg-[#f3f4f6] !text-[#6b7280]`}>
+              Đã ẩn
+            </span>
+          ) : isAdmin ? (
             <div className="relative z-20 col-start-2 row-start-1 justify-self-end">
 
   <button

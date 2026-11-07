@@ -13,16 +13,19 @@ import { createPortal } from "react-dom";
 import { attachRoomBadges, ROOM_BADGES } from "@/lib/roomBadges";
 
 const PAGE_SIZE = 20;
+const makeCacheKey = (page: number, search: string) =>
+  `${normalizeSearchKeyword(search).toLowerCase()}|${page}`;
 
 
 type AdminClientProps = {
   initialRooms: Room[];
   initialTotal: number;
+  adminLevel: 1 | 2;
+  initialLoadFailed?: boolean;
   report?: string | null;
-  roomConsultNewCount?: number;
 };
 
-export default function AdminClient({ initialRooms, initialTotal, report, roomConsultNewCount = 0, }: AdminClientProps) {
+export default function AdminClient({ initialRooms, initialTotal, adminLevel, initialLoadFailed = false, report }: AdminClientProps) {
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(1);
@@ -35,7 +38,6 @@ export default function AdminClient({ initialRooms, initialTotal, report, roomCo
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [adminLevel, setAdminLevel] = useState<number | null>(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
 
@@ -257,39 +259,11 @@ useEffect(() => {
     return () => window.clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
-  let alive = true;
-
-  (async () => {
-    try {
-      const { data: levelData, error: levelErr } =
-        await supabase.rpc("get_my_admin_level");
-
-      if (!alive) return;
-
-      if (levelErr) {
-        console.warn("get_my_admin_level failed", levelErr);
-        setAdminLevel(null);
-        return;
-      }
-
-      const lvl = Number(levelData ?? 0);
-      setAdminLevel(Number.isFinite(lvl) ? lvl : null);
-    } catch (e) {
-      console.warn("get_my_admin_level exception", e);
-      if (alive) setAdminLevel(null);
-    }
-  })();
-
-  return () => {
-    alive = false;
-  };
-}, []);
-
   const reqSeqRef = useRef(0);
-  const cacheRef = useRef(new Map<string, { rooms: Room[]; total: number }>());
-  const makeCacheKey = (p: number, q: string) =>
-  `${normalizeSearchKeyword(q).toLowerCase()}|${p}`;
+  const cacheRef = useRef(new Map<string, { rooms: Room[]; total: number }>(
+    initialLoadFailed ? [] : [[makeCacheKey(1, ""), { rooms: initialRooms, total: initialTotal }]],
+  ));
+  const lastRequestedKey = useRef(initialLoadFailed ? null : makeCacheKey(1, ""));
 
   const loadRooms = useCallback(
   async (p: number, q: string, opts?: { silent?: boolean; useCache?: boolean }) => {
@@ -360,14 +334,16 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
   if (mySeq === reqSeqRef.current && !opts?.silent) setLoading(false);
 }
     },
-    [adminLevel]
+    [adminLevel, report]
   );
 
   // when page/search changes => reload
   useEffect(() => {
-  if (adminLevel !== 1 && adminLevel !== 2) return;
-  loadRooms(page, debouncedSearch, { useCache: true });
-}, [page, debouncedSearch, loadRooms, adminLevel]);
+    const key = makeCacheKey(page, debouncedSearch);
+    if (lastRequestedKey.current === key) return;
+    lastRequestedKey.current = key;
+    void loadRooms(page, debouncedSearch, { useCache: true });
+  }, [page, debouncedSearch, loadRooms]);
 
  const deleteRoom = useCallback(
   async (id: string) => {
@@ -596,7 +572,7 @@ const openZaloUX = useCallback(
         <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1fr) minmax(100px, 0.75fr) 40px",
+              gridTemplateColumns: "minmax(0, 1fr) minmax(100px, 0.75fr) 40px",
               alignItems: "center",
               gap: 6,
               width: "100%",
@@ -606,13 +582,6 @@ const openZaloUX = useCallback(
             {(adminLevel === 1 || adminLevel === 2) && (
               <VipLinkManager buttonStyle={compactActionBtn} />
             )}
-            <a
-              href="/admin/room-inquiries"
-              style={{ ...compactActionBtn, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, textDecoration: "none" }}
-            >
-              Tư vấn / xem phòng
-              {roomConsultNewCount > 0 ? <span style={{ minWidth: 22, borderRadius: 999, padding: "2px 7px", background: "#b91c1c", color: "white", textAlign: "center", fontSize: 11 }}>{roomConsultNewCount > 99 ? "99+" : roomConsultNewCount}</span> : null}
-            </a>
             <button
               style={{ ...addBtn, width: "100%", minWidth: 0, padding: "8px 8px", fontWeight: 700, fontSize: "clamp(10px, 3vw, 13px)", overflow: "hidden", textOverflow: "ellipsis" }}
               onClick={() => {

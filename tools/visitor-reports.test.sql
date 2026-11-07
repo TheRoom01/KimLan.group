@@ -42,8 +42,9 @@ end $$;
 reset role;
 -- Isolate aggregation fixtures inside the rolled-back transaction.
 delete from public.visitor_events;
-select public.record_visitor_event_v1('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','page_view',null,null,null,null);
-select public.record_visitor_event_v1('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','page_view',null,null,null,null);
+select public.record_visitor_event_v1('10000000-0000-4000-8000-000000000005','20000000-0000-4000-8000-000000000003','page_view',null,null,null,null);
+select public.record_visitor_event_v2('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','keyword_search',null,null,null,null,'{"keyword":"phường 13","ward":"13"}');
+select public.record_visitor_event_v2('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','keyword_search',null,null,null,null,'{"keyword":"phường 13","ward":"13"}');
 select public.record_visitor_event_v1('10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001','room_view','30000000-0000-4000-8000-000000000001','TEST','Quận A','Phường A');
 select public.record_visitor_event_v1('10000000-0000-4000-8000-000000000003','20000000-0000-4000-8000-000000000001','room_view','30000000-0000-4000-8000-000000000001','TEST','Quận A','Phường A');
 select public.record_visitor_event_v1('10000000-0000-4000-8000-000000000004','20000000-0000-4000-8000-000000000002','filter_use',null,null,null,null);
@@ -56,8 +57,11 @@ do $$ declare r jsonb; begin
     or (r->'districts'->0->>'views')::int <> 2 or (r->'wards'->0->>'views')::int <> 2 then
     raise exception 'Incorrect aggregation: %', r;
   end if;
-  if (select (a->>'events')::int from jsonb_array_elements(r->'actions') a where a->>'action'='page_view') <> 1 then
+  if (select (a->>'events')::int from jsonb_array_elements(r->'actions') a where a->>'action'='keyword_search') is distinct from 1 then
     raise exception 'Event deduplication failed';
+  end if;
+  if (r->'filters'->>'ward')::int is distinct from 1 or exists(select 1 from public.visitor_events where id = '10000000-0000-4000-8000-000000000005') then
+    raise exception 'Ward scope or list view suppression failed';
   end if;
   begin
     perform public.reports_visitors_v1(365);

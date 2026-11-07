@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { cleanReaderImportIssues, MAX_READER_IMPORT_ISSUES, type ReaderImportIssue } from "../../lib/zalo-reader/import-issues";
 import { randomUUID } from "node:crypto";
 import { OFFICIAL_ZALO_GROUPS, initializeCheckpoint, checkpointWindow, verifiedGroupIdentity, selectIncrementalSources,
   verifiedProcessingReceipt, commitSource, advanceWatermark, redactReaderLog, READER_INTERVAL_MS, type GroupCheckpoint } from "../../lib/zalo-reader/official";
@@ -40,7 +41,8 @@ type ActiveGroup = { key: string; name: string; checkpoint: GroupCheckpoint; fil
   window: { fromMs: number; toMs: number };
   observed: Array<{ id: string; timestamp: number }>; complete: boolean; sourceSizes: Record<string, number>;
   acknowledgements: Record<string, { count: number; ids: Set<string>; timestamp: number; kind: string; pendingIds: Set<string> }>;
-  counters: Record<string, number>; errors: Array<{ code: string; sourceMessageId?: string }>; groupId: string | null };
+  counters: Record<string, number>; errors: Array<{ code: string; sourceMessageId?: string }>;
+  importIssues: ReaderImportIssue[]; sourceTextById: Map<string, string>; groupId: string | null };
 
 export class OfficialSession {
   readonly runId: string;
@@ -60,10 +62,11 @@ export class OfficialSession {
       mode: this.options.trial ? "trial" : "official", schedulerEnabled: !this.options.trial,
       startedAt: group.startedAt, heartbeatAt: new Date(this.now()).toISOString(), status,
       windowFrom: new Date(group.window.fromMs).toISOString(), windowTo: new Date(group.window.toMs).toISOString(),
-      counters: group.counters, errorCode: errorCode || null,
+      counters: group.counters, errorCode: errorCode || null, importIssues: group.importIssues,
       nextExpectedAt: this.options.trial ? null : new Date(this.now() + READER_INTERVAL_MS).toISOString() };
     fs.mkdirSync(path.join(this.options.stateDirectory, "logs"), { recursive: true });
-    fs.appendFileSync(path.join(this.options.stateDirectory, "logs", `${this.runId}.jsonl`), JSON.stringify(event) + "\n");
+    fs.appendFileSync(path.join(this.options.stateDirectory, "logs", `${this.runId}.jsonl`),
+      JSON.stringify({ ...event, importIssues: group.importIssues.map(({ source: _source, ...issue }) => issue) }) + "\n");
     try { await this.options.report?.(event); } catch { console.warn("READER_STATUS_REPORT_UNAVAILABLE"); }
   }
   async beginGroup(config: any, key: string, name: string) {
@@ -94,7 +97,7 @@ export class OfficialSession {
     this.active = { key, name, checkpoint, file, startedAt: new Date(this.now()).toISOString(), observed: [], complete: false,
       window,
       sourceSizes: {}, acknowledgements: {}, counters: { missed_intervals: missed, new_messages: 0, new_rooms: 0, updated_rooms: 0,
-        needs_review: 0, pending_created: 0, existing_sources: 0, unchanged: 0, skipped: 0, failed: 0, media_errors: 0 }, errors: [], groupId: checkpoint.groupId };
+        needs_review: 0, pending_created: 0, existing_sources: 0, unchanged: 0, skipped: 0, failed: 0, media_errors: 0, pending_with_issues: 0 }, errors: [], importIssues: [], sourceTextById: new Map(), groupId: checkpoint.groupId };
     checkpoint.lastAttemptAt = this.active.startedAt;
     this.save(); // initializes the fixed first-run boundary, NOT a processing acknowledgement
     config.officialFromMs = window.fromMs; config.officialToMs = window.toMs;
@@ -138,6 +141,7 @@ export class OfficialSession {
     for (const [id, message] of Object.entries(cached)) {
       const timestamp = Number(message.trustedTimestampMs || message.sendDttm || message.serverTime || 0);
       if (timestamp < group.window.toMs - 24 * READER_INTERVAL_MS || timestamp > group.window.toMs) continue;
+      if (typeof message.text === "string" && message.text.trim()) group.sourceTextById.set(id, message.text);
       const current = merged.get(id);
       if (!current || !verified(current)) merged.set(id, { ...message, imageUrls: [], videoUrls: [], videoThumbUrls: [] });
     }
@@ -148,6 +152,7 @@ export class OfficialSession {
     const remaining = this.options.trial ? Math.max(0, 10 - this.totalPending) : this.options.maxRooms;
     const selection = selectIncrementalSources(rooms, group.checkpoint, group.window.toMs, this.options.maxMessages, Math.min(this.options.maxRooms, remaining), this.options.overlapMinutes);
     group.sourceSizes = selection.sourceSizes;
+    group.counters.rooms_read = selection.roomsRead;
     group.counters.skipped = Object.values(selection.excluded).reduce((sum, count) => sum + count, 0);
     for (const [reason,count] of Object.entries(selection.excluded)) group.counters[`skipped_${reason}`] = count;
     return selection.rooms;
@@ -165,6 +170,19 @@ export class OfficialSession {
     if (!kind) throw new Error("IMPORT_RECEIPT_UNVERIFIED");
     if (kind === "pending_created") {
       this.totalPending++; group.counters.pending_created++;
+      const issueCodes = Array.isArray(result.issues)
+        ? result.issues.filter((issue: any) => issue?.level === "error" || /^(MEDIA_(INCOMPLETE|UNVERIFIED|LOADING_TIMEOUT)|VIDEO_MANUAL_UPLOAD_REQUIRED)$/.test(issue?.code || ""))
+          .map((issue: any) => issue.code)
+        : [];
+      if (Array.isArray(result.diagnosticCodes)) issueCodes.push(...result.diagnosticCodes);
+      if (result.partial || result.hasImportErrors || issueCodes.length) {
+        group.counters.pending_with_issues++;
+        const codes = issueCodes.filter(Boolean);
+        if (result.manualVideoRequired) codes.unshift("VIDEO_MANUAL_UPLOAD_REQUIRED");
+        if (["MEDIA_INCOMPLETE", "MEDIA_UNVERIFIED"].includes(result.mediaVerification)) codes.push(result.mediaVerification);
+        this.recordImportIssue({ kind: "partial", codes: codes.length ? codes : ["PENDING_INCOMPLETE"],
+          sourceMessageId: room.markerMessageId, pendingIds: [result.pendingVersionId] });
+      }
       if (result.importType === "UPDATE") group.counters.updated_rooms++;
       else if (result.importType === "CREATE") group.counters.new_rooms++;
       else group.counters.needs_review++;
@@ -181,10 +199,19 @@ export class OfficialSession {
       this.save(); // acknowledgement happens AFTER a confirmed API receipt
     }
   }
-  fail(code: string, sourceMessageId?: string) {
+  private recordImportIssue(issue: ReaderImportIssue) {
+    if (!this.active || this.active.importIssues.length >= MAX_READER_IMPORT_ISSUES) return;
+    this.active.importIssues.push(...cleanReaderImportIssues([issue]));
+  }
+  fail(code: string, sourceMessageId?: string, details: string[] = [], pendingIds?: string[], context?: { text: string; address?: string }) {
     if (!this.active) return;
     this.active.counters.failed++;
     this.active.errors.push({ code: /^[A-Z0-9_]{2,80}$/.test(code) ? code : "READER_ERROR", ...(sourceMessageId ? { sourceMessageId } : {}) });
+    const original = sourceMessageId && (this.active.sourceTextById.get(sourceMessageId) ||
+      this.active.sourceTextById.get(sourceMessageId.replace(/::part\d+$/, "")));
+    const text = original || context?.text;
+    this.recordImportIssue({ kind: "failed", codes: [code, ...details], sourceMessageId, pendingIds,
+      ...(text ? { source: { text, kind: original ? "message" : "import", address: context?.address } } : {}) });
   }
   recordMedia(report: Record<string, any>) {
     if (!this.active) return;

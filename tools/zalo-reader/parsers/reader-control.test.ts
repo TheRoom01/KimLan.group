@@ -93,6 +93,7 @@ async function main() {
   const dependencies: any = {
     "next/server": { NextResponse: { json: (body: any, options: any) => Response.json(body, options) } },
     "@/lib/supabase/admin": { createSupabaseAdminClient: () => db },
+    "@/lib/zalo-import/access": { canAccessZaloImports: () => true },
     "@/lib/supabase/server": { createSupabaseServerClient: async () => ({ auth: { getUser: async () => ({ data: { user: signedIn ? { id: "admin" } : null } }) }, rpc: async () => ({ data: level }) }) },
     "@/lib/zalo-reader/control-service": controlService,
     "@/lib/zalo-reader/status-service": { readerSecretMatches: () => secretOK },

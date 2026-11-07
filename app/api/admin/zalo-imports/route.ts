@@ -1,3 +1,5 @@
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
+import { READER_PENDING_ID } from "@/lib/zalo-reader/import-issues";
 import { NextResponse } from "next/server";
 import { importFilters, applyImportFilters } from "@/lib/zalo-import/filters";
 import { importLifecycle } from "@/lib/zalo-import/lifecycle";
@@ -60,7 +62,7 @@ export async function GET(req: Request) {
     );
 
     if (
-      levelError ||
+      !canAccessZaloImports(user) || levelError ||
       (level !== 1 && level !== 2)
     ) {
       return NextResponse.json(
@@ -75,19 +77,23 @@ export async function GET(req: Request) {
     }
 
     const url = new URL(req.url);
+    const pendingId = url.searchParams.get("pendingId");
+    if (pendingId !== null && !READER_PENDING_ID.test(pendingId)) {
+      return NextResponse.json({ ok: false, error: "Mã bản chờ duyệt không hợp lệ" }, { status: 400 });
+    }
 
     const status =
       url.searchParams.get("status") || "";
     const filters = importFilters(Object.fromEntries(url.searchParams));
 
-    const limit = toSafeInteger(
+    const limit = pendingId ? 1 : toSafeInteger(
       url.searchParams.get("limit"),
       20,
       1,
       50
     );
 
-    const offset = toSafeInteger(
+    const offset = pendingId ? 0 : toSafeInteger(
       url.searchParams.get("offset"),
       0,
       0,
@@ -116,13 +122,15 @@ export async function GET(req: Request) {
         offset + limit - 1
       );
 
-    if (status) {
+    if (pendingId) {
+      query = query.eq("id", pendingId);
+    } else if (status) {
       query = query.eq(
         "status",
         status
       );
     }
-    query = applyImportFilters(query, filters);
+    if (!pendingId) query = applyImportFilters(query, filters);
 
     const {
       data,

@@ -32,12 +32,17 @@ export type IncrementalCandidate = { markerMessageId: string; markerTimestamp: n
 export function selectIncrementalSources<T extends IncrementalCandidate>(rooms: T[], checkpoint: GroupCheckpoint, now: number, maxMessages: number, maxRooms: number, overlapMinutes = 15) {
   const window = checkpointWindow(checkpoint, now, overlapMinutes);
   const grouped = new Map<string, T[]>();
+  const parsedRooms = new Set<string>();
   const excluded: Record<string, number> = { processed: 0, outside_window: 0, invalid: 0, unanchored: 0, limit: 0, oversized: 0 };
   for (const room of [...rooms].sort((a,b) => a.markerTimestamp - b.markerTimestamp || String(a.markerMessageId).localeCompare(String(b.markerMessageId), "en", { numeric: true }) || a.sourceHash.localeCompare(b.sourceHash))) {
     if (!room.markerMessageId || !Number.isSafeInteger(room.markerTimestamp)) { excluded.invalid++; continue; }
     if (room.markerTimestamp < window.fromMs || room.markerTimestamp > window.toMs) { excluded.outside_window++; continue; }
+    const missingMarker = room.warnings?.some(warning => ["ROOM_MARKER_MISSING", "NO_ROOM_MARKER"].includes(warning));
+    if (!missingMarker) {
+      parsedRooms.add(JSON.stringify([room.markerMessageId, room.sourceHash]));
+    }
     if (checkpoint.receipts[room.markerMessageId]) { excluded.processed++; continue; }
-    if (room.warnings?.some(warning => ["ROOM_MARKER_MISSING", "NO_ROOM_MARKER"].includes(warning))) { excluded.unanchored++; continue; }
+    if (missingMarker) { excluded.unanchored++; continue; }
     const list = grouped.get(room.markerMessageId) || [];
     if (!list.some(previous => previous.sourceHash === room.sourceHash)) list.push(room);
     grouped.set(room.markerMessageId, list);
@@ -49,7 +54,7 @@ export function selectIncrementalSources<T extends IncrementalCandidate>(rooms: 
     if (messages >= maxMessages || selected.length + list.length > maxRooms) { excluded.limit += list.length; continue; }
     selected.push(...list); sourceSizes[id] = list.length; messages++;
   }
-  return { rooms: selected, sourceSizes, messages, excluded, window };
+  return { rooms: selected, sourceSizes, messages, roomsRead: parsedRooms.size, excluded, window };
 }
 export function verifiedProcessingReceipt(response: any) {
   if (response?.ok !== true) return null;

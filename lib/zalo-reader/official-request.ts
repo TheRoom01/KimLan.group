@@ -26,6 +26,13 @@ export async function existingOfficialReceipt(supabase: any, identity: ReturnTyp
     .eq("group_name", groupName).eq("source_message_id", identity.metadata.source_message_id);
   if (rows.error) throw rows.error;
   const key = normalizedRoomIdentity(room);
+  let rejectedReceipt: ReturnType<typeof makeReceipt> | null = null;
+  function makeReceipt(batchId: string, pending: { id: string; status: string }, parsed: any) {
+    return { ok: true, duplicate: true, batchId, pendingVersionId: pending.id, status: pending.status,
+      officialTrial: identity.metadata.trial,
+      imageCount: Number(parsed.imported_media?.image_count || 0), videoCount: Number(parsed.imported_media?.video_count || 0),
+      importType: parsed.room_payload?._room_import?.type || "NEEDS_REVIEW", partial: Boolean(parsed.import_diagnostics?.has_errors) };
+  }
   for (const batch of rows.data || []) {
     const parsed = batch.parser_result || {};
     const canonical = batch.id === identity.batchId;
@@ -35,10 +42,21 @@ export async function existingOfficialReceipt(supabase: any, identity: ReturnTyp
     const pending = await supabase.from("pending_room_versions").select("id,status").eq("batch_id", batch.id).maybeSingle();
     if (pending.error) throw pending.error;
     if (!pending.data) throw new Error("IMPORTED_HISTORY_WITHOUT_PENDING_REQUIRES_REVIEW");
-    return { ok: true, duplicate: true, batchId: batch.id, pendingVersionId: pending.data.id, status: pending.data.status,
-      officialTrial: identity.metadata.trial,
-      imageCount: Number(parsed.imported_media?.image_count || 0), videoCount: Number(parsed.imported_media?.video_count || 0),
-      importType: parsed.room_payload?._room_import?.type || "NEEDS_REVIEW", partial: Boolean(parsed.import_diagnostics?.has_errors) };
+    const receipt = makeReceipt(batch.id, pending.data, parsed);
+    if (receipt.status !== "Từ chối") return receipt;
+    rejectedReceipt = receipt;
   }
-  return null;
+  return rejectedReceipt;
+}
+
+export async function deletedOfficialReceipt(supabase: any, identity: ReturnType<typeof officialSourceIdentity>, groupName: string, room: Record<string, any>) {
+  const { data, error } = await supabase.from("zalo_deleted_import_sources")
+    .select("pending_id,source_hash,source_room")
+    .eq("group_name", groupName).eq("source_message_id", identity.metadata.source_message_id)
+    .eq("is_test", identity.metadata.trial);
+  if (error) throw error;
+  const key = normalizedRoomIdentity(room);
+  return data?.find((row: { source_hash: string; source_room: Record<string, any> | null }) =>
+    row.source_hash === identity.sourceHash || (key && row.source_room && normalizedRoomIdentity(row.source_room) === key)
+  )?.pending_id as string | undefined;
 }

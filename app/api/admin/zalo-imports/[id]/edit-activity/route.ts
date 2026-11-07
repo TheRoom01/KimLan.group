@@ -1,3 +1,4 @@
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -37,7 +38,7 @@ async function assertAdmin() {
   );
 
   if (
-    levelErr ||
+    !canAccessZaloImports(user) || levelErr ||
     (level !== 1 && level !== 2)
   ) {
     return {
