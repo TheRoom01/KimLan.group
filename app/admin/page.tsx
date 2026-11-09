@@ -28,22 +28,32 @@ export default async function AdminPage({
   const rpcName =
   level === 2 ? "fetch_admin_rooms_l2_v2" : "fetch_admin_rooms_l1_v2";
 
-  const { data: rpcData, error: rpcErr } =
-    await supabase.rpc(rpcName as any, {
+  const [roomsResult, statsResult] = await Promise.all([
+    supabase.rpc(rpcName as any, {
       p_limit: PAGE_SIZE,
       p_offset: offset,
       p_search: null,
       p_report: report ?? null,
-    });
+    }),
+    supabase.rpc("get_admin_room_stats_v1" as any),
+  ]);
+
+  const { data: rpcData, error: rpcErr } = roomsResult;
+  const stats = {
+    total: Number((statsResult.data as any)?.total ?? 0),
+    available: Number((statsResult.data as any)?.available ?? 0),
+    upcoming: Number((statsResult.data as any)?.upcoming ?? 0),
+    rented: Number((statsResult.data as any)?.rented ?? 0),
+  };
 
   if (rpcErr) {
     console.error(`${rpcName} error:`, rpcErr);
-    return <AdminClient key={report ?? ""} initialRooms={[]} initialTotal={0} adminLevel={level} report={report} initialLoadFailed />;
+    return <AdminClient key={report ?? ""} initialRooms={[]} initialTotal={0} initialStats={stats} adminLevel={level} report={report} initialLoadFailed />;
   }
 
   const rooms = await attachRoomBadges(supabase, ((rpcData as any)?.data ?? []) as any[]);
   const total = Number((rpcData as any)?.total_count ?? (rpcData as any)?.total ?? 0);
   return (
-    <AdminClient key={report ?? ""} initialRooms={rooms} initialTotal={total} adminLevel={level} report={report} />
+    <AdminClient key={report ?? ""} initialRooms={rooms} initialTotal={total} initialStats={stats} adminLevel={level} report={report} />
   );
 }

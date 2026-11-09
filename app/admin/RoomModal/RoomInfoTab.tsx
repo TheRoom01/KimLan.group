@@ -299,7 +299,7 @@ useEffect(() => {
       </div>
 
       {/* Row 2: Mã phòng | Giá | Loại phòng */}
-      <div style={infoGridStyle}>
+      <div className="room-modal-core-row" style={infoGridStyle}>
         <Input
           label="Mã phòng"
           value={value.room_code}
@@ -320,7 +320,7 @@ useEffect(() => {
       </div>
 
       {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
-      <div style={infoGridStyle}>
+      <div className="room-modal-status-media-row" style={infoGridStyle}>
        <Select
         label="Trạng thái"
         statusColors
@@ -340,7 +340,7 @@ useEffect(() => {
 
         <ReadOnly label="Ngày tạo" value={formatDate(updatedAt)} />
 
-        <div>
+        <div className="room-modal-upload-field">
           <label style={labelStyle}>Ảnh</label>
 
           <input
@@ -370,16 +370,16 @@ useEffect(() => {
             {uploading ? 'Đang tải...' : 'Thêm ảnh/Video'}
           </button>
 
-          {uploading && <div role="status" style={{ ...helperText, overflowWrap: 'anywhere' }}>{uploadMessage || 'Đang chuẩn bị tải...'}</div>}
+          {uploading && <div className="room-modal-upload-help" role="status" style={{ ...helperText, overflowWrap: 'anywhere' }}>{uploadMessage || 'Đang chuẩn bị tải...'}</div>}
 
           {/* Gợi ý UX nhỏ */}
-          <div style={helperText}>
+          <div className="room-modal-upload-help" style={helperText}>
             {imageUrls.length > 0 ? (
               <>
-                Đã thêm <b>{imageUrls.length}</b> ảnh. Kéo-thả để đổi thứ tự. Bấm <b>✕</b> để xoá.
+                <b>{imageUrls.length}</b> ảnh · Kéo thả để sắp xếp.
               </>
             ) : (
-              <>Bạn có thể chọn nhiều ảnh cùng lúc (JPG/PNG/WEBP).</>
+              <>Chọn nhiều ảnh/video cùng lúc.</>
             )}
           </div>
         </div>
@@ -445,8 +445,8 @@ useEffect(() => {
 
       {/* Preview ảnh */}
 {imageUrls.filter((u: string) => /^https?:\/\//.test(u)).length > 0 && (
-  <div>
-    <label style={labelStyle}>Ảnh đã thêm</label>
+  <div className="room-modal-image-preview">
+    <label style={labelStyle}></label>
 
     <div
       className="room-modal-thumbnails"
@@ -548,7 +548,7 @@ useEffect(() => {
 )}
 
 {/* Preview video */}
-<div className="flex gap-3 overflow-x-auto">
+<div className="room-modal-video-strip flex gap-3 overflow-x-auto">
   {videoItems.map((m: any, idx: number) => {
     const videoUrl = String(m?.url ?? m?.path ?? '')
 

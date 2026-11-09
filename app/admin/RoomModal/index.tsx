@@ -2128,7 +2128,7 @@ const stopBackdropEvents = (e: any) => {
 
   return (
       <div
-        className={isPending ? undefined : 'room-modal-compact'}
+        className={isPending ? undefined : 'room-modal-compact admin-room-drawer'}
         style={overlay}
         onPointerDown={handleBackdropDown}
       >
@@ -2396,6 +2396,7 @@ const stopBackdropEvents = (e: any) => {
   <div style={{ display: "flex", justifyContent: "center" }}>
   <button
     type="button"
+    className="room-modal-sync-button"
     style={btnSync}
     disabled={saving}
     onClick={() => {
@@ -2415,7 +2416,7 @@ const stopBackdropEvents = (e: any) => {
       } else {
         void handleSubmit()
       }
-    }} style={btnSaveLight} disabled={saving || approvingPending || uploading || (wasHiddenAtOpen && adminLevel === null)} type="button">
+    }} className="room-modal-save-button" style={btnSaveLight} disabled={saving || approvingPending || uploading || (wasHiddenAtOpen && adminLevel === null)} type="button">
       {saving ? "Đang lưu..." : isPending ? "Lưu nháp" : "Lưu"}
     </button>
     {isPending && <button type="button" style={btnSync} onClick={() => void handlePendingApprove()}
@@ -2611,7 +2612,7 @@ const btnCancel: CSSProperties = {
 }
 
 const btnSaveLight: CSSProperties = {
-  background: '#60a5fa',
+  background: '#16a34a',
   color: '#fff',
   border: 'none',
   padding: '10px 16px',

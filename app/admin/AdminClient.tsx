@@ -4,7 +4,7 @@ import { normalizeSearchKeyword } from "@/lib/rooms/search";
 import { roomStatusLabel } from "@/lib/rooms/availability";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Copy, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { CalendarClock, Check, Copy, House, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import RoomModal from "./RoomModal";
 import VipLinkManager from "./VipLinkManager";
 import type { Room, TabKey } from "@/app/types/room";
@@ -20,14 +20,23 @@ const makeCacheKey = (page: number, search: string) =>
 type AdminClientProps = {
   initialRooms: Room[];
   initialTotal: number;
+  initialStats: AdminRoomStats;
   adminLevel: 1 | 2;
   initialLoadFailed?: boolean;
   report?: string | null;
 };
 
-export default function AdminClient({ initialRooms, initialTotal, adminLevel, initialLoadFailed = false, report }: AdminClientProps) {
+type AdminRoomStats = {
+  total: number;
+  available: number;
+  upcoming: number;
+  rented: number;
+};
+
+export default function AdminClient({ initialRooms, initialTotal, initialStats, adminLevel, initialLoadFailed = false, report }: AdminClientProps) {
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [total, setTotal] = useState(initialTotal);
+  const [stats, setStats] = useState<AdminRoomStats>(initialStats);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 
@@ -103,6 +112,18 @@ const notify = useCallback((msg: string) => {
     setToast(null);
     toastTimerRef.current = null;
   }, 2500);
+}, []);
+
+const loadStats = useCallback(async () => {
+  const { data, error } = await supabase.rpc("get_admin_room_stats_v1" as any);
+  if (error || !data) return;
+  const next = data as any;
+  setStats({
+    total: Number(next.total ?? 0),
+    available: Number(next.available ?? 0),
+    upcoming: Number(next.upcoming ?? 0),
+    rented: Number(next.rented ?? 0),
+  });
 }, []);
 
 useEffect(() => {
@@ -239,6 +260,10 @@ useEffect(() => {
 
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+  const paginationItems = useMemo(
+    () => buildPaginationItems(page, totalPages),
+    [page, totalPages]
+  );
 
   const cursorMapRef = useRef<
     Map<
@@ -365,6 +390,7 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
             cacheRef.current.clear();
             cursorMapRef.current.clear();
             await loadRooms(page, debouncedSearch, { useCache: false });
+            await loadStats();
 
             notify("Đã Xóa phòng");
           } catch (e: any) {
@@ -402,6 +428,7 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
             }
 
             await refreshAfterAction("Đã xóa vĩnh viễn phòng");
+            await loadStats();
           } catch (e: any) {
             setErrorMsg(e?.message ?? "Xóa phòng thất bại");
           } finally {
@@ -421,6 +448,7 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
             }
 
             await refreshAfterAction("Đã ẩn phòng và giữ lại dữ liệu");
+            await loadStats();
           } catch (e: any) {
             setErrorMsg(e?.message ?? "Ẩn phòng thất bại");
           } finally {
@@ -433,7 +461,7 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
 
     setErrorMsg("Không có quyền thao tác.");
   },
-  [adminLevel, debouncedSearch, loadRooms, notify, openChoiceConfirm, openConfirm, page]
+  [adminLevel, debouncedSearch, loadRooms, loadStats, notify, openChoiceConfirm, openConfirm, page]
 );
 
   const updateRoomStatus = useCallback(
@@ -464,6 +492,7 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
           : r));
 
         notify("Đã cập nhật trạng thái");
+        await loadStats();
       } catch (e: any) {
         setRooms((prev) =>
           prev.map((r: any) =>
@@ -474,7 +503,7 @@ cacheRef.current.set(key, { rooms: rows, total: nextTotal });
         setErrorMsg(e?.message ?? "Cập nhật thất bại");
       }
     },
-    [selectedRoom, notify]
+    [selectedRoom, notify, loadStats]
   );
 const openZaloUX = useCallback(
   (rawLink?: string | null) => {
@@ -510,8 +539,38 @@ const openZaloUX = useCallback(
   [notify]
 );
 
+ const statCards = [
+  { key: "total", label: "Tổng phòng", value: stats.total, icon: House, iconBg: "#fff0df", iconColor: "#a95518" },
+  { key: "available", label: "Đang trống", value: stats.available, icon: Check, iconBg: "#dcfce7", iconColor: "#15803d" },
+  { key: "upcoming", label: "Sắp trống", value: stats.upcoming, icon: CalendarClock, iconBg: "#fff1db", iconColor: "#ea580c" },
+  { key: "rented", label: "Đã thuê", value: stats.rented, icon: House, iconBg: "#ffe5e7", iconColor: "#e11d48" },
+ ] as const;
+
  return (
-  <main>
+  <main className="admin-room-manager">
+    <div className="admin-desktop-heading hidden">
+      <h1>Quản lý phòng</h1>
+      <p>Quản lý, thêm mới và cập nhật thông tin phòng trọ/CHDV</p>
+    </div>
+    <div className="admin-stats-grid hidden" aria-label="Thống kê phòng toàn ứng dụng">
+      {statCards.map((item) => {
+        const Icon = item.icon;
+        return (
+          <article className="admin-stat-card" key={item.key}>
+            <span className="admin-stat-icon" style={{ background: item.iconBg, color: item.iconColor }}>
+              <Icon size={22} strokeWidth={2} />
+            </span>
+            <div className="admin-stat-copy">
+              <div className="admin-stat-label">{item.label}</div>
+              <div className="admin-stat-value-row">
+                <strong className="admin-stat-value">{item.value.toLocaleString("vi-VN")}</strong>
+                {item.key !== "total" ? <span className="admin-stat-percent">({formatPercent(item.value, stats.total)})</span> : null}
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
 
     {report && (
       <div
@@ -566,10 +625,28 @@ const openZaloUX = useCallback(
       </div>
     )}
 
-
+    <section className="admin-room-panel">
       {/* HEADER */}
-      <div style={header}>
+      <div className="admin-room-toolbar">
+        <div className="admin-search-wrap" style={{ ...searchWrap, maxWidth: "none", marginTop: 10 }}>
+          <input
+            placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+              cursorMapRef.current.clear();
+              cacheRef.current.clear();
+            }}
+            style={searchInputWithClear}
+          />
+          {search ? (
+            <button type="button" onClick={() => { setSearch(""); setPage(1); cursorMapRef.current.clear(); cacheRef.current.clear(); }} style={clearSearchBtn} aria-label="Xoá tìm kiếm" title="Xoá tìm kiếm">×</button>
+          ) : null}
+        </div>
+        <div style={header}>
         <div
+            className="admin-room-actions"
             style={{
               display: "grid",
               gridTemplateColumns: "minmax(0, 1fr) minmax(100px, 0.75fr) 40px",
@@ -579,9 +656,6 @@ const openZaloUX = useCallback(
               minWidth: 0,
             }}
           >
-            {(adminLevel === 1 || adminLevel === 2) && (
-              <VipLinkManager buttonStyle={compactActionBtn} />
-            )}
             <button
               style={{ ...addBtn, width: "100%", minWidth: 0, padding: "8px 8px", fontWeight: 700, fontSize: "clamp(10px, 3vw, 13px)", overflow: "hidden", textOverflow: "ellipsis" }}
               onClick={() => {
@@ -592,6 +666,9 @@ const openZaloUX = useCallback(
             >
               + Thêm phòng
             </button>
+            {(adminLevel === 1 || adminLevel === 2) && (
+              <VipLinkManager buttonStyle={compactActionBtn} />
+            )}
             <button
               type="button"
               aria-label="Tải lại danh sách phòng"
@@ -607,27 +684,12 @@ const openZaloUX = useCallback(
               <RefreshCw size={16} className={loading ? "animate-spin" : undefined} />
             </button>
           </div>
+        </div>
       </div>
 
       {errorMsg && <div style={{ ...errorBox, marginTop: 10 }}>{errorMsg}</div>}
-      <div style={{ ...searchWrap, maxWidth: "none", marginTop: 10 }}>
-        <input
-          placeholder="Tìm theo số nhà / địa chỉ / phường / quận..."
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-            cursorMapRef.current.clear();
-            cacheRef.current.clear();
-          }}
-          style={searchInputWithClear}
-        />
-        {search ? (
-          <button type="button" onClick={() => { setSearch(""); setPage(1); cursorMapRef.current.clear(); cacheRef.current.clear(); }} style={clearSearchBtn} aria-label="Xoá tìm kiếm" title="Xoá tìm kiếm">×</button>
-        ) : null}
-      </div>
 {/* TABLE */}
-<div style={tableWrap}>
+<div className="admin-room-table-wrap" style={tableWrap}>
   <table
     style={{
       ...table,
@@ -929,27 +991,51 @@ const openZaloUX = useCallback(
   </table>
 </div>
       {/* PAGINATION */}
-      <div style={pagination}>
-        <button
-          style={pageBtn}
-          disabled={page <= 1 || loading}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-        >
-          ← Trước
-        </button>
-
-        <div style={muted}>
-          Trang <b>{page}</b> / <b>{totalPages}</b>
+      <div className="admin-room-pagination">
+        <div className="admin-page-size">
+          <span>Hiển thị</span>
+          <strong>{PAGE_SIZE} / trang</strong>
         </div>
 
-        <button
-          style={pageBtn}
-          disabled={page >= totalPages || loading}
-          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-        >
-          Sau →
-        </button>
+        <strong className="admin-room-total">Tổng: {total.toLocaleString("vi-VN")} phòng</strong>
+
+        <nav className="admin-page-nav" aria-label="Phân trang danh sách phòng">
+          <button
+            className="admin-page-button admin-page-arrow"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            aria-label="Trang trước"
+          >
+            ‹
+          </button>
+
+          {paginationItems.map((item, index) =>
+            typeof item === "number" ? (
+              <button
+                className={`admin-page-button${item === page ? " is-active" : ""}`}
+                key={item}
+                disabled={loading}
+                onClick={() => setPage(item)}
+                aria-current={item === page ? "page" : undefined}
+              >
+                {item}
+              </button>
+            ) : (
+              <span className="admin-page-ellipsis" key={`${item}-${index}`} aria-hidden="true">…</span>
+            )
+          )}
+
+          <button
+            className="admin-page-button admin-page-arrow"
+            disabled={page >= totalPages || loading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            aria-label="Trang sau"
+          >
+            ›
+          </button>
+        </nav>
       </div>
+    </section>
 
       {/* MODAL */}
       {openModal && (
@@ -986,6 +1072,7 @@ const openZaloUX = useCallback(
             if (opts?.isNew) {
               setTotal((t) => t + 1);
             }
+            await loadStats();
           }}
         />
       )}
@@ -1418,6 +1505,30 @@ function formatPrice(input: any) {
   return `${n.toLocaleString("vi-VN")} đ`;
 }
 
+function formatPercent(value: number, total: number) {
+  if (!total) return "0%";
+  return `${((value / total) * 100).toLocaleString("vi-VN", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+function buildPaginationItems(currentPage: number, totalPages: number): Array<number | "left-gap" | "right-gap"> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "right-gap", totalPages];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [1, "left-gap", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+
+  return [1, "left-gap", currentPage - 1, currentPage, currentPage + 1, "right-gap", totalPages];
+}
+
 function normalizeStatus(input?: string | null) {
   return (input ?? "").trim().toLowerCase();
 }
@@ -1579,21 +1690,6 @@ const iconBtn: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-};
-
-const pagination: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginTop: 14,
-};
-
-const pageBtn: CSSProperties = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #e5e7eb",
-  background: "white",
-  cursor: "pointer",
 };
 
 const muted: CSSProperties = {
