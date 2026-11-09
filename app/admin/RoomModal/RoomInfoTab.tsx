@@ -224,7 +224,8 @@ useEffect(() => {
   }
 
   return (
-    <div style={sectionBox}>
+    <div className="room-modal-section" style={sectionBox}>
+      <div className="room-modal-info-fields">
       {/* Row 1: Số nhà | tên đường | Phường | Quận */}
       <div style={infoGridStyle}>
         <Input
@@ -384,7 +385,9 @@ useEffect(() => {
         </div>
       </div>
 
+      </div>
       <section
+        className="room-modal-badges"
         aria-labelledby="room-badges-heading"
         style={{
           marginTop: 18,
@@ -446,6 +449,7 @@ useEffect(() => {
     <label style={labelStyle}>Ảnh đã thêm</label>
 
     <div
+      className="room-modal-thumbnails"
       style={{
         ...previewGrid,
         ...(typeof window !== 'undefined' && window.innerWidth >= 768
@@ -551,7 +555,7 @@ useEffect(() => {
     return (
       <div
         key={`${videoUrl}-${idx}`}
-        className="relative w-32 h-24 rounded-lg border bg-black flex-shrink-0"
+        className="room-modal-video relative w-32 h-24 rounded-lg border bg-black flex-shrink-0"
       >
         {/* nút xoá video */}
         <button
@@ -587,7 +591,7 @@ useEffect(() => {
 </div>
 
 {/* Các khối nhiều chữ luôn xếp 2 cột, kể cả mobile */}
-<div style={detailGridStyle}>
+<div className="room-modal-details" style={detailGridStyle}>
   <TextArea
     label="Link nhóm Zalo & File:"
     value={zaloUrlDraft}

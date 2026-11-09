@@ -119,7 +119,7 @@ export default function RoomLocationTab({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="room-modal-location space-y-3">
       <div className="grid items-start gap-3 md:grid-cols-2">
         <div className="min-h-full rounded-xl border border-[#aa825d]/25 bg-[#f8ecd9] px-3 py-2.5 text-xs leading-5 text-[#684324]">
           <strong className="block text-sm">{isPending ? "Chọn trước vị trí cho bản nháp" : "Vị trí dùng chung của tòa nhà"}</strong>

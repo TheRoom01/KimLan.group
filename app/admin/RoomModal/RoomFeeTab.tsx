@@ -69,9 +69,9 @@ export default function RoomFeeTab({
   )
 
   return (
-    <div style={sectionBox}>
+    <div className="room-modal-section" style={sectionBox}>
       {/* Hàng 1 */}
-      <div style={feeGridStyle}>
+      <div className="room-modal-fees" style={feeGridStyle}>
         <MoneyField
           label="Tiền điện"
           value={detailForm.electric_fee_value}
@@ -93,7 +93,7 @@ export default function RoomFeeTab({
       </div>
 
       {/* Hàng 2 */}
-      <div style={feeGridStyle}>
+      <div className="room-modal-fees" style={feeGridStyle}>
         <MoneyField
           label="Phí dịch vụ/Quản lý"
           value={detailForm.service_fee_value}
