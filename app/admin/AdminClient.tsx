@@ -649,23 +649,16 @@ const openZaloUX = useCallback(
             className="admin-room-actions"
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) minmax(100px, 0.75fr) 40px",
+              gridTemplateColumns:
+                adminLevel === 1 || adminLevel === 2
+                  ? "minmax(100px, 0.75fr) 40px minmax(0, 1fr)"
+                  : "40px minmax(0, 1fr)",
               alignItems: "center",
               gap: 6,
               width: "100%",
               minWidth: 0,
             }}
           >
-            <button
-              style={{ ...addBtn, width: "100%", minWidth: 0, padding: "8px 8px", fontWeight: 700, fontSize: "clamp(10px, 3vw, 13px)", overflow: "hidden", textOverflow: "ellipsis" }}
-              onClick={() => {
-                setEditingRoom(null);
-                setActiveTab("info");
-                setOpenModal(true);
-              }}
-            >
-              + Thêm phòng
-            </button>
             {(adminLevel === 1 || adminLevel === 2) && (
               <VipLinkManager buttonStyle={compactActionBtn} />
             )}
@@ -682,6 +675,16 @@ const openZaloUX = useCallback(
               style={{ ...compactActionBtn, width: 40, height: 38, minHeight: 38, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", borderColor: "#c9a46a", background: "#fff8ed", color: "#5b351b", opacity: loading ? 0.6 : 1 }}
             >
               <RefreshCw size={16} className={loading ? "animate-spin" : undefined} />
+            </button>
+            <button
+              style={{ ...addBtn, width: "100%", minWidth: 0, padding: "8px 8px", fontWeight: 700, fontSize: "clamp(10px, 3vw, 13px)", overflow: "hidden", textOverflow: "ellipsis" }}
+              onClick={() => {
+                setEditingRoom(null);
+                setActiveTab("info");
+                setOpenModal(true);
+              }}
+            >
+              + Thêm phòng
             </button>
           </div>
         </div>

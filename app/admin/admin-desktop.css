@@ -60,6 +60,55 @@
   }
 }
 
+@media (max-width: 700px) {
+  .admin-app-frame {
+    padding: 8px !important;
+  }
+
+  .admin-navigation {
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    margin-bottom: 8px !important;
+    padding: 5px 6px !important;
+    border-radius: 12px !important;
+  }
+
+  .admin-navigation > a:first-child img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .admin-navigation-links {
+    display: grid !important;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px !important;
+    overflow: visible;
+  }
+
+  .admin-navigation-links > :is(a, button) {
+    min-width: 0;
+    min-height: 32px !important;
+    justify-content: center;
+    gap: 2px !important;
+    padding: 4px 3px !important;
+    font-size: clamp(9px, 2.45vw, 11px) !important;
+    line-height: 1.15;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .admin-navigation-links [aria-label$="yêu cầu mới"] {
+    position: absolute;
+    top: -2px;
+    right: 0;
+    min-width: 16px;
+    padding: 0 3px;
+    font-size: 9px;
+    line-height: 16px;
+  }
+}
+
 @media (min-width: 1100px) {
   .admin-app-shell {
     min-height: 100dvh;
@@ -255,7 +304,7 @@
 
   .admin-room-actions {
     display: grid !important;
-    grid-template-columns: minmax(155px, 0.9fr) minmax(130px, 0.75fr) 40px !important;
+    grid-template-columns: minmax(130px, 0.75fr) 40px minmax(155px, 0.9fr) !important;
     gap: 7px !important;
   }
 
@@ -324,7 +373,7 @@
   }
 
   .admin-room-manager:has(.admin-room-drawer) .admin-room-actions {
-    grid-template-columns: minmax(92px, 1fr) minmax(84px, 0.9fr) 36px !important;
+    grid-template-columns: minmax(84px, 0.9fr) 36px minmax(92px, 1fr) !important;
     gap: 5px !important;
   }
 

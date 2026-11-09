@@ -101,7 +101,16 @@ html:has(.room-modal-compact) { overflow: hidden; }
     --room-modal-control: 44px;
   }
   .room-modal-compact .room-modal-body { scrollbar-gutter: auto; }
-  .room-modal-compact .room-modal-details { grid-template-columns: minmax(0, 1fr) !important; }
+  .room-modal-compact .room-modal-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .room-modal-compact .room-modal-thumbnails {
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)) !important;
+    grid-auto-flow: row;
+    grid-auto-columns: unset;
+    overflow-x: visible;
+    width: 100%;
+  }
   .room-modal-compact .room-modal-section :is(input:not([type="file"], [type="hidden"], [type="checkbox"], [type="radio"]), textarea) { font-size: 16px !important; }
   .room-modal-compact .room-modal-amenities { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .room-modal-compact .room-modal-badges label { min-height: 44px; }
