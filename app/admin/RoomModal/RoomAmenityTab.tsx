@@ -27,8 +27,8 @@ export default function RoomAmenityTab({ detailForm, onChange }: Props) {
   }
 
   return (
-    <div style={sectionBox}>
-      <div style={grid}>
+    <div className="room-modal-section" style={sectionBox}>
+      <div className="room-modal-amenities" style={grid}>
         {amenityConfig.map(item => {
           const key = item.key as keyof RoomDetail
           const checked = Boolean((detailForm as any)[key])

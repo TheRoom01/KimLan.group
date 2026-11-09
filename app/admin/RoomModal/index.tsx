@@ -2128,6 +2128,7 @@ const stopBackdropEvents = (e: any) => {
 
   return (
       <div
+        className={isPending ? undefined : 'room-modal-compact'}
         style={overlay}
         onPointerDown={handleBackdropDown}
       >
@@ -2137,9 +2138,10 @@ const stopBackdropEvents = (e: any) => {
         onMouseDown={stopBackdropEvents}
         onTouchStart={stopBackdropEvents}
       >
-        <div style={modalBody}>
-          <div style={modalStickyHeader}>
+        <div className="room-modal-body" style={modalBody}>
+          <div className="room-modal-header" style={modalStickyHeader}>
             <div
+              className="room-modal-heading"
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -2168,7 +2170,7 @@ const stopBackdropEvents = (e: any) => {
               )}
             </div>
 
-            <div style={tabs}>
+            <div className="room-modal-tabs" style={tabs}>
               <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')}>
                 Thông tin
               </TabButton>
@@ -2375,10 +2377,11 @@ const stopBackdropEvents = (e: any) => {
         </div>
 
       <div
+  className="room-modal-footer"
   style={{
     ...footerSticky,
     display: "grid",
-    gridTemplateColumns: "1fr auto 1fr",
+    gridTemplateColumns: "var(--room-modal-footer-columns, 1fr auto 1fr)",
     alignItems: "center",
   }}
 >
@@ -2495,10 +2498,10 @@ const overlay: CSSProperties = {
   // Giữ mép trên cố định; khi đổi tab/nội dung, modal chỉ nở xuống dưới.
   alignItems: 'flex-start',
   boxSizing: 'border-box',
-  paddingTop: 'max(16px, 7.5dvh, env(safe-area-inset-top))',
-  paddingRight: 'max(16px, env(safe-area-inset-right))',
-  paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
-  paddingLeft: 'max(16px, env(safe-area-inset-left))',
+  paddingTop: 'var(--room-modal-top, max(16px, 7.5dvh, env(safe-area-inset-top)))',
+  paddingRight: 'max(var(--room-modal-gutter, 16px), env(safe-area-inset-right))',
+  paddingBottom: 'var(--room-modal-bottom, max(16px, env(safe-area-inset-bottom)))',
+  paddingLeft: 'max(var(--room-modal-gutter, 16px), env(safe-area-inset-left))',
   overflowY: 'auto',
   overflowX: 'auto',
   WebkitOverflowScrolling: 'touch',
@@ -2506,8 +2509,8 @@ const overlay: CSSProperties = {
 
 const modal: CSSProperties = {
   width: '100%',
-  maxWidth: 1000,
-  maxHeight: 'calc(100dvh - max(16px, 7.5dvh, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)))',
+  maxWidth: 'var(--room-modal-width, 1000px)',
+  maxHeight: 'calc(100dvh - var(--room-modal-top, max(16px, 7.5dvh, env(safe-area-inset-top))) - var(--room-modal-bottom, max(16px, env(safe-area-inset-bottom))))',
   background: '#fff',
   borderRadius: 12,
   overflow: 'hidden',
@@ -2517,7 +2520,7 @@ const modal: CSSProperties = {
 }
 
 const modalBody: CSSProperties = {
-  padding: 20,
+  padding: 'var(--room-modal-gutter, 20px)',
   overflowY: 'auto',
   overflowX: 'auto',
   WebkitOverflowScrolling: 'touch',
@@ -2527,17 +2530,17 @@ const modalBody: CSSProperties = {
 
 const modalStickyHeader: CSSProperties = {
   position: 'sticky',
-  top: -20,
+  top: 'calc(-1 * var(--room-modal-gutter, 20px))',
   zIndex: 30,
-  margin: '-20px -20px 16px',
-  padding: '20px 20px 12px',
+  margin: 'calc(-1 * var(--room-modal-gutter, 20px)) calc(-1 * var(--room-modal-gutter, 20px)) var(--room-modal-header-gap, 16px)',
+  padding: 'var(--room-modal-header-pad, 20px) var(--room-modal-gutter, 20px) var(--room-modal-header-pad, 12px)',
   borderBottom: '1px solid #e5e7eb',
   background: '#fff',
   boxShadow: '0 4px 10px rgba(15, 23, 42, 0.04)',
 }
 
 const footerSticky: CSSProperties = {
-  padding: 16,
+  padding: 'var(--room-modal-footer-pad, 16px) var(--room-modal-gutter, 16px)',
   borderTop: '1px solid #e5e7eb',
   background: '#fff',
   display: 'flex',
