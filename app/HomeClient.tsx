@@ -40,6 +40,11 @@ type InitialProps = {
   initialAnonSessionId?: string | null;
   initialAnonExpiresAt?: string | null;
   initialAnonExpired?: boolean;
+  initialVipTokenPresent?: boolean;
+  initialVipAccessTokenHash?: string | null;
+  initialVipExpiresAt?: string | null;
+  initialVipAdminPhone?: string | null;
+  initialVipAdminName?: string | null;
 };
 
 const LIMIT = 20;
@@ -255,6 +260,11 @@ const HomeClient = ({
   initialAnonSessionId = null,
   initialAnonExpiresAt = null,
   initialAnonExpired = false,
+  initialVipTokenPresent = false,
+  initialVipAccessTokenHash = null,
+  initialVipExpiresAt = null,
+  initialVipAdminPhone = null,
+  initialVipAdminName = null,
 }: InitialProps) => {
 
   const pathname = usePathname();
@@ -373,18 +383,19 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
   const [currentAdminName, setCurrentAdminName] = useState<string | null>(null);
 
   // ================== ANON LOCK ==================
-const [isAnonLocked, setIsAnonLocked] = useState(initialAnonExpired && !initialUserId);
+const [isAnonLocked, setIsAnonLocked] = useState(initialAnonExpired && !initialUserId && !initialVipAccessTokenHash);
 const [isLoggedIn, setIsLoggedIn] = useState(Boolean(initialUserId));
 const [authResolving, setAuthResolving] = useState(false);
 const authResolvingRef = useRef(false);
-const [hasVipAccess, setHasVipAccess] = useState(false);
-const vipAccessTokenHashRef = useRef<string | null>(null);
+const [hasVipAccess, setHasVipAccess] = useState(Boolean(initialVipAccessTokenHash && initialVipExpiresAt));
+const [vipValidationPending, setVipValidationPending] = useState(initialVipTokenPresent);
+const vipAccessTokenHashRef = useRef<string | null>(initialVipAccessTokenHash);
 
 const lockTimerRef = useRef<number | null>(null);
 const vipTimerRef = useRef<number | null>(null);
 
-const [vipAdminPhone, setVipAdminPhone] = useState<string | null>(null);
-const [vipAdminName, setVipAdminName] = useState<string | null>(null);
+const [vipAdminPhone, setVipAdminPhone] = useState<string | null>(initialVipAdminPhone);
+const [vipAdminName, setVipAdminName] = useState<string | null>(initialVipAdminName);
 
   // ================== FILTER ==================
 
@@ -501,59 +512,79 @@ useEffect(() => {
   const clearVipAccess = () => {
     if (cancelled) return;
 
+    vipAccessTokenHashRef.current = null;
     setHasVipAccess(false);
     setVipAdminPhone(null);
     setVipAdminName(null);
   };
 
+  const activateVip = (payload: {
+    expiresAt: number;
+    creatorAdminPhone?: string | null;
+    creatorAdminName?: string | null;
+    tokenHash?: string | null;
+  }, persist: boolean) => {
+    const expiresAt = Number(payload.expiresAt ?? 0);
+    const tokenHash = String(payload.tokenHash ?? "").trim();
+    if (!tokenHash || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
+
+    const vipPhone = String(payload.creatorAdminPhone ?? "").trim() || null;
+    const vipName = String(payload.creatorAdminName ?? "").trim() || null;
+
+    vipAccessTokenHashRef.current = tokenHash;
+    if (persist) {
+      localStorage.setItem(VIP_ACCESS_KEY, JSON.stringify({
+        expiresAt,
+        savedAt: Date.now(),
+        creatorAdminPhone: vipPhone,
+        creatorAdminName: vipName,
+        tokenHash,
+      }));
+    }
+
+    if (cancelled) return true;
+    setHasVipAccess(true);
+    setIsAnonLocked(false);
+    setGeneralInquiryOpen(false);
+    setVipAdminPhone(vipPhone);
+    setVipAdminName(vipName);
+
+    clearVipTimer();
+    vipTimerRef.current = window.setTimeout(() => {
+      localStorage.removeItem(VIP_ACCESS_KEY);
+      clearVipAccess();
+    }, Math.min(expiresAt - Date.now(), 2_147_000_000));
+    return true;
+  };
+
   const applyStoredVip = () => {
     try {
       const raw = localStorage.getItem(VIP_ACCESS_KEY);
-
-      if (!raw) {
-        clearVipAccess();
-        return;
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          expiresAt?: number;
+          creatorAdminPhone?: string | null;
+          creatorAdminName?: string | null;
+          tokenHash?: string | null;
+        };
+        if (activateVip({ ...parsed, expiresAt: Number(parsed.expiresAt ?? 0) }, false)) return true;
+        localStorage.removeItem(VIP_ACCESS_KEY);
       }
 
-      const parsed = JSON.parse(raw) as {
-        expiresAt?: number;
-        creatorAdminPhone?: string | null;
-        creatorAdminName?: string | null;
-        tokenHash?: string | null;
-      };
-      vipAccessTokenHashRef.current =
-  String(parsed.tokenHash ?? "").trim() || null;
+      const initialExpiresAtMs = new Date(initialVipExpiresAt ?? "").getTime();
+      if (activateVip({
+        expiresAt: initialExpiresAtMs,
+        creatorAdminPhone: initialVipAdminPhone,
+        creatorAdminName: initialVipAdminName,
+        tokenHash: initialVipAccessTokenHash,
+      }, true)) return true;
 
-      const expiresAt = Number(parsed.expiresAt ?? 0);
-
-      if (!expiresAt || Date.now() >= expiresAt) {
-        localStorage.removeItem(VIP_ACCESS_KEY);
-        clearVipAccess();
-        return;
-      }
-
-      const vipPhone =
-        String(parsed.creatorAdminPhone ?? "").trim() || null;
-
-      const vipName =
-        String(parsed.creatorAdminName ?? "").trim() || null;
-
-      if (cancelled) return;
-
-      setHasVipAccess(true);
-      setVipAdminPhone(vipPhone);
-      setVipAdminName(vipName);
-
-      const msLeft = expiresAt - Date.now();
-      clearVipTimer();
-
-      vipTimerRef.current = window.setTimeout(() => {
-        localStorage.removeItem(VIP_ACCESS_KEY);
-        clearVipAccess();
-      }, Math.min(msLeft, 2_147_000_000));
+      clearVipAccess();
+      return false;
     } catch {
       localStorage.removeItem(VIP_ACCESS_KEY);
       clearVipAccess();
+      return false;
     }
   };
 
@@ -561,10 +592,13 @@ useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const token = sp.get(VIP_PARAM_KEY)?.trim();
 
-    // Khôi phục VIP còn hạn khi reload hoặc quay lại trang.
-    applyStoredVip();
-
-    if (!token) return;
+    // Khôi phục tức thời để UI không nhấp nháy, sau đó server kiểm tra lại
+    // expires_at/revoked_at của đúng Link Giỏ hàng này.
+    const hadStoredVip = applyStoredVip();
+    if (!token && !hadStoredVip) {
+      setVipValidationPending(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/vip/validate", {
@@ -572,7 +606,7 @@ useEffect(() => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify(token ? { token } : {}),
       });
 
       const json = await res.json().catch(() => null);
@@ -584,60 +618,29 @@ useEffect(() => {
       }
 
       const expiresAtMs = new Date(json.expiresAt).getTime();
-      vipAccessTokenHashRef.current =
-  String(json.tokenHash ?? "").trim() || null;
-
-      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      if (!activateVip({
+        expiresAt: expiresAtMs,
+        creatorAdminPhone: json.creatorAdminPhone,
+        creatorAdminName: json.creatorAdminName,
+        tokenHash: json.tokenHash,
+      }, true)) {
         localStorage.removeItem(VIP_ACCESS_KEY);
         clearVipAccess();
         return;
       }
 
-      const vipPhone =
-        String(json.creatorAdminPhone ?? "").trim() || null;
-
-      const vipName =
-        String(json.creatorAdminName ?? "").trim() || null;
-
-      localStorage.setItem(
-        VIP_ACCESS_KEY,
-        JSON.stringify({
-          expiresAt: expiresAtMs,
-          savedAt: Date.now(),
-          creatorAdminPhone: vipPhone,
-          creatorAdminName: vipName,
-          tokenHash: vipAccessTokenHashRef.current,
-        })
-      );
-
-      if (cancelled) return;
-
-      setHasVipAccess(true);
-      setVipAdminPhone(vipPhone);
-      setVipAdminName(vipName);
-
-
-      // ✅ VIP vừa mở khóa -> fetch lại list với p_vip_token_hash
-      resetPagination(0);
-
-      queueMicrotask(() => {
-        fetchPageRef.current(0);
-      });
-
-
-      const msLeft = expiresAtMs - Date.now();
-      clearVipTimer();
-
-      vipTimerRef.current = window.setTimeout(() => {
-        localStorage.removeItem(VIP_ACCESS_KEY);
-        clearVipAccess();
-      }, Math.min(msLeft, 2_147_000_000));
+      if (token) {
+        // Link vừa mở lần đầu: tải lại danh sách với quyền VIP đã được DB xác thực.
+        resetPagination(0);
+        queueMicrotask(() => fetchPageRef.current(0));
+      }
     } catch (error) {
       console.error("[VIP VALIDATE]", error);
 
       // Nếu request tạm lỗi, giữ quyền VIP cũ nếu nó vẫn còn hạn.
       applyStoredVip();
     } finally {
+      setVipValidationPending(false);
       const next = new URLSearchParams(window.location.search);
       next.delete(VIP_PARAM_KEY);
 
@@ -654,7 +657,13 @@ useEffect(() => {
     cancelled = true;
     clearVipTimer();
   };
-}, [pathname]);
+}, [
+  pathname,
+  initialVipAccessTokenHash,
+  initialVipExpiresAt,
+  initialVipAdminPhone,
+  initialVipAdminName,
+]);
 
 // Admin đăng nhập vẫn dùng thông tin tài khoản hiện tại như logic cũ.
 useEffect(() => {
@@ -3326,6 +3335,14 @@ useEffect(() => {
 
  // ================== Khóa Anon ==================
 useEffect(() => {
+  if (vipValidationPending) {
+    if (lockTimerRef.current) {
+      window.clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+    return;
+  }
+
   if (isLoggedIn || hasVipAccess) {
     setIsAnonLocked(false);
 
@@ -3362,7 +3379,7 @@ useEffect(() => {
       lockTimerRef.current = null;
     }
   };
-}, [isLoggedIn, hasVipAccess, initialAnonExpiresAt, initialAnonSessionId]);
+}, [isLoggedIn, hasVipAccess, vipValidationPending, initialAnonExpiresAt, initialAnonSessionId]);
 
 const handleNavigateToRoom = useCallback((href: string) => {
   const encodedRoomId = href.match(/\/rooms\/([^/?#]+)/)?.[1] ?? "";

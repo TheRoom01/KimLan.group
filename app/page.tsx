@@ -3,7 +3,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
 import { HIDDEN_ROOMS_ADMIN_EMAIL, readHomeListFilters, readHomeListPage } from "@/lib/rooms/listFilters";
 import { getCachedPublicRooms } from "@/lib/rooms/publicCache";
-import { getAnonymousHomeAccess } from "@/lib/rooms/anonymousHomeAccess";
+import { getAnonymousHomeAccess, getVipHomeAccess } from "@/lib/rooms/anonymousHomeAccess";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function HomePage({
   };
   const { nextPage, c } = readHomeListPage(getParam);
   const savedView = getParam("view") === "saved";
+  const hasVipTokenParam = Boolean(getParam("vip")?.trim());
 
   const cookieStore = await cookies();
   const hasAuthCookie = cookieStore.getAll()
@@ -39,7 +41,8 @@ export default async function HomePage({
   }
 
   const canFilterHidden = Boolean(adminLevel && user?.email?.toLowerCase() === HIDDEN_ROOMS_ADMIN_EMAIL);
-  const anonymousAccess = user ? null : await getAnonymousHomeAccess();
+  const vipAccess = user ? null : await getVipHomeAccess();
+  const anonymousAccess = user || vipAccess ? null : await getAnonymousHomeAccess();
   const filters = readHomeListFilters(key => {
     const value = getParam(key);
     return key === "s" && value === "hidden" && !canFilterHidden ? null : value;
@@ -67,9 +70,14 @@ export default async function HomePage({
     ? { data: [], nextCursor: null, total: null, error: "" }
     : user && supabase
       ? await fetchRoomsServer(supabase, fetchParams)
-      : anonymousAccess && !anonymousAccess.expired
-        ? await getCachedPublicRooms(fetchParams, anonymousAccess.sessionId)
-        : { data: [], nextCursor: null, total: 0, error: "" };
+      : vipAccess
+        ? await fetchRoomsServer(createSupabaseAdminClient(), {
+            ...fetchParams,
+            vipAccessTokenHash: vipAccess.tokenHash,
+          })
+        : anonymousAccess && !anonymousAccess.expired
+          ? await getCachedPublicRooms(fetchParams, anonymousAccess.sessionId)
+          : { data: [], nextCursor: null, total: 0, error: "" };
 
   return (
     <HomeClient
@@ -86,7 +94,12 @@ export default async function HomePage({
       initialPageIndex={nextPage}
       initialAnonSessionId={anonymousAccess?.sessionId ?? null}
       initialAnonExpiresAt={anonymousAccess?.expiresAt ?? null}
-      initialAnonExpired={Boolean(anonymousAccess?.expired || (!user && !anonymousAccess))}
+      initialAnonExpired={Boolean(!vipAccess && !hasVipTokenParam && (anonymousAccess?.expired || (!user && !anonymousAccess)))}
+      initialVipTokenPresent={hasVipTokenParam}
+      initialVipAccessTokenHash={vipAccess?.tokenHash ?? null}
+      initialVipExpiresAt={vipAccess?.expiresAt ?? null}
+      initialVipAdminPhone={vipAccess?.creatorAdminPhone ?? null}
+      initialVipAdminName={vipAccess?.creatorAdminName ?? null}
     />
   );
 }

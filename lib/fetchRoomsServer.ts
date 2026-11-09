@@ -37,6 +37,7 @@ export type FetchRoomsParams = {
   // (server) vẫn có thể truyền sortMode nếu bạn muốn đồng bộ với client
   sortMode?: SortMode | null;
   anonSessionId?: string | null;
+  vipAccessTokenHash?: string | null;
 };
 
 const pick = <T extends Record<string, any>, K extends readonly (keyof T)[]>(
@@ -136,7 +137,7 @@ export async function fetchRoomsServer(
   error?: string;
 }> {
   const {
-    limit, cursor, adminLevel, anonSessionId,
+    limit, cursor, adminLevel, anonSessionId, vipAccessTokenHash,
   } = params;
   const role = adminLevel === 2 ? 2 : adminLevel === 1 ? 1 : 0;
 
@@ -188,6 +189,7 @@ const { data, error } = await supabase.rpc("fetch_rooms_cursor_full_v1", {
 p_cursor_created_at: cursorCreatedAt ? cursorCreatedAt : null,
 p_cursor_id: cursorId ? String(cursorId) : null,
 p_anon_session_id: anonSessionId ?? null,
+p_vip_token_hash: vipAccessTokenHash ?? null,
 
 });
 

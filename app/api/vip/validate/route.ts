@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import crypto from "crypto";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { VIP_ACCESS_COOKIE } from "@/lib/rooms/anonymousHomeAccess";
 
 function sha256(value: string) {
   return crypto
@@ -9,22 +11,36 @@ function sha256(value: string) {
     .digest("hex");
 }
 
+function clearVipCookie(response: NextResponse) {
+  response.cookies.set(VIP_ACCESS_COOKIE, "", { path: "/", maxAge: 0 });
+  return response;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
     const token = String(body?.token ?? "").trim();
+    const cookieStore = await cookies();
 
-    if (!token || token.length < 20) {
-      return NextResponse.json(
+    if (token && (token.length < 20 || token.length > 512)) {
+      return clearVipCookie(NextResponse.json(
         {
           valid: false,
           error: "VIP token không hợp lệ",
         },
         { status: 400 }
-      );
+      ));
     }
 
-    const tokenHash = sha256(token);
+    const tokenHash = token
+      ? sha256(token)
+      : String(cookieStore.get(VIP_ACCESS_COOKIE)?.value ?? "").trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(tokenHash)) {
+      return clearVipCookie(NextResponse.json(
+        { valid: false, error: "Không có phiên Link Giỏ hàng hợp lệ" },
+        { status: 400 },
+      ));
+    }
     const supabase = await createSupabaseServerClient();
 
     const { data, error } = await supabase.rpc(
@@ -49,13 +65,14 @@ export async function POST(req: Request) {
     const row = Array.isArray(data) ? data[0] : data;
 
     if (!row?.valid || !row?.expires_at) {
-      return NextResponse.json(
+      const invalidResponse = NextResponse.json(
         {
           valid: false,
           error: "Link Giỏ hàng không hợp lệ, đã hết hạn hoặc đã bị thu hồi",
         },
         { status: 200 }
       );
+      return clearVipCookie(invalidResponse);
     }
 
     const expiresAtMs = new Date(row.expires_at).getTime();
@@ -64,13 +81,14 @@ export async function POST(req: Request) {
       !Number.isFinite(expiresAtMs) ||
       expiresAtMs <= Date.now()
     ) {
-      return NextResponse.json(
+      const expiredResponse = NextResponse.json(
         {
           valid: false,
           error: "Link Giỏ đã hết hạn",
         },
         { status: 200 }
       );
+      return clearVipCookie(expiredResponse);
     }
 
     const response = NextResponse.json(
@@ -91,7 +109,7 @@ export async function POST(req: Request) {
 
 
 response.cookies.set(
-  "vip_access_hash",
+  VIP_ACCESS_COOKIE,
   tokenHash,
   {
     httpOnly:true,

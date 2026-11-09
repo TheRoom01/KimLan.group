@@ -10,7 +10,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { attachRoomBadges } from "@/lib/roomBadges";
-import { getAnonymousHomeAccess } from "@/lib/rooms/anonymousHomeAccess";
+import { getAnonymousHomeAccess, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
 
 export const PUBLIC_ROOMS_CACHE_TAG = "public-rooms-v1";
 
@@ -20,8 +20,8 @@ export function publicRoomCacheTag(roomId: string) {
 
 export const getPublicRoomDetail = cache(async (roomId: string) => {
   const id = String(roomId ?? "").trim();
-  const anonymous = await getAnonymousHomeAccess();
-  if (!id || !anonymous || anonymous.expired) return null;
+  const access = await requirePublicRoomDataAccess();
+  if (!id || !access.allowed) return null;
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", { p_id: id, p_role: 0 });
   if (error) throw new Error(error.message);
