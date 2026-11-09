@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import {
+  ANONYMOUS_HOME_COOKIE,
+  ANONYMOUS_HOME_COOKIE_MAX_AGE,
+  createAnonymousHomeSessionToken,
+  verifyAnonymousHomeSessionToken,
+} from "@/lib/anonymousHomeSessionToken";
 
 const DEVICE_COOKIE = "pp_device";
 const DEVICE_ID_COOKIE = "pp_device_id";
@@ -43,8 +49,36 @@ async function sha256Base64Url(input: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const needsRoomSession = pathname === "/" || pathname === "/map" || pathname.startsWith("/rooms/");
+  let anonymousCookieToSet: string | null = null;
+  const existingAnonymousToken = needsRoomSession
+    ? await verifyAnonymousHomeSessionToken(request.cookies.get(ANONYMOUS_HOME_COOKIE)?.value).catch(() => null)
+    : null;
+  if (needsRoomSession && !existingAnonymousToken) {
+    try {
+      anonymousCookieToSet = await createAnonymousHomeSessionToken();
+      request.cookies.set(ANONYMOUS_HOME_COOKIE, anonymousCookieToSet);
+    } catch {
+      anonymousCookieToSet = null;
+    }
+  }
+
   // Create an initial response
   let response = NextResponse.next({ request });
+  const applyAnonymousCookie = (target: NextResponse) => {
+    if (anonymousCookieToSet) {
+      target.cookies.set(ANONYMOUS_HOME_COOKIE, anonymousCookieToSet, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: ANONYMOUS_HOME_COOKIE_MAX_AGE,
+      });
+    }
+    return target;
+  };
+  applyAnonymousCookie(response);
 
   // ✅ Guard ENV: thiếu thì fail-open (không crash middleware/proxy)
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -54,7 +88,6 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const pathname = request.nextUrl.pathname;
   const authIndependentPublicPath =
     pathname === "/sw.js" ||
     pathname === "/map" ||
@@ -81,6 +114,7 @@ export async function proxy(request: NextRequest) {
           request.cookies.set(name, value),
         );
         response = NextResponse.next({ request });
+        applyAnonymousCookie(response);
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
         );

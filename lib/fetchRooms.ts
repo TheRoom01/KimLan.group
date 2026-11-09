@@ -33,6 +33,7 @@ export type FetchRoomsParams = {
   sortMode?: SortMode;
   status?: string | null;
   currentUserId?: string | null;
+  anonSessionId?: string | null;
   badge?: RoomBadge | null;
   featureFilters?: RoomFeature[];
 };
@@ -125,33 +126,6 @@ const ADMIN_L2_KEYS = [
   "zalo_phone",
 ] as const;
 
-const ANON_SESSION_KEY = "anon_session_id_v1";
-let anonSessionPromise: Promise<string | null> | null = null;
-
-async function getAnonSessionId(adminLevel?: 0 | 1 | 2) {
-  if (adminLevel === 1 || adminLevel === 2) return null;
-  if (typeof window === "undefined") return null;
-
-  // Một document chỉ đăng ký/khôi phục phiên anon một lần. Các lần đổi
-  // filter và phân trang dùng lại promise này, tránh thêm một RPC tuần tự.
-  if (!anonSessionPromise) {
-    anonSessionPromise = (async () => {
-      const oldId = localStorage.getItem(ANON_SESSION_KEY);
-      const { data, error } = await supabase.rpc("start_anon_session", {
-        p_session_id: oldId || null,
-      });
-
-      if (error || !data) return null;
-
-      const id = String(data);
-      localStorage.setItem(ANON_SESSION_KEY, id);
-      return id;
-    })().catch(() => null);
-  }
-
-  return anonSessionPromise;
-}
-
 export async function fetchRooms(
   params: FetchRoomsParams
 ): Promise<{
@@ -210,7 +184,7 @@ const toTimestampOrNull = (v: unknown): string | null => {
 const cursorUpdatedAt: string | null = toTimestampOrNull(cursorObj?.updated_at);
 const cursorCreatedAt: string | null = toTimestampOrNull((cursorObj as any)?.created_at);
 
-const anonSessionId = await getAnonSessionId(adminLevel);
+const anonSessionId = params.anonSessionId ?? null;
 if (params.vipAccessTokenHash) {
   console.log(
     "[VIP RPC HASH PRESENT]",

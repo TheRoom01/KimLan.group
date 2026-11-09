@@ -3,7 +3,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
 import { HIDDEN_ROOMS_ADMIN_EMAIL, readHomeListFilters, readHomeListPage } from "@/lib/rooms/listFilters";
 import { getCachedPublicRooms } from "@/lib/rooms/publicCache";
+import { getAnonymousHomeAccess } from "@/lib/rooms/anonymousHomeAccess";
 import { cookies } from "next/headers";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function HomePage({
   searchParams,
@@ -35,6 +39,7 @@ export default async function HomePage({
   }
 
   const canFilterHidden = Boolean(adminLevel && user?.email?.toLowerCase() === HIDDEN_ROOMS_ADMIN_EMAIL);
+  const anonymousAccess = user ? null : await getAnonymousHomeAccess();
   const filters = readHomeListFilters(key => {
     const value = getParam(key);
     return key === "s" && value === "hidden" && !canFilterHidden ? null : value;
@@ -60,9 +65,11 @@ export default async function HomePage({
   // fetching and rendering page zero under that URL.
   const res = savedView || nextPage > 0
     ? { data: [], nextCursor: null, total: null, error: "" }
-    : adminLevel && supabase
+    : user && supabase
       ? await fetchRoomsServer(supabase, fetchParams)
-      : await getCachedPublicRooms(fetchParams);
+      : anonymousAccess && !anonymousAccess.expired
+        ? await getCachedPublicRooms(fetchParams, anonymousAccess.sessionId)
+        : { data: [], nextCursor: null, total: 0, error: "" };
 
   return (
     <HomeClient
@@ -77,6 +84,9 @@ export default async function HomePage({
       initialSavedView={savedView}
       initialFilters={filters}
       initialPageIndex={nextPage}
+      initialAnonSessionId={anonymousAccess?.sessionId ?? null}
+      initialAnonExpiresAt={anonymousAccess?.expiresAt ?? null}
+      initialAnonExpired={Boolean(anonymousAccess?.expired || (!user && !anonymousAccess))}
     />
   );
 }

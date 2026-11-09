@@ -1,7 +1,5 @@
 import "server-only";
 
-import { createClient } from "@supabase/supabase-js";
-import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
@@ -10,8 +8,9 @@ import {
   type FetchRoomsParams,
 } from "@/lib/fetchRoomsServer";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { attachRoomBadges } from "@/lib/roomBadges";
-import { roomListFilterRpcParams } from "@/lib/rooms/listFilters";
+import { getAnonymousHomeAccess } from "@/lib/rooms/anonymousHomeAccess";
 
 export const PUBLIC_ROOMS_CACHE_TAG = "public-rooms-v1";
 
@@ -19,48 +18,15 @@ export function publicRoomCacheTag(roomId: string) {
   return `public-room-v1:${roomId}`;
 }
 
-function createPublicSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    },
-  );
-}
-
 export const getPublicRoomDetail = cache(async (roomId: string) => {
   const id = String(roomId ?? "").trim();
-  if (!id) return null;
-
-  return unstable_cache(
-    async () => {
-      const supabase = createPublicSupabaseClient();
-      const fetchDetail = () => supabase.rpc("fetch_room_detail_full_v1", {
-        p_id: id,
-        p_role: 0,
-      });
-      let result = await fetchDetail();
-      if (result.error && [0, 502, 503, 504].includes(result.status)) {
-        await new Promise(resolve => setTimeout(resolve, 250));
-        result = await fetchDetail();
-      }
-
-      const { data, error } = result;
-      if (error) throw new Error(error.message);
-      if (!data || typeof data !== "object") return data ?? null;
-      return (await attachRoomBadges(supabase, [data as Record<string, any>]))[0] ?? data;
-    },
-    ["public-room-detail-v1", id],
-    {
-      revalidate: 60,
-      tags: [publicRoomCacheTag(id)],
-    },
-  )();
+  const anonymous = await getAnonymousHomeAccess();
+  if (!id || !anonymous || anonymous.expired) return null;
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", { p_id: id, p_role: 0 });
+  if (error) throw new Error(error.message);
+  if (!data || typeof data !== "object") return data ?? null;
+  return (await attachRoomBadges(supabase, [data as Record<string, any>]))[0] ?? data;
 });
 
 export const getRoomDetailForRender = cache(async (roomId: string) => {
@@ -113,8 +79,15 @@ export const getRoomDetailForRender = cache(async (roomId: string) => {
           };
         }
       } else {
+        const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
+          p_id: id,
+          p_role: 0,
+        });
+        const room = !error && data
+          ? (await attachRoomBadges(supabase, [data as Record<string, any>]))[0] ?? data
+          : null;
         return {
-          room: await getPublicRoomDetail(id),
+          room,
           initialUserId: userId,
           initialAdminLevel: 0 as const,
           initialAuthResolved: true,
@@ -133,38 +106,14 @@ export const getRoomDetailForRender = cache(async (roomId: string) => {
   };
 });
 
-export const getCachedPublicRooms = cache(async (params: FetchRoomsParams) => {
+export const getCachedPublicRooms = cache(async (params: FetchRoomsParams, anonSessionId: string) => {
   const normalizedParams: FetchRoomsParams = { ...params, adminLevel: 0 };
-  const cacheKey = JSON.stringify({
-    ...roomListFilterRpcParams(normalizedParams),
-    limit: normalizedParams.limit,
-    cursor: normalizedParams.cursor ?? null,
-  });
-
-  return unstable_cache(
-    async () => {
-      const supabase = createPublicSupabaseClient();
-      const { data: anonSessionId, error: anonSessionError } =
-        await supabase.rpc("start_anon_session", { p_session_id: null });
-
-      if (anonSessionError || !anonSessionId) {
-        throw new Error(
-          anonSessionError?.message || "Không thể khởi tạo phiên xem phòng",
-        );
-      }
-
-      const result = await fetchRoomsServer(supabase, {
-        ...normalizedParams,
-        anonSessionId: String(anonSessionId),
-      });
-
-      if (result.error) throw new Error(result.error);
-      return result;
-    },
-    ["public-room-list-v2", cacheKey],
-    {
-      revalidate: 30,
-      tags: [PUBLIC_ROOMS_CACHE_TAG],
-    },
-  )();
+  const anonymous = await getAnonymousHomeAccess();
+  if (!anonymous || anonymous.expired || anonymous.sessionId !== anonSessionId) {
+    return { data: [], nextCursor: null, total: 0, error: "Phiên xem phòng không hợp lệ" };
+  }
+  const supabase = createSupabaseAdminClient();
+  const result = await fetchRoomsServer(supabase, { ...normalizedParams, anonSessionId });
+  if (result.error) throw new Error(result.error);
+  return result;
 });

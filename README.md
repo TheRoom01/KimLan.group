@@ -14,3 +14,7 @@ Sau đó:
 ```powershell
 npm run build
 ```
+
+## Biến môi trường server
+
+Anonymous Home dùng chữ ký HMAC do server cấp. Production nên cấu hình một giá trị ngẫu nhiên tối thiểu 32 ký tự cho `ANON_HOME_SESSION_SECRET`. Biến này chỉ thuộc môi trường server, không được thêm tiền tố `NEXT_PUBLIC_` hoặc gửi xuống trình duyệt.

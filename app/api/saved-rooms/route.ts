@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { attachRoomBadges } from "@/lib/roomBadges";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
+    const access = await requirePublicRoomDataAccess();
+    if (!access.allowed) {
+      return NextResponse.json({ data: [], error: "ANON_SESSION_EXPIRED" }, { status: 403, headers: PRIVATE_NO_STORE_HEADERS });
+    }
     const { searchParams } = new URL(req.url);
 
     const ids = Array.from(new Set(searchParams
@@ -13,10 +20,10 @@ export async function GET(req: Request) {
       .filter(Boolean) ?? [])).slice(0, 50);
 
     if (!ids || ids.length === 0) {
-      return NextResponse.json({ data: [] });
+      return NextResponse.json({ data: [] }, { headers: PRIVATE_NO_STORE_HEADERS });
     }
 
-    const supabase = await createSupabaseServerClient();
+    const supabase = access.authenticated ? access.viewer : createSupabaseAdminClient();
 
     const { data: rooms, error: roomsError } = await supabase
       .from("room_full_public")
@@ -26,7 +33,7 @@ export async function GET(req: Request) {
     if (roomsError) {
       return NextResponse.json(
         { data: [], step: "rooms", error: roomsError.message },
-        { status: 500 }
+        { status: 500, headers: PRIVATE_NO_STORE_HEADERS }
       );
     }
 
@@ -46,7 +53,7 @@ export async function GET(req: Request) {
     if (mediaError) {
       return NextResponse.json(
         { data: [], step: "room_media", error: mediaError.message },
-        { status: 500 }
+        { status: 500, headers: PRIVATE_NO_STORE_HEADERS }
       );
     }
 
@@ -84,7 +91,7 @@ export async function GET(req: Request) {
 
     const finalRooms = ids.map((id) => roomMap.get(id)).filter(Boolean);
 
-    return NextResponse.json({ data: await attachRoomBadges(supabase, finalRooms) });
+    return NextResponse.json({ data: await attachRoomBadges(supabase, finalRooms) }, { headers: PRIVATE_NO_STORE_HEADERS });
   } catch (err: any) {
     return NextResponse.json(
       {
@@ -92,7 +99,7 @@ export async function GET(req: Request) {
         step: "catch",
         error: err?.message ?? String(err),
       },
-      { status: 500 }
+      { status: 500, headers: PRIVATE_NO_STORE_HEADERS }
     );
   }
 }

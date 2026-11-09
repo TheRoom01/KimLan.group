@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const supabase = await createSupabaseServerClient();
+  const access = await requirePublicRoomDataAccess();
+  if (!access.allowed) {
+    return NextResponse.json(
+      { adminLevel: 0, districts: [], roomTypes: [], error: "ANON_SESSION_EXPIRED" },
+      { status: 403, headers: PRIVATE_NO_STORE_HEADERS },
+    );
+  }
+  const supabase = access.authenticated ? access.viewer : createSupabaseAdminClient();
 
   // admin level
   const { data: userRes } = await supabase.auth.getUser();
@@ -33,9 +43,8 @@ export async function GET() {
     // ignore
   }
 
-  return NextResponse.json({
-    adminLevel,
-    districts,
-    roomTypes,
-  });
+  return NextResponse.json(
+    { adminLevel, districts, roomTypes },
+    { headers: PRIVATE_NO_STORE_HEADERS },
+  );
 }

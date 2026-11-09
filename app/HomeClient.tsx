@@ -14,7 +14,6 @@ import { usePathname } from "next/navigation";
 
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
-import AnonymousLockModal from "@/components/AnonymousLockModal";
 import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import HeaderNotifications from "@/components/HeaderNotifications";
 import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
@@ -38,10 +37,12 @@ type InitialProps = {
   initialSavedView?: boolean;
   initialFilters?: HomeListFilters;
   initialPageIndex?: number;
+  initialAnonSessionId?: string | null;
+  initialAnonExpiresAt?: string | null;
+  initialAnonExpired?: boolean;
 };
 
 const LIMIT = 20;
-const ANON_LISTING_LOCK_ENABLED = false;
 
 const QS = {
   q: "q",
@@ -251,6 +252,9 @@ const HomeClient = ({
   initialSavedView = false,
   initialFilters = DEFAULT_HOME_LIST_FILTERS,
   initialPageIndex = 0,
+  initialAnonSessionId = null,
+  initialAnonExpiresAt = null,
+  initialAnonExpired = false,
 }: InitialProps) => {
 
   const pathname = usePathname();
@@ -369,7 +373,7 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
   const [currentAdminName, setCurrentAdminName] = useState<string | null>(null);
 
   // ================== ANON LOCK ==================
-const [isAnonLocked, setIsAnonLocked] = useState(false);
+const [isAnonLocked, setIsAnonLocked] = useState(initialAnonExpired && !initialUserId);
 const [isLoggedIn, setIsLoggedIn] = useState(Boolean(initialUserId));
 const [authResolving, setAuthResolving] = useState(false);
 const authResolvingRef = useRef(false);
@@ -2564,6 +2568,7 @@ const res = await fetchRooms({
   cursor: cursorForThisPage,
   adminLevel,
   currentUserId,
+  anonSessionId: initialAnonSessionId,
 
  vipAccessTokenHash:
   vipAccessTokenHashRef.current ?? null,
@@ -2734,6 +2739,7 @@ if (targetIndex === pageIndexRef.current) {
       authResolving,
       filterSig,
       currentUserId,
+      initialAnonSessionId,
       appliedSearch,
       minPriceApplied,
       maxPriceApplied,
@@ -3320,7 +3326,7 @@ useEffect(() => {
 
  // ================== Khóa Anon ==================
 useEffect(() => {
-  if (!ANON_LISTING_LOCK_ENABLED || isLoggedIn || hasVipAccess) {
+  if (isLoggedIn || hasVipAccess) {
     setIsAnonLocked(false);
 
     if (lockTimerRef.current) {
@@ -3331,20 +3337,24 @@ useEffect(() => {
     return;
   }
 
-  if (lockTimerRef.current) {
-    window.clearTimeout(lockTimerRef.current);
+  const expiresAtMs = Date.parse(initialAnonExpiresAt ?? "");
+  const lock = () => {
+    setIsAnonLocked(true);
+    setGeneralInquiryOpen(true);
+    pagesRef.current = [];
+    setPages([]);
+    setSavedRooms([]);
+    cursorsRef.current = [null];
+    setHasNext(false);
+    setTotal(0);
+  };
+
+  if (!initialAnonSessionId || !Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    lock();
+    return;
   }
 
-  lockTimerRef.current = window.setTimeout(() => {
-  setIsAnonLocked(true);
-
-  // Chặn xem tiếp data đã load sẵn trên UI
-  pagesRef.current = [];
-  setPages([]);
-  cursorsRef.current = [null];
-  setHasNext(false);
-  setTotal(0);
-}, 60_000);
+  lockTimerRef.current = window.setTimeout(lock, expiresAtMs - Date.now());
 
   return () => {
     if (lockTimerRef.current) {
@@ -3352,7 +3362,7 @@ useEffect(() => {
       lockTimerRef.current = null;
     }
   };
-}, [isLoggedIn, hasVipAccess]);
+}, [isLoggedIn, hasVipAccess, initialAnonExpiresAt, initialAnonSessionId]);
 
 const handleNavigateToRoom = useCallback((href: string) => {
   const encodedRoomId = href.match(/\/rooms\/([^/?#]+)/)?.[1] ?? "";
@@ -3515,6 +3525,11 @@ return (
         </div>
       </header>
 
+      <div
+        className={`relative transition duration-300 ${isAnonLocked ? "pointer-events-none select-none opacity-25 blur-[7px]" : ""}`}
+        aria-disabled={isAnonLocked || undefined}
+        inert={isAnonLocked || undefined}
+      >
       <section className="home-discovery mx-auto w-full max-w-[1440px] px-4 pb-1 pt-3 sm:px-6 md:pt-4">
           <nav aria-label="Lối tắt tìm kiếm" className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {ROOM_BADGES.map((badge) => {
@@ -3733,6 +3748,7 @@ return (
             onNavigate={handleNavigateToRoom} openingRoomId={openingRoomId}
           />
         )}
+      </div>
 
     </div>
 
@@ -3749,31 +3765,10 @@ return (
         goNext={handleGoNext}
         goPrev={handleGoPrev}
         hasNext={visibleHasNext}
-        loading={loading}
+        loading={loading || isAnonLocked}
         onConsult={() => setGeneralInquiryOpen(true)}
       />
     </div>
-
-    {isAnonLocked && !hasVipAccess && (
-      <AnonymousLockModal
-        phone="0967.467.587"
-        zaloUrl="https://zalo.me/0967467587"
-        onUnlocked={() => {
-
-          setHasVipAccess(true);
-          setIsAnonLocked(false);
-
-
-          // reload data với quyền VIP
-          resetPagination(0);
-
-          queueMicrotask(() => {
-            fetchPageRef.current(0);
-          });
-
-        }}
-      />
-    )}
 
     {generalInquiryOpen && <RoomInquiryModal open mode="general" onClose={() => setGeneralInquiryOpen(false)} />}
     {openingRoomId ? <RoomModalLoadingSkeleton /> : null}

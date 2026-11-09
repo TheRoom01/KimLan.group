@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { recommendationRoomsForViewer } from "@/lib/rooms/recommendationAccess";
 import type { RecommendedRoom } from "@/lib/rooms/recommendations";
 import { hasRecommendationFilters, parseRecommendationRequest, recommendationRpcParams, ROOM_RECOMMENDATIONS_ENABLED } from "@/lib/rooms/recommendations";
+import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
 
 export async function POST(request: Request) {
-  const headers = { "Cache-Control": "no-store" };
+  const headers = PRIVATE_NO_STORE_HEADERS;
   if (!ROOM_RECOMMENDATIONS_ENABLED) return NextResponse.json({ data: [] }, { headers });
   let parsed;
   try {
@@ -19,10 +19,12 @@ export async function POST(request: Request) {
   }
   if (!hasRecommendationFilters(parsed.filters)) return NextResponse.json({ data: [] }, { headers });
   try {
+    const access = await requirePublicRoomDataAccess();
+    if (!access.allowed) return NextResponse.json({ data: [], error: "ANON_SESSION_EXPIRED" }, { status: 403, headers });
     // Service-role-only INVOKER RPC returns an explicit public projection.
     // No service key, caller-supplied role or private room record reaches the browser.
     const server = createSupabaseAdminClient();
-    const viewer = await createSupabaseServerClient();
+    const viewer = access.viewer;
     // Derive list search semantics from the signed session, never request data.
     const { data: { user }, error: authError } = await viewer.auth.getUser();
     let viewerIsAdmin = false;

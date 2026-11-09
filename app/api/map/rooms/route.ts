@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,10 @@ function listParam(params: URLSearchParams, name: string) {
 
 export async function GET(request: Request) {
   try {
+    const access = await requirePublicRoomDataAccess();
+    if (!access.allowed) {
+      return NextResponse.json({ rooms: [], error: "ANON_SESSION_EXPIRED" }, { status: 403, headers: PRIVATE_NO_STORE_HEADERS });
+    }
     const params = new URL(request.url).searchParams;
     const west = finiteParam(params, "west", -180, 180)!;
     const south = finiteParam(params, "south", -90, 90)!;
@@ -30,7 +35,7 @@ export async function GET(request: Request) {
     const radius = finiteParam(params, "radius", 0.1, 50, false);
     if (radius !== null && (centerLat === null || centerLng === null)) throw new Error("Tìm theo bán kính cần tọa độ tâm");
 
-    const supabase = await createSupabaseServerClient();
+    const supabase = access.authenticated ? access.viewer : createSupabaseAdminClient();
     const statuses = listParam(params, "status");
     if (statuses?.some((status) => !["all", "Đang trống", "Sắp trống", "Đã thuê"].includes(status))) {
       throw new Error("Trạng thái phòng không hợp lệ");
@@ -62,7 +67,7 @@ export async function GET(request: Request) {
       if (page.length < pageSize) break;
     }
 
-    return NextResponse.json({ rooms }, { headers: { "Cache-Control": "private, max-age=10, stale-while-revalidate=20" } });
+    return NextResponse.json({ rooms }, { headers: PRIVATE_NO_STORE_HEADERS });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Yêu cầu không hợp lệ" }, { status: 400 });
   }

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveGoogleMapsUrl } from "@/lib/roomActionLinks";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ const UUID_PATTERN =
 function json(body: Record<string, unknown>, status = 200) {
   return NextResponse.json(body, {
     status,
-    headers: { "Cache-Control": "no-store" },
+    headers: PRIVATE_NO_STORE_HEADERS,
   });
 }
 
@@ -20,10 +21,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const access = await requirePublicRoomDataAccess();
+    if (!access.allowed) return json({ error: "ANON_SESSION_EXPIRED" }, 403);
     const { id } = await params;
     if (!UUID_PATTERN.test(id)) return json({ error: "INVALID_ROOM_ID" }, 400);
 
-    const visitorClient = await createSupabaseServerClient();
+    const visitorClient = access.authenticated ? access.viewer : createSupabaseAdminClient();
     const { data, error } = await visitorClient.rpc(
       "resolve_room_google_maps_source_v1",
       { p_id: id },

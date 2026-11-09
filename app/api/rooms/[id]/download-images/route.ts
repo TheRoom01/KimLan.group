@@ -3,6 +3,7 @@ import archiver from "archiver";
 import crypto from "crypto";
 import { Readable } from "stream";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 
 // ✅ thêm các module để ghi file tạm
@@ -85,6 +86,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const access = await requirePublicRoomDataAccess();
+    if (!access.allowed) {
+      return NextResponse.json(
+        { message: "ANON_SESSION_EXPIRED" },
+        { status: 403, headers: { "Cache-Control": "private, no-store", Vary: "Cookie" } },
+      );
+    }
     const { id: roomId } = await params;
 
     if (!roomId) {
@@ -174,7 +182,7 @@ export async function GET(
         Body: fs.createReadStream(tmpPath),
         ContentType: "application/zip",
         ContentLength: stat.size, // ✅ quan trọng: có độ dài thì không còn header undefined
-        CacheControl: "public, max-age=31536000, immutable",
+        CacheControl: "private, no-store, max-age=0",
       })
     );
 
@@ -184,7 +192,9 @@ export async function GET(
     } catch {}
 
     // xong thì chuyển qua link zip trên R2
-    return NextResponse.redirect(zipUrl);
+    return NextResponse.redirect(zipUrl, {
+      headers: { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie" },
+    });
   } catch (err: any) {
     // trả lỗi rõ ràng thay vì 500 trắng
     return NextResponse.json(

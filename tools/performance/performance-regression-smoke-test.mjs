@@ -20,16 +20,21 @@ test("Home keeps SSR data and does not repeat retired public RPCs", async () => 
   assert.match(client, /priceFilterActive \? minPriceApplied : undefined/);
   assert.doesNotMatch(client, /flushSync/);
   assert.doesNotMatch(client, /prefetchRoomDetail/);
+  assert.match(client, /initialAnonExpiresAt/);
+  assert.match(client, /setGeneralInquiryOpen\(true\)/);
+  assert.match(client, /inert=\{isAnonLocked/);
+  assert.doesNotMatch(client, /anon_session_id_v1|localStorage[\s\S]{0,80}anon/i);
   assert.match(roomCard, /<Link\s+[\s\S]*?href=\{href\}/);
   assert.match(roomCard, /home-room-address pointer-events-none relative z-20/);
   assert.match(roomCard, /WebkitLineClamp: 2/);
   assert.match(roomCard, /pointer-events-auto absolute bottom-0 z-30/);
   assert.match(roomCard, /current\?\.id === toastId \? null : current/);
-  assert.match(page, /readHomeListFilters\(getParam\)/);
+  assert.match(page, /readHomeListFilters\(key =>/);
   assert.match(page, /minPrice: filters\.priceFilterActive \? filters\.priceApplied\[0\] : null/);
   assert.match(page, /maxPrice: filters\.priceFilterActive \? filters\.priceApplied\[1\] : null/);
-  assert.match(publicCache, /start_anon_session/);
-  assert.match(publicCache, /roomListFilterRpcParams\(normalizedParams\)/);
+  assert.doesNotMatch(publicCache, /start_anon_session/);
+  assert.match(publicCache, /getAnonymousHomeAccess/);
+  assert.match(publicCache, /createSupabaseAdminClient/);
   assert.match(serverFetcher, /roomListFilterRpcParams\(params\)/);
 });
 
@@ -48,12 +53,11 @@ test("room detail is role-aware server loaded with a secure client fallback", as
   assert.match(cache, /auth\.getClaims\(\)/);
   assert.match(cache, /get_my_admin_level/);
   assert.match(cache, /fetch_room_detail_full_v1/);
-  assert.match(cache, /getPublicRoomDetail\(id\)/);
+  assert.match(cache, /room: await getPublicRoomDetail\(id\)/);
   assert.match(client, /fetch_room_detail_full_v1/);
   assert.match(client, /activeRoomIdRef\.current !== requestRoomId/);
   assert.doesNotMatch(client, /\.from\("rooms"\)/);
-  assert.match(cache, /revalidate: 60/);
-  assert.match(cache, /tags: \[publicRoomCacheTag\(id\)\]/);
+  assert.doesNotMatch(cache, /unstable_cache/);
   assert.match(video, /controlsList="nofullscreen"/);
   assert.doesNotMatch(video, /requestFullscreen|toggleFullscreen|Maximize|Minimize/);
   assert.match(client, /right-3 top-16[\s\S]*aria-label="Mở media toàn màn hình"/);
@@ -87,4 +91,6 @@ test("anonymous requests bypass auth/device network work in proxy", async () => 
 
   assert.ok(cookieGuard >= 0);
   assert.ok(authCall > cookieGuard);
+  assert.match(proxy, /httpOnly: true/);
+  assert.match(proxy, /createAnonymousHomeSessionToken/);
 });
