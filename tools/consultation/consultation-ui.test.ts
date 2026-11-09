@@ -27,6 +27,11 @@ async function main() {
     createRoot(document.getElementById('root')).render(<App/>);
   `},bundle:true,write:false,outfile:path.join(directory,"app.js"),platform:"browser",define:{"process.env.NODE_ENV":'"development"'},logLevel:"silent",
     plugins:[{name:"offline-dependencies",setup(builder){
+      builder.onResolve({filter:/^next\/(navigation|link)$/},args=>({path:args.path,namespace:"fixture"}));
+      builder.onLoad({filter:/^next\//,namespace:"fixture"},args=>({loader:"tsx",resolveDir:process.cwd(),contents:
+        args.path === "next/navigation" ? "export const useRouter = () => ({ push() {}, replace() {} });"
+        : 'import React from "react"; export default function Link({ children, ...props }) { return <a {...props}>{children}</a>; }',
+      }));
       builder.onResolve({filter:/RoomInquiryTurnstile$/},()=>({path:"turnstile",namespace:"fixture"}));
       builder.onResolve({filter:/^@\/components\/RoomCard(?:Skeleton)?$/},()=>({path:"card",namespace:"fixture"}));
       builder.onLoad({filter:/.*/,namespace:"fixture"},args=>({loader:"tsx",contents:args.path==="turnstile"?`import React,{forwardRef,useImperativeHandle} from 'react'; export default forwardRef(function Captcha(p,ref){useImperativeHandle(ref,()=>({execute:async()=> 'offline-token',reset(){}}));return <div/>})`:`export default function Card(){return null}`,resolveDir:process.cwd()}));
@@ -34,11 +39,11 @@ async function main() {
   const css=(await postcss([tailwind({base:process.cwd()})]).process(fs.readFileSync("app/globals.css","utf8"),{from:path.resolve("app/globals.css")})).css;
   const script=result.outputFiles.find(file=>file.path.endsWith(".js"))!.text;
   const moduleCss=result.outputFiles.find(file=>file.path.endsWith(".css"))!.text;
-  const html=`<html lang='vi'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>${css}\n${moduleCss}</style><body><div id='root'></div><script>${script}</script></body></html>`;
+  const html=`<html lang='vi'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>${css}\n${moduleCss}</style><body><div id='root'></div></body></html>`;
   const browser=await chromium.launch({headless:true});
   try{
-    const page=await browser.newPage({viewport:{width:390,height:844}});await page.route("**/*",route=>route.abort());await page.setContent(html);
-    assert.equal(await page.getByText("Tổng 8.387 phòng",{exact:true}).count(),1);
+    const page=await browser.newPage({viewport:{width:390,height:844}});await page.route("**/*",route=>route.abort());await page.setContent(html);await page.addScriptTag({content:script});
+    await page.getByText("Tổng 8.387 phòng",{exact:true}).waitFor();
     await page.getByRole("button",{name:"Sau →",exact:true}).click();assert.equal(await page.getByLabel("Trang").innerText(),"2");
     await page.getByRole("button",{name:"← Trước",exact:true}).click();assert.equal(await page.getByLabel("Trang").innerText(),"1");
     await page.getByRole("button",{name:"Cần Tư Vấn",exact:true}).click();const dialog=page.getByRole("dialog");

@@ -2,7 +2,9 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import PushPreferences, { openPushPreferences } from "@/components/pwa/PushPreferences";
 import { Eye, EyeOff } from "lucide-react";
+import { deviceExitMessage } from "@/lib/auth/deviceExit";
 import { supabase } from "@/lib/supabase";
 import { canAccessZaloImports } from "@/lib/zalo-import/access";
 import { usePathname, useRouter } from "next/navigation";
@@ -87,6 +89,9 @@ export default function AuthControls() {
   const [authMsg, setAuthMsg] = useState("");
 
   const [showDeviceManager, setShowDeviceManager] = useState(false);
+  const [deviceError, setDeviceError] = useState("");
+  const [deviceActionPending, setDeviceActionPending] = useState(false);
+  const deviceActionLock = useRef(false);
 
   const [devices, setDevices] = useState<any[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
@@ -133,9 +138,6 @@ export default function AuthControls() {
 
     // 2️⃣ Lắng nghe thay đổi auth
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      // nếu đang mở device manager thì không reset UI login state
-      if (showDeviceManager) return;
-
       setUser(session?.user ?? null);
     });
 
@@ -145,40 +147,44 @@ export default function AuthControls() {
     };
   }, []);
 
-    // ===== show message when device limit related redirect =====
-useEffect(() => {
-  if (typeof window === "undefined") return;
-  if (user) return; // đã login thì không mở modal
+  useEffect(() => {
+    if (isOwnerPortal) return;
+    const params = new URLSearchParams(window.location.search);
+    const authType = params.get("auth");
+    const message = deviceExitMessage(authType);
+    if (!message) return;
 
-  const sp = new URLSearchParams(window.location.search);
-  const authType = sp.get("auth");
-  
+    setAuthView("login");
+    setAuthMsg(message);
+    setAuthOpen(true);
+    params.delete("auth");
+    const query = params.toString();
+    window.history.replaceState(null, "", pathname + (query ? "?" + query : "") + window.location.hash);
+  }, [isOwnerPortal, pathname]);
 
-  if (!authType) return;
+  useEffect(() => {
+    if (pathname !== "/auth/device-limit") return;
+    const controller = new AbortController();
+    setShowDeviceManager(true);
+    setLoadingDevices(true);
+    setDeviceError("");
 
-  setAuthView("login");
-
-  if (authType === "kicked") {
-    // Thiết bị này bị đá ra do thiết bị khác login
-    setAuthMsg(
-      "Phiên đăng nhập trên thiết bị này đã bị đăng xuất vì tài khoản vượt quá 2 thiết bị."
-    );
-  } else if (authType === "limit") {
-    // Thiết bị thứ 3 bị chặn login
-    setAuthMsg(
-      "Tài khoản đã đăng nhập trên 2 thiết bị. Vui lòng đăng xuất 1 thiết bị để tiếp tục."
-    );
-  }
-
-  setAuthOpen(true);
-
-  // remove auth param to avoid repeated popup
-  sp.delete("auth");
-  const nextQs = sp.toString();
-  const url = nextQs ? `${pathname}?${nextQs}` : pathname;
-  router.replace(url, { scroll: false });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [pathname, user]);
+    void (async () => {
+      try {
+        const response = await fetch("/api/device/list", { signal: controller.signal });
+        const payload = await response.json();
+        if (!response.ok || payload?.ok !== true) {
+          throw new Error("Chưa thể tải danh sách thiết bị. Vui lòng thử lại.");
+        }
+        if (!controller.signal.aborted) setDevices(Array.isArray(payload.devices) ? payload.devices : []);
+      } catch {
+        if (!controller.signal.aborted) setDeviceError("Chưa thể tải danh sách thiết bị. Vui lòng thử lại.");
+      } finally {
+        if (!controller.signal.aborted) setLoadingDevices(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [pathname]);
 
   // ===== find #auth-anchor (portal target) =====
   useEffect(() => {
@@ -239,27 +245,7 @@ const handleLogin = async () => {
     }
     signedIn = true;
 
-    const response = await fetch("/api/device/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ forceEvict: false }),
-    });
-    const result = await response.json().catch(() => null);
-
-    if (response.status === 403 && result?.status === "limit_reached") {
-      setDevices(Array.isArray(result.devices) ? result.devices : []);
-      setShowDeviceManager(true);
-      return;
-    }
-    if (!response.ok || result?.ok !== true) {
-      throw new Error(response.status === 401
-        ? "Phiên đăng nhập chưa được xác nhận. Vui lòng đăng nhập lại."
-        : "Chưa thể đăng ký thiết bị. Vui lòng thử lại.");
-    }
-
-    setShowDeviceManager(false);
-    closeAuth();
-    window.location.assign("/");
+    if (await admitCurrentDevice()) finishDeviceLogin();
   } catch (error) {
     if (signedIn) {
       await supabase.auth.signOut({ scope: "local" }).catch(() => {});
@@ -273,12 +259,89 @@ const handleLogin = async () => {
   }
 };
 
+async function admitCurrentDevice(replaceSessionId?: string) {
+  const response = await fetch("/api/device/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ replaceSessionId }),
+  });
+  const result = await response.json().catch(() => null);
+
+  if (response.status === 403 && result?.status === "limit_reached") {
+    setDevices(Array.isArray(result.devices) ? result.devices : []);
+    setShowDeviceManager(true);
+    return false;
+  }
+  if (response.status === 403 && (result?.status === "revoked" || result?.status === "replaced")) {
+    window.location.assign(result.status === "replaced" ? "/?auth=kicked" : "/?auth=signed-out");
+    return false;
+  }
+  if (!response.ok || result?.ok !== true) {
+    throw new Error(response.status === 401
+      ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+      : result?.error || "Chưa thể đăng ký thiết bị. Vui lòng thử lại.");
+  }
+  return true;
+}
+
+function finishDeviceLogin() {
+  const next = pathname === "/auth/device-limit"
+    ? new URLSearchParams(window.location.search).get("next")
+    : null;
+  let target = "/";
+  if (next?.startsWith("/")) {
+    const url = new URL(next, window.location.origin);
+    if (url.origin === window.location.origin && !url.pathname.startsWith("/auth/")) {
+      target = url.pathname + url.search + url.hash;
+    }
+  }
+  setShowDeviceManager(false);
+  closeAuth();
+  window.location.assign(target);
+}
+
+async function continueDeviceLogin(replaceSessionId?: string) {
+  if (deviceActionLock.current) return;
+  deviceActionLock.current = true;
+  setDeviceActionPending(true);
+  setDeviceError("");
+  try {
+    if (await admitCurrentDevice(replaceSessionId)) finishDeviceLogin();
+  } catch (error) {
+    setDeviceError(error instanceof TypeError
+      ? "Lỗi kết nối. Vui lòng thử lại."
+      : error instanceof Error ? error.message : "Chưa thể đăng xuất thiết bị.");
+  } finally {
+    deviceActionLock.current = false;
+    setDeviceActionPending(false);
+  }
+}
+
+async function cancelDeviceLogin() {
+  if (deviceActionLock.current) return;
+  deviceActionLock.current = true;
+  setDeviceActionPending(true);
+  setDeviceError("");
+  try {
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) throw error;
+    setShowDeviceManager(false);
+    setDevices([]);
+    if (pathname === "/auth/device-limit") window.location.assign("/");
+  } catch {
+    setDeviceError("Chưa thể hủy đăng nhập. Vui lòng thử lại.");
+  } finally {
+    deviceActionLock.current = false;
+    setDeviceActionPending(false);
+  }
+}
+
 const handleLogout = async () => {
   try {
     await fetch("/api/device/logout", { method: "POST" });
   } catch {}
 
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
 
   setMenuOpen(false);
   setDevices([]);
@@ -293,6 +356,7 @@ const handleLogout = async () => {
 };
 
 const fetchDevices = async () => {
+  setDeviceError("");
   setLoadingDevices(true);
 
   try {
@@ -303,9 +367,11 @@ const fetchDevices = async () => {
       setDevices(json.devices || []);
     } else {
       setDevices([]);
+      setDeviceError("Chưa thể tải danh sách thiết bị.");
     }
   } catch {
     setDevices([]);
+    setDeviceError("Chưa thể tải danh sách thiết bị.");
   } finally {
     setLoadingDevices(false);
   }
@@ -525,6 +591,10 @@ const handleSendReset = async () => {
               >
                 Đổi mật khẩu
               </button>
+              <button type="button" onClick={() => { closeMenu(); openPushPreferences(); }}
+                className="block w-full rounded-xl px-3 py-2 text-left text-sm font-semibold">
+                Thông báo trên thiết bị
+              </button>
 
               <button
                 type="button"
@@ -545,6 +615,7 @@ const handleSendReset = async () => {
                 Thiết bị đang đăng nhập
               </div>
 
+              {deviceError && <p role="alert" className="px-2 text-xs text-red-600">{deviceError}</p>}
               {loadingDevices ? (
                 <div className="auth-menu-muted px-3 py-2 text-xs">Đang tải...</div>
               ) : devices.length === 0 ? (
@@ -576,15 +647,21 @@ const handleSendReset = async () => {
                           e.preventDefault();
                           e.stopPropagation();
 
-                          await fetch("/api/device/revoke", {
-                            method: "POST",
-                            headers: {
-                              "Content-Type": "application/json",
-                            },
-                            body: JSON.stringify({ sessionId: d.id }),
-                          });
-
-                          await fetchDevices();
+                          setDeviceError("");
+                          try {
+                            const response = await fetch("/api/device/revoke", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ sessionId: d.id }),
+                            });
+                            const result = await response.json();
+                            if (!response.ok || result?.ok !== true) {
+                              throw new Error(result?.error || "Chưa thể đăng xuất thiết bị.");
+                            }
+                            setDevices(Array.isArray(result.devices) ? result.devices : []);
+                          } catch (error) {
+                            setDeviceError(error instanceof Error ? error.message : "Chưa thể đăng xuất thiết bị.");
+                          }
                         }}
                       >
                         đăng xuất
@@ -664,6 +741,8 @@ const controls = (
     <>
       {anchorEl ? createPortal(controls, anchorEl) : null}
       {menuPortal}
+      {user?.id && !authOpen && !showDeviceManager && !pathname.startsWith("/auth/")
+        ? <PushPreferences key={user.id} userId={user.id} /> : null}
 
       {/* AUTH MODAL */}
       {authOpen && (
@@ -851,69 +930,49 @@ const controls = (
       )}
 
       {showDeviceManager && (
-  <div className="fixed inset-0 z-[10000] bg-black/60 flex items-center justify-center">
-    <div className="bg-white w-full max-w-md rounded-xl p-4 space-y-3">
-      <h2 className="text-lg font-semibold">
-        Quản lý thiết bị đăng nhập
-      </h2>
-
-      {devices.length === 0 ? (
-        <div className="text-sm text-gray-600">
-          Không tải được danh sách thiết bị
-        </div>
-      ) : (
-        devices.map((d) => (
-          <div
-            key={d.id}
-            className="flex justify-between items-center border-b py-2"
-          >
-            <div className="text-sm">
-              <div className="text-sm font-medium">
-                {getDeviceLabel(d)}
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="device-limit-title" className="w-full max-w-md space-y-3 rounded-xl bg-white p-4 text-gray-900">
+            <h2 id="device-limit-title" className="text-lg font-semibold">Giới hạn 2 thiết bị</h2>
+            <p className="text-sm text-gray-700">Tài khoản đã đăng nhập trên 2 thiết bị. Chọn một thiết bị để đăng xuất và tiếp tục.</p>
+            {loadingDevices && <p className="text-sm" role="status">Đang tải danh sách thiết bị…</p>}
+            {deviceError && <p role="alert" className="text-sm text-red-700">{deviceError}</p>}
+            {devices.map(device => (
+              <div key={device.id} className="flex items-center justify-between gap-3 border-b py-2">
+                <div className="text-sm">
+                  <div className="font-medium">{getDeviceLabel(device)}</div>
+                  <div className="text-xs text-gray-500">Hoạt động gần nhất: {formatLastSeen(device.last_seen_at)}</div>
+                </div>
+                <button
+                  type="button"
+                  disabled={deviceActionPending || loadingDevices}
+                  className="shrink-0 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50"
+                  onClick={() => void continueDeviceLogin(String(device.id))}
+                >
+                  Đăng xuất
+                </button>
               </div>
-              <div className="text-xs text-gray-500">
-                last seen: {formatLastSeen(d.last_seen_at)}
-              </div>
-            </div>
-
+            ))}
+            {(devices.length === 0 || deviceError) && !loadingDevices && (
+              <button
+                type="button"
+                disabled={deviceActionPending}
+                className="w-full rounded-lg bg-black py-2 text-sm text-white disabled:opacity-50"
+                onClick={() => void continueDeviceLogin()}
+              >
+                Thử lại
+              </button>
+            )}
             <button
-              className="text-xs text-red-300 hover:text-red-200 pointer-events-auto relative z-[99999]"
-              onClick={async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                await fetch("/api/device/revoke", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({ sessionId: d.id }),
-                });
-                const registered = await fetch("/api/device/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ forceEvict: false }) });
-                if (registered.ok) {
-                  setShowDeviceManager(false);
-                  closeAuth();
-                  window.location.assign("/");
-                  return;
-                }
-                await fetchDevices();
-              }}
+              type="button"
+              disabled={deviceActionPending}
+              className="w-full rounded-lg border py-2 text-sm disabled:opacity-50"
+              onClick={() => void cancelDeviceLogin()}
             >
-              đăng xuất
+              {deviceActionPending ? "Đang xử lý…" : "Hủy đăng nhập"}
             </button>
-          </div>
-        ))
+          </section>
+        </div>
       )}
-
-      <button
-        className="w-full mt-3 bg-black text-white rounded-lg py-2 text-sm"
-        onClick={() => setShowDeviceManager(false)}
-      >
-        Đóng
-      </button>
-    </div>
-  </div>
-)}
     </>
   );
 }

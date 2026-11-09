@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const sessionId = String(body?.sessionId ?? "").trim();
 
-  if (!sessionId) {
+  if (!/^[1-9][0-9]{0,18}$/.test(sessionId)) {
     return NextResponse.json(
       { ok: false, error: "missing_session_id" },
       { status: 400 }
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   }
 
   // 🔥 revoke device
-  const { error } = await supabase.rpc("revoke_device_session_by_id", {
+  const { data, error } = await supabase.rpc("revoke_device_session_by_id", {
     p_session_id: sessionId,
   });
 
@@ -37,7 +37,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // 🔥 QUAN TRỌNG: trả luôn list devices mới
+  const result = Array.isArray(data) ? data[0] : data;
+  if (result?.status !== "ok") {
+    return NextResponse.json(
+      { ok: false, error: "Thiết bị này đã đăng xuất hoặc không còn trong danh sách." },
+      { status: 409 }
+    );
+  }
+
+  // Trả lại danh sách sau khi đăng xuất.
   const { data: devices, error: listError } = await supabase.rpc("list_device_sessions");
   if (listError) {
     return NextResponse.json({ ok: false, error: listError.message }, { status: 500 });

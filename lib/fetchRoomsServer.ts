@@ -1,5 +1,5 @@
 import { type RoomFeature } from "@/lib/rooms/features";
-import { roomListFilterRpcParams } from "@/lib/rooms/listFilters";
+import { roomListFilterRpcParams, type SortMode } from "@/lib/rooms/listFilters";
 import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -35,7 +35,7 @@ export type FetchRoomsParams = {
   featureFilters?: RoomFeature[];
 
   // (server) vẫn có thể truyền sortMode nếu bạn muốn đồng bộ với client
-  sortMode?: "updated_desc" | "price_asc" | "price_desc" | null;
+  sortMode?: SortMode | null;
   anonSessionId?: string | null;
 };
 

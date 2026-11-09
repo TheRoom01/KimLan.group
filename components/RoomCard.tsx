@@ -1350,7 +1350,7 @@ return (
             </div>
           </div>
 
-          {safeAdminLevel === 1 && room.is_hidden === true ? (
+          {safeAdminLevel > 0 && room.is_hidden === true ? (
             <span className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} col-start-2 row-start-1 justify-self-end !border-[#e5e7eb] !bg-[#f3f4f6] !text-[#6b7280]`}>
               Đã ẩn
             </span>

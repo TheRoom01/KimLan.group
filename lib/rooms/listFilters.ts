@@ -2,7 +2,8 @@ import { normalizeRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import { normalizeRoomFeatures, roomFeatureStatusTokens, type RoomFeature } from "@/lib/rooms/features";
 import { normalizeHomeSearchKeyword } from "@/lib/rooms/search";
 
-type SortMode = "updated_desc" | "price_asc" | "price_desc";
+export type SortMode = "updated_desc" | "price_asc" | "price_desc" | "hidden";
+export const HIDDEN_ROOMS_ADMIN_EMAIL = "voduongngoclan@gmail.com";
 type Move = "elevator" | "stairs";
 type Pet = "cat" | "dog" | "nopet";
 type Term = "short" | "long";
@@ -10,7 +11,7 @@ type Term = "short" | "long";
 export const HOME_PRICE_DEFAULT: [number, number] = [3_000_000, 30_000_000];
 
 function sortMode(value?: string | null): SortMode {
-  return value === "price_asc" || value === "price_desc" ? value : "updated_desc";
+  return value === "price_asc" || value === "price_desc" || value === "hidden" ? value : "updated_desc";
 }
 
 function finitePrice(value?: string | number | null) {

@@ -1,3 +1,5 @@
+import { after } from "next/server";
+import { pushConfig, sendEventPush } from "@/lib/notifications/webPush";
 import { getAuthenticatedUser } from "@/lib/api/auth";
 import { apiError, apiSuccess, mapDatabaseError, mapUnknownError } from "@/lib/api/response";
 import { parseUuid, readJsonObject } from "@/lib/api/validation";
@@ -21,6 +23,9 @@ export async function POST(request: Request) {
       p_role: role,
     });
     if (error) return mapDatabaseError(error);
+    if (data?.mode === "access_granted" && pushConfig()) {
+      after(() => sendEventPush(new URL(request.url).origin, { type: "property_access_granted", id: propertyId, userId: user.id }));
+    }
     return apiSuccess(data);
   } catch (error) {
     return mapUnknownError(error);

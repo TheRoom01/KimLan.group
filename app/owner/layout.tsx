@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 
+import PushPreferences from "@/components/pwa/PushPreferences";
 import OwnerLayout from "@/components/owner/OwnerLayout";
 import OwnerLoginGate from "@/components/owner/OwnerLoginGate";
 import OwnerPlaceholderHints from "@/components/owner/OwnerPlaceholderHints";
@@ -21,5 +22,5 @@ export default async function Layout({
     return <><OwnerPlaceholderHints /><OwnerLoginGate /></>;
   }
 
-  return <OwnerLayout>{children}</OwnerLayout>;
+  return <><OwnerLayout>{children}</OwnerLayout><PushPreferences key={user.id} userId={user.id} /></>;
 }

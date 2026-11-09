@@ -22,11 +22,9 @@ export async function POST() {
   // lấy device token từ httpOnly cookie
   const deviceToken = cookieStore.get(DEVICE_COOKIE)?.value || "";
 
-  // best-effort: revoke session trong DB nếu có token
-  if (deviceToken) {
-    const tokenHash = sha256Base64Url(deviceToken);
-    await supabase.rpc("revoke_device_session", { p_token_hash: tokenHash });
-  }
+  await supabase.rpc("revoke_device_session", {
+    p_token_hash: deviceToken ? sha256Base64Url(deviceToken) : "",
+  });
 
   // clear device cookies (server-side)
   const cookieOptions = {

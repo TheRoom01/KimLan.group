@@ -21,7 +21,7 @@ import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 import { getSavedRoomIds } from "@/lib/savedRooms";
 import { normalizeRoomFeatures, matchesRoomFeatures, type RoomFeature } from "@/lib/rooms/features";
 import { roomMatchesSearch, normalizeHomeSearchKeyword as normalizeSearchKeyword } from "@/lib/rooms/search";
-import { DEFAULT_HOME_LIST_FILTERS, HOME_PRICE_DEFAULT as PRICE_DEFAULT, readHomeListFilters, readHomeListPage, roomListFilterRpcParams, type HomeListFilters } from "@/lib/rooms/listFilters";
+import { DEFAULT_HOME_LIST_FILTERS, HOME_PRICE_DEFAULT as PRICE_DEFAULT, HIDDEN_ROOMS_ADMIN_EMAIL, readHomeListFilters, readHomeListPage, roomListFilterRpcParams, type HomeListFilters } from "@/lib/rooms/listFilters";
 import { hasRecommendationFilters, isLastRecommendationPage, ROOM_RECOMMENDATIONS_ENABLED, type RecommendationFilters } from "@/lib/rooms/recommendations";
 
 const RoomInquiryModal = dynamic(() => import("@/components/rooms/RoomInquiryModal"), { ssr: false });
@@ -32,6 +32,7 @@ type InitialProps = {
   initialNextCursor: string | UpdatedDescCursor | null;
   initialAdminLevel: 0 | 1 | 2;
   initialUserId?: string | null;
+  initialCanFilterHidden?: boolean;
   initialTotal?: number | null;
   initialError?: string;
   initialSavedView?: boolean;
@@ -244,6 +245,7 @@ const HomeClient = ({
   initialNextCursor,
   initialAdminLevel,
   initialUserId = null,
+  initialCanFilterHidden = false,
   initialTotal,
   initialError = "",
   initialSavedView = false,
@@ -362,6 +364,7 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
     // ================== ROLE ==================
   const [adminLevel, setAdminLevel] = useState<0 | 1 | 2>(initialAdminLevel);
   const [currentUserId, setCurrentUserId] = useState(initialUserId);
+  const [canFilterHidden, setCanFilterHidden] = useState(initialCanFilterHidden);
   const [currentAdminPhone, setCurrentAdminPhone] = useState<string | null>(null);
   const [currentAdminName, setCurrentAdminName] = useState<string | null>(null);
 
@@ -1033,7 +1036,7 @@ const persistBlockedRef = useRef(false);
   const visibleRooms = isSavedView ? savedPageRooms : roomsToRender;
   const visibleHasNext = isSavedView ? savedPageIndex + 1 < savedPageCount : hasNext;
   const showRecommendations = ROOM_RECOMMENDATIONS_ENABLED && hasRecommendationFilters(recommendationFilters)
-    && !isSavedView && !loading && !isRefreshing && !showSkeleton && !fetchError && search === appliedSearch
+    && !isSavedView && sortMode !== "hidden" && !loading && !isRefreshing && !showSkeleton && !fetchError && search === appliedSearch
     && isLastRecommendationPage(pageIndex, displayPageIndex, total, visibleHasNext, LIMIT);
 
   useEffect(() => {
@@ -3273,9 +3276,14 @@ useEffect(() => {
     setCurrentUserId(uid);
     setIsLoggedIn(Boolean(uid));
     setAdminLevel(0);
+    setCanFilterHidden(false);
     const params = new URLSearchParams(window.location.search);
     params.delete(QS.p);
     params.delete(QS.c);
+    if (params.get(QS.s) === "hidden") {
+      params.delete(QS.s);
+      setSortMode("updated_desc");
+    }
     replaceUrlShallow(params.toString());
     resetPagination(0);
   };
@@ -3297,14 +3305,15 @@ useEffect(() => {
 useEffect(() => {
   if (!authResolving || !currentUserId) return;
   let active = true;
-  const finish = (level: number) => {
+  const finish = (level: number, email?: string) => {
     if (!active || lastSessionUserIdRef.current !== currentUserId) return;
     authResolvingRef.current = false;
     setAdminLevel(level === 1 || level === 2 ? level : 0);
+    setCanFilterHidden((level === 1 || level === 2) && email?.toLowerCase() === HIDDEN_ROOMS_ADMIN_EMAIL);
     setAuthResolving(false);
   };
-  void supabase.rpc("get_my_admin_level").then(({ data, error }) => {
-    finish(error ? 0 : Number(data ?? 0));
+  void Promise.all([supabase.rpc("get_my_admin_level"), supabase.auth.getUser()]).then(([role, viewer]) => {
+    finish(role.error ? 0 : Number(role.data ?? 0), viewer.data.user?.email);
   }, () => finish(0));
   return () => { active = false; };
 }, [authResolving, currentUserId]);
@@ -3554,6 +3563,7 @@ return (
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
               sortMode={sortMode}
+              canFilterHidden={canFilterHidden && !isSavedView}
               setSortMode={setSortMode}
               total={total}
             />

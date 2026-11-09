@@ -1,5 +1,7 @@
 "use client";
 
+import { openPushPreferences } from "@/components/pwa/PushPreferences";
+
 import {
   Building2,
   Camera,
@@ -1059,6 +1061,10 @@ className="text-sm font-semibold text-[#744722]"
               ) : null}
             </div>
             <div className="shrink-0 border-t border-[#aa825d]/20 bg-[#fff9ef] p-4">
+              <button type="button" onClick={() => openPushPreferences()}
+                className="mb-2 h-11 w-full rounded-xl border border-[#aa825d]/35 text-sm font-bold">
+                Thông báo trên thiết bị
+              </button>
               <button type="button" onClick={() => void logout()}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 text-sm font-bold text-red-700 transition hover:bg-red-100">
                 <LogOut size={17} /> Đăng xuất

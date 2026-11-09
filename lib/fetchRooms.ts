@@ -1,5 +1,5 @@
 import { type RoomFeature } from "@/lib/rooms/features";
-import { roomListFilterRpcParams } from "@/lib/rooms/listFilters";
+import { roomListFilterRpcParams, type SortMode } from "@/lib/rooms/listFilters";
 import { attachRoomBadges, type RoomBadge } from "@/lib/roomBadges";
 import { supabase } from "./supabase";
 
@@ -30,7 +30,7 @@ export type FetchRoomsParams = {
   move?: "elevator" | "stairs" | null;
   petPolicies?: ("cat" | "dog" | "nopet")[];
   contractTerms?: ("short" | "long")[];
-  sortMode?: "updated_desc" | "price_asc" | "price_desc";
+  sortMode?: SortMode;
   status?: string | null;
   currentUserId?: string | null;
   badge?: RoomBadge | null;
