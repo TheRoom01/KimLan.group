@@ -1,5 +1,6 @@
 "use client";
 
+import { deviceExitMessage } from "@/lib/auth/deviceExit";
 import {
   Building2,
   Eye,
@@ -53,12 +54,6 @@ type DeviceRegisterResponse = {
   ok?: boolean;
   status?: string;
   message?: string;
-  error?: string;
-  devices?: DeviceSession[];
-};
-
-type DeviceRevokeResponse = {
-  ok?: boolean;
   error?: string;
   devices?: DeviceSession[];
 };
@@ -171,14 +166,23 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
     return () => window.clearInterval(timer);
   }, [resendCooldown]);
 
-  async function registerCurrentDevice(): Promise<boolean> {
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const message = deviceExitMessage(url.searchParams.get("auth"));
+    if (!message) return;
+    setAuthMessage(message);
+    url.searchParams.delete("auth");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, []);
+
+  async function registerCurrentDevice(replaceSessionId?: string): Promise<boolean> {
     const response = await fetch("/api/device/register", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        forceEvict: false,
+        replaceSessionId,
       }),
     });
 
@@ -199,6 +203,10 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
       return false;
     }
 
+    if (response.status === 403 && (payload?.status === "revoked" || payload?.status === "replaced")) {
+      window.location.assign(payload.status === "replaced" ? "/owner?auth=kicked" : "/owner?auth=signed-out");
+      return false;
+    }
     if (!response.ok || payload?.ok !== true) {
       throw new Error(
         payload?.error ||
@@ -465,35 +473,7 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
     setAuthMessage("");
 
     try {
-      const response = await fetch("/api/device/revoke", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sessionId,
-        }),
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | DeviceRevokeResponse
-        | null;
-
-      if (!response.ok || payload?.ok !== true) {
-        throw new Error(
-          payload?.error || "Không thể đăng xuất thiết bị",
-        );
-      }
-
-      setDevices(
-        Array.isArray(payload.devices) ? payload.devices : [],
-      );
-
-      /**
-       * Sau khi đã giải phóng một thiết bị, đăng ký lại thiết bị hiện tại.
-       */
-      const deviceRegistered = await registerCurrentDevice();
-
+      const deviceRegistered = await registerCurrentDevice(sessionId);
       if (deviceRegistered) {
         router.refresh();
       }
@@ -1288,7 +1268,7 @@ const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(f
                             type="button"
                             disabled={
                               !sessionId ||
-                              revokingId === sessionId
+                              revokingId !== null
                             }
                             onClick={() => {
                               if (sessionId) {

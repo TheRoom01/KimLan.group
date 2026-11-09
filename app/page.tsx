@@ -1,7 +1,7 @@
 import HomeClient from "./HomeClient";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchRoomsServer } from "@/lib/fetchRoomsServer";
-import { readHomeListFilters, readHomeListPage } from "@/lib/rooms/listFilters";
+import { HIDDEN_ROOMS_ADMIN_EMAIL, readHomeListFilters, readHomeListPage } from "@/lib/rooms/listFilters";
 import { getCachedPublicRooms } from "@/lib/rooms/publicCache";
 import { cookies } from "next/headers";
 
@@ -15,7 +15,6 @@ export default async function HomePage({
     const value = sp[key];
     return (Array.isArray(value) ? value[0] : value) ?? null;
   };
-  const filters = readHomeListFilters(getParam);
   const { nextPage, c } = readHomeListPage(getParam);
   const savedView = getParam("view") === "saved";
 
@@ -35,6 +34,11 @@ export default async function HomePage({
     }
   }
 
+  const canFilterHidden = Boolean(adminLevel && user?.email?.toLowerCase() === HIDDEN_ROOMS_ADMIN_EMAIL);
+  const filters = readHomeListFilters(key => {
+    const value = getParam(key);
+    return key === "s" && value === "hidden" && !canFilterHidden ? null : value;
+  });
   const fetchParams = {
     limit: 20,
     cursor: null,
@@ -66,6 +70,7 @@ export default async function HomePage({
       initialRooms={res.data}
       initialNextCursor={res.nextCursor}
       initialAdminLevel={adminLevel}
+      initialCanFilterHidden={canFilterHidden}
       initialUserId={user?.id ?? null}
       initialTotal={res.total ?? null}
       initialError={res.error}

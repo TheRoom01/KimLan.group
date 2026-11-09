@@ -830,7 +830,7 @@ const openZaloUX = useCallback(
                   whiteSpace: "nowrap",
                 }}
               >
-                {adminLevel === 1 && isHidden ? (
+                {isHidden ? (
                   <span style={{ ...badge, ...badgeHidden }}>
                     Đã ẩn
                   </span>

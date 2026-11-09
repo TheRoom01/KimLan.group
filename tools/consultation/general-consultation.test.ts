@@ -38,7 +38,14 @@ async function main() {
     assert.equal(preserved.consultation_kind,"room_consultation"); assert.equal(preserved.room_id,room);
 
     let captcha = true, rpcCalls = 0;
+    const pushes: { origin: string; event: { type: string; id: string } }[] = [];
+    const afterResponse: (() => Promise<void>)[] = [];
     const deps: Record<string, unknown> = {
+      "next/server": { after: (callback: () => Promise<void>) => afterResponse.push(callback) },
+      "@/lib/notifications/webPush": {
+        pushConfig: () => ({ publicKey: "test" }),
+        sendEventPush: async (origin: string, event: { type: string; id: string }) => { pushes.push({ origin, event }); },
+      },
       "@/lib/consultation": consultation,
       "@/lib/api/response": {
         apiError: (code:string,message:string,status:number) => Response.json({ok:false,error:{code,message}},{status}),
@@ -73,9 +80,18 @@ async function main() {
       const before=rpcCalls;assert.equal((await post({...base,...patch})).status,400);assert.equal(rpcCalls,before);
     }
     captcha=false;assert.equal((await post({...base,request_key:randomUUID()})).status,400);captcha=true;
-    const viewing=await post({...base,request_key:randomUUID(),consultation_kind:"room_consultation",room_id:room,request_type:"viewing",viewing_date:"2099-12-01",preferred_time:"Sáng (08:00–12:00)"});
+    assert.equal(afterResponse.length, 0, "general consultations do not enqueue push");
+    const viewingInput = {...base,request_key:randomUUID(),consultation_kind:"room_consultation",room_id:room,request_type:"viewing",viewing_date:"2099-12-01",preferred_time:"Sáng (08:00–12:00)"};
+    const viewing = await post(viewingInput);
+    assert.equal((await post(viewingInput)).status, 200);
+    assert.equal(afterResponse.length, 1, "a repeated room request only enqueues one push");
     assert.equal(viewing.status,201,await viewing.clone().text());
-    const viewingRow=(await db.query("select room_id,request_type from room_consult_requests where id=$1",[(await viewing.json()).data.request_id])).rows[0];
+    const viewingId = (await viewing.json()).data.request_id;
+    await afterResponse[0]();
+    assert.equal(pushes[0].origin, "http://localhost:3000");
+    assert.equal(pushes[0].event.type, "room_consult_request");
+    assert.equal(pushes[0].event.id, viewingId);
+    const viewingRow=(await db.query("select room_id,request_type from room_consult_requests where id=$1",[viewingId])).rows[0];
     assert.equal(viewingRow.room_id,room);assert.equal(viewingRow.request_type,"viewing");
     // Force 10 requests in the last hour, outside the 2-minute duplicate window.
     await db.query("insert into room_consult_requests(request_key,room_id,room_code_snapshot,guest_name,guest_phone,guest_phone_normalized,request_type,created_at) select gen_random_uuid(),$1,'R101','Rate test','0988888888','0988888888','consultation',now()-interval '5 minutes' from generate_series(1,10)",[room]);

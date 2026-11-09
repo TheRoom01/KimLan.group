@@ -56,6 +56,7 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const authIndependentPublicPath =
+    pathname === "/sw.js" ||
     pathname === "/map" ||
     pathname === "/sales" ||
     pathname.startsWith("/sales/") ||
@@ -96,145 +97,80 @@ export async function proxy(request: NextRequest) {
     // noop: fail-open
   }
 
-  // Enforce device limit for authenticated users
-  if (userId) {
-    // 1) Ensure device cookies exist (httpOnly cookies are set server-side here)
-    let deviceToken = request.cookies.get(DEVICE_COOKIE)?.value || "";
-    let deviceId = request.cookies.get(DEVICE_ID_COOKIE)?.value || "";
+  if (!userId) return response;
 
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax" as const,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30, // 30d
-    };
+  const deviceId = request.cookies.get(DEVICE_ID_COOKIE)?.value || randomToken(12);
+  const oldToken = request.cookies.get(DEVICE_COOKIE)?.value;
+  let deviceToken = oldToken || randomToken(32);
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  };
 
-    if (!deviceToken) {
-      deviceToken = randomToken(32);
-      response.cookies.set(DEVICE_COOKIE, deviceToken, cookieOptions);
-    }
-    if (!deviceId) {
-      deviceId = randomToken(12);
-      response.cookies.set(DEVICE_ID_COOKIE, deviceId, cookieOptions);
-    }
+  const redirectWithCookies = (target: URL) => {
+    const redirect = NextResponse.redirect(target);
+    response.cookies.getAll().forEach(cookie => redirect.cookies.set(cookie));
+    redirect.headers.set("Cache-Control", "private, no-store");
+    return redirect;
+  };
 
-   // 2) Validate first (fast path). Only register on first-seen devices.
-try {
-  let tokenHash = await sha256Base64Url(deviceToken);
+  try {
+    const { data: valid, error } = await supabase.rpc("validate_device_session", {
+      p_token_hash: await sha256Base64Url(deviceToken),
+    });
+    if (error || parseValidRpcResult(valid)) return response;
 
-  const fingerprint = await sha256Base64Url(
-    [
+    const fingerprint = await sha256Base64Url([
       request.headers.get("user-agent") || "",
       request.headers.get("sec-ch-ua-platform") || "",
       request.headers.get("sec-ch-ua") || "",
-    ].join("|")
-  );
-
-  // validate current device is still active (also touches last_seen_at)
-  const { data: v1, error: e1 } = await supabase.rpc("validate_device_session", {
-    p_token_hash: tokenHash,
-  });
-
-  const valid1 = !e1 && parseValidRpcResult(v1);
-
-  if (valid1) {
-    // ✅ steady state: no need to call register on every request
-    return response;
-  }
-
-  // If not valid yet: treat as first-seen device -> register (may evict oldest)
-  const firstRegistration = await supabase.rpc("register_device_session", {
-  p_device_id: deviceId,
-  p_token_hash: tokenHash,
-  p_device_fingerprint: fingerprint,
-  p_max_devices: 2,
-  p_evict_oldest: false,
-  p_device_name: null,
-});
-  const reg1 = firstRegistration.data;
-  let eReg = firstRegistration.error;
- 
-let regStatus = !eReg ? parseRegisterStatus(reg1) : "";
-
-  // ✅ nếu register bị trùng token_hash (23505)
-  // -> deviceToken cũ đã tồn tại trong DB, rotate pp_device để lấy token_hash mới rồi retry 1 lần
-  if (eReg && eReg.code === "23505") {
-    deviceToken = randomToken(32);
-    response.cookies.set(DEVICE_COOKIE, deviceToken, cookieOptions);
-
-    tokenHash = await sha256Base64Url(deviceToken);
-
-    const retry = await supabase.rpc("register_device_session", {
+    ].join("|"));
+    const register = async () => supabase.rpc("register_device_session", {
       p_device_id: deviceId,
-      p_token_hash: tokenHash,
+      p_token_hash: await sha256Base64Url(deviceToken),
       p_device_fingerprint: fingerprint,
       p_max_devices: 2,
       p_evict_oldest: false,
       p_device_name: null,
     });
+    let registration = await register();
+    if (registration.error?.code === "23505") {
+      deviceToken = randomToken(32);
+      registration = await register();
+    }
+    if (registration.error) return response;
 
-    eReg = retry.error;
-    regStatus = !eReg ? parseRegisterStatus(retry.data) : "";
-  }
-
-  if (eReg && eReg.code !== "23505") {
-    throw eReg;
-  }
-
-  // ✅ hard limit: device #3 -> block access (do NOT evict others)
- if (regStatus === "limit_reached") {
-  try {
-    await supabase.auth.signOut({ scope: "local" });
-  } catch {}
-
-  response.cookies.set({
-    name: DEVICE_COOKIE,
-    value: "",
-    ...cookieOptions,
-    maxAge: 0,
-  });
-
-  response.cookies.set({
-    name: DEVICE_ID_COOKIE,
-    value: "",
-    ...cookieOptions,
-    maxAge: 0,
-  });
-
-  const redirectUrl = request.nextUrl.clone();
-  redirectUrl.pathname = "/";
-  redirectUrl.searchParams.set("auth", "limit");
-
-  return NextResponse.redirect(redirectUrl);
-}
-
-  // validate again after register (with possibly rotated tokenHash)
-  const { data: v2, error: e2 } = await supabase.rpc("validate_device_session", {
-    p_token_hash: tokenHash,
-  });
-
-  const valid2 = !e2 && parseValidRpcResult(v2);
-
-  if (!valid2) {
-    // Kick this device: sign out + clear device cookies + redirect
-    try {
-      await supabase.auth.signOut({ scope: "local" });
-    } catch {
-      // ignore
+    const status = parseRegisterStatus(registration.data);
+    if (status === "revoked" || status === "replaced") {
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      const target = new URL(pathname === "/owner" || pathname.startsWith("/owner/") ? "/owner" : "/", request.url);
+      target.searchParams.set("auth", status === "replaced" ? "kicked" : "signed-out");
+      const redirect = redirectWithCookies(target);
+      for (const { name } of request.cookies.getAll()) {
+        if (name.startsWith("sb-") && name.includes("-auth-token")) {
+          redirect.cookies.set(name, "", { ...cookieOptions, maxAge: 0 });
+        }
+      }
+      redirect.cookies.set(DEVICE_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+      redirect.cookies.set(DEVICE_ID_COOKIE, "", { ...cookieOptions, maxAge: 0 });
+      return redirect;
     }
 
-    response.cookies.set({ name: DEVICE_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
-    response.cookies.set({ name: DEVICE_ID_COOKIE, value: "", ...cookieOptions, maxAge: 0 });
+    if (status === "ok" || status === "limit_reached") {
+      if (deviceToken !== oldToken) response.cookies.set(DEVICE_COOKIE, deviceToken, cookieOptions);
+      if (!request.cookies.has(DEVICE_ID_COOKIE)) response.cookies.set(DEVICE_ID_COOKIE, deviceId, cookieOptions);
+    }
 
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/";
-    redirectUrl.searchParams.set("auth", "limit");
-    return NextResponse.redirect(redirectUrl);
-  }
-} catch {
-  // fail-open: don't block app if RPC temporarily fails
-}
+    if (status === "limit_reached") {
+      const target = new URL("/auth/device-limit", request.url);
+      target.searchParams.set("next", pathname + request.nextUrl.search);
+      return redirectWithCookies(target);
+    }
+  } catch {
+    // Keep the current session usable during a temporary service failure.
   }
 
   return response;

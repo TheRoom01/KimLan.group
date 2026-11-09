@@ -4,7 +4,8 @@ import React, { startTransition, useEffect, useId, useMemo, useRef, useState } f
 import FilterChoicePanel from "@/components/FilterChoicePanel";
 import type { RoomFeature } from "@/lib/rooms/features";
 
-export type SortMode = "updated_desc" | "price_asc" | "price_desc";
+import type { SortMode } from "@/lib/rooms/listFilters";
+export type { SortMode } from "@/lib/rooms/listFilters";
 type RoomStatusFilter = "Đang trống" | "Sắp trống" | "Đã thuê";
 const ROOM_STATUS_SEPARATOR = ",";
 
@@ -38,6 +39,7 @@ type FilterBarProps = {
   setTermFilters: React.Dispatch<React.SetStateAction<("short" | "long")[]>>;
 
   sortMode: SortMode;
+  canFilterHidden?: boolean;
   setSortMode: React.Dispatch<React.SetStateAction<SortMode>>;
 
   statusFilter: string | null;
@@ -112,6 +114,7 @@ const FilterBar = ({
   termFilters,
   setTermFilters,
   sortMode,
+  canFilterHidden = false,
   setSortMode,
   statusFilter,
   setStatusFilter,
@@ -778,8 +781,9 @@ const toggleStatus = (value: RoomStatusFilter) => {
             ["updated_desc", "Mới cập nhật"],
             ["price_asc", "Giá tăng dần"],
             ["price_desc", "Giá giảm dần"],
+            ["hidden", "Đã ẩn"],
           ] as const
-        ).map(([v, label]) => (
+        ).filter(([value]) => value !== "hidden" || canFilterHidden).map(([v, label]) => (
           <label key={v} className={optionClass(sortMode === v)}>
             <input
               type="radio"

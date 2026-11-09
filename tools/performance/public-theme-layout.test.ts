@@ -46,7 +46,7 @@ const script = (await build({
   window.fixtureMounts=0;window.fixturePageShows=[];
   addEventListener('pageshow',e=>window.fixturePageShows.push(e.persisted));
   function App(){const[detail,setDetail]=useState(location.pathname.startsWith('/rooms/'));useEffect(()=>{const f=()=>setDetail(location.pathname.startsWith('/rooms/'));addEventListener('popstate',f);addEventListener('fixture-route',f);return()=>{removeEventListener('popstate',f);removeEventListener('fixture-route',f)}},[]);
-    return detail?<main><h1>Chi tiết fixture</h1><button onClick={()=>history.back()}>Quay lại danh sách</button></main>:<><Auth/><Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={0} initialTotal={180}/></>}
+    return detail?<main><h1>Chi tiết fixture</h1><button onClick={()=>history.back()}>Quay lại danh sách</button></main>:<><Auth/><Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={new URLSearchParams(location.search).has("admin") ? 1 : 0} initialUserId={new URLSearchParams(location.search).has("admin") ? "fixture-admin" : null} initialTotal={180}/></>}
   createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: root, loader: 'tsx' },
   bundle: true, write: false, platform: 'browser', logLevel: 'silent',
   tsconfig: path.join(root, 'tsconfig.json'), loader: { '.css': 'empty', '.module.css': 'empty' },
@@ -95,7 +95,7 @@ try {
     for(const width of [360,390,430,1366,1920]) {
       await page.setViewportSize({width,height:900});
       for(const open of [false,true]) {
-        const toggle=page.getByRole('button',{name:'Bộ lọc',exact:true});
+        const toggle=page.getByRole('button',{name:/^Bộ lọc(?:,|$)/});
         if(await toggle.getAttribute('aria-expanded')!==String(open))await toggle.click();
         await page.waitForTimeout(80);
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`no overflow ${width}`);
@@ -111,7 +111,7 @@ try {
     if(await page.getByRole('switch').getAttribute('aria-checked')!==String(light))await page.getByRole('switch').click();
     for(const viewport of [{width:360,height:640},{width:390,height:844},{width:430,height:932},{width:844,height:390},{width:1366,height:768},{width:1920,height:1080}]) {
       await page.setViewportSize(viewport);await page.locator(scrollSelector).evaluate(e=>e.scrollTop=0);
-      const filters=page.getByRole('button',{name:'Bộ lọc',exact:true});if(await filters.getAttribute('aria-expanded')!=='true')await filters.click();
+      const filters=page.getByRole('button',{name:/^Bộ lọc(?:,|$)/});if(await filters.getAttribute('aria-expanded')!=='true')await filters.click();
       const appearances=[];
       for(const [button,title] of [['Quận','Chọn quận'],['Tiện Nghi','Tiện nghi']]) {
         await page.getByRole('button',{name:button,exact:true}).click();const dialog=page.getByRole('dialog',{name:title,exact:true});await dialog.waitFor();
@@ -126,7 +126,7 @@ try {
     }
   }
   await page.setViewportSize({width:390,height:844});await page.locator(scrollSelector).evaluate(e=>e.scrollTop=0);
-  const filterToggle=page.getByRole('button',{name:'Bộ lọc',exact:true});if(await filterToggle.getAttribute('aria-expanded')!=='true')await filterToggle.click();
+  const filterToggle=page.getByRole('button',{name:/^Bộ lọc(?:,|$)/});if(await filterToggle.getAttribute('aria-expanded')!=='true')await filterToggle.click();
   const touch=await context.newCDPSession(page);await touch.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
   for(const [button,title] of [['Quận','Chọn quận'],['Tiện Nghi','Tiện nghi']]) {
     await page.getByRole('button',{name:button,exact:true}).click();const dialog=page.getByRole('dialog',{name:title,exact:true});const scroller=dialog.locator('.room-filter-choice-scroll');
@@ -145,13 +145,13 @@ try {
   await page.mouse.click(2,400);assert.equal(await amenities.count(),0,'outside tap closes panel');
   await page.setViewportSize({width:390,height:844});
   await page.locator('.home-redesign > .overflow-y-auto').evaluate(e=>e.scrollTop=0);
-  if(await page.getByRole('button',{name:'Bộ lọc',exact:true}).getAttribute('aria-expanded')==='true')await page.getByRole('button',{name:'Bộ lọc',exact:true}).click();
+  if(await page.getByRole('button',{name:/^Bộ lọc(?:,|$)/}).getAttribute('aria-expanded')==='true')await page.getByRole('button',{name:/^Bộ lọc(?:,|$)/}).click();
   await page.waitForTimeout(400);const beforePanel=await state();
-  await page.getByRole('button',{name:'Bộ lọc',exact:true}).click();await page.getByRole('button',{name:'Bộ lọc',exact:true}).click();await page.waitForTimeout(400);
+  await page.getByRole('button',{name:/^Bộ lọc(?:,|$)/}).click();await page.getByRole('button',{name:/^Bộ lọc(?:,|$)/}).click();await page.waitForTimeout(400);
   assert.deepEqual(await state(),beforePanel,'panel changes no query, list, page or scroll');
-  await page.getByRole('button',{name:'Bộ lọc',exact:true}).click();await page.getByRole('button',{name:'Quận',exact:true}).click();await page.getByText('Bình Thạnh',{exact:true}).first().click();await page.keyboard.press('Escape');await page.waitForTimeout(500);
+  await page.getByRole('button',{name:/^Bộ lọc(?:,|$)/}).click();await page.getByRole('button',{name:'Quận',exact:true}).click();await page.getByText('Bình Thạnh',{exact:true}).first().click();await page.keyboard.press('Escape');await page.waitForTimeout(500);
   assert(new URL(page.url()).searchParams.get('d')?.includes('Bình Thạnh'));
-  await page.getByRole('button',{name:'Bộ lọc',exact:true}).click();await page.getByRole('button',{name:'Xóa bộ lọc',exact:true}).click();await page.waitForTimeout(500);assert.equal(new URL(page.url()).searchParams.get('d'),null);
+  await page.getByRole('button',{name:/^Bộ lọc(?:,|$)/}).click();await page.getByRole('button',{name:'Xóa bộ lọc',exact:true}).click();await page.waitForTimeout(500);assert.equal(new URL(page.url()).searchParams.get('d'),null);
   await page.getByPlaceholder(/^Tìm đường/).fill('Điện Biên Phủ');await page.waitForTimeout(1000);assert(await page.evaluate(()=>window.fixtureFetches.some(x=>x.search==='Điện Biên Phủ')));
   await page.getByRole('button',{name:'Xóa bộ lọc',exact:true}).click();await page.waitForTimeout(500);
   await page.getByRole('button',{name:'Sau →',exact:true}).click();await page.locator('a[href^="/rooms/room-1-0?"]').waitFor();

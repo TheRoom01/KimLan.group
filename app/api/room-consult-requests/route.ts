@@ -1,3 +1,5 @@
+import { after } from "next/server";
+import { pushConfig, sendEventPush } from "@/lib/notifications/webPush";
 import { REFERRAL_SOURCES, vietnamesePhone } from "@/lib/consultation";
 import { apiError, apiSuccess } from "@/lib/api/response";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -116,6 +118,10 @@ export async function POST(request: Request) {
     const row = Array.isArray(data) ? data[0] : data;
     if (!row?.request_id || (row.duplicate !== true && Number(row.notified_admins ?? 0) < 1)) {
       return apiError("DATABASE_ERROR", "Chưa xác nhận được người nhận yêu cầu. Vui lòng thử lại sau.", 503);
+    }
+
+    if (!general && row.duplicate !== true && pushConfig()) {
+      after(() => sendEventPush(new URL(request.url).origin, { type: "room_consult_request", id: row.request_id }));
     }
 
     return apiSuccess({
