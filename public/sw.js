@@ -100,7 +100,10 @@ self.addEventListener("push", (event) => {
   if (typeof payload?.title !== "string") return;
   event.waitUntil(self.registration.showNotification(payload.title, {
     body: typeof payload.body === "string" ? payload.body : "",
-    icon: "/icon-192.png",
+    icon: "/notification-logo.png",
+    ...(self.Notification && "vibrate" in self.Notification.prototype
+      ? { vibrate: [200, 100, 200] }
+      : {}),
     tag: typeof payload.tag === "string" ? payload.tag : undefined,
     data: { url: notificationTarget(payload.url) },
   }));
