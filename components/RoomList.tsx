@@ -63,11 +63,8 @@ const RoomList = ({
 
   return (
     <main className={`home-room-list relative z-0 w-full max-w-none px-2 sm:px-3 lg:px-4 ${hasRecommendations ? "pb-4" : "pb-36"} pt-2`}>
-      <div id="phong" className="home-list-heading mx-auto mb-3 flex max-w-[1800px] flex-wrap items-end justify-between gap-2 px-1 sm:px-2">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#c9a46a]">The Room SG</p>
-          <h2 className="mt-0.5 text-lg font-semibold text-[#f3e7d6] sm:text-xl">{title}</h2>
-        </div>
+      <div id="phong" className="home-list-heading mx-auto mb-3 max-w-[1800px] gap-2 px-1 sm:px-2">
+        <h2 className="text-base font-semibold text-[#f3e7d6] sm:text-xl">{title}</h2>
         {onResetAll ? <button type="button" className="home-reset-filters" disabled={loading} onClick={onResetAll}>Xóa bộ lọc</button> : null}
         {typeof total === "number" ? <span className="home-list-total shrink-0 rounded-full border border-[#c9a46a]/30 bg-[#c9a46a]/10 px-3 py-1.5 text-xs font-semibold text-[#f3e7d6]">Tổng {total.toLocaleString("vi-VN")} phòng</span> : null}
       </div>

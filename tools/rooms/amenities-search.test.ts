@@ -11,6 +11,10 @@ async function main(){
  assert.deepEqual(roomFeatureStatusTokens(['window']),['__amenity:window']);
  assert.equal(matchesRoomFeatures({has_balcony:true},['balcony','window']),false);
  assert.equal(matchesRoomFeatures({has_balcony:true,has_window:true},['balcony','window']),true);
+ const tenantFeatures = normalizeRoomFeatures('no_live_in_landlord,accepts_foreign_tenants');
+ assert.equal(tenantFeatures.length,2);
+ assert.equal(matchesRoomFeatures({no_live_in_landlord:true},tenantFeatures),false);
+ assert.equal(matchesRoomFeatures({no_live_in_landlord:true,accepts_foreign_tenants:true},tenantFeatures),true);
  const room={house_number:'991A',room_code:'A105',address:'Sao Mai',ward:'Phường 13',district:'Quận 1',description:'Căn 991A: sân vườn riêng',room_detail:{other_amenities:'BBQ sân thượng'}};
  assert.equal(roomMatchesSearch(room,'991a',false),false);assert.equal(roomMatchesSearch(room,'991a',true),true);
  assert.equal(roomMatchesSearch(room,'A105',false),true);

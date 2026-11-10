@@ -1,5 +1,5 @@
 import type { RoomCardRoom } from "@/components/RoomCard";
-import { roomFeatureStatusTokens, type RoomFeature } from "./features";
+import { roomFeatureOptions, roomFeatureStatusTokens, type RoomFeature } from "./features";
 import { normalizeHomeSearchKeyword } from "./search";
 import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 
@@ -146,7 +146,7 @@ export function parseRecommendationRequest(input: unknown): { filters: Recommend
     districts: list(raw.districts), roomTypes: list(raw.roomTypes), move: move as RecommendationFilters["move"] || null,
     petPolicies: list(raw.petPolicies, ["cat", "dog", "nopet"]) as RecommendationFilters["petPolicies"],
     contractTerms: list(raw.contractTerms, ["short", "long"]) as RecommendationFilters["contractTerms"],
-    features: list(raw.features, ["balcony", "window"]) as RoomFeature[], status, badge: badge as RoomBadge | null,
+    features: list(raw.features, roomFeatureOptions.map(option => option.value)) as RoomFeature[], status, badge: badge as RoomBadge | null,
     sortMode: text(raw.sortMode), center,
   }, excludeIds };
 }

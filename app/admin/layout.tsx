@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import StaffAccountsButton from "./StaffAccountsButton";
 import AdminLinkPending from "./AdminLinkPending";
 import { getAdminRequestContext } from "./request-context";
+import { canAccessZaloImports } from "@/lib/zalo-import/access";
 
 const navLinkClass = "relative inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold hover:bg-white/10 sm:text-sm";
 
@@ -25,10 +26,13 @@ async function NewRequestsBadge() {
 }
 
 async function AdminActions() {
-  const { level } = await getAdminRequestContext();
+  const { level, user } = await getAdminRequestContext();
   if (!level) return null;
   return (
     <>
+      {canAccessZaloImports(user) && (
+        <Link href="/admin/zalo-imports" className={navLinkClass}>Trang duyệt phòng<AdminLinkPending /></Link>
+      )}
       {level === 1 && <StaffAccountsButton />}
       <Link href="/admin/room-inquiries" className={navLinkClass}>
         Tư vấn / xem phòng

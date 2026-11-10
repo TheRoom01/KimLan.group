@@ -58,6 +58,8 @@ export type RoomDetail = {
   has_balcony: boolean
   has_window: boolean
   fingerprint_lock: boolean
+  no_live_in_landlord: boolean
+  accepts_foreign_tenants: boolean
   free_time: boolean
   allow_pet?: boolean
   allow_cat: boolean

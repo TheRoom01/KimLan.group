@@ -15,6 +15,7 @@ const labels: Record<string, string> = {
   fingerprint_lock: "Khóa vân tay", free_time: "Giờ tự do", allow_pet: "Cho nuôi thú cưng", allow_cat: "Cho nuôi mèo",
   allow_dog: "Cho nuôi chó", no_pet: "Cấm thú cưng", short_term: "Ngắn hạn", long_term: "Dài hạn",
   other_amenities: "Tiện ích khác", detail_json: "Thông tin bổ sung", has_balcony: "Ban công", has_window: "Cửa sổ",
+  no_live_in_landlord: "Không chung chủ", accepts_foreign_tenants: "Nhận khách nước ngoài",
 };
 function valueText(value: any, field: string): string {
   if (value == null || value === "") return "Chưa có";

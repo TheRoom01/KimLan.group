@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
+import { roomFeatureStatusTokens, tenantRoomFeatureOptions } from "@/lib/rooms/features";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,10 @@ export async function GET(request: Request) {
     if (statuses?.some((status) => !["all", "Đang trống", "Sắp trống", "Đã thuê"].includes(status))) {
       throw new Error("Trạng thái phòng không hợp lệ");
     }
+    const features = listParam(params, "features") ?? [];
+    const amenityTokens = roomFeatureStatusTokens(
+      features.filter(feature => tenantRoomFeatureOptions.some(option => option.value === feature)),
+    );
     const rpcParams = {
       p_west: west, p_south: south, p_east: east, p_north: north,
       p_search: params.get("search")?.trim().slice(0, 120) || null,
@@ -47,7 +52,7 @@ export async function GET(request: Request) {
       p_max_price: finiteParam(params, "maxPrice", 0, 1_000_000_000, false),
       p_districts: listParam(params, "district"),
       p_room_types: listParam(params, "roomType"),
-      p_statuses: statuses,
+      p_statuses: amenityTokens.length ? [...(statuses ?? []), ...amenityTokens] : statuses,
       p_center_lat: centerLat, p_center_lng: centerLng, p_radius_km: radius,
       p_limit: 3000,
     };

@@ -1,13 +1,45 @@
 "use client";
 
 import React, { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
-import FilterChoicePanel from "@/components/FilterChoicePanel";
-import type { RoomFeature } from "@/lib/rooms/features";
+import { AppWindow, CalendarCheck, CalendarClock, Cat, Dog, Globe2, LayoutGrid, ShieldCheck, createLucideIcon, type LucideIcon } from "lucide-react";
+import FilterChoicePanel, { AMENITIES_MODAL_QUERY } from "@/components/FilterChoicePanel";
+import { roomFeatureOptions, tenantRoomFeatureOptions, type RoomFeature } from "@/lib/rooms/features";
 
 import type { SortMode } from "@/lib/rooms/listFilters";
 export type { SortMode } from "@/lib/rooms/listFilters";
 type RoomStatusFilter = "Đang trống" | "Sắp trống" | "Đã thuê";
 const ROOM_STATUS_SEPARATOR = ",";
+
+const Stairs = createLucideIcon("Stairs", [["path", { d: "M3 21h5v-5h5v-5h5V6h3", key: "steps" }]]);
+const Elevator = createLucideIcon("Elevator", [
+  ["rect", { x: "4", y: "8", width: "16", height: "13", rx: "1", key: "doors" }],
+  ["path", { d: "M12 8v13M7 5l2-2 2 2m2-2 2 2 2-2", key: "arrows" }],
+]);
+const Balcony = createLucideIcon("Balcony", [["path", { d: "M8 12V7a4 4 0 0 1 8 0v5M3 12h18v8H3zM8 12v8m4-8v8m4-8v8", key: "rail" }]]);
+const NoPets = createLucideIcon("NoPets", [
+  ["path", { d: "M6 13a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Zm5-7a1.5 2 0 1 0-3 0 1.5 2 0 0 0 3 0Zm7 0a1.5 2 0 1 0-3 0 1.5 2 0 0 0 3 0Zm3 6a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM7 17c0-2 2-2 3-4s3-2 4 0 3 2 3 4-2 3-5 2-5 0-5-2ZM3 3l18 18", key: "paw" }],
+]);
+const featureIcons: Record<RoomFeature, LucideIcon> = {
+  balcony: Balcony, window: AppWindow, accepts_foreign_tenants: Globe2, no_live_in_landlord: ShieldCheck,
+};
+
+function AmenityGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="room-amenities-group">
+    <h4 className="text-sm font-semibold text-[#FFE7BE]/75">{title}</h4>
+    <div className="room-amenities-options">{children}</div>
+  </section>;
+}
+
+function AmenityOption({ label, icon: Icon, checked, onChange, radio = false }: {
+  label: string; icon: LucideIcon; checked: boolean; onChange: () => void; radio?: boolean;
+}) {
+  return <label className={optionClass(checked)}>
+    <input type={radio ? "radio" : "checkbox"} name={radio ? "moveFilter" : undefined}
+      checked={checked} className={radio ? radioClass : checkboxClass} onChange={onChange} />
+    <Icon size={17} strokeWidth={1.75} aria-hidden="true" />
+    <span className="text-sm font-medium leading-tight">{label}</span>
+  </label>;
+}
 
 type FilterBarProps = {
   districts: string[];
@@ -260,6 +292,7 @@ const formatMobilePriceField = (raw: string) => {
     const target = e.target as Node | null;
 
     // Nếu scroll bên trong dropdown panel => không đóng
+    if (openFilter === "amenities" && window.matchMedia(AMENITIES_MODAL_QUERY).matches) return;
     if (panel && target && panel.contains(target)) return;
 
     closeAllFilters();
@@ -421,6 +454,13 @@ const toggleStatus = (value: RoomStatusFilter) => {
   <section className="home-filter w-full max-w-[1440px] mx-auto px-4 md:px-6 py-5 space-y-5">
     {/* Search */}
     <div className="home-search relative" data-has-filters={activeFilterCount > 0 ? "true" : undefined}>
+      <button type="button" className="home-filter-toggle" aria-expanded={panelOpen} aria-controls={panelId}
+        aria-label={activeFilterCount > 0 ? `Bộ lọc, ${activeFilterCount} nhóm đang áp dụng` : undefined}
+        onClick={() => { setPanelOpen(value => !value); closeAllFilters(); }}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg>
+        <span>Bộ lọc</span>
+        {activeFilterCount > 0 && <span className="home-filter-count" aria-hidden="true">{activeFilterCount}</span>}
+      </button>
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -439,20 +479,13 @@ const toggleStatus = (value: RoomStatusFilter) => {
           ×
         </button>
       )}
-      <button type="button" className="home-filter-toggle" aria-expanded={panelOpen} aria-controls={panelId}
-        aria-label={activeFilterCount > 0 ? `Bộ lọc, ${activeFilterCount} nhóm đang áp dụng` : undefined}
-        onClick={() => { setPanelOpen(value => !value); closeAllFilters(); }}>
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg>
-        <span>Bộ lọc</span>
-        {activeFilterCount > 0 && <span className="home-filter-count" aria-hidden="true">{activeFilterCount}</span>}
-      </button>
     </div>
 
     <div id={panelId} hidden={!panelOpen} className="home-filter-controls">
         {/* Overlay bắt click-outside */}
     {openFilter !== null && (
       <div
-        className="fixed inset-0 z-[1000] bg-black/25 backdrop-blur-[1px]"
+        className={`fixed inset-0 z-[1000] bg-black/25 backdrop-blur-[1px]${openFilter === "amenities" ? " room-amenities-overlay" : ""}`}
         onClick={closeAllFilters}
         onPointerDown={closeAllFilters}
       />
@@ -621,127 +654,50 @@ const toggleStatus = (value: RoomStatusFilter) => {
       </button>
 
       {openFilter === "amenities" && (
-        <FilterChoicePanel title="Tiện nghi" anchorRef={amenitiesButtonRef} panelRef={openPanelRef}
+        <FilterChoicePanel title="Tiện nghi" amenities width={560} anchorRef={amenitiesButtonRef} panelRef={openPanelRef}
           onClear={() => { setMoveFilter(null); setPetFilters([]); setTermFilters([]); setFeatureFilters([]); }}
           onClose={closeAllFilters}>
-            <div className="grid grid-cols-1 gap-2">
-              <div className="space-y-1.5">
-                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
-                  Di chuyển
-                </div>
-
-                {[
-                  [null, "Tất cả"],
-                  ["elevator", "Thang máy"],
-                  ["stairs", "Thang bộ"],
-                ].map(([value, label]) => (
-                  <label
-                    key={String(value)}
-                    className={optionClass(moveFilter === value)}
-                  >
-                    <input
-                      type="radio"
-                      name="moveFilter"
-                      checked={moveFilter === value}
-                      className="
-                        h-4 w-4
-                        accent-[#D8B487]
-                      "
-                      onChange={() => setMoveFilter(value as any)}
-                    />
-                    <span className="text-[14px] font-medium leading-tight">
-                      {label}
-                    </span>
-                  </label>
-                ))}
-
-                <div className="mt-1 border-t border-white/20 pt-0.5 md:hidden" />
-                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">Không gian phòng</div>
-                {([["balcony", "Ban công"], ["window", "Cửa sổ"]] as const).map(([value,label]) => (
-                  <label key={value} className={optionClass(featureFilters.includes(value))}>
-                    <input type="checkbox" className={checkboxClass} checked={featureFilters.includes(value)}
-                      onChange={() => setFeatureFilters(current => current.includes(value) ? current.filter(item=>item!==value) : [...current,value])} />
-                    <span className="text-[14px] font-medium leading-tight">{label}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
-                  Thú Cưng
-                </div>
-
-                {[
-                  ["cat", "Nuôi mèo"],
-                  ["dog", "Nuôi chó"],
-                  ["nopet", "Không pet"],
-                ].map(([value, label]) => {
-                  const checked = petFilters.includes(
-                    value as "cat" | "dog" | "nopet"
-                  );
-
-                  return (
-                    <label key={value} className={optionClass(checked)}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        className="
-                          h-4 w-4 rounded-[5px]
-                          border border-white/40
-                          bg-white/5
-                          accent-[#D8B487]
-                        "
-                        onChange={() =>
-                          togglePet(value as "cat" | "dog" | "nopet")
-                        }
-                      />
-                      <span className="text-[14px] font-medium leading-tight">
-                        {label}
-                      </span>
-                    </label>
-                  );
-                })}
-
-                <div className="mt-1 border-t border-white/20 pt-0.5 md:hidden" />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="text-[14px] font-semibold text-[#FFE7BE]/75">
-                  Thời hạn HĐ
-                </div>
-
-                {[
-                  ["short", "Ngắn hạn"],
-                  ["long", "Dài hạn"],
-                ].map(([value, label]) => {
-                  const checked = termFilters.includes(
-                    value as "short" | "long"
-                  );
-
-                  return (
-                    <label key={value} className={optionClass(checked)}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        className="
-                          h-4 w-4 rounded-[5px]
-                          border border-white/40
-                          bg-white/5
-                          accent-[#D8B487]
-                        "
-                        onChange={() =>
-                          toggleTerm(value as "short" | "long")
-                        }
-                      />
-                      <span className="text-[14px] font-medium leading-tight">
-                        {label}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
+          <AmenityGroup title="Di chuyển">
+            {([
+              [null, "Tất cả", LayoutGrid],
+              ["elevator", "Thang máy", Elevator],
+              ["stairs", "Thang bộ", Stairs],
+            ] as const).map(([value, label, icon]) => (
+              <AmenityOption key={label} label={label} icon={icon} radio checked={moveFilter === value}
+                onChange={() => setMoveFilter(value)} />
+            ))}
+          </AmenityGroup>
+          <AmenityGroup title="Không gian phòng">
+            {roomFeatureOptions.filter(({ value }) => value === "balcony" || value === "window").map(({ value, label }) => (
+              <AmenityOption key={value} label={label} icon={featureIcons[value]} checked={featureFilters.includes(value)}
+                onChange={() => setFeatureFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value])} />
+            ))}
+          </AmenityGroup>
+          <AmenityGroup title="Thú cưng">
+            {([
+              ["cat", "Nuôi mèo", Cat],
+              ["dog", "Nuôi chó", Dog],
+              ["nopet", "Không pet", NoPets],
+            ] as const).map(([value, label, icon]) => (
+              <AmenityOption key={value} label={label} icon={icon} checked={petFilters.includes(value)}
+                onChange={() => togglePet(value)} />
+            ))}
+          </AmenityGroup>
+          <AmenityGroup title="Thời hạn HĐ">
+            {([
+              ["short", "Ngắn hạn", CalendarClock],
+              ["long", "Dài hạn", CalendarCheck],
+            ] as const).map(([value, label, icon]) => (
+              <AmenityOption key={value} label={label} icon={icon} checked={termFilters.includes(value)}
+                onChange={() => toggleTerm(value)} />
+            ))}
+          </AmenityGroup>
+          <AmenityGroup title="Quy định / Nội quy">
+            {[...tenantRoomFeatureOptions].reverse().map(({ value, label }) => (
+              <AmenityOption key={value} label={label} icon={featureIcons[value]} checked={featureFilters.includes(value)}
+                onChange={() => setFeatureFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value])} />
+            ))}
+          </AmenityGroup>
         </FilterChoicePanel>
       )}
     </div>

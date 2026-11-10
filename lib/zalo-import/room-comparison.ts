@@ -6,6 +6,7 @@ export const DETAIL_UPDATE_FIELDS = [
   "parking_fee_value", "parking_fee_unit", "other_fee_value", "other_fee_note", "has_elevator", "has_stairs",
   "shared_washer", "private_washer", "shared_dryer", "private_dryer", "has_parking", "has_basement", "fingerprint_lock",
   "free_time", "allow_pet", "allow_cat", "allow_dog", "no_pet", "short_term", "long_term", "other_amenities", "detail_json", "has_balcony", "has_window",
+  "no_live_in_landlord", "accepts_foreign_tenants",
 ] as const;
 export type ImportType = "CREATE" | "UPDATE" | "NEEDS_REVIEW";
 export type RoomSnapshot = { room: Record<string, any>; detail: Record<string, any> | null; media: any[] };

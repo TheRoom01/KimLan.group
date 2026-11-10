@@ -1,6 +1,7 @@
 // @ts-ignore Node built-in type is available in the project runtime.
 import crypto from "crypto";
 import { normalizedStreetKey } from "../../../lib/rooms/street";
+import { houseNumberSource } from "../../../lib/zalo-import/house-number";
 
 import type {
   SemanticAlbumPreview,
@@ -163,6 +164,11 @@ function isDatedRoomMarkerText(input: unknown) {
       )
     );
 }
+const addressKeyPattern = new RegExp(
+  String.raw`^(${houseNumberSource})\s+((?:3\s*/\s*2|3\s+thang\s+2)|[a-z][a-z0-9.'/\s-]{2,100}?)(?=\s*(?:,|\(|-|\||$|\b(?:p\.?|f\d{1,2}|phuong|q\.?|quan|tp|tphcm|hotline)\b))`,
+  "i"
+);
+
 export function extractAddressKey(input: unknown) {
   const text = cleanText(input);
   if (!text) return "";
@@ -199,9 +205,7 @@ export function extractAddressKey(input: unknown) {
     .filter(Boolean);
 
   for (const line of candidates) {
-    const match = line.match(
-      /^(\d+[a-z]*(?:(?:\/|-)\d+[a-z]*)*)\s+((?:3\s*\/\s*2|3\s+thang\s+2)|[a-z][a-z0-9.'\/\s-]{2,100}?)(?=\s*(?:,|\(|-|\||$|\b(?:p\.?|f\d{1,2}|phuong|q\.?|quan|tp|tphcm|hotline)\b))/i
-    );
+    const match = line.match(addressKeyPattern);
 
     if (!match?.[1] || !match?.[2]) {
       continue;

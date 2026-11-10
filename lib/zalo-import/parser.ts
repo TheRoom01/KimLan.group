@@ -1,5 +1,6 @@
 import { applyImportAmenityDefaults, vacancyDateFromText, withoutStructuredAmenities } from "./listing-fields";
 import { normalizedStreetKey } from "../rooms/street";
+import { houseNumberSource } from "./house-number";
 export { normalizedStreetKey } from "../rooms/street";
 export type ParsedZaloRoom = {
   roomPayload: Record<string, any>;
@@ -1280,11 +1281,6 @@ function extractAddressParts(
 
 
 
-  /* ADDRESS_PARSER_V7_ALPHANUMERIC_HOUSE_NUMBER */
-  const houseNumberSource =
-    "(?:[A-Za-z]{1,4})?\\d+[A-Za-z0-9]{0,4}" +
-    "(?:\\s*(?:\\/|-)\\s*\\d+[A-Za-z0-9]{0,4})*";
-
   const houseAndStreetPattern =
     new RegExp(
       `^(${houseNumberSource})\\s+((?:3(?:\\s*[/]\\s*2|\\s+Tháng\\s+2)|[A-Za-zÀ-ỹ])[A-Za-zÀ-ỹ0-9.'’/\\s-]{0,140})$`,
@@ -1951,15 +1947,19 @@ export function detectZaloBuildingCandidates(
   const addressLabelPattern =
     /(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?|vị\s*trí|vi\s*tri|đc|dc)\s*[:\-]/i;
 
-  const houseNumberAtStartPattern =
-    /^(?:[A-Za-z]{1,4})?\d+[A-Za-z]{0,4}(?:\s*(?:\/|-)\s*\d+[A-Za-z]{0,4})*\s+[A-Za-zÀ-ỹĐđ]/i;
+  const houseAndStreetStartSource = String.raw`${houseNumberSource}\s+[A-Za-zÀ-ỹĐđ]`;
+  const houseNumberAtStartPattern = new RegExp(`^${houseAndStreetStartSource}`, "i");
 
   /*
    * ADDRESS_PARSER_V5_1_INLINE_BUILDING_HEADER
    * Nhận địa chỉ đặt ngay sau tiêu đề dự án/tòa nhà.
    */
-  const inlineProjectAddressPattern =
-    /^(?:(?:hifriendz\s*)?(?:(?:thông\s*báo|thong\s*bao|cập\s*nhật|cap\s*nhat|khai\s*trương|khai\s*truong|mở\s*bán|mo\s*ban)\s+)?(?:dự\s*án|du\s*an|chdv|căn\s*hộ\s*dịch\s*vụ|can\s*ho\s*dich\s*vu|tòa\s*nhà|toa\s*nha)(?:\s+(?:mới|moi|duy\s*trì|duy\s*tri|cao\s*cấp|cao\s*cap))*(?:\s+(?:q(?:uận)?|quan)\.?\s*\d{1,2})?\s*[:\-–—]\s*(?:(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?)\s*[:\-]?\s*)?(?:[A-Za-z]{1,4})?\d+[A-Za-z]{0,4}(?:(?:\/|-)\d+[A-Za-z]{0,4})*\s+[A-Za-zÀ-ỹĐđ])/i;
+  const inlineProjectAddressPrefix =
+    /^(?:hifriendz\s*)?(?:(?:thông\s*báo|thong\s*bao|cập\s*nhật|cap\s*nhat|khai\s*trương|khai\s*truong|mở\s*bán|mo\s*ban)\s+)?(?:dự\s*án|du\s*an|chdv|căn\s*hộ\s*dịch\s*vụ|can\s*ho\s*dich\s*vu|tòa\s*nhà|toa\s*nha)(?:\s+(?:mới|moi|duy\s*trì|duy\s*tri|cao\s*cấp|cao\s*cap))*(?:\s+(?:q(?:uận)?|quan)\.?\s*\d{1,2})?\s*[:\-–—]\s*(?:(?:địa\s*chỉ(?:\s*dự\s*án)?|dia\s*chi(?:\s*du\s*an)?)\s*[:\-]?\s*)?/i;
+  const inlineProjectAddressPattern = new RegExp(
+    inlineProjectAddressPrefix.source + houseAndStreetStartSource,
+    "i"
+  );
 
 
   for (

@@ -81,7 +81,7 @@
   .admin-navigation-links {
     display: grid !important;
     flex: 1 1 auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 2px !important;
     overflow: visible;
   }
@@ -95,7 +95,7 @@
     font-size: clamp(9px, 2.45vw, 11px) !important;
     line-height: 1.15;
     text-align: center;
-    white-space: nowrap;
+    white-space: normal;
   }
 
   .admin-navigation-links [aria-label$="yêu cầu mới"] {
@@ -117,7 +117,7 @@
 
   .admin-app-frame {
     display: grid;
-    grid-template-columns: 184px minmax(0, 1fr);
+    grid-template-columns: 92px minmax(0, 1fr);
     max-width: none !important;
     min-height: 100dvh;
     padding: 0 !important;
@@ -134,7 +134,7 @@
     align-items: stretch !important;
     gap: 18px !important;
     margin: 0 !important;
-    padding: 30px 12px 18px !important;
+    padding: 24px 6px 18px !important;
     border: 0 !important;
     border-radius: 0 !important;
     background: linear-gradient(168deg, #2e160d 0%, #4c2818 58%, #2b160e 100%) !important;
@@ -148,8 +148,8 @@
   }
 
   .admin-navigation > a:first-child img {
-    width: 92px !important;
-    height: 92px !important;
+    width: 64px !important;
+    height: 64px !important;
   }
 
   .admin-navigation-links {
@@ -160,11 +160,14 @@
     gap: 7px !important;
   }
 
-  .admin-navigation-links > * {
+  .admin-navigation-links > :is(a, button) {
     width: 100%;
     min-height: 42px;
-    justify-content: flex-start;
-    padding-inline: 12px !important;
+    justify-content: center;
+    padding-inline: 4px !important;
+    font-size: 12px !important;
+    line-height: 1.25;
+    text-align: center;
     border: 1px solid transparent;
     border-radius: 11px !important;
     color: #fff6e8;
@@ -620,7 +623,7 @@
 
 @media (min-width: 1100px) and (max-width: 1320px) {
   .admin-app-frame {
-    grid-template-columns: 164px minmax(0, 1fr);
+    grid-template-columns: 82px minmax(0, 1fr);
   }
 
   .admin-content-body {

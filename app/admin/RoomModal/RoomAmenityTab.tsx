@@ -1,6 +1,11 @@
 'use client'
 
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  AppWindow, Ban, Bike, CalendarCheck, CalendarClock, CarFront, Cat, Clock3,
+  Dog, Fingerprint, Globe2, ShieldCheck, Sun, WashingMachine, Wind,
+  createLucideIcon, type LucideIcon,
+} from 'lucide-react'
 import type { RoomDetail } from './types'
 import { amenityConfig } from './room.config'
 import { sectionBox } from './styles'
@@ -8,6 +13,37 @@ import { sectionBox } from './styles'
 type Props = {
   detailForm: RoomDetail
   onChange: (data: Partial<RoomDetail>) => void
+}
+
+const Stairs = createLucideIcon('Stairs', [
+  ['path', { d: 'M3 21h5v-5h5v-5h5V6h3', key: 'steps' }],
+])
+
+const Elevator = createLucideIcon('Elevator', [
+  ['rect', { x: '4', y: '8', width: '16', height: '13', rx: '1', key: 'doors' }],
+  ['path', { d: 'M12 8v13M7 5l2-2 2 2m2-2 2 2 2-2', key: 'arrows' }],
+])
+
+const amenityIcons: Partial<Record<(typeof amenityConfig)[number]['key'], LucideIcon>> = {
+  fingerprint_lock: Fingerprint,
+  free_time: Clock3,
+  no_live_in_landlord: ShieldCheck,
+  has_stairs: Stairs,
+  has_elevator: Elevator,
+  no_pet: Ban,
+  allow_cat: Cat,
+  allow_dog: Dog,
+  short_term: CalendarClock,
+  has_basement: CarFront,
+  has_parking: Bike,
+  long_term: CalendarCheck,
+  private_washer: WashingMachine,
+  shared_washer: WashingMachine,
+  accepts_foreign_tenants: Globe2,
+  private_dryer: Wind,
+  shared_dryer: Wind,
+  has_balcony: Sun,
+  has_window: AppWindow,
 }
 
 export default function RoomAmenityTab({ detailForm, onChange }: Props) {
@@ -32,15 +68,18 @@ export default function RoomAmenityTab({ detailForm, onChange }: Props) {
         {amenityConfig.map(item => {
           const key = item.key as keyof RoomDetail
           const checked = Boolean((detailForm as any)[key])
+          const Icon = amenityIcons[item.key]
 
           return (
  
             <button
               key={String(key)}
               type="button"
+              className={key === 'has_balcony' ? 'room-modal-amenity-new-row' : undefined}
               aria-pressed={checked}
               style={{
                 ...amenityCard,
+                ...(Icon ? amenityCardWithIcon : {}),
                 ...(checked ? amenityCardOn : {}),
               }}
               onClick={() =>
@@ -48,15 +87,19 @@ export default function RoomAmenityTab({ detailForm, onChange }: Props) {
               }
             >
               <span
+                className="room-modal-amenity-label"
                 style={{
                   ...amenityLabel,
                   ...(checked ? amenityLabelOn : {}),
                 }}
               >
-                {item.label}
+                {Icon && <Icon className="room-modal-amenity-icon" size={16} strokeWidth={1.75} aria-hidden="true" />}
+                <span>{item.label}</span>
               </span>
 
               <span
+                className="room-modal-amenity-switch"
+                aria-hidden="true"
                 style={{
                   ...switchTrack,
                   ...(checked ? switchTrackOn : {}),
@@ -123,6 +166,11 @@ const amenityCardOn: React.CSSProperties = {
   background: '#eff6ff',
   border: '1px solid #2563eb',
   boxShadow: '0 0 0 1px rgba(37, 99, 235, 0.12)',
+}
+
+const amenityCardWithIcon: React.CSSProperties = {
+  paddingLeft: 4,
+  gap: 3,
 }
 
 const amenityLabel: React.CSSProperties = {

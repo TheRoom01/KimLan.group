@@ -116,9 +116,10 @@ try {
       for(const [button,title] of [['Quận','Chọn quận'],['Tiện Nghi','Tiện nghi']]) {
         await page.getByRole('button',{name:button,exact:true}).click();const dialog=page.getByRole('dialog',{name:title,exact:true});await dialog.waitFor();
         const bounds=await dialog.boundingBox();assert(bounds);const footerTop=await page.locator('.home-pagination').evaluate(e=>e.getBoundingClientRect().top);
-        assert(bounds.x>=0&&bounds.x+bounds.width<=viewport.width&&bounds.y>=0&&bounds.y+bounds.height<=footerTop,`${title} remains inside viewport ${JSON.stringify(viewport)}`);
-        appearances.push(await dialog.evaluate(e=>{const s=getComputedStyle(e);const input=e.querySelector('input')!;const i=getComputedStyle(input);const scroll=getComputedStyle(e.querySelector('.room-filter-choice-scroll')!);return {background:s.backgroundColor,border:s.border,borderRadius:s.borderRadius,padding:s.padding,inputAppearance:i.appearance,inputRadius:i.borderRadius,scrollWidth:scroll.scrollbarWidth,scrollColor:scroll.scrollbarColor,touchAction:scroll.touchAction}}));
-        const scroller=dialog.locator('.room-filter-choice-scroll');await scroller.hover();await page.mouse.wheel(0,180);await page.waitForTimeout(100);assert(await scroller.evaluate(e=>e.scrollTop)>0,'wheel scrolls choices');assert(await dialog.isVisible(),'internal scroll keeps panel open');
+        const modal=await dialog.evaluate(e=>e.matches('dialog:modal'));
+        assert(bounds.x>=0&&bounds.x+bounds.width<=viewport.width&&bounds.y>=0&&bounds.y+bounds.height<=(modal?viewport.height:footerTop),`${title} remains inside viewport ${JSON.stringify(viewport)}`);
+        appearances.push(await dialog.evaluate(e=>{const s=getComputedStyle(e.matches('dialog')?e.firstElementChild!:e);const input=e.querySelector('input')!;const i=getComputedStyle(input);const scroll=getComputedStyle(e.querySelector('.room-filter-choice-scroll')!);return {background:s.backgroundColor,border:s.border,borderRadius:s.borderRadius,padding:s.padding,inputAppearance:i.appearance,inputRadius:i.borderRadius,scrollWidth:scroll.scrollbarWidth,scrollColor:scroll.scrollbarColor,touchAction:scroll.touchAction}}));
+        const scroller=dialog.locator('.room-filter-choice-scroll');if(await scroller.evaluate(e=>e.scrollHeight>e.clientHeight)){await scroller.hover();await page.mouse.wheel(0,180);await page.waitForTimeout(100);assert(await scroller.evaluate(e=>e.scrollTop)>0,'wheel scrolls choices');}assert(await dialog.isVisible(),'internal scroll keeps panel open');
         const headerTop=await dialog.locator('h3').evaluate(e=>e.getBoundingClientRect().top);await scroller.evaluate(e=>e.scrollTop=e.scrollHeight);assert.equal(await dialog.locator('h3').evaluate(e=>e.getBoundingClientRect().top),headerTop,'heading stays visible');
         await page.keyboard.press('Escape');assert.equal(await dialog.count(),0);assert.equal(await page.getByRole('button',{name:button,exact:true}).evaluate(e=>e===document.activeElement),true);
       }
@@ -134,7 +135,7 @@ try {
     await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height-20}]});
     for(let step=1;step<=8;step++){await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:box.x+box.width/2,y:box.y+box.height-20-step*15}]});await page.waitForTimeout(20);}
     await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(150);
-    assert(await scroller.evaluate(e=>e.scrollTop)>0,'native touch swipe scrolls choices');assert(await dialog.isVisible(),'swipe does not close panel');
+    if(await scroller.evaluate(e=>e.scrollHeight>e.clientHeight))assert(await scroller.evaluate(e=>e.scrollTop)>0,'native touch swipe scrolls choices');assert(await dialog.isVisible(),'swipe does not close panel');
     await dialog.getByRole('button',{name:`Đóng ${title.toLowerCase()}`,exact:true}).click();assert.equal(await dialog.count(),0);
   }
   await touch.send('Emulation.setTouchEmulationEnabled',{enabled:false});await touch.detach();

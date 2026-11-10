@@ -1,9 +1,36 @@
 import assert from "node:assert/strict";
+import { extractAddressKey } from "./parsers/utils";
 
 import {
   detectZaloBuildingCandidates,
   parseZaloRoomText,
 } from "../../lib/zalo-import/parser";
+
+const thaiVanLungText = `8A/A18A Thái Văn Lung, Bến Nghé, Q1
+- Phí điện: 4.000/Kwh
+- Phí nước: 100k/ng
+- Phí xe: gửi ngoài
+- Thang: bộ
+- Có máy giặt riêng
+
+1PN/CS - 8.200.000 - P.201 - trống
+Mã phòng: P.201`;
+
+for (const text of [thaiVanLungText, `- Phí dịch vụ: 200k/p\n${thaiVanLungText}`]) {
+  const { roomPayload } = parseZaloRoomText(text);
+  assert.equal(roomPayload.house_number, "8A/A18A");
+  assert.equal(roomPayload.address, "Thái Văn Lung");
+  assert.equal(roomPayload.ward, "Bến Nghé");
+  assert.equal(roomPayload.district, "Quận 1");
+  assert.equal(roomPayload.room_code, "201");
+  assert.equal(roomPayload.price, 8_200_000);
+
+  const candidates = detectZaloBuildingCandidates(text);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].houseNumber, "8A/A18A");
+  assert.equal(candidates[0].address, "Thái Văn Lung");
+  assert.match(extractAddressKey(text), /^8a\/a18a\b/);
+}
 
 const nguyenTraiText = `
 DỰ ÁN DUY TRÌ: 517/18 Nguyễn Trãi, P An Đông Q5

@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Layers3, Loader2, MapPin, Search, SlidersHorizontal, X } from "lucide-react";
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap, type MapMouseEvent } from "maplibre-gl";
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
+import { normalizeRoomFeatures, tenantRoomFeatureOptions } from "@/lib/rooms/features";
 import type { MapBounds, MapRoom } from "@/lib/map/types";
 import { clearViewedRooms, getViewedRoomIds, markRoomViewed, VIEWED_ROOMS_CHANGED_EVENT } from "@/lib/viewedRooms";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
@@ -657,6 +658,8 @@ export default function MapSearchClient() {
   const districtParam = searchParams.get("district") ?? "";
   const roomTypeParam = searchParams.get("roomType") ?? "";
   const statusParam = searchParams.get("status") ?? "";
+  const featureParam = searchParams.get("features") ?? "";
+  const selectedFeatures = useMemo(() => normalizeRoomFeatures(featureParam), [featureParam]);
   const minPriceParam = searchParams.get("minPrice") ?? "";
   const maxPriceParam = searchParams.get("maxPrice") ?? "";
   const selectedDistricts = useMemo(() => listParam(districtParam), [districtParam]);
@@ -678,9 +681,12 @@ export default function MapSearchClient() {
     if (selectedDistricts.length) labels.push(`Quận: ${selectedDistricts.join(", ")}`);
     if (selectedRoomTypes.length) labels.push(`Loại: ${selectedRoomTypes.join(", ")}`);
     labels.push(`Trạng thái: ${allStatusesSelected ? "Tất cả" : selectedStatuses.join(", ")}`);
+    for (const { value, label } of tenantRoomFeatureOptions) {
+      if (selectedFeatures.includes(value)) labels.push(label);
+    }
     if (nearby) labels.push(`Gần tôi: ${nearby.radius} km`);
     return labels;
-  }, [allStatusesSelected, appliedPriceRange, hasPriceFilter, nearby, selectedDistricts, selectedRoomTypes, selectedStatuses]);
+  }, [allStatusesSelected, appliedPriceRange, hasPriceFilter, nearby, selectedDistricts, selectedFeatures, selectedRoomTypes, selectedStatuses]);
 
   useEffect(() => {
     if (previewOpeningRoomId && pathname !== "/map") setPreviewOpeningRoomId(null);
@@ -810,6 +816,7 @@ export default function MapSearchClient() {
       maxPrice: next.has("maxPrice") ? Number(next.get("maxPrice")) : undefined,
       districts: listParam(next.get("district")),
       roomTypes: listParam(next.get("roomType")),
+      amenities: normalizeRoomFeatures(next.get("features")),
     });
     const previous = getCustomerFilters();
     for (const [name, value] of Object.entries(updates)) {
@@ -822,7 +829,7 @@ export default function MapSearchClient() {
     router.replace(`/map?${queryStringRef.current}`, { scroll: false });
   }, [router]);
 
-  const toggleListFilter = useCallback((name: "district" | "roomType", option: string) => {
+  const toggleListFilter = useCallback((name: "district" | "roomType" | "features", option: string) => {
     const query = new URLSearchParams(queryStringRef.current);
     const current = listParam(query.get(name));
     const next = current.includes(option) ? current.filter((item) => item !== option) : [...current, option];
@@ -1094,7 +1101,7 @@ export default function MapSearchClient() {
       const controller = new AbortController(); abortRef.current = controller;
       setLoading(true); setError(null);
       const query = new URLSearchParams({ west: String(bounds.west), south: String(bounds.south), east: String(bounds.east), north: String(bounds.north) });
-      for (const key of ["search", "minPrice", "maxPrice", "district", "roomType", "status"]) { const value = searchParams.get(key); if (value) query.set(key, value); }
+      for (const key of ["search", "minPrice", "maxPrice", "district", "roomType", "status", "features"]) { const value = searchParams.get(key); if (value) query.set(key, value); }
       if (nearby) { query.set("lat", String(nearby.latitude)); query.set("lng", String(nearby.longitude)); query.set("radius", String(nearby.radius)); }
       try {
         const response = await fetch(`/api/map/rooms?${query}`, { signal: controller.signal });
@@ -1356,6 +1363,15 @@ export default function MapSearchClient() {
               onCommit={([min, max]) => setParams({ minPrice: String(min), maxPrice: String(max) })}
               onClear={() => setParams({ minPrice: "", maxPrice: "" })}
             />
+            <fieldset className="flex flex-wrap gap-2">
+              <legend className="mb-1 text-xs font-bold text-[#5d381f]">Tiện nghi</legend>
+              {tenantRoomFeatureOptions.map(({ value, label }) => (
+                <label key={value} className="flex items-center gap-1.5 rounded-lg border border-[#aa825d]/25 bg-white px-2 py-1.5 text-xs text-[#5d381f]">
+                  <input type="checkbox" checked={selectedFeatures.includes(value)} onChange={() => toggleListFilter("features", value)} />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
             <div className="grid grid-cols-3 gap-2" aria-label="Bộ lọc quận, loại phòng và trạng thái">
               <button type="button" aria-haspopup="dialog" aria-expanded={openOptionGroup === "district"} onClick={() => setOpenOptionGroup("district")} className={`flex min-w-0 items-center justify-between gap-1 rounded-xl border px-3 py-2.5 text-left text-xs font-bold text-[#5d381f] ${selectedDistricts.length ? "border-[#744722] bg-[#ead8c0]" : "border-[#aa825d]/25 bg-white/75"}`}><span className="truncate">Quận{selectedDistricts.length ? ` (${selectedDistricts.length})` : ""}</span><ChevronDown size={15} className="shrink-0" /></button>
               <button type="button" aria-haspopup="dialog" aria-expanded={openOptionGroup === "roomType"} onClick={() => setOpenOptionGroup("roomType")} className={`flex min-w-0 items-center justify-between gap-1 rounded-xl border px-3 py-2.5 text-left text-xs font-bold text-[#5d381f] ${selectedRoomTypes.length ? "border-[#744722] bg-[#ead8c0]" : "border-[#aa825d]/25 bg-white/75"}`}><span className="truncate">Loại phòng{selectedRoomTypes.length ? ` (${selectedRoomTypes.length})` : ""}</span><ChevronDown size={15} className="shrink-0" /></button>

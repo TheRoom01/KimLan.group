@@ -18,30 +18,23 @@ type AmenityBooleanKey = {
 
 // ✅ cấu hình tiện ích (key chắc chắn không undefined)
 export const amenityConfig: Array<{ key: AmenityBooleanKey; label: string }> = [
+  { key: 'fingerprint_lock', label: 'Khóa cửa vân tay' },
   { key: 'free_time', label: 'Giờ giấc tự do' },
-  /* ===== CƠ BẢN ===== */
-  { key: 'has_elevator', label: 'Thang máy' },
+  { key: 'no_live_in_landlord', label: 'Không chung chủ' },
   { key: 'has_stairs', label: 'Thang bộ' },
-  { key: 'has_balcony', label: 'Ban công' },
-  { key: 'has_window', label: 'Cửa sổ' },
-  { key: 'fingerprint_lock', label: 'Khoá cửa vân tay' },
-
-  /* ===== THÚ CƯNG ===== */
+  { key: 'has_elevator', label: 'Thang máy' },
+  { key: 'no_pet', label: 'Không thú cưng' },
   { key: 'allow_cat', label: 'Cho nuôi mèo' },
   { key: 'allow_dog', label: 'Cho nuôi chó' },
-  { key: 'no_pet', label: 'Không thú cưng' },
-
-  /* ===== GỬI XE ===== */
-  { key: 'has_parking', label: 'Có chỗ gửi xe' },
-  { key: 'has_basement', label: 'Có hầm để xe' },
-
-  /* ===== GIẶT / SẤY ===== */
-  { key: 'private_washer', label: 'Có máy giặt riêng' },
-  { key: 'shared_washer', label: 'Có máy giặt chung' },
-  { key: 'private_dryer', label: 'Có máy sấy riêng' },
-  { key: 'shared_dryer', label: 'Có máy sấy chung' },
-
-  /* ===== THỜI HẠN HĐ ===== */
   { key: 'short_term', label: 'Ngắn hạn' },
+  { key: 'has_basement', label: 'Có hầm xe' },
+  { key: 'has_parking', label: 'Có chỗ gửi xe' },
   { key: 'long_term', label: 'Dài hạn' },
+  { key: 'private_washer', label: 'Máy giặt riêng' },
+  { key: 'shared_washer', label: 'Máy giặt chung' },
+  { key: 'accepts_foreign_tenants', label: 'Nhận khách nước ngoài' },
+  { key: 'private_dryer', label: 'Máy sấy riêng' },
+  { key: 'shared_dryer', label: 'Máy sấy chung' },
+  { key: 'has_balcony', label: 'Ban công' },
+  { key: 'has_window', label: 'Cửa sổ' },
 ]

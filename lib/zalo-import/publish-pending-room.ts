@@ -193,6 +193,8 @@ function buildDetailInsertPayload(params: {
     ),
     free_time: toBoolean(detail.free_time, false),
     has_balcony: toBoolean(detail.has_balcony),
+    no_live_in_landlord: toBoolean(detail.no_live_in_landlord),
+    accepts_foreign_tenants: toBoolean(detail.accepts_foreign_tenants),
     has_window: toBoolean(detail.has_window),
     has_elevator: toBoolean(
       detail.has_elevator,

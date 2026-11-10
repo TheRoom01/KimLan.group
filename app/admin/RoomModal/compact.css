@@ -85,6 +85,13 @@ html:has(.room-modal-compact) { overflow: hidden; }
 .room-modal-compact .room-modal-fees { gap: 8px 10px !important; margin-bottom: 0 !important; }
 .room-modal-compact .room-modal-location > :not(:last-child) { margin-block-end: 8px; }
 .room-modal-compact .room-modal-footer { flex-shrink: 0; }
+.room-modal-amenity-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.room-modal-amenity-icon { flex: none; }
 .room-modal-compact :is(.room-modal-heading, .room-modal-footer) button {
   min-height: var(--room-modal-control);
   max-width: 100%;
@@ -112,7 +119,38 @@ html:has(.room-modal-compact) { overflow: hidden; }
     width: 100%;
   }
   .room-modal-compact .room-modal-section :is(input:not([type="file"], [type="hidden"], [type="checkbox"], [type="radio"]), textarea) { font-size: 16px !important; }
-  .room-modal-compact .room-modal-amenities { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .room-modal-compact .room-modal-amenities { gap: 6px !important; }
+  .room-modal-compact .room-modal-amenity-new-row { grid-column: 1; }
+  .room-modal-compact .room-modal-amenities > button {
+    min-height: 40px;
+    justify-content: center !important;
+    padding: 3px 4px !important;
+    font-size: clamp(10px, 3vw, 13px) !important;
+    text-align: center !important;
+    white-space: nowrap;
+  }
+  .room-modal-compact .room-modal-amenity-switch { display: none !important; }
+  .room-modal-compact .room-modal-amenity-label {
+    gap: 4px;
+    white-space: normal;
+  }
+  .room-modal-compact .room-modal-amenity-icon {
+    width: 1.15em;
+    height: 1.15em;
+  }
+  .room-modal-compact .room-modal-amenities > button[aria-pressed="true"] {
+    background: #2563eb !important;
+    color: #fff;
+  }
+  .room-modal-compact .room-modal-amenities > button[aria-pressed="true"] > span {
+    color: inherit !important;
+  }
+  .room-modal-compact .room-modal-footer .room-modal-save-button {
+    min-height: calc(var(--room-modal-control) * 1.5);
+    min-width: 66px;
+    padding-inline: 15px !important;
+    font-size: 15px;
+  }
   .room-modal-compact .room-modal-badges label { min-height: 44px; }
   .room-modal-compact .room-modal-info-fields > div:last-child > div:last-child { grid-column: auto; }
 }
