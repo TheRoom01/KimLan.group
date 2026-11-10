@@ -8,7 +8,7 @@ type Props = {
   logoSrc?: string;
 };
 
-export default function LogoIntroButton({ logoSrc = "/logo-ui.webp" }: Props) {
+export default function LogoIntroButton({ logoSrc = "/the-room-logo.webp" }: Props) {
   const [open, setOpen] = useState(false);
 
   return (

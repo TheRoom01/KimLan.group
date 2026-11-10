@@ -22,6 +22,8 @@ const NoPets = createLucideIcon("NoPets", [
 const featureIcons = {
   balcony: Balcony, window: AppWindow, accepts_foreign_tenants: Globe2,
 };
+type FeatureOption<Value extends keyof typeof featureIcons> =
+  Extract<(typeof roomFeatureOptions)[number], { value: Value }>;
 
 function AmenityGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="room-amenities-group">
@@ -668,7 +670,8 @@ const toggleStatus = (value: RoomStatusFilter) => {
             ))}
           </AmenityGroup>
           <AmenityGroup title="Không gian phòng">
-            {roomFeatureOptions.filter(({ value }) => value === "balcony" || value === "window").map(({ value, label }) => (
+            {roomFeatureOptions.filter((option): option is FeatureOption<"balcony" | "window"> =>
+              option.value === "balcony" || option.value === "window").map(({ value, label }) => (
               <AmenityOption key={value} label={label} icon={featureIcons[value]} checked={featureFilters.includes(value)}
                 onChange={() => setFeatureFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value])} />
             ))}
@@ -693,7 +696,8 @@ const toggleStatus = (value: RoomStatusFilter) => {
             ))}
           </AmenityGroup>
           <AmenityGroup title="Quy định / Nội quy">
-            {tenantRoomFeatureOptions.filter(({ value }) => value === "accepts_foreign_tenants").map(({ value, label }) => (
+            {tenantRoomFeatureOptions.filter((option): option is FeatureOption<"accepts_foreign_tenants"> =>
+              option.value === "accepts_foreign_tenants").map(({ value, label }) => (
               <AmenityOption key={value} label={label} icon={featureIcons[value]} checked={featureFilters.includes(value)}
                 onChange={() => setFeatureFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value])} />
             ))}

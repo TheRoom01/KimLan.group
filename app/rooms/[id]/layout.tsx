@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getRoomDetailForRender } from "@/lib/rooms/publicCache";
+import { defaultShareImage } from "@/lib/default-share-image";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ const base =
 let title = "The Room SG";
 let desc = "Xem chi tiết phòng";
 
-  let image = absUrl(base, "/hero.jpg"); // fallback
+  let image = "";
   const url = `${base.replace(/\/$/, "")}/rooms/${encodeURIComponent(id)}`;
 
   try {
@@ -135,13 +136,13 @@ desc = [
       url,
       title,
       description: desc,
-      images: [{ url: image }],
+      images: [image ? { url: image } : defaultShareImage],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description: desc,
-      images: [image],
+      images: [image || defaultShareImage],
     },
   };
 }

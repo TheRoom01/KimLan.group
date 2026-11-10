@@ -106,7 +106,7 @@ export default function OwnerSidebar() {
           >
             <span className="grid h-10 w-10 place-items-center overflow-hidden">
               <Image
-                src="/logo-ui.webp"
+                src="/the-room-logo.webp"
                 alt="The Room SG"
                 width={40}
                 height={40}

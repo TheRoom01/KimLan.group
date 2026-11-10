@@ -1,15 +1,14 @@
 const PUSH_ONLY = new URL(self.location.href).searchParams.has("push-only");
-const CACHE_VERSION = "kimlan-pwa-v2";
+const CACHE_VERSION = "kimlan-pwa-v3";
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const APP_SHELL = [
   "/offline.html",
   "/manifest.webmanifest",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/icon-maskable-512.png",
-  "/apple-touch-icon.png",
-  "/logo.png",
+  "/the-room-icon-192.png",
+  "/the-room-icon-512.png",
+  "/the-room-maskable-512.png",
+  "/the-room-apple-touch.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -100,7 +99,7 @@ self.addEventListener("push", (event) => {
   if (typeof payload?.title !== "string") return;
   event.waitUntil(self.registration.showNotification(payload.title, {
     body: typeof payload.body === "string" ? payload.body : "",
-    icon: "/notification-logo.png",
+    icon: "/notification-logo.png?v=2",
     ...(self.Notification && "vibrate" in self.Notification.prototype
       ? { vibrate: [200, 100, 200] }
       : {}),

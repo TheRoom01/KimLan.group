@@ -18,19 +18,19 @@ export default function manifest(): MetadataRoute.Manifest {
     dir: "ltr",
     icons: [
       {
-        src: "/icon-192.png",
+        src: "/the-room-icon-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon-512.png",
+        src: "/the-room-icon-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon-maskable-512.png",
+        src: "/the-room-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
@@ -41,19 +41,19 @@ export default function manifest(): MetadataRoute.Manifest {
         name: "Tòa nhà",
         short_name: "Tòa nhà",
         url: "/owner/properties",
-        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: "/the-room-icon-192.png", sizes: "192x192" }],
       },
       {
         name: "Phòng",
         short_name: "Phòng",
         url: "/owner/rooms",
-        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: "/the-room-icon-192.png", sizes: "192x192" }],
       },
       {
         name: "Hợp đồng",
         short_name: "Hợp đồng",
         url: "/owner/contracts",
-        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: "/the-room-icon-192.png", sizes: "192x192" }],
       },
     ],
   };

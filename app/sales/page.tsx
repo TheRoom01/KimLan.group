@@ -6,6 +6,7 @@ import { collectionPath, parseCollectionTokens, salesBuildingKey, findSalesBuild
 import SalesPortalView from "@/components/sales/SalesPortalView";
 import { getCollectionTokens } from "@/lib/sales-portal/getCollectionTokens";
 import SalesBuildingGrid from "@/components/sales/SalesBuildingGrid";
+import { defaultShareImage } from "@/lib/default-share-image";
 
 export const dynamic = "force-dynamic";
 const shareTitle = "Cập nhật phòng trống Hệ thống căn hộ";
@@ -14,12 +15,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: shareTitle,
     type: "website",
-    images: [{ url: "/og-logo.jpg", width: 1200, height: 630, alt: shareTitle }],
+    images: [defaultShareImage],
   },
   twitter: {
     card: "summary_large_image",
     title: shareTitle,
-    images: ["/og-logo.jpg"],
+    images: [defaultShareImage],
   },
   robots: { index: false, follow: false },
   referrer: "no-referrer",

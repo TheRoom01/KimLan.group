@@ -9,11 +9,10 @@ import LazyAuthControls from "@/components/LazyAuthControls";
 import ClientErrorOverlay from './_debug/ClientErrorOverlay';
 import InstallPrompt from "@/components/pwa/InstallPrompt";
 import PwaRegister from "@/components/pwa/PwaRegister";
+import { defaultShareImage, siteUrl } from "@/lib/default-share-image";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.pro"
-  ),
+  metadataBase: siteUrl,
 
   title: {
     default: "The Room SG | Căn hộ dịch vụ - Kim Lân Group",
@@ -74,19 +73,12 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "The Room SG",
 
-    title: "The Room SG | Căn hộ dịch vụ - Kim Lân Group",
+    title: "THE ROOM SG",
 
     description:
       "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư và nhà cho thuê tại TP.HCM.",
 
-    images: [
-      {
-        url: "/og-logo.jpg",
-        width: 1200,
-        height: 630,
-        alt: "The Room SG - Kim Lân Group",
-      },
-    ],
+    images: [defaultShareImage],
   },
 
   twitter: {
@@ -96,17 +88,13 @@ export const metadata: Metadata = {
     description:
       "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư tại TP.HCM.",
 
-    images: ["/og-logo.jpg"],
+    images: [defaultShareImage],
   },
 
   icons: {
-    icon: [
-      { url: "/favicon.ico" },
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
+    icon: { url: "/favicon.ico?v=2", sizes: "16x16 32x32 48x48", type: "image/x-icon" },
 
-    apple: "/apple-touch-icon.png",
+    apple: "/the-room-apple-touch.png",
   },
 
   manifest: "/manifest.webmanifest",
@@ -168,7 +156,7 @@ export default function RootLayout({
               name: "Kim Lân Group",
               alternateName: "The Room SG",
               url: "https://canhodichvu.pro",
-              logo: "https://canhodichvu.pro/og-logo.jpg",
+              logo: "https://canhodichvu.pro/the-room-icon-192.png",
             }),
           }}
         />
