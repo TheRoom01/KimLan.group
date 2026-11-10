@@ -92,7 +92,7 @@ export const metadata: Metadata = {
   },
 
   icons: {
-    icon: { url: "/favicon.ico?v=2", sizes: "16x16 32x32 48x48", type: "image/x-icon" },
+    icon: { url: "/favicon.ico?v=3", sizes: "16x16 32x32 48x48", type: "image/x-icon" },
 
     apple: "/the-room-apple-touch.png",
   },

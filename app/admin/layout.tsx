@@ -49,7 +49,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="admin-app-frame mx-auto max-w-[1200px] px-4 py-4">
         <header className="admin-navigation mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-[#956b45]/25 bg-[#704522] px-3 py-2 text-[#fff6e8] shadow-[0_8px_24px_rgba(83,48,22,0.14)] sm:px-4">
           <Link href="/" aria-label="Về trang chủ" className="relative shrink-0 rounded-lg">
-            <Image src="/the-room-logo.webp" alt="The Room SG" width={56} height={56} unoptimized className="h-12 w-12 rounded-lg object-contain sm:h-14 sm:w-14" />
+            <Image src="/logo-ui.webp" alt="The Room SG" width={56} height={56} unoptimized className="h-12 w-12 rounded-lg object-contain sm:h-14 sm:w-14" />
             <AdminLinkPending />
           </Link>
           <nav aria-label="Điều hướng Admin" className="admin-navigation-links flex min-w-0 flex-wrap items-center gap-1">
