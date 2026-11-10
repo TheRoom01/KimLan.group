@@ -30,11 +30,11 @@ async function main(){
   const desktopPanel = (await amenities.boundingBox())!, anchor = (await amenitiesTrigger.boundingBox())!;
   assert.equal(desktopPanel.width,560);
   assert.ok(desktopPanel.y >= anchor.y + anchor.height);
-  assert.equal(await amenities.locator('label svg').count(),12);
+  assert.equal(await amenities.locator('label svg').count(),11);
   assert.deepEqual(await amenities.locator('h4').allTextContents(),['Di chuyển','Không gian phòng','Thú cưng','Thời hạn HĐ','Quy định / Nội quy']);
-  await page.getByRole('checkbox',{name:'Không chung chủ',exact:true}).check();
+  assert.equal(await amenities.getByRole('checkbox',{name:'Không chung chủ',exact:true}).count(),0);
   await page.getByRole('checkbox',{name:'Nhận khách nước ngoài',exact:true}).check();
-  assert.deepEqual(JSON.parse(await page.getByLabel('Bộ lọc',{exact:true}).innerText()),['balcony','window','no_live_in_landlord','accepts_foreign_tenants']);
+  assert.deepEqual(JSON.parse(await page.getByLabel('Bộ lọc',{exact:true}).innerText()),['balcony','window','accepts_foreign_tenants']);
   await page.getByRole('button',{name:'Clear',exact:true}).click();assert.deepEqual(JSON.parse(await page.getByLabel('Bộ lọc',{exact:true}).innerText()),[]);
   await amenities.getByRole('button',{name:'Đóng tiện nghi'}).click();
   await page.getByPlaceholder('Tìm đường, phường, quận, mã phòng...').fill('BBQ');

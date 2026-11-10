@@ -1,7 +1,7 @@
 "use client";
 
 import React, { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AppWindow, CalendarCheck, CalendarClock, Cat, Dog, Globe2, LayoutGrid, ShieldCheck, createLucideIcon, type LucideIcon } from "lucide-react";
+import { AppWindow, CalendarCheck, CalendarClock, Cat, Dog, Globe2, LayoutGrid, createLucideIcon, type LucideIcon } from "lucide-react";
 import FilterChoicePanel, { AMENITIES_MODAL_QUERY } from "@/components/FilterChoicePanel";
 import { roomFeatureOptions, tenantRoomFeatureOptions, type RoomFeature } from "@/lib/rooms/features";
 
@@ -19,8 +19,8 @@ const Balcony = createLucideIcon("Balcony", [["path", { d: "M8 12V7a4 4 0 0 1 8 
 const NoPets = createLucideIcon("NoPets", [
   ["path", { d: "M6 13a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0Zm5-7a1.5 2 0 1 0-3 0 1.5 2 0 0 0 3 0Zm7 0a1.5 2 0 1 0-3 0 1.5 2 0 0 0 3 0Zm3 6a1.5 1.5 0 1 0-3 0 1.5 1.5 0 0 0 3 0ZM7 17c0-2 2-2 3-4s3-2 4 0 3 2 3 4-2 3-5 2-5 0-5-2ZM3 3l18 18", key: "paw" }],
 ]);
-const featureIcons: Record<RoomFeature, LucideIcon> = {
-  balcony: Balcony, window: AppWindow, accepts_foreign_tenants: Globe2, no_live_in_landlord: ShieldCheck,
+const featureIcons = {
+  balcony: Balcony, window: AppWindow, accepts_foreign_tenants: Globe2,
 };
 
 function AmenityGroup({ title, children }: { title: string; children: React.ReactNode }) {
@@ -693,7 +693,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
             ))}
           </AmenityGroup>
           <AmenityGroup title="Quy định / Nội quy">
-            {[...tenantRoomFeatureOptions].reverse().map(({ value, label }) => (
+            {tenantRoomFeatureOptions.filter(({ value }) => value === "accepts_foreign_tenants").map(({ value, label }) => (
               <AmenityOption key={value} label={label} icon={featureIcons[value]} checked={featureFilters.includes(value)}
                 onChange={() => setFeatureFilters(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value])} />
             ))}
