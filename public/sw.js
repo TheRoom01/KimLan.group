@@ -19,7 +19,8 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(APP_SHELL_CACHE)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then((cache) => Promise.allSettled(APP_SHELL.map((path) => cache.add(path))))
+      .catch((error) => console.warn("PWA shell cache unavailable", error))
       .then(() => self.skipWaiting()),
   );
 });
@@ -39,6 +40,7 @@ self.addEventListener("activate", (event) => {
             .map((key) => caches.delete(key)),
         ),
       )
+      .catch((error) => console.warn("PWA cache cleanup failed", error))
       .then(() => self.clients.claim()),
   );
 });
@@ -97,13 +99,14 @@ self.addEventListener("push", (event) => {
   let payload;
   try { payload = event.data?.json(); } catch { return; }
   if (typeof payload?.title !== "string") return;
+  const tag = typeof payload.tag === "string" ? payload.tag : "";
   event.waitUntil(self.registration.showNotification(payload.title, {
     body: typeof payload.body === "string" ? payload.body : "",
     icon: "/notification-logo.png?v=2",
     ...(self.Notification && "vibrate" in self.Notification.prototype
       ? { vibrate: [200, 100, 200] }
       : {}),
-    tag: typeof payload.tag === "string" ? payload.tag : undefined,
+    ...(tag ? { tag, renotify: true } : {}),
     data: { url: notificationTarget(payload.url) },
   }));
 });
