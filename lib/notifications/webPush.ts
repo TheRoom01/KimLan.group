@@ -72,7 +72,7 @@ export async function sendToDevice(store: Store, target: Target, payload: Payloa
 }
 
 export async function sendEventPush(origin: string, event:
-  | { type: "room_consult_request"; id: string }
+  | { type: "room_consult_request"; id: string; kind: "room_consultation" | "general_consultation" }
   | { type: "property_access_granted"; id: string; userId: string }) {
   const config = pushConfig();
   if (!config) return;
@@ -102,7 +102,8 @@ export async function sendEventPush(origin: string, event:
     const reference = encodeURIComponent(event.id);
     await Promise.all(data.map(target => {
       const payload = consult
-        ? { title: "Yêu cầu tư vấn phòng mới", body: "Mở The Room để xem yêu cầu của khách hàng.",
+        ? { title: event.kind === "general_consultation" ? "Yêu cầu tư vấn chung mới" : "Yêu cầu tư vấn phòng mới",
+            body: "Mở The Room để xem yêu cầu của khách hàng.",
             url: `/${adminIds.has(target.user_id) ? "admin" : "owner"}/room-inquiries?request=${reference}`, tag: `consult:${event.id}` }
         : { title: "Quyền quản lý tòa nhà đã thay đổi", body: "Mở The Room để xem quyền truy cập của bạn.",
             url: `/owner/properties/${reference}`, tag: `access:${event.id}` };

@@ -120,8 +120,10 @@ export async function POST(request: Request) {
       return apiError("DATABASE_ERROR", "Chưa xác nhận được người nhận yêu cầu. Vui lòng thử lại sau.", 503);
     }
 
-    if (!general && row.duplicate !== true && pushConfig()) {
-      after(() => sendEventPush(new URL(request.url).origin, { type: "room_consult_request", id: row.request_id }));
+    if (row.duplicate !== true && pushConfig()) {
+      after(() => sendEventPush(new URL(request.url).origin, {
+        type: "room_consult_request", id: row.request_id, kind,
+      }));
     }
 
     return apiSuccess({
