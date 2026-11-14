@@ -51,11 +51,17 @@ async function main(){
    if(node.name.getText(ast)==='buildQs')buildQs=node.initializer.arguments[0].getText(ast);
   }ts.forEachChild(node,visit);
  }visit(ast);assert.ok(readUrl&&buildQs&&signature);
- const context:any={URLSearchParams,window:{location:{search:'?q=Sao%20Mai&features=balcony,window&term=long'}},readHomeListFilters,readHomeListPage,roomListFilterRpcParams,
+ const context:any={URLSearchParams,displayedQueryRef:{current:""},window:{location:{search:'?q=Sao%20Mai&features=balcony,window&term=long'}},readHomeListFilters,readHomeListPage,roomListFilterRpcParams,
   QS:{q:'q',min:'min',max:'max',d:'d',t:'t',m:'m',pet:'pet',term:'term',features:'features',s:'s',st:'st',badge:'badge',p:'p',c:'c'},toListParam:(v:string[])=>v.join(','),encodeCursor:()=>'',canonicalQs:(qs:string)=>qs};
  const execute=(code:string)=>vm.runInNewContext(ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
  const parsed=execute(`(${readUrl})()`);assert.equal(parsed.features.join(','),'balcony,window');
  const url=execute(`(${buildQs})({q:'Sao Mai',features:['balcony','window']})`);assert.equal(new URLSearchParams(url).get('features'),'balcony,window');
+ context.displayedQueryRef.current = 'Tìm căn 2PN gần UEH trên 8 triệu';
+ const aiUrl = new URLSearchParams(execute(`(${buildQs})({q:'',min:8000000,t:['2 Phòng ngủ'],p:1})`));
+ assert.equal(aiUrl.get('nq'), context.displayedQueryRef.current);
+ assert.equal(aiUrl.get('q'), null);
+ assert.equal(aiUrl.get('min'), '8000000');
+ assert.equal(aiUrl.get('p'), '1');
  execute(signature);const base={search:'',priceApplied:[3000000,30000000],selectedDistricts:[],selectedRoomTypes:[],moveFilter:null,petFilters:[],termFilters:[],sortMode:'updated_desc',statusFilter:null};
  context.filterA={...base,featureFilters:['balcony']};context.filterB={...base,featureFilters:['window']};assert.notEqual(execute('makeFilterSigValue(filterA)'),execute('makeFilterSigValue(filterB)'),'different amenities cannot reuse stale pages/cursors');
  console.log('Room features / public searchable fields / admin house search / SSR RPC / URL restore and cache signatures: PASS (offline)');

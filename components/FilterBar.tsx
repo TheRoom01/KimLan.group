@@ -1,7 +1,7 @@
 "use client";
 
 import React, { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
-import { AppWindow, CalendarCheck, CalendarClock, Cat, Dog, Globe2, LayoutGrid, createLucideIcon, type LucideIcon } from "lucide-react";
+import { AppWindow, CalendarCheck, CalendarClock, Cat, Dog, Globe2, LayoutGrid, Search, createLucideIcon, type LucideIcon } from "lucide-react";
 import FilterChoicePanel, { AMENITIES_MODAL_QUERY } from "@/components/FilterChoicePanel";
 import { roomFeatureOptions, tenantRoomFeatureOptions, type RoomFeature } from "@/lib/rooms/features";
 
@@ -53,6 +53,7 @@ type FilterBarProps = {
 
   search: string;
   setSearch: React.Dispatch<React.SetStateAction<string>>;
+  onSearchSubmit?: () => void;
 
   priceDraft: [number, number];
   setPriceDraft: React.Dispatch<React.SetStateAction<[number, number]>>;
@@ -131,6 +132,7 @@ const FilterBar = ({
   roomTypes,
   search,
   setSearch,
+  onSearchSubmit,
   priceDraft,
   priceApplied,
   priceFilterActive,
@@ -455,7 +457,8 @@ const toggleStatus = (value: RoomStatusFilter) => {
  return (
   <section className="home-filter w-full max-w-[1440px] mx-auto px-4 md:px-6 py-5 space-y-5">
     {/* Search */}
-    <div className="home-search relative" data-has-filters={activeFilterCount > 0 ? "true" : undefined}>
+    <form className="home-search relative" data-has-filters={activeFilterCount > 0 ? "true" : undefined}
+      onSubmit={event => { event.preventDefault(); onSearchSubmit?.(); }}>
       <button type="button" className="home-filter-toggle" aria-expanded={panelOpen} aria-controls={panelId}
         aria-label={activeFilterCount > 0 ? `Bộ lọc, ${activeFilterCount} nhóm đang áp dụng` : undefined}
         onClick={() => { setPanelOpen(value => !value); closeAllFilters(); }}>
@@ -465,23 +468,32 @@ const toggleStatus = (value: RoomStatusFilter) => {
       </button>
       <input
         value={search}
+        style={onSearchSubmit && search.trim() ? { paddingRight: "5.5rem" } : undefined}
+        enterKeyHint={onSearchSubmit ? "search" : undefined}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Tìm đường, phường, quận, mã phòng..."
         className="w-full h-[46px] rounded-2xl border border-white/40 bg-[rgba(150,150,155,0.28)] px-5 py-3 pr-12 text-base font-medium text-[#F8EAD8] placeholder:text-[#F8EAD8]/65 outline-none backdrop-blur-[28px] shadow-[0_16px_45px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.26)] transition-all focus:border-[#D8A66A]/45 focus:ring-2 focus:ring-[#D8A66A]/15"
       />
 
+      {onSearchSubmit && search.trim() && (
+        <button type="submit" aria-label="Tìm phòng" title="Tìm phòng"
+          className="home-search-clear absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[#F8EAD8]">
+          <Search size={17} aria-hidden="true" />
+        </button>
+      )}
       {search.trim() !== "" && (
         <button
           type="button"
           aria-label="Xoá tìm kiếm"
           title="Xoá tìm kiếm"
           onClick={() => setSearch("")}
+          style={onSearchSubmit ? { right: "3.25rem" } : undefined}
           className="home-search-clear absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-[#F8EAD8]/75 backdrop-blur-xl hover:bg-white/18 hover:text-white"
         >
           ×
         </button>
       )}
-    </div>
+    </form>
 
     <div id={panelId} hidden={!panelOpen} className="home-filter-controls">
         {/* Overlay bắt click-outside */}

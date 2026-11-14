@@ -7,7 +7,8 @@ export async function GET(request: Request) {
   const query = requestUrl.searchParams.get("q")?.trim() ?? "";
   const originLatitude = Number(requestUrl.searchParams.get("lat"));
   const originLongitude = Number(requestUrl.searchParams.get("lng"));
-  const hasOrigin = Number.isFinite(originLatitude) && Number.isFinite(originLongitude)
+  const hasOrigin = requestUrl.searchParams.has("lat") && requestUrl.searchParams.has("lng")
+    && Number.isFinite(originLatitude) && Number.isFinite(originLongitude)
     && originLatitude >= -90 && originLatitude <= 90
     && originLongitude >= -180 && originLongitude <= 180;
   if (query.length < 3 || query.length > 120) return NextResponse.json({ results: [] });
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
     }
     const response = await fetch(url, {
       headers: { "User-Agent": "KimLanGroup-MapSearch/1.0 (https://canhodichvu.pro)", Accept: "application/json" },
+      signal: AbortSignal.timeout(4000),
       next: { revalidate: 3600 },
     });
     if (!response.ok) throw new Error("Geocoder unavailable");
