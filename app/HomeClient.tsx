@@ -3713,9 +3713,9 @@ return (
               total={total}
             />
       {campuses.length > 0 && !isSavedView && (
-          <label className="mt-2 block text-sm">
-            Cơ sở UEH
-            <select aria-label="Cơ sở UEH" className="ml-2 max-w-full rounded border bg-neutral-900 px-2 py-1"
+          <label className="home-campus-picker">
+            <span>Cơ sở UEH</span>
+            <select
               defaultValue="" onChange={event => {
                 const campus = campuses[Number(event.target.value)];
                 if (campus && event.target.value !== "") void chooseCampus(campus);
@@ -3725,7 +3725,7 @@ return (
             </select>
           </label>
         )}
-        {locationMessage && <p role="status" className="mt-2 text-sm">{locationMessage}</p>}
+        {locationMessage && <p role="status" className="home-campus-status">{locationMessage}</p>}
       </div>
           {debugEnabled && pageDebug && (
         <div

@@ -12,6 +12,48 @@
 .home-redesign .home-filter { margin-top: 8px; padding-block: 0; }
 .home-redesign .home-filter { display: flex; flex-direction: column; gap: 10px; }
 .home-redesign .home-filter > * { margin-block: 0 !important; }
+.home-campus-picker {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  width: min(100%, 34rem);
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.home-campus-picker select {
+  color-scheme: dark;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #a98969;
+  border-radius: 10px;
+  background-color: #392517;
+  color: #fff4e5;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.home-campus-picker option { background-color: #392517; color: #fff4e5; }
+.home-campus-picker option:disabled { color: #dbc5ae; }
+.home-campus-picker select:focus-visible { outline: 2px solid #e0b77a; outline-offset: 2px; }
+.home-campus-status { margin-top: 6px; font-size: 14px; line-height: 1.5; }
+[data-room-theme="light"] .home-campus-picker select {
+  color-scheme: light;
+  border-color: #927a62;
+}
+[data-room-theme="light"] .home-campus-picker :is(select, option) {
+  background-color: var(--room-surface, #fffdfa);
+  color: var(--room-text, #3f352e);
+}
+[data-room-theme="light"] .home-campus-picker option:disabled { color: #706357; }
+[data-room-theme="light"] .home-campus-picker select:focus-visible { outline-color: #80542f; }
+@media (max-width: 480px) {
+  .home-campus-picker { grid-template-columns: minmax(0, 1fr); }
+}
 .home-search[data-has-filters="true"] { --home-filter-count-width: 24px; }
 .home-search > input { padding-left: calc(var(--home-filter-offset, 106px) + var(--home-filter-count-width, 0px)) !important; }
 .home-filter-toggle { position: absolute; z-index: 1; left: 5px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 5px 12px; border: 1px solid #e5c9a970; border-radius: 10px; background: #392517; color: #f3e7d6; font-size: 13px !important; font-weight: 650; cursor: pointer; }

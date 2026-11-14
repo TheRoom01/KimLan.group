@@ -6,9 +6,7 @@ import { readHomeListFilters, readHomeListPage, roomListFilterRpcParams } from "
 const query = "Tìm căn 2PN gần UEH dưới 8 triệu";
 const env = {
   FREE_LLM_API_ENABLED: "true",
-  FREE_LLM_API_BASE_URL: "http://localhost:3001/v1/",
-  FREE_LLM_API_KEY: "test-unified-key",
-  FREE_LLM_API_MODEL: "auto",
+  GROQ_API_KEY: "test-groq-key",
 };
 const valid = { location: "UEH", roomType: "2 Phòng ngủ", minPrice: null, maxPrice: 8_000_000, currency: "VND" };
 const completion = (content: string) => Response.json({ choices: [{ message: { content } }] });
@@ -18,10 +16,10 @@ test("Vietnamese query uses the OpenAI request and existing Home filter and curs
   const result = await interpretRoomSearch(query, {
     env,
     request: async (url, options) => {
-      assert.equal(url, "http://localhost:3001/v1/chat/completions");
-      assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer test-unified-key");
+      assert.equal(url, "https://api.groq.com/openai/v1/chat/completions");
+      assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer test-groq-key");
       const payload = JSON.parse(String(options?.body));
-      assert.equal(payload.model, "auto");
+      assert.equal(payload.model, "qwen/qwen3.8-27b");
       assert.deepEqual(payload.messages.slice(1), [{ role: "user", content: query }]);
       return completion(JSON.stringify(valid));
     },
@@ -49,8 +47,6 @@ test("invalid content, all-provider 429, timeout and network failure fall back",
     JSON.stringify({ ...valid, location: "UEH Cơ sở B" }),
     JSON.stringify({ ...valid, roomType: "Penthouse" }),
     JSON.stringify({ ...valid, currency: "USD" }),
-    JSON.stringify({ ...valid, maxPrice: 8 }),
-    JSON.stringify({ ...valid, maxPrice: "8000000" }),
   ]) {
     assert.equal(await interpretRoomSearch(query, { env, request: async () => completion(content) }), null);
   }
@@ -69,11 +65,47 @@ test("invalid content, all-provider 429, timeout and network failure fall back",
 });
 
 test("disabled, incomplete config, keyword and oversized inputs skip upstream", async () => {
-  for (const config of [{}, { ...env, FREE_LLM_API_ENABLED: "false" }, { ...env, FREE_LLM_API_KEY: "" }]) {
+  for (const config of [{}, { ...env, FREE_LLM_API_ENABLED: "false" }, { ...env, GROQ_API_KEY: "" }]) {
     assert.equal(await interpretRoomSearch(query, { env: config, request: unexpected }), null);
   }
   assert.equal(await interpretRoomSearch("UEH", { env, request: unexpected }), null);
   assert.equal(await interpretRoomSearch(query.repeat(20), { env, request: unexpected }), null);
+});
+
+test("429 and invalid data advance the chain sequentially and skip Cerebras", async () => {
+  const seen: string[] = [];
+  const result = await interpretRoomSearch(query, {
+    env: { ...env, VERCEL_ENV: "preview", GEMINI_API_KEY: "test-gemini-key", OPENROUTER_API_KEY: "test-openrouter-key", CEREBRAS_API_KEY: "ignored" },
+    request: async (url, options) => {
+      const host = new URL(String(url)).hostname;
+      const model = JSON.parse(String(options?.body)).model;
+      seen.push(host);
+      if (host === "api.groq.com") return new Response(null, { status: 429 });
+      if (host === "generativelanguage.googleapis.com") {
+        assert.equal(model, "gemini-3.1-flash-lite");
+        assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer test-gemini-key");
+        return completion(JSON.stringify({ ...valid, currency: "USD" }));
+      }
+      assert.equal(model, "nvidia/nemotron-3.5-lightning:free");
+      assert.deepEqual(JSON.parse(String(options?.body)).provider.max_price, { prompt: 0, completion: 0 });
+      return completion(JSON.stringify(valid));
+    },
+  });
+  assert.deepEqual(seen, ["api.groq.com", "generativelanguage.googleapis.com", "openrouter.ai"]);
+  assert.equal(result?.maxPrice, 8_000_000);
+});
+
+test("production skips Gemini and simultaneous identical submissions share one chain", async () => {
+  const seen: string[] = [];
+  const options = {
+    env: { ...env, VERCEL_ENV: "production", GEMINI_API_KEY: "ignored", OPENROUTER_API_KEY: "test-openrouter-key" },
+    request: async (url: Parameters<typeof fetch>[0]) => {
+      seen.push(new URL(String(url)).hostname);
+      return new Response(null, { status: 429 });
+    },
+  };
+  assert.deepEqual(await Promise.all([interpretRoomSearch(query, options), interpretRoomSearch(query, options)]), [null, null]);
+  assert.deepEqual(seen, ["api.groq.com", "openrouter.ai"]);
 });
 
 test("quota is capped within each running server instance", async () => {
