@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ThemeToggle from "@/components/ThemeToggle";
+import { interpretHomeSearch } from "./interpretHomeSearch";
 import FilterBar, { SortMode } from "@/components/FilterBar";
 import { trackVisitorEvent } from "@/lib/analytics/client";
 import { changedCustomerFilters, customerFilterDetails, customerSearchDetails } from "@/lib/analytics/activity";
@@ -36,6 +37,7 @@ type InitialProps = {
   initialError?: string;
   initialSavedView?: boolean;
   initialFilters?: HomeListFilters;
+  naturalSearchEnabled?: boolean;
   initialPageIndex?: number;
   initialAnonSessionId?: string | null;
   initialAnonExpiresAt?: string | null;
@@ -256,6 +258,7 @@ const HomeClient = ({
   initialError = "",
   initialSavedView = false,
   initialFilters = DEFAULT_HOME_LIST_FILTERS,
+  naturalSearchEnabled = false,
   initialPageIndex = 0,
   initialAnonSessionId = null,
   initialAnonExpiresAt = null,
@@ -431,6 +434,7 @@ const [featureFilters, setFeatureFilters] = useState(initialFilters.featureFilte
   const prevAppliedSearchRef = useRef(initialFilters.search);
   const previousCustomerFilters = useRef<ReturnType<typeof customerFilterDetails> | null>(null);
   const pendingRestoredFilterSigRef = useRef<string | null>(null);
+  const searchSubmission = useRef(0);
   const [search, setSearch] = useState(initialFilters.search);
   const [appliedSearch, setAppliedSearch] = useState(initialFilters.search);
 
@@ -2247,6 +2251,7 @@ useEffect(() => {
   // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
+    searchSubmission.current += 1;
     const savedInUrl = new URLSearchParams(window.location.search).get("view") === "saved";
     if (savedInUrl !== isSavedView) {
       window.location.reload();
@@ -2898,6 +2903,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     badgeFilter: defaultFilters.badge,
   });
 
+  searchSubmission.current += 1;
   setSearch(defaultFilters.search);
   setPriceDraft([defaultFilters.min, defaultFilters.max]);
   setPriceApplied([defaultFilters.min, defaultFilters.max]);
@@ -2958,8 +2964,31 @@ const setSearchFromInput = useCallback<React.Dispatch<React.SetStateAction<strin
   skipNextFilterEffectRef.current = false;
   hydratingFromUrlRef.current = false;
   filtersVersionRef.current += 1;
+  searchSubmission.current += 1;
   setSearch(value);
 }, []);
+
+const submitSearch = async () => {
+  const submission = ++searchSubmission.current;
+  const query = search.trim();
+  if (!query) return;
+  // Apply the original text immediately, including when interpretation fails.
+  setAppliedSearch(search);
+  const filters = await interpretHomeSearch(query).catch(() => null);
+  if (!filters || submission !== searchSubmission.current) return;
+
+  setSearchFromInput(filters.location);
+  setAppliedSearch(filters.location);
+  if (filters.roomType) setSelectedRoomTypes([filters.roomType]);
+  if (filters.minPrice !== null || filters.maxPrice !== null) {
+    const price: [number, number] = [
+      filters.minPrice ?? PRICE_DEFAULT[0],
+      filters.maxPrice ?? PRICE_DEFAULT[1],
+    ];
+    setPriceDraft(price);
+    setPriceAppliedFromUser(price);
+  }
+};
 
 // ================== FILTER CHANGE ==================
 useEffect(() => {
@@ -3574,6 +3603,7 @@ return (
               loading={loading}
               search={search}
               setSearch={setSearchFromInput}
+              onSearchSubmit={naturalSearchEnabled ? submitSearch : undefined}
               priceDraft={priceDraft}
               priceApplied={priceApplied}
               priceFilterActive={priceFilterActive}

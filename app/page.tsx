@@ -5,6 +5,7 @@ import { HIDDEN_ROOMS_ADMIN_EMAIL, readHomeListFilters, readHomeListPage } from 
 import { getCachedPublicRooms } from "@/lib/rooms/publicCache";
 import { getAnonymousHomeAccess, getVipHomeAccess } from "@/lib/rooms/anonymousHomeAccess";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { readRoomSearchConfig } from "@/lib/rooms/interpretRoomSearch";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +92,7 @@ export default async function HomePage({
       initialError={res.error}
       initialSavedView={savedView}
       initialFilters={filters}
+      naturalSearchEnabled={Boolean(readRoomSearchConfig())}
       initialPageIndex={nextPage}
       initialAnonSessionId={anonymousAccess?.sessionId ?? null}
       initialAnonExpiresAt={anonymousAccess?.expiresAt ?? null}
