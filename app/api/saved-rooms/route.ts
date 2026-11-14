@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getFullImageUrls } from "@/lib/rooms/cardImages";
 import { attachRoomBadges } from "@/lib/roomBadges";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
@@ -39,7 +40,7 @@ export async function GET(req: Request) {
 
     const { data: mediaRows, error: mediaError } = await supabase
       .from("room_media")
-      .select("room_id,type,url,created_at")
+      .select("id,room_id,type,url,created_at,sort_order")
       .in("room_id", ids)
       .order("created_at", { ascending: true });
 
@@ -72,9 +73,7 @@ export async function GET(req: Request) {
     for (const room of rooms ?? []) {
       const media = mediaMap.get(room.id) ?? [];
 
-      const images = media
-        .filter((m) => m.type === "image" && m.url)
-        .map((m) => String(m.url));
+      const images = getFullImageUrls({ media }, false);
 
       const video = media.find((m) => m.type === "video" && m.url);
 

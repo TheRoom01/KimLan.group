@@ -1,5 +1,6 @@
 "use client";
 
+import { markHomeRoomsDirty } from "@/lib/rooms/homeDirty";
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, GripVertical, ImageIcon, Maximize, Minimize, Play, Save, Trash2, X } from "lucide-react";
 import { readApiResponse } from "@/lib/api/client";
@@ -93,6 +94,7 @@ export default function RoomMediaGallery({
       });
       const updated = await readApiResponse<RoomMedia[]>(response);
       setItems(updated);
+      markHomeRoomsDirty();
       setOrderDirty(false);
     } catch (saveError) {
       setError(

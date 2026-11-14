@@ -251,8 +251,9 @@ export async function PATCH(
       .from("room_media")
       .select("id, room_id, type, provider, url, path, is_cover, sort_order, created_at")
       .eq("room_id", roomId)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true });
+      .order("sort_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true });
 
     if (error) return mapDatabaseError(error);
     invalidatePublicRoomCache(roomId);
