@@ -108,6 +108,34 @@ test("production skips Gemini and simultaneous identical submissions share one c
   assert.deepEqual(seen, ["api.groq.com", "openrouter.ai"]);
 });
 
+test("Cloudflare is the last fallback and requires both credentials", async () => {
+  const account = "0123456789abcdef0123456789abcdef";
+  const cloudflare = { CLOUDFLARE_ACCOUNT_ID: account, CLOUDFLARE_API_TOKEN: "test-cloudflare-token" };
+  for (const accountId of [undefined, "wrong/account"]) {
+    assert.equal(await interpretRoomSearch(query, {
+      env: { FREE_LLM_API_ENABLED: "true", ...cloudflare, CLOUDFLARE_ACCOUNT_ID: accountId },
+      request: unexpected,
+    }), null);
+  }
+  const seen: string[] = [];
+  const result = await interpretRoomSearch(query, {
+    env: { ...env, ...cloudflare, OPENROUTER_API_KEY: "test-openrouter-key", VERCEL_ENV: "production" },
+    request: async (url, options) => {
+      const host = new URL(String(url)).hostname;
+      seen.push(host);
+      if (host !== "api.cloudflare.com") return new Response(null, { status: 429 });
+      assert.equal(url, `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1/chat/completions`);
+      assert.equal(new Headers(options?.headers).get("Authorization"), "Bearer test-cloudflare-token");
+      const body = JSON.parse(String(options?.body));
+      assert.equal(body.model, "@cf/google/gemma-4-26b-a4b-it");
+      assert.equal(body.options.rejectIfBusy, true);
+      return completion(JSON.stringify(valid));
+    },
+  });
+  assert.deepEqual(seen, ["api.groq.com", "openrouter.ai", "api.cloudflare.com"]);
+  assert.equal(result?.maxPrice, 8_000_000);
+});
+
 test("quota is capped within each running server instance", async () => {
   let calls = 0;
   const request: typeof fetch = async () => {
@@ -117,5 +145,5 @@ test("quota is capped within each running server instance", async () => {
   for (let index = 0; index < 15; index += 1) {
     assert.equal(await interpretRoomSearch(query, { env, request }), null);
   }
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
 });

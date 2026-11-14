@@ -9,6 +9,7 @@ const providers = [
   { id: "groq", keyName: "GROQ_API_KEY", url: "https://api.groq.com/openai/v1/chat/completions", model: "qwen/qwen3.8-27b" },
   { id: "gemini", keyName: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", model: "gemini-3.1-flash-lite" },
   { id: "openrouter", keyName: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", model: "nvidia/nemotron-3.5-lightning:free" },
+  { id: "cloudflare", keyName: "CLOUDFLARE_API_TOKEN", url: "https://api.cloudflare.com", model: "@cf/google/gemma-4-26b-a4b-it" },
 ] as const;
 // Cerebras currently offers only expiring trial credits.
 
@@ -18,13 +19,21 @@ const PER_PROVIDER_TIMEOUT_MS = 2200;
 let windowStarted = 0;
 let calls = 0;
 
+type ConfiguredProvider = { id: (typeof providers)[number]["id"]; model: string; url: string; key: string };
+
 function configuredProviders(env: Environment) {
   if (env.FREE_LLM_API_ENABLED !== "true") return [];
-  return providers.flatMap(provider => {
+  return providers.flatMap<ConfiguredProvider>(provider => {
     // The public site has no age gate. Gemini is limited to private Preview testing.
     if (provider.id === "gemini" && env.VERCEL_ENV !== "preview" && env.NODE_ENV !== "development") return [];
     const key = env[provider.keyName]?.trim();
-    return key ? [{ ...provider, key }] : [];
+    if (!key) return [];
+    if (provider.id === "cloudflare") {
+      const account = env.CLOUDFLARE_ACCOUNT_ID?.trim();
+      if (!account || !/^[a-f0-9]{32}$/i.test(account)) return [];
+      return [{ ...provider, key, url: `${provider.url}/client/v4/accounts/${account}/ai/v1/chat/completions` }];
+    }
+    return [{ ...provider, key }];
   });
 }
 
@@ -73,7 +82,8 @@ async function tryProviders(
   for (const provider of chain) {
     const remainingMs = Math.floor(deadline - performance.now());
     if (remainingMs <= 0) break;
-    const signal = AbortSignal.timeout(Math.min(remainingMs, PER_PROVIDER_TIMEOUT_MS));
+    const providerTimeout = provider.id === "cloudflare" ? 3000 : PER_PROVIDER_TIMEOUT_MS;
+    const signal = AbortSignal.timeout(Math.min(remainingMs, providerTimeout));
     const report = (outcome: string, status?: number) => {
       if (diagnose) console.info("[Home room search]", { provider: provider.id, outcome, status });
     };
@@ -92,6 +102,11 @@ async function tryProviders(
           ...(provider.id === "openrouter" ? {
             reasoning: { enabled: false },
             provider: { max_price: { prompt: 0, completion: 0 } },
+          } : {}),
+          ...(provider.id === "cloudflare" ? {
+            chat_template_kwargs: { enable_thinking: false },
+            response_format: { type: "json_object" },
+            options: { rejectIfBusy: true },
           } : {}),
           messages: [{ role: "system", content: systemPrompt }, { role: "user", content: query }],
         }),
@@ -119,7 +134,7 @@ async function tryProviders(
 
 export async function interpretRoomSearch(
   input: unknown,
-  { env = process.env, request = fetch, timeoutMs = 6000 }: {
+  { env = process.env, request = fetch, timeoutMs = 7500 }: {
     env?: Environment;
     request?: typeof fetch;
     timeoutMs?: number;
