@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ThemeToggle from "@/components/ThemeToggle";
 import { interpretHomeSearch } from "./interpretHomeSearch";
+import NearbyHomeRooms from "@/components/NearbyHomeRooms";
+import { findUehCampuses, isNaturalRoomSearch, normalizePlace, type NearbyRoomCenter } from "@/lib/rooms/naturalSearch";
 import FilterBar, { SortMode } from "@/components/FilterBar";
 import { trackVisitorEvent } from "@/lib/analytics/client";
 import { changedCustomerFilters, customerFilterDetails, customerSearchDetails } from "@/lib/analytics/activity";
@@ -435,13 +437,29 @@ const [featureFilters, setFeatureFilters] = useState(initialFilters.featureFilte
   const previousCustomerFilters = useRef<ReturnType<typeof customerFilterDetails> | null>(null);
   const pendingRestoredFilterSigRef = useRef<string | null>(null);
   const searchSubmission = useRef(0);
+  const inFlightSearches = useRef(new Set<string>());
+  const [resolved, setResolved] = useState<{ query: string; keyword: string } | null>(null);
+  const [campuses, setCampuses] = useState<ReturnType<typeof findUehCampuses>>([]);
+  const [center, setCenter] = useState<NearbyRoomCenter | null>(null);
+  const [locationMessage, setLocationMessage] = useState("");
   const [search, setSearch] = useState(initialFilters.search);
   const [appliedSearch, setAppliedSearch] = useState(initialFilters.search);
 
   useEffect(() => {
+    if (resolved?.query === search || (naturalSearchEnabled && isNaturalRoomSearch(search.trim()))) return;
     const timer = window.setTimeout(() => setAppliedSearch(search), 250);
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [search, resolved, naturalSearchEnabled]);
+  const searchReady = resolved?.query === search
+    ? resolved.keyword === appliedSearch
+    : search === appliedSearch || (naturalSearchEnabled && isNaturalRoomSearch(search.trim()));
+  const clearLocationSearch = useCallback(() => {
+    searchSubmission.current += 1;
+    setResolved(null);
+    setCampuses([]);
+    setCenter(null);
+    setLocationMessage("");
+  }, []);
 
  const armRestoredFilterSig = useCallback((next: {
   search: string;
@@ -1053,7 +1071,7 @@ const persistBlockedRef = useRef(false);
   const visibleRooms = isSavedView ? savedPageRooms : roomsToRender;
   const visibleHasNext = isSavedView ? savedPageIndex + 1 < savedPageCount : hasNext;
   const showRecommendations = ROOM_RECOMMENDATIONS_ENABLED && hasRecommendationFilters(recommendationFilters)
-    && !isSavedView && sortMode !== "hidden" && !loading && !isRefreshing && !showSkeleton && !fetchError && search === appliedSearch
+    && !isSavedView && sortMode !== "hidden" && !loading && !isRefreshing && !showSkeleton && !fetchError && searchReady
     && isLastRecommendationPage(pageIndex, displayPageIndex, total, visibleHasNext, LIMIT);
 
   useEffect(() => {
@@ -1334,9 +1352,9 @@ const debugSetItem = useCallback((key: string, value: string) => {
 
 const listingViewer = `${adminLevel}:${currentUserId ?? ""}`;
 const canPersistListing = useCallback((qs: string) => (
-  !authResolvingRef.current && search === appliedSearch &&
+  !authResolvingRef.current && searchReady &&
   filterSig === lastFilterSigRef.current && filterSig === filterSigForQuery(qs)
-), [search, appliedSearch, filterSig]);
+), [searchReady, filterSig]);
 
 const writeLiteNow = useCallback(() => {
   if (hydratingFromUrlRef.current) return;
@@ -2251,7 +2269,7 @@ useEffect(() => {
   // ================== POPSTATE (back/forward) ==================
 useEffect(() => {
   const onPop = () => {
-    searchSubmission.current += 1;
+    clearLocationSearch();
     const savedInUrl = new URLSearchParams(window.location.search).get("view") === "saved";
     if (savedInUrl !== isSavedView) {
       window.location.reload();
@@ -2903,7 +2921,7 @@ const resetAllFiltersAndReload = useCallback(() => {
     badgeFilter: defaultFilters.badge,
   });
 
-  searchSubmission.current += 1;
+  clearLocationSearch();
   setSearch(defaultFilters.search);
   setPriceDraft([defaultFilters.min, defaultFilters.max]);
   setPriceApplied([defaultFilters.min, defaultFilters.max]);
@@ -2953,7 +2971,7 @@ const resetAllFiltersAndReload = useCallback(() => {
   });
 
   queueMicrotask(() => fetchPageRef.current(0));
-}, [armRestoredFilterSig, buildQs, replaceUrlShallow, resetPagination]);
+}, [armRestoredFilterSig, buildQs, clearLocationSearch, replaceUrlShallow, resetPagination]);
 
 // User input supersedes a pending URL/cache restoration immediately, even
 // while the debounced search value is still catching up.
@@ -2964,29 +2982,84 @@ const setSearchFromInput = useCallback<React.Dispatch<React.SetStateAction<strin
   skipNextFilterEffectRef.current = false;
   hydratingFromUrlRef.current = false;
   filtersVersionRef.current += 1;
-  searchSubmission.current += 1;
+  clearLocationSearch();
   setSearch(value);
-}, []);
+}, [clearLocationSearch]);
+
+const chooseCampus = async (campus: ReturnType<typeof findUehCampuses>[number]) => {
+  const submission = ++searchSubmission.current;
+  setCenter(null);
+  setLocationMessage("Đang xác minh vị trí cơ sở…");
+  try {
+    const response = await fetch(`/api/geocode?q=${encodeURIComponent(campus.lookup)}`, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw new Error("Geocoder unavailable");
+    const { results } = await response.json() as { results: NearbyRoomCenter[] };
+    const match = results.find(place => Number.isFinite(place.latitude) && Number.isFinite(place.longitude) &&
+      normalizePlace(place.label).includes(normalizePlace(campus.address)));
+    if (!match) throw new Error("Campus not found");
+    if (submission === searchSubmission.current) {
+      setCenter({ ...match, label: campus.label });
+      setLocationMessage("");
+    }
+  } catch {
+    if (submission === searchSubmission.current) {
+      setLocationMessage("Chưa xác minh được tọa độ cơ sở. Bạn có thể chọn cơ sở khác hoặc bổ sung quận hay tên đường.");
+    }
+  }
+};
 
 const submitSearch = async () => {
-  const submission = ++searchSubmission.current;
   const query = search.trim();
   if (!query) return;
-  // Apply the original text immediately, including when interpretation fails.
-  setAppliedSearch(search);
-  const filters = await interpretHomeSearch(query).catch(() => null);
-  if (!filters || submission !== searchSubmission.current) return;
+  if (!isNaturalRoomSearch(query)) {
+    setAppliedSearch(search);
+    return;
+  }
+  if (resolved?.query === search || inFlightSearches.current.has(query)) return;
+  const submission = ++searchSubmission.current;
+  inFlightSearches.current.add(query);
+  try {
+    const filters = await interpretHomeSearch(query).catch(() => null);
+    if (submission !== searchSubmission.current) return;
+    if (!filters) {
+      setAppliedSearch(search);
+      return;
+    }
 
-  setSearchFromInput(filters.location);
-  setAppliedSearch(filters.location);
-  if (filters.roomType) setSelectedRoomTypes([filters.roomType]);
-  if (filters.minPrice !== null || filters.maxPrice !== null) {
-    const price: [number, number] = [
-      filters.minPrice ?? PRICE_DEFAULT[0],
-      filters.maxPrice ?? PRICE_DEFAULT[1],
-    ];
-    setPriceDraft(price);
-    setPriceAppliedFromUser(price);
+    let keyword = "";
+    const options = findUehCampuses(query);
+    const district = districts.find(value => normalizePlace(value) === normalizePlace(filters.location));
+    if (district && !options.length) {
+      setSelectedDistricts([district]);
+    } else if (filters.location && !options.length) {
+      const street = filters.location.replace(/^đường\s+/iu, "");
+      const result = await fetchRooms({
+        limit: 20, search: street, adminLevel, currentUserId, anonSessionId: initialAnonSessionId,
+        vipAccessTokenHash: vipAccessTokenHashRef.current,
+      }).catch(() => null);
+      if (submission !== searchSubmission.current) return;
+      if (result?.data.some(room => (` ${normalizePlace(String(room.address ?? ""))} `).includes(` ${normalizePlace(street)} `))) {
+        keyword = street;
+      } else {
+        setLocationMessage("Chưa xác minh được địa điểm. Bạn có thể bổ sung cơ sở, quận hoặc tên đường.");
+      }
+    }
+
+    setResolved({ query: search, keyword });
+    setAppliedSearch(keyword);
+    setCampuses(options);
+    if (filters.roomType) setSelectedRoomTypes([filters.roomType]);
+    if (filters.minPrice !== null || filters.maxPrice !== null) {
+      const price: [number, number] = [
+        filters.minPrice ?? PRICE_DEFAULT[0],
+        filters.maxPrice ?? PRICE_DEFAULT[1],
+      ];
+      setPriceDraft(price);
+      setPriceAppliedFromUser(price);
+    }
+    if (options.length === 1 && !isSavedView) void chooseCampus(options[0]);
+  } finally {
+    inFlightSearches.current.delete(query);
   }
 };
 
@@ -3146,7 +3219,7 @@ useEffect(() => {
 
 // ================== NEXT / PREV ==================
 const goNext = useCallback(() => {
-  if (filterSig !== lastFilterSigRef.current || search !== appliedSearch) return;
+  if (filterSig !== lastFilterSigRef.current || !searchReady) return;
   if (loading || !hasNext) {
   if (debugEnabled) {
     pushPageDebug({
@@ -3253,7 +3326,7 @@ persistSoon();
 ]);
 
 const goPrev = useCallback(() => {
-  if (loading || filterSig !== lastFilterSigRef.current || search !== appliedSearch) return;
+  if (loading || filterSig !== lastFilterSigRef.current || !searchReady) return;
 
   const previous = Math.max(0, pageIndex - 1);
   const next = cursorsRef.current[previous] ? previous : 0;
@@ -3629,6 +3702,20 @@ return (
               setSortMode={setSortMode}
               total={total}
             />
+      {campuses.length > 0 && !isSavedView && (
+          <label className="mt-2 block text-sm">
+            Cơ sở UEH
+            <select aria-label="Cơ sở UEH" className="ml-2 max-w-full rounded border bg-neutral-900 px-2 py-1"
+              defaultValue="" onChange={event => {
+                const campus = campuses[Number(event.target.value)];
+                if (campus && event.target.value !== "") void chooseCampus(campus);
+              }}>
+              <option value="" disabled>Chọn cơ sở để tìm trong 5 km</option>
+              {campuses.map((campus, index) => <option key={campus.label} value={index}>{campus.label}</option>)}
+            </select>
+          </label>
+        )}
+        {locationMessage && <p role="status" className="mt-2 text-sm">{locationMessage}</p>}
       </div>
           {debugEnabled && pageDebug && (
         <div
@@ -3754,7 +3841,20 @@ return (
         </div>
       )}
 
-        <RoomList
+        {center && !isSavedView ? (
+          <NearbyHomeRooms key={JSON.stringify([center, priceFilterActive, minPriceApplied, maxPriceApplied, selectedRoomTypes, featureFilters, statusFilter, selectedDistricts])}
+            center={center}
+            filters={new URLSearchParams([
+              ...(priceFilterActive ? [["minPrice", String(minPriceApplied)], ["maxPrice", String(maxPriceApplied)]] : []),
+              ...selectedRoomTypes.flatMap(value => {
+                const bedrooms = value.match(/^([1-4]) Phòng ngủ$/)?.[1];
+                return (bedrooms ? [value, bedrooms + "PN"] : [value]).map(type => ["roomType", type]);
+              }),
+              ...selectedDistricts.map(value => ["district", value]),
+              ...featureFilters.map(value => ["features", value]),
+              ...(statusFilter ? [["status", statusFilter]] : []),
+            ]).toString()} />
+        ) : <RoomList
           fetchError={isSavedView ? savedRoomsError : fetchError}
           showSkeleton={isSavedView ? savedRoomsLoading : showSkeleton}
           roomsToRender={visibleRooms}
@@ -3785,8 +3885,8 @@ return (
               Xem tất cả phòng
             </button>
           ) : null}
-        />
-        {showRecommendations && (
+        />}
+        {showRecommendations && !center && (
           <RoomRecommendations
             filters={recommendationFilters}
             excludeIds={visibleRooms.map(room => String(room.id))}
@@ -3799,7 +3899,7 @@ return (
 
     </div>
 
-    <div
+    <div hidden={Boolean(center && !isSavedView)}
       className="home-pagination
         fixed inset-x-0 bottom-0 z-[950]
         border-t border-white/25
