@@ -93,6 +93,7 @@ export default async function HomePage({
       initialSavedView={savedView}
       initialFilters={filters}
       naturalSearchEnabled={Boolean(readRoomSearchConfig())}
+      initialNaturalQuery={getParam("nq")?.slice(0, 240) ?? ""}
       initialPageIndex={nextPage}
       initialAnonSessionId={anonymousAccess?.sessionId ?? null}
       initialAnonExpiresAt={anonymousAccess?.expiresAt ?? null}

@@ -40,6 +40,7 @@ type InitialProps = {
   initialSavedView?: boolean;
   initialFilters?: HomeListFilters;
   naturalSearchEnabled?: boolean;
+  initialNaturalQuery?: string;
   initialPageIndex?: number;
   initialAnonSessionId?: string | null;
   initialAnonExpiresAt?: string | null;
@@ -261,6 +262,7 @@ const HomeClient = ({
   initialSavedView = false,
   initialFilters = DEFAULT_HOME_LIST_FILTERS,
   naturalSearchEnabled = false,
+  initialNaturalQuery = "",
   initialPageIndex = 0,
   initialAnonSessionId = null,
   initialAnonExpiresAt = null,
@@ -438,23 +440,26 @@ const [featureFilters, setFeatureFilters] = useState(initialFilters.featureFilte
   const pendingRestoredFilterSigRef = useRef<string | null>(null);
   const searchSubmission = useRef(0);
   const inFlightSearches = useRef(new Set<string>());
-  const [resolved, setResolved] = useState<{ query: string; keyword: string } | null>(null);
-  const [campuses, setCampuses] = useState<ReturnType<typeof findUehCampuses>>([]);
+  const displayedQueryRef = useRef(initialNaturalQuery);
+  const [resolved, setResolved] = useState<{ query: string; keyword: string } | null>(() =>
+    initialNaturalQuery ? { query: initialNaturalQuery, keyword: initialFilters.search } : null);
+  const [campuses, setCampuses] = useState(() => findUehCampuses(initialNaturalQuery));
   const [center, setCenter] = useState<NearbyRoomCenter | null>(null);
   const [locationMessage, setLocationMessage] = useState("");
   const [search, setSearch] = useState(initialFilters.search);
   const [appliedSearch, setAppliedSearch] = useState(initialFilters.search);
 
   useEffect(() => {
-    if (resolved?.query === search || (naturalSearchEnabled && isNaturalRoomSearch(search.trim()))) return;
+    if (resolved || (naturalSearchEnabled && isNaturalRoomSearch(search.trim()))) return;
     const timer = window.setTimeout(() => setAppliedSearch(search), 250);
     return () => window.clearTimeout(timer);
   }, [search, resolved, naturalSearchEnabled]);
-  const searchReady = resolved?.query === search
+  const searchReady = resolved
     ? resolved.keyword === appliedSearch
     : search === appliedSearch || (naturalSearchEnabled && isNaturalRoomSearch(search.trim()));
   const clearLocationSearch = useCallback(() => {
     searchSubmission.current += 1;
+    displayedQueryRef.current = "";
     setResolved(null);
     setCampuses([]);
     setCenter(null);
@@ -1141,6 +1146,7 @@ const persistBlockedRef = useRef(false);
     };
 
     setOrDel(QS.q, next.q?.trim() ? next.q.trim() : null);
+    setOrDel("nq", displayedQueryRef.current || null);
     setOrDel(QS.min, typeof next.min === "number" ? String(next.min) : null);
     setOrDel(QS.max, typeof next.max === "number" ? String(next.max) : null);
     setOrDel(QS.d, next.d?.length ? toListParam(next.d) : null);
@@ -2981,10 +2987,12 @@ const setSearchFromInput = useCallback<React.Dispatch<React.SetStateAction<strin
   pendingUrlFiltersRef.current = null;
   skipNextFilterEffectRef.current = false;
   hydratingFromUrlRef.current = false;
-  filtersVersionRef.current += 1;
+  if (!(naturalSearchEnabled && typeof value === "string" && isNaturalRoomSearch(value.trim()))) {
+    filtersVersionRef.current += 1;
+  }
   clearLocationSearch();
   setSearch(value);
-}, [clearLocationSearch]);
+}, [clearLocationSearch, naturalSearchEnabled]);
 
 const chooseCampus = async (campus: ReturnType<typeof findUehCampuses>[number]) => {
   const submission = ++searchSubmission.current;
@@ -3015,7 +3023,7 @@ const submitSearch = async () => {
     setAppliedSearch(search);
     return;
   }
-  if (resolved?.query === search || inFlightSearches.current.has(query)) return;
+  if (resolved || inFlightSearches.current.has(query)) return;
   const submission = ++searchSubmission.current;
   inFlightSearches.current.add(query);
   try {
@@ -3045,6 +3053,7 @@ const submitSearch = async () => {
       }
     }
 
+    displayedQueryRef.current = search;
     setResolved({ query: search, keyword });
     setAppliedSearch(keyword);
     setCampuses(options);
@@ -3674,7 +3683,7 @@ return (
               districts={districts}
               roomTypes={roomTypes}
               loading={loading}
-              search={search}
+              search={resolved?.query ?? search}
               setSearch={setSearchFromInput}
               onSearchSubmit={naturalSearchEnabled ? submitSearch : undefined}
               priceDraft={priceDraft}
