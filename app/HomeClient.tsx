@@ -3055,6 +3055,7 @@ const submitSearch = async () => {
 
     displayedQueryRef.current = search;
     setResolved({ query: search, keyword });
+    setSearch(keyword);
     setAppliedSearch(keyword);
     setCampuses(options);
     if (filters.roomType) setSelectedRoomTypes([filters.roomType]);
