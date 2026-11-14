@@ -6,6 +6,13 @@ const MAX_CALLS_PER_MINUTE = 12;
 let windowStarted = 0;
 let calls = 0;
 
+function reportFailure(reason: "connection" | "http" | "timeout" | "invalid_json", status?: number) {
+  if (process.env.NODE_ENV === "development") {
+    console.warn("[Home room search] FreeLLMAPI fallback", { reason, ...(status === undefined ? {} : { status }) });
+  }
+  return null;
+}
+
 function isNaturalRoomSearch(query: string) {
   return /(?:^|\s)(?:tìm|cần|muốn|gần|quanh|dưới|trên|tầm|khoảng|tối đa|tối thiểu)(?:\s|$)/iu.test(query);
 }
@@ -71,12 +78,13 @@ export async function interpretRoomSearch(
   if (calls >= MAX_CALLS_PER_MINUTE) return null;
   calls += 1;
 
+  const signal = AbortSignal.timeout(timeoutMs);
   try {
     const response = await request(config.endpoint, {
       method: "POST",
       cache: "no-store",
       redirect: "error",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
       headers: { Authorization: `Bearer ${config.key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: config.model,
@@ -98,12 +106,13 @@ export async function interpretRoomSearch(
         ],
       }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) return reportFailure("http", response.status);
     const body = await response.json();
     const content: unknown = body?.choices?.[0]?.message?.content;
-    if (typeof content !== "string" || content.length > 2048) return null;
-    return validate(JSON.parse(content), query);
-  } catch {
-    return null;
+    if (typeof content !== "string" || content.length > 2048) return reportFailure("invalid_json");
+    return validate(JSON.parse(content), query) ?? reportFailure("invalid_json");
+  } catch (error) {
+    if (signal.aborted) return reportFailure("timeout");
+    return reportFailure(error instanceof SyntaxError ? "invalid_json" : "connection");
   }
 }
