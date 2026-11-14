@@ -1,6 +1,7 @@
 "use client";
 
 import RoomStatusField from "@/components/rooms/RoomStatusField";
+import { markHomeRoomsDirty } from "@/lib/rooms/homeDirty";
 import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -257,13 +258,15 @@ export default function EditRoomForm({ room }: { room: EditableRoom }) {
             }),
           }));
         }
+        if (orderedMedia.length > 0) markHomeRoomsDirty();
         if (filesToUpload.length > 0) {
           await uploadRoomMediaFiles({
             roomId: room.id,
             files: filesToUpload,
             startSortOrder: currentMedia.length,
-            coverAlreadyExists: currentMedia.some((media) => media.type === "image" && media.is_cover === true),
+            coverAlreadyExists: orderedMedia.some((media) => media.type === "image"),
           });
+          markHomeRoomsDirty();
         }
       },
     });

@@ -35,6 +35,12 @@ async function main(){
     const file = fs.readdirSync('supabase/migrations').find(name => name.endsWith(suffix))!;
     await db.exec(fs.readFileSync(path.join('supabase/migrations',file),'utf8'));
   }
+  const candidates = fs.readFileSync('supabase/migrations/20260731022000_owner_property_room_assignment_v2.sql', 'utf8');
+  const candidateStart = candidates.indexOf('create or replace function public.get_owner_property_room_candidates_v1(');
+  const candidateEnd = candidates.indexOf('create or replace function public.assign_owner_property_room_candidate_v1(', candidateStart);
+  await db.exec(candidates.slice(candidateStart, candidateEnd));
+  const coverMigration = fs.readdirSync('supabase/migrations').find(name => name.endsWith('_unify_room_cover_order.sql'))!;
+  await db.exec(fs.readFileSync(path.join('supabase/migrations', coverMigration), 'utf8'));
   await db.exec('reset check_function_bodies');
   const admin=randomUUID(),l2=randomUUID(),property=randomUUID(),session=randomUUID(),a=randomUUID(),b=randomUUID(),c=randomUUID();
   await db.query("insert into admin_users(user_id,level) values($1,1),($2,2);",[admin,l2]);
@@ -52,6 +58,26 @@ async function main(){
   };
   await db.query("select set_config('offline.uid','',false)");
   for(const query of ['991A','882B','773C'])assert.equal((await fetch(query)).data.length,0,'anon cannot locate house-only matches, including repeated numbers in descriptions');
+  await db.query(`insert into room_media(id,room_id,type,url,sort_order,created_at,is_cover) values
+    ('00000000-0000-4000-8000-000000000001',$1,'image','A',1,'2026-01-01',true),
+    ('00000000-0000-4000-8000-000000000002',$1,'image','B',1,'2026-01-02',false),
+    ('00000000-0000-4000-8000-000000000003',$1,'video','video',0,'2026-01-01',false),
+    ('00000000-0000-4000-8000-000000000004',$1,'image','last',null,'2025-01-01',false)`,[a]);
+  const coverFor = async (search: string|null) => (await fetch(search)).data.find((room: { id: string }) => room.id===a);
+  assert.equal((await coverFor(null)).thumb_url,'A');
+  await db.query("update room_media set sort_order=0 where room_id=$1 and url='B'",[a]);
+  for (const search of [null,'Sao Mai']) {
+    const card = await coverFor(search);
+    assert.equal(card.thumb_url, 'B');
+    assert.deepEqual(card.image_urls, ['B','A','last']);
+  }
+  await db.query("update room_media set sort_order=2 where room_id=$1 and url='last'",[a]);
+  assert.equal((await coverFor(null)).thumb_url,'B','reordering other images keeps the cover');
+  await db.query("delete from room_media where room_id=$1 and url not in ('B','video')",[a]);
+  assert.deepEqual((await coverFor(null)).image_urls,['B']);
+  await db.query("delete from room_media where room_id=$1 and type='image'",[a]);
+  assert.equal((await coverFor(null)).thumb_url,null);
+  assert.deepEqual((await coverFor(null)).image_urls,[]);
   const combined=await fetch('991a sao mai');assert.equal(combined.data.some((room:any)=>room.id===a),combined.data.some((room:any)=>room.id===c),'adding a private house number cannot distinguish two rooms on the same public address');
   assert.equal((await fetch('SAO MAI')).data.length,2);assert.equal((await fetch('SÂN VƯỜN')).data[0].id,a);assert.equal((await fetch('BBQ')).data[0].id,a);
   const first=await fetch('Sao Mai',null,null,0,1);assert.equal(first.data.length,1);assert.equal(first.total_count,2);

@@ -1,3 +1,4 @@
+import { compareRoomMediaOrder } from "@/lib/rooms/cardImages";
 import {
   normalizeContractStatus,
   normalizeRoomStatus,
@@ -127,10 +128,7 @@ export async function getRoomDetail(roomId: string) {
 
   if (error) throw error;
 
-  const media = [...(data.room_media ?? [])].sort(
-    (left, right) =>
-      Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0),
-  );
+  const media = [...(data.room_media ?? [])].sort(compareRoomMediaOrder);
 
   const contracts = [...(data.rental_contracts ?? [])].sort(
     (left, right) => {

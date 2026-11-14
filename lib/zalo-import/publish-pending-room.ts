@@ -628,7 +628,8 @@ export async function publishPendingRoom(params: {
     }
 
     mediaRows.sort((a, b) => a.sort_order - b.sort_order);
-    mediaRows.forEach((item, index) => { item.sort_order = index; item.is_cover = index === 0; });
+    const cover = mediaRows.find(item => item.type === "image" && item.url.trim());
+    mediaRows.forEach((item, index) => { item.sort_order = index; item.is_cover = item === cover; });
     const mediaInsert = await supabase
       .from("room_media")
       .insert(mediaRows);

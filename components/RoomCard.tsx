@@ -1,7 +1,7 @@
 "use client";
 
 import { roomStatusLabel } from "@/lib/rooms/availability";
-import { canOptimizeRoomCardImage } from "@/lib/rooms/cardImages";
+import { canOptimizeRoomCardImage, getFullImageUrls } from "@/lib/rooms/cardImages";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import RoomCardImage from "@/components/rooms/RoomCardImage";
 import Link from "next/link";
@@ -224,41 +224,6 @@ function normalizeStatus(v?: string | null) {
   return "Đang trống";
 }
 
-function getFullImageUrls(roomData: any): string[] {
-  const fromMedia = Array.isArray(roomData?.media)
-    ? roomData.media
-        .filter((m: any) => {
-          const type = String(m?.type ?? m?.kind ?? "").toLowerCase();
-          const url = String(m?.url ?? "").trim();
-          return type === "image" && Boolean(url);
-        })
-        .sort((a: any, b: any) => {
-          const aCover = a?.is_cover === true ? 0 : 1;
-          const bCover = b?.is_cover === true ? 0 : 1;
-
-          if (aCover !== bCover) return aCover - bCover;
-
-          const aSort = Number.isFinite(Number(a?.sort_order))
-            ? Number(a.sort_order)
-            : 999999;
-
-          const bSort = Number.isFinite(Number(b?.sort_order))
-            ? Number(b.sort_order)
-            : 999999;
-
-          return aSort - bSort;
-        })
-        .map((m: any) => String(m.url).trim())
-        .filter(Boolean)
-    : [];
-
-  const fromImageUrls = Array.isArray(roomData?.image_urls)
-    ? roomData.image_urls.map((x: any) => String(x ?? "").trim()).filter(Boolean)
-    : [];
-
-  return Array.from(new Set(fromMedia.length ? fromMedia : fromImageUrls));
-}
-
 function getFullVideoUrls(roomData: any): string[] {
   const fromMedia = Array.isArray(roomData?.media)
     ? roomData.media
@@ -412,56 +377,20 @@ const contactName = isLoggedAdmin
   room.zalo_phone,
 ]);
 
-  // ✅ build thumb.webp theo UUID (room.id) để tránh trùng room_code
-  // rooms/{uuid}/images/thumb.webp
-  const R2_BASE =
-    (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL ||
-      process.env.NEXT_PUBLIC_R2_PUBLIC_URL ||
-      "")?.replace(/\/$/, "") || "";
-
   // Tổng số ảnh (ưu tiên image_count từ DB)
   const totalImages =
     typeof room.image_count === "number" && Number.isFinite(room.image_count)
       ? room.image_count
       : images.length;
 
-  // ✅ Chỉ coi là "có media thật" khi còn ảnh hoặc có video
-  const hasRealMedia = totalImages > 0 || !!room.has_video;
-
-  // ✅ cache-bust thumb để tránh Cloudflare/R2 trả ảnh cũ sau khi xoá
-  const thumbBust = hasRealMedia
-    ? `${totalImages}-${(showImages[0] ?? "").slice(-24)}`
-    : "0";
-
-  const thumbUrl =
-    R2_BASE && room.id
-      ? `${R2_BASE}/rooms/${room.id}/images/thumb.webp?v=${encodeURIComponent(
-          thumbBust
-        )}`
-      : "";
-
-  const rpcThumbUrl = String(room.thumb_url ?? "").trim();
-
-  // ✅ ưu tiên:
-  // 1) thumb.webp tự build
-  // 2) thumb_url từ RPC
-  // 3) ảnh đầu
-  const mainPrimary =
-    room.has_video
-      ? (thumbUrl || rpcThumbUrl || "")
-      : safeSrc(showImages[0] ?? null);
-
-  const mainFallback1 = safeSrc(rpcThumbUrl || (showImages[0] ?? null));
+  // The fixed R2 thumbnail has no reliable association with a cover URL.
+  const coverUrl = showImages[0] ?? String(room.thumb_url ?? "").trim();
+  const [failedCover, setFailedCover] = useState<string | null>(null);
+  const coverFailed = !coverUrl || failedCover === coverUrl;
 
   const subImage1 = safeSrc(showImages[1] ?? "");
   const subImage2 = safeSrc(showImages[2] ?? "");
 
-  // ✅ mainErrorStage:
-  // 0: đang dùng thumb chính
-  // 1: fallback sang thumb_url / ảnh đầu
-  // 2: fallback sang video_url hoặc no-image
-  const [mainImageFailure, setMainImageFailure] = useState<{ primary: string; fallback: string; stage: 1 | 2 } | null>(null);
-  const mainErrorStage = mainImageFailure?.primary === mainPrimary && mainImageFailure.fallback === mainFallback1 ? mainImageFailure.stage : 0;
   const [failedSub1, setFailedSub1] = useState<string | null>(null);
   const [failedSub2, setFailedSub2] = useState<string | null>(null);
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
@@ -492,12 +421,7 @@ useEffect(() => {
   setCurrentAvailableFrom((room as any).available_from ?? null);
 }, [room.status, (room as any).available_from]);
 
-  const mainSrc =
-    mainErrorStage === 0
-      ? mainPrimary
-      : mainErrorStage === 1
-      ? mainFallback1
-      : FALLBACK;
+  const mainSrc = coverFailed ? FALLBACK : coverUrl;
 
   const sub1Src = failedSub1 === subImage1 ? FALLBACK : subImage1;
   const sub2Src = failedSub2 === subImage2 ? FALLBACK : subImage2;
@@ -1180,7 +1104,7 @@ return (
           )}
           <div className="grid h-full grid-cols-[60%_40%] gap-1">
             <div className="relative w-full h-full overflow-hidden">
-              {room.has_video && mainErrorStage >= 1 && room.video_url ? (
+              {room.has_video && coverFailed && room.video_url ? (
                 <video
                   src={room.video_url}
                   className="w-full h-full object-cover object-[50%_40%]"
@@ -1199,12 +1123,7 @@ return (
                   className="object-cover object-[50%_40%]"
                   loading={index === 0 ? "eager" : "lazy"}
                   unoptimized={!canOptimizeRoomCardImage(mainSrc)}
-                  onError={() => {
-                    setMainImageFailure(previous => {
-                      if (mainErrorStage === 2) return previous;
-                      return { primary: mainPrimary, fallback: mainFallback1, stage: mainErrorStage === 0 && mainFallback1 !== mainPrimary ? 1 : 2 };
-                    });
-                  }}
+                  onError={() => setFailedCover(coverUrl)}
                 />
               )}
 

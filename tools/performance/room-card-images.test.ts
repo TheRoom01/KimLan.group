@@ -22,12 +22,12 @@ async function main() {
         stdin: { resolveDir: root, loader: "tsx", contents: `
           import React,{useState}from'react';import{createRoot}from'react-dom/client';import Card from'./components/RoomCard';
           const urls=n=>[1,2,3].map(i=>'https://cdn.canhodichvu.pro/'+n+i+'.webp');
-          const base={id:'first',room_type:'Studio',price:5e6,status:'Đang trống',address:'Đường mẫu',image_count:3,image_urls:urls('photo')};
+          const base={id:'first',room_type:'Studio',price:5e6,has_video:true,thumb_url:'https://cdn.canhodichvu.pro/stale.webp',status:'Đang trống',address:'Đường mẫu',image_count:3,image_urls:urls('photo')};
           function App(){const[room,S]=useState(base);window.replaceImages=prefix=>S({...base,image_urls:urls(prefix)});return <div className='home-redesign'><div id='first' style={{width:400}}><Card room={room} index={0}/></div><div style={{height:20000}}/><div id='late' style={{width:400}}><Card room={{...base,id:'late',image_urls:urls('late')}} index={1}/></div></div>};
           createRoot(document.getElementById('root')).render(<App/>);
         ` },
         bundle: true, write: false, platform: "browser", logLevel: "silent", loader: { ".module.css": "empty" },
-        define: { "process.env": "{}", "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_ROOM_CARD_IMAGE_OPTIMIZATION": JSON.stringify(String(optimize)) },
+        define: { "process.env": "{}", "process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL": JSON.stringify("https://cdn.canhodichvu.pro"), "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_ROOM_CARD_IMAGE_OPTIMIZATION": JSON.stringify(String(optimize)) },
         plugins: [{ name: "offline", setup(builder) {
           builder.onResolve({ filter: /.*/ }, args => args.path in mocks ? { path: args.path, namespace: "mock" } : undefined);
           builder.onLoad({ filter: /.*/, namespace: "mock" }, args => ({ contents: mocks[args.path], loader: "tsx", resolveDir: root }));
@@ -49,6 +49,7 @@ async function main() {
       await loaded();
       const sources = () => page.locator("#first .home-room-gallery img").evaluateAll(nodes => nodes.map(node => (node as HTMLImageElement).currentSrc));
       assert.deepEqual(await sources(), [1,2,3].map(i => `https://cdn.canhodichvu.pro/photo${i}.webp`), "valid originals remain in order, even when optimizer returns 402");
+      assert.equal(requests.some(url => /thumb[.]webp|stale[.]webp/.test(url)), false, "video rooms ignore stale thumbnails");
       const optimizedRequests = requests.filter(url => url.includes("/_next/image?"));
       assert(optimize ? optimizedRequests.length >= 3 && optimizedRequests.length <= 6 : optimizedRequests.length === 0, "default skips optimizer; opt-in srcset failures have bounded retries");
       assert.equal(requests.filter(url => url.includes("/late")).length, 0, "distant card images stay lazy");

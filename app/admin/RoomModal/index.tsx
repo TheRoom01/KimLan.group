@@ -1,5 +1,7 @@
 'use client'
 
+import { compareRoomMediaOrder } from "@/lib/rooms/cardImages";
+import { markHomeRoomsDirty } from "@/lib/rooms/homeDirty";
 import { beginImportTask, updateImportTask, finishImportTask, isImportBusy, preserveImportForm, getImportForm, clearImportForm } from "@/app/admin/zalo-imports/import-tasks";
 import { vacancyDateFromText, withoutStructuredAmenities } from "@/lib/zalo-import/listing-fields";
 import { importLocationQueries } from "@/lib/zalo-import/pending-location";
@@ -1244,7 +1246,7 @@ const detailSample =
         )
 
       const storedMedia = Array.isArray(room.media) ? room.media as StoredMedia[] : []
-      const mediaFromRpc = storedMedia.map(({ type, url }) => ({ type, url, path: url }))
+      const mediaFromRpc = [...storedMedia].sort(compareRoomMediaOrder).map(({ type, url }) => ({ type, url, path: url }))
 
       const imageFallback = Array.isArray(room?.image_urls)
         ? room.image_urls.map((u: any) => ({
@@ -1783,6 +1785,7 @@ const applyAutoReadCandidate = (
           const result = await approval.json().catch(() => ({}))
           if (!approval.ok || !result?.ok) throw new Error(result?.error || 'Duyệt import thất bại.')
           finishImportTask(pendingId, result.locationWarning || (review?.type === 'UPDATE' && approvalMode !== 'create_room_new_code' ? 'Đã duyệt cập nhật phòng.' : 'Đã duyệt đăng phòng mới.'), Boolean(result.locationWarning))
+          markHomeRoomsDirty()
           await onPendingApproved?.()
           return
         }
