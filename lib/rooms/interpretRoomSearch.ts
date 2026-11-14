@@ -10,7 +10,7 @@ function isNaturalRoomSearch(query: string) {
   return /(?:^|\s)(?:tìm|cần|muốn|gần|quanh|dưới|trên|tầm|khoảng|tối đa|tối thiểu)(?:\s|$)/iu.test(query);
 }
 
-export function readRoomSearchConfig(env = process.env) {
+export function readRoomSearchConfig(env: Record<string, string | undefined> = process.env) {
   const base = env.FREE_LLM_API_BASE_URL?.trim();
   const key = env.FREE_LLM_API_KEY?.trim();
   const model = env.FREE_LLM_API_MODEL?.trim();
@@ -51,7 +51,11 @@ function validate(value: unknown, query: string) {
 
 export async function interpretRoomSearch(
   input: unknown,
-  { env = process.env, request = fetch, timeoutMs = 3000 } = {},
+  { env = process.env, request = fetch, timeoutMs = 3000 }: {
+    env?: Record<string, string | undefined>;
+    request?: typeof fetch;
+    timeoutMs?: number;
+  } = {},
 ) {
   if (typeof input !== "string" || input.length > MAX_QUERY_LENGTH) return null;
   const query = input.trim();
