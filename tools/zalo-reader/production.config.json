@@ -1,6 +1,6 @@
 {
     "mode":  "production",
-    "enabled":  true,
+    "enabled":  false,
     "webBaseUrl":  "https://www.canhodichvu.pro",
     "allowReimportForTesting":  false,
     "testImportToPending":  false,

@@ -1,5 +1,5 @@
-import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { RoomNavigationPreview } from "@/components/rooms/RoomNavigationPreview";
 
 export default function RoomModalLoading() {
-  return <RoomModalLoadingSkeleton />;
+  return <RoomNavigationPreview routeLoading />;
 }

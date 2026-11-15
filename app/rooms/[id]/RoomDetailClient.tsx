@@ -2,7 +2,7 @@
 
 import { roomStatusLabel } from "@/lib/rooms/availability";
 import { useRoomView } from "@/lib/analytics/useRoomView";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useMemo, useState, useRef } from "react";
 
@@ -19,6 +19,9 @@ import { useDirectSwipeCarousel } from "@/components/media/useDirectSwipeCarouse
 import RoomMediaVideo from "@/components/media/RoomMediaVideo";
 import RoomInquiryModal from "@/components/rooms/RoomInquiryModal";
 import { ROOM_BADGES, normalizeRoomBadges } from "@/lib/roomBadges";
+import { canOptimizeRoomCardImage, getFullImageUrls } from "@/lib/rooms/cardImages";
+import RoomCardImage from "@/components/rooms/RoomCardImage";
+import { clearRoomNavigationPreview } from "@/components/rooms/RoomNavigationPreview";
 
 const ShareRoomModal = dynamic(() => import("@/components/share/ShareRoomModal"));
 
@@ -314,6 +317,7 @@ export default function RoomDetailClient({
   privateDetailLoaded: boolean;
 }) {
   const id = roomId;
+  useEffect(() => clearRoomNavigationPreview(roomId), [roomId]);
 
   
   const [room, setRoom] = useState<any>(initialRoom);
@@ -323,9 +327,6 @@ export default function RoomDetailClient({
   const [inquiryOpen, setInquiryOpen] = useState(false);
   const [phoneModal, setPhoneModal] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
-
-  const searchParams = useSearchParams();
-  const isModal = searchParams.get("modal") === "1";
 
   const [user, setUser] = useState<any>(
     initialUserId ? { id: initialUserId } : null,
@@ -878,57 +879,10 @@ useEffect(() => {
   privateDetailLoaded,
 ]);
 
- const imageUrls = useMemo<string[]>(() => {
-  // ✅ Ưu tiên room.media từ view room_media_agg
-  // Vì view này đã lấy từ bảng room_media và có is_cover + sort_order
-  if (Array.isArray(room?.media)) {
-    const fromMedia: string[] = room.media
-      .filter((m: any) => {
-        const type = String(m?.type ?? m?.kind ?? "").toLowerCase();
-        const url = String(m?.url ?? "").trim();
-
-        return type === "image" && Boolean(url);
-      })
-      .sort((a: any, b: any) => {
-        // 1) Ảnh cover lên trước
-        const aCover = a?.is_cover === true ? 0 : 1;
-        const bCover = b?.is_cover === true ? 0 : 1;
-
-        if (aCover !== bCover) return aCover - bCover;
-
-        // 2) Sau đó sort theo sort_order
-        const aSort = Number.isFinite(Number(a?.sort_order))
-          ? Number(a.sort_order)
-          : 999999;
-
-        const bSort = Number.isFinite(Number(b?.sort_order))
-          ? Number(b.sort_order)
-          : 999999;
-
-        if (aSort !== bSort) return aSort - bSort;
-
-        // 3) Fallback theo created_at nếu có
-        const aTime = new Date(String(a?.created_at ?? "")).getTime();
-        const bTime = new Date(String(b?.created_at ?? "")).getTime();
-
-        const safeATime = Number.isFinite(aTime) ? aTime : 0;
-        const safeBTime = Number.isFinite(bTime) ? bTime : 0;
-
-        return safeATime - safeBTime;
-      })
-      .map((m: any) => String(m.url).trim())
-      .filter((url: string) => Boolean(url));
-
-    if (fromMedia.length) {
-      // ✅ Chống trùng URL nếu dữ liệu cũ bị duplicate
-      return Array.from(new Set<string>(fromMedia));
-    }
-  }
-
-  // ✅ Fallback cuối cùng cho dữ liệu cũ nếu RPC/view nào đó vẫn trả image_urls
-  return normalizeImageUrls(room?.image_urls);
-}, [room?.media, room?.image_urls]);
-
+const imageUrls = useMemo(() => getFullImageUrls({
+  media: room?.media,
+  image_urls: normalizeImageUrls(room?.image_urls),
+}), [room?.media, room?.image_urls]);
 
 const videoUrls = useMemo(() => {
   const singleVideoUrl = String(room?.video_url ?? "").trim();
@@ -955,7 +909,7 @@ const mediaItems: MediaItem[] = useMemo(() => {
     url,
   }));
 
-  return [...vids, ...imgs];
+  return [...imgs, ...vids];
 }, [videoUrls, imageUrls]);
 
 const activeItem = useMemo(() => {
@@ -988,19 +942,6 @@ const moveFullscreenMedia = fullscreenMediaSwipe.move;
 
 function goPrevMedia() { mediaSwipe.move(-1); }
 function goNextMedia() { mediaSwipe.move(1); }
-
-useEffect(() => {
-  if (mediaItems.length < 2) return;
-  const preloadIndexes = [-2, -1, 1, 2].map(
-    (offset) => (activeIndex + offset + mediaItems.length) % mediaItems.length,
-  );
-  preloadIndexes.map((index) => mediaItems[index]).forEach((item) => {
-    if (!item || item.kind !== "image") return;
-    const image = new window.Image();
-    image.src = item.url;
-    void image.decode?.().catch(() => undefined);
-  });
-}, [activeIndex, mediaItems]);
 
 useEffect(() => {
   const onKeyDown = (event: KeyboardEvent) => {
@@ -1413,7 +1354,7 @@ return (
       data-room-detail-modal="true"
       data-home-detail="true"
       className="
-        fixed inset-0 z-[99999]
+        room-detail-overlay fixed inset-0 z-[99999]
         flex items-end justify-center
         bg-black/55
         px-0 pb-0 pt-[20px]
@@ -1423,14 +1364,14 @@ return (
     >
   <div
   className="
-    relative flex flex-col overflow-hidden
+    room-detail-shell relative flex flex-col overflow-hidden
     w-screen max-w-none
     md:w-[720px] md:max-w-[calc(100vw-48px)]
     h-[calc(100dvh-20px)]
     rounded-t-[28px]
     border-x border-t border-b-0
     shadow-[0_-24px_80px_rgba(0,0,0,0.55)]
-    animate-[slideUp_0.22s_ease-out]
+    motion-safe:animate-[slideUp_0.18s_ease-out]
   "
     style={{
       background: ROOM_THEME.modalBg,
@@ -1522,14 +1463,14 @@ return (
   </button>
 )}
 
-      <div className="relative z-10 flex h-full min-h-0 flex-col">
+      <div className="room-detail-columns relative z-10 flex h-full min-h-0 flex-col">
   {/* ===== TOP: BLOCK ẢNH CỐ ĐỊNH ===== */}
-<div className="shrink-0 p-3 pb-2">
-  <div className="space-y-1">
+<div className="room-detail-gallery shrink-0 p-3 pb-2">
+  <div className="room-detail-media-stack space-y-1">
     {mediaItems.length > 0 ? (
       <>
         <div
-          className="relative w-full h-[clamp(300px,35dvh,350px)] md:h-[400px] rounded-[18px] overflow-hidden bg-black cursor-grab active:cursor-grabbing select-none"
+          className="room-detail-stage relative w-full h-[clamp(300px,35dvh,350px)] md:h-[400px] rounded-[18px] overflow-hidden bg-black cursor-grab active:cursor-grabbing select-none"
           tabIndex={0}
           {...mediaSwipe.bind}
           onKeyDown={(e) => {
@@ -1569,15 +1510,16 @@ return (
           style={{ touchAction: "pan-y" }}
         >
           <div
-            className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`}
+            className={`flex h-full w-full will-change-transform ${mediaSwipe.isAnimating ? "motion-safe:transition-transform motion-safe:duration-200 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`}
             style={{ transform: mediaSwipe.transform }}
             onTransitionEnd={() => { if (!viewerOpen) mediaSwipe.onTransitionEnd(); }}
           >
             {mediaSwipe.visibleIndexes.map((mediaIndex, slot) => {
               const item = mediaItems[mediaIndex];
               const isCurrentSlide = mediaIndex === activeIndex;
+              const nearbySlide = Math.abs(mediaIndex - activeIndex) <= 1;
               return <div key={`${item.kind}-${item.url}-${slot}`} className="relative h-full w-full shrink-0 bg-black">
-                {item.kind === "video" ? (
+                {!nearbySlide ? null : item.kind === "video" ? (
                   <RoomMediaVideo ref={isCurrentSlide ? normalVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} onPlaybackChange={handleMediaPlaybackChange} className="h-full w-full object-contain bg-black" />
                 ) : (
                   <img src={item.url} alt={room?.room_code || ""} className="w-full h-full object-contain bg-black" loading={isCurrentSlide ? "eager" : "lazy"} fetchPriority={isCurrentSlide ? "high" : "auto"} draggable={false} />
@@ -1665,12 +1607,8 @@ return (
                   </div>
                 </>
               ) : (
-                <img
-                  src={it.url}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
+                <RoomCardImage src={it.url} alt="" width={82} height={66} sizes="82px"
+                  unoptimized={!canOptimizeRoomCardImage(it.url)} className="size-full object-cover" loading="lazy" />
               )}
             </button>
           ))}
@@ -2106,13 +2044,14 @@ return (
 
       <div
         className="
-          rounded-2xl p-4 space-y-2
+          room-detail-intro rounded-2xl p-4 space-y-2
           border border-white/15
           bg-[rgba(255,255,255,0.04)]
           backdrop-blur-[28px]
           shadow-[0_20px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]
         "
       >
+        <div className="room-detail-summary space-y-2">
         <div className="flex items-start justify-between gap-3">
           <div className="text-[#F4E7D6]">
             <span>Mã:</span>{" "}
@@ -2177,8 +2116,10 @@ return (
           </div>
         )}
 
+      </div>
+
         {room.description && (
-          <div className="mt-2 text-red-400 text-[15px] leading-snug whitespace-pre-line">
+          <div className="room-detail-description mt-2 text-red-400 text-[15px] leading-snug whitespace-pre-line">
             {room.description}
           </div>
         )}
@@ -2337,12 +2278,13 @@ return (
       onClick={(e) => e.stopPropagation()}
       style={{ touchAction: "none" }}
     >
-      <div className={`flex h-full w-full will-change-transform ${fullscreenMediaSwipe.isAnimating ? "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: fullscreenMediaSwipe.transform }} onTransitionEnd={fullscreenMediaSwipe.onTransitionEnd}>
+      <div className={`flex h-full w-full will-change-transform ${fullscreenMediaSwipe.isAnimating ? "motion-safe:transition-transform motion-safe:duration-200 ease-[cubic-bezier(.22,1,.36,1)]" : ""}`} style={{ transform: fullscreenMediaSwipe.transform }} onTransitionEnd={fullscreenMediaSwipe.onTransitionEnd}>
         {fullscreenMediaSwipe.visibleIndexes.map((mediaIndex) => {
           const item = mediaItems[mediaIndex];
           const isCurrentSlide = mediaIndex === activeIndex;
+          const nearbySlide = Math.abs(mediaIndex - activeIndex) <= 1;
           return <div key={`viewer-${item.kind}-${item.url}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
-            {item.kind === "video" ? (
+            {!nearbySlide ? null : item.kind === "video" ? (
               <RoomMediaVideo ref={isCurrentSlide ? fullscreenVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} fullscreen onPlaybackChange={handleMediaPlaybackChange} className="h-full w-full object-contain bg-black/40" />
             ) : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
           </div>;

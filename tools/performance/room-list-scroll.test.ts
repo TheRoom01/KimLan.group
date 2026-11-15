@@ -49,7 +49,7 @@ const script = (await build({
   window.fixtureMounts=0;window.fixturePageShows=[];
   addEventListener('pageshow',e=>window.fixturePageShows.push(e.persisted));
   function App(){const[detail,setDetail]=useState(location.pathname.startsWith('/rooms/'));useEffect(()=>{const f=()=>setDetail(location.pathname.startsWith('/rooms/'));addEventListener('popstate',f);addEventListener('fixture-route',f);return()=>{removeEventListener('popstate',f);removeEventListener('fixture-route',f)}},[]);
-    return detail?<main><h1>Chi tiết fixture</h1><button onClick={()=>history.back()}>Quay lại danh sách</button></main>:<Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={0} initialTotal={180}/>}
+    return detail?<main><h1>Chi tiết fixture</h1><button onClick={()=>history.back()}>Quay lại danh sách</button></main>:<Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={0} initialTotal={180} initialAnonSessionId="fixture-session" initialAnonExpiresAt={new Date(Date.now()+600000).toISOString()}/>}
   createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: root, loader: 'tsx' },
   bundle: true, write: false, platform: 'browser', logLevel: 'silent',
   tsconfig: path.join(root, 'tsconfig.json'), loader: { '.css': 'empty', '.module.css': 'empty' },

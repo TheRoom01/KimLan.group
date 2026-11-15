@@ -3,6 +3,7 @@
 import { roomStatusLabel } from "@/lib/rooms/availability";
 import { canOptimizeRoomCardImage, getFullImageUrls } from "@/lib/rooms/cardImages";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
+import { showRoomNavigationPreview } from "@/components/rooms/RoomNavigationPreview";
 import RoomCardImage from "@/components/rooms/RoomCardImage";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -1008,6 +1009,8 @@ return (
     >
       <Link
         href={href}
+        prefetch={false}
+        scroll={false}
         aria-label={`Xem chi tiết phòng ${room.room_code || room.id}`}
         className="absolute inset-0 z-10 cursor-pointer rounded-[18px]"
         onClick={(event) => {
@@ -1019,6 +1022,19 @@ return (
             !event.shiftKey &&
             !event.altKey
           ) {
+            const started = showRoomNavigationPreview({
+              id: room.id,
+              code: room.room_code,
+              type: room.room_type,
+              price: room.price,
+              cover: coverFailed ? "" : coverUrl,
+              address: [room.address, room.ward, room.district].filter(Boolean).join(", "),
+              badges: room.badges,
+            });
+            if (!started) {
+              event.preventDefault();
+              return;
+            }
             onNavigate(href);
           }
         }}

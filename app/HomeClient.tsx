@@ -17,7 +17,7 @@ import { usePathname } from "next/navigation";
 
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
 import LogoIntroButton from "@/components/LogoIntroButton";
-import { RoomModalLoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { RoomNavigationPreview } from "@/components/rooms/RoomNavigationPreview";
 import HeaderNotifications from "@/components/HeaderNotifications";
 import { ROOM_BADGES, type RoomBadge } from "@/lib/roomBadges";
 import { getSavedRoomIds } from "@/lib/savedRooms";
@@ -433,7 +433,6 @@ const [vipAdminName, setVipAdminName] = useState<string | null>(initialVipAdminN
 const [termFilters, setTermFilters] = useState(initialFilters.termFilters);
 const [featureFilters, setFeatureFilters] = useState(initialFilters.featureFilters);
   const [sortMode, setSortMode] = useState(initialFilters.sortMode);
-  const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
   const lastFilterSigRef = useRef(initialFilterSig);
   const prevAppliedSearchRef = useRef(initialFilters.search);
   const previousCustomerFilters = useRef<ReturnType<typeof customerFilterDetails> | null>(null);
@@ -3493,9 +3492,7 @@ useEffect(() => {
   };
 }, [isLoggedIn, hasVipAccess, vipValidationPending, initialAnonExpiresAt, initialAnonSessionId]);
 
-const handleNavigateToRoom = useCallback((href: string) => {
-  const encodedRoomId = href.match(/\/rooms\/([^/?#]+)/)?.[1] ?? "";
-  setOpeningRoomId(decodeURIComponent(encodedRoomId));
+const handleNavigateToRoom = useCallback(() => {
 
   try {
     const el = scrollRef.current;
@@ -3525,9 +3522,6 @@ const handleNavigateToRoom = useCallback((href: string) => {
   displayPageIndex,
 ]);
 
-useEffect(() => {
-  setOpeningRoomId(null);
-}, [pathname]);
 
 // Contact truyền xuống RoomCard:
 // - Admin đăng nhập: giữ nguyên thông tin admin hiện tại.
@@ -3878,7 +3872,6 @@ return (
           goPrev={handleGoPrev}
           goNext={handleGoNext}
           onNavigate={handleNavigateToRoom}
-          openingRoomId={openingRoomId}
           isRefreshing={isRefreshing}
           title={isSavedView ? "Phòng đã lưu" : "Phòng phù hợp"}
           total={typeof total === "number" ? total : undefined}
@@ -3902,7 +3895,7 @@ return (
             excludeIds={visibleRooms.map(room => String(room.id))}
             adminLevel={adminLevel} currentUserId={currentUserId}
             currentAdminPhone={roomContactPhone} currentAdminName={roomContactName}
-            onNavigate={handleNavigateToRoom} openingRoomId={openingRoomId}
+            onNavigate={handleNavigateToRoom}
           />
         )}
       </div>
@@ -3928,7 +3921,7 @@ return (
     </div>
 
     {generalInquiryOpen && <RoomInquiryModal open mode="general" onClose={() => setGeneralInquiryOpen(false)} />}
-    {openingRoomId ? <RoomModalLoadingSkeleton /> : null}
+    <RoomNavigationPreview />
 
     <div
       id="portal-root"
