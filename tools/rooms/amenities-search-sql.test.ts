@@ -41,6 +41,8 @@ async function main(){
   await db.exec(candidates.slice(candidateStart, candidateEnd));
   const coverMigration = fs.readdirSync('supabase/migrations').find(name => name.endsWith('_unify_room_cover_order.sql'))!;
   await db.exec(fs.readFileSync(path.join('supabase/migrations', coverMigration), 'utf8'));
+  const mapAmenities = fs.readdirSync('supabase/migrations').find(name => name.endsWith('_map_home_amenities.sql'))!;
+  await db.exec(fs.readFileSync(path.join('supabase/migrations', mapAmenities), 'utf8'));
   await db.exec('reset check_function_bodies');
   const admin=randomUUID(),l2=randomUUID(),property=randomUUID(),session=randomUUID(),a=randomUUID(),b=randomUUID(),c=randomUUID();
   await db.query("insert into admin_users(user_id,level) values($1,1),($2,2);",[admin,l2]);
@@ -95,7 +97,15 @@ async function main(){
   const map = async (statuses: string[]) => (await db.query(
     'select id from search_rooms_in_map_v1(106,10,107,11,p_statuses=>$1)',[statuses],
   )).rows.map((room:any)=>room.id);
+  await db.query('update room_details set has_elevator = true, allow_cat = true, short_term = true where room_id = $1',[a]);
+  await db.query('update room_details set has_stairs = true, allow_dog = true where room_id = $1',[b]);
+  await db.query('update room_details set no_pet = true where room_id = $1',[c]);
   assert.deepEqual(await map(tenantFlags),[a]);
+  assert.deepEqual(await map(['__amenity:balcony','__amenity:window']),[a]);
+  assert.deepEqual(await map(['__amenity:elevator','__amenity:short']),[a]);
+  assert.deepEqual(await map(['__amenity:stairs','__amenity:long']),[b]);
+  assert.deepEqual(new Set(await map(['__amenity:cat','__amenity:dog'])),new Set([a,b]));
+  assert.deepEqual(await map(['__amenity:nopet','Đang trống']),[c]);
   assert.deepEqual(await map([...tenantFlags,'Đã thuê']),[]);
   assert.equal((await fetch('991A',null,null,1)).data.length,0,'forged p_role cannot search private house numbers');
   await db.query("select set_config('offline.uid',$1,false)",[admin]);assert.equal((await fetch('991A')).data[0].id,a);assert.equal((await fetch('BBQ')).data[0].id,a);

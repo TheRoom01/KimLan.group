@@ -6,10 +6,10 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Layers3, Loader2, MapPin, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, Layers3, Loader2, MapPin, Search, SlidersHorizontal, X } from "lucide-react";
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap, type MapMouseEvent } from "maplibre-gl";
 import { DISTRICT_OPTIONS, ROOM_TYPE_OPTIONS } from "@/lib/filterOptions";
-import { normalizeRoomFeatures, tenantRoomFeatureOptions } from "@/lib/rooms/features";
+import { normalizeRoomFeatures, roomFeatureOptions, tenantRoomFeatureOptions } from "@/lib/rooms/features";
 import type { MapBounds, MapRoom } from "@/lib/map/types";
 import { clearViewedRooms, getViewedRoomIds, markRoomViewed, VIEWED_ROOMS_CHANGED_EVENT } from "@/lib/viewedRooms";
 import AnonymousLockModal from "@/components/AnonymousLockModal";
@@ -62,6 +62,33 @@ const MAP_PRICE_MAX = 30_000_000;
 const MAP_PRICE_STEP = 1_000_000;
 const MAP_STYLE_STORAGE_KEY = "kimlan-map-style-v1";
 const EMPTY_SEARCH_FOCUS: SearchFocusFeatureCollection = { type: "FeatureCollection", features: [] };
+const MAP_AMENITY_GROUPS = [
+  { title: "Di chuyển", param: "move", options: [
+    { value: "", label: "Tất cả" }, { value: "elevator", label: "Thang máy" }, { value: "stairs", label: "Thang bộ" },
+  ] },
+  { title: "Không gian phòng", param: "features", options: roomFeatureOptions.filter(({ value }) => value === "balcony" || value === "window") },
+  { title: "Thú cưng", param: "pet", options: [
+    { value: "cat", label: "Nuôi mèo" }, { value: "dog", label: "Nuôi chó" }, { value: "nopet", label: "Không pet" },
+  ] },
+  { title: "Thời hạn HĐ", param: "term", options: [
+    { value: "short", label: "Ngắn hạn" }, { value: "long", label: "Dài hạn" },
+  ] },
+  { title: "Quy định / Nội quy", param: "features", options: tenantRoomFeatureOptions },
+] as const;
+
+const MAP_SORT_OPTIONS = [
+  { value: "", label: "Mặc định" },
+  { value: "price_asc", label: "Giá thấp đến cao" },
+  { value: "price_desc", label: "Giá cao đến thấp" },
+] as const;
+
+function ViewedRoomLabel() {
+  return <span className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#68452d]">
+    <Eye size={13} aria-hidden="true" />
+    Đã xem
+  </span>;
+}
+
 const ROOM_STATUS_OPTIONS = ["Đang trống", "Sắp trống", "Đã thuê"] as const;
 const DEFAULT_ROOM_STATUSES = ["Đang trống", "Sắp trống"] as const;
 const MAP_STYLE_OPTIONS = [
@@ -639,7 +666,7 @@ export default function MapSearchClient() {
   const [mobilePanelDragOffset, setMobilePanelDragOffset] = useState(0);
   const [roomListPanelBottom, setRoomListPanelBottom] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [openOptionGroup, setOpenOptionGroup] = useState<"district" | "roomType" | "status" | null>(null);
+  const [openOptionGroup, setOpenOptionGroup] = useState<"district" | "roomType" | "features" | "sort" | null>(null);
   const [nearby, setNearby] = useState<Nearby | null>(null);
   const [geoMessage, setGeoMessage] = useState<string | null>(null);
   const [placeQuery, setPlaceQuery] = useState("");
@@ -658,8 +685,31 @@ export default function MapSearchClient() {
   const districtParam = searchParams.get("district") ?? "";
   const roomTypeParam = searchParams.get("roomType") ?? "";
   const statusParam = searchParams.get("status") ?? "";
+  const sortParam = searchParams.get("sort") ?? "";
+  const sortOption = MAP_SORT_OPTIONS.find(option => option.value === sortParam) ?? MAP_SORT_OPTIONS[0];
+  const listedRooms = useMemo(() => {
+    if (!sortOption.value) return rooms;
+    const direction = sortOption.value === "price_asc" ? 1 : -1;
+    return [...rooms].sort((a, b) => {
+      if (a.price === null) return b.price === null ? 0 : 1;
+      if (b.price === null) return -1;
+      return direction * (a.price - b.price);
+    });
+  }, [rooms, sortOption.value]);
   const featureParam = searchParams.get("features") ?? "";
   const selectedFeatures = useMemo(() => normalizeRoomFeatures(featureParam), [featureParam]);
+  const moveParam = searchParams.get("move") ?? "";
+  const petParam = searchParams.get("pet") ?? "";
+  const termParam = searchParams.get("term") ?? "";
+  const selectedAmenities = useMemo(() => ({
+    move: [moveParam],
+    features: selectedFeatures,
+    pet: listParam(petParam),
+    term: listParam(termParam),
+  }), [moveParam, petParam, selectedFeatures, termParam]);
+  const amenityLabels = useMemo(() => MAP_AMENITY_GROUPS.flatMap(({ param, options }) =>
+    options.filter(({ value }) => value && selectedAmenities[param].some(item => item === value)).map(({ label }) => label)
+  ), [selectedAmenities]);
   const minPriceParam = searchParams.get("minPrice") ?? "";
   const maxPriceParam = searchParams.get("maxPrice") ?? "";
   const selectedDistricts = useMemo(() => listParam(districtParam), [districtParam]);
@@ -681,12 +731,11 @@ export default function MapSearchClient() {
     if (selectedDistricts.length) labels.push(`Quận: ${selectedDistricts.join(", ")}`);
     if (selectedRoomTypes.length) labels.push(`Loại: ${selectedRoomTypes.join(", ")}`);
     labels.push(`Trạng thái: ${allStatusesSelected ? "Tất cả" : selectedStatuses.join(", ")}`);
-    for (const { value, label } of tenantRoomFeatureOptions) {
-      if (selectedFeatures.includes(value)) labels.push(label);
-    }
+    labels.push(...amenityLabels);
+    if (sortOption.value) labels.push(sortOption.label);
     if (nearby) labels.push(`Gần tôi: ${nearby.radius} km`);
     return labels;
-  }, [allStatusesSelected, appliedPriceRange, hasPriceFilter, nearby, selectedDistricts, selectedFeatures, selectedRoomTypes, selectedStatuses]);
+  }, [allStatusesSelected, amenityLabels, appliedPriceRange, hasPriceFilter, nearby, selectedDistricts, selectedRoomTypes, selectedStatuses, sortOption]);
 
   useEffect(() => {
     if (previewOpeningRoomId && pathname !== "/map") setPreviewOpeningRoomId(null);
@@ -826,12 +875,17 @@ export default function MapSearchClient() {
     trackVisitorEvent("filter_use", undefined, changedCustomerFilters(previous, getCustomerFilters()));
     queryStringRef.current = next.toString();
     pendingQueryStringRef.current = queryStringRef.current;
-    router.replace(`/map?${queryStringRef.current}`, { scroll: false });
-  }, [router]);
+    window.history.replaceState(null, "", queryStringRef.current ? `/map?${queryStringRef.current}` : "/map");
+  }, []);
 
-  const toggleListFilter = useCallback((name: "district" | "roomType" | "features", option: string) => {
+  const toggleListFilter = useCallback((name: "district" | "roomType" | "features" | "pet" | "term", option: string) => {
     const query = new URLSearchParams(queryStringRef.current);
-    const current = listParam(query.get(name));
+    let current = listParam(query.get(name));
+    if (name === "pet" && option === "nopet") {
+      setParams({ pet: current.includes(option) ? "" : option });
+      return;
+    }
+    if (name === "pet") current = current.filter(item => item !== "nopet");
     const next = current.includes(option) ? current.filter((item) => item !== option) : [...current, option];
     setParams({ [name]: next.join(",") });
   }, [setParams]);
@@ -1101,7 +1155,7 @@ export default function MapSearchClient() {
       const controller = new AbortController(); abortRef.current = controller;
       setLoading(true); setError(null);
       const query = new URLSearchParams({ west: String(bounds.west), south: String(bounds.south), east: String(bounds.east), north: String(bounds.north) });
-      for (const key of ["search", "minPrice", "maxPrice", "district", "roomType", "status", "features"]) { const value = searchParams.get(key); if (value) query.set(key, value); }
+      for (const key of ["search", "minPrice", "maxPrice", "district", "roomType", "status", "features", "move", "pet", "term"]) { const value = searchParams.get(key); if (value) query.set(key, value); }
       if (nearby) { query.set("lat", String(nearby.latitude)); query.set("lng", String(nearby.longitude)); query.set("radius", String(nearby.radius)); }
       try {
         const response = await fetch(`/api/map/rooms?${query}`, { signal: controller.signal });
@@ -1363,26 +1417,53 @@ export default function MapSearchClient() {
               onCommit={([min, max]) => setParams({ minPrice: String(min), maxPrice: String(max) })}
               onClear={() => setParams({ minPrice: "", maxPrice: "" })}
             />
-            <fieldset className="flex flex-wrap gap-2">
-              <legend className="mb-1 text-xs font-bold text-[#5d381f]">Tiện nghi</legend>
-              {tenantRoomFeatureOptions.map(({ value, label }) => (
-                <label key={value} className="flex items-center gap-1.5 rounded-lg border border-[#aa825d]/25 bg-white px-2 py-1.5 text-xs text-[#5d381f]">
-                  <input type="checkbox" checked={selectedFeatures.includes(value)} onChange={() => toggleListFilter("features", value)} />
-                  {label}
-                </label>
+            <div className="grid grid-cols-[.75fr_1.15fr_1fr_1fr] gap-1.5 lg:grid-cols-2 lg:gap-2" aria-label="Bộ lọc và sắp xếp">
+              {([
+                ["district", "Quận", selectedDistricts.length],
+                ["roomType", "Loại phòng", selectedRoomTypes.length],
+                ["features", "Tiện nghi", amenityLabels.length],
+                ["sort", "Sắp xếp", Number(Boolean(sortOption.value))],
+              ] as const).map(([group, label, count]) => (
+                <button key={group} type="button" aria-haspopup="dialog" aria-expanded={openOptionGroup === group}
+                  onClick={() => setOpenOptionGroup(group)}
+                  className={`flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-xl border px-1 py-2 text-center text-[11px] font-bold leading-tight text-[#5d381f] lg:justify-between lg:px-3 lg:text-xs ${count ? "border-[#744722] bg-[#ead8c0]" : "border-[#aa825d]/25 bg-white/75"}`}>
+                  <span>{label}{count > 0 && group !== "sort" ? ` (${count})` : ""}</span>
+                  <ChevronDown size={15} className="hidden shrink-0 lg:block" aria-hidden="true" />
+                </button>
               ))}
-            </fieldset>
-            <div className="grid grid-cols-3 gap-2" aria-label="Bộ lọc quận, loại phòng và trạng thái">
-              <button type="button" aria-haspopup="dialog" aria-expanded={openOptionGroup === "district"} onClick={() => setOpenOptionGroup("district")} className={`flex min-w-0 items-center justify-between gap-1 rounded-xl border px-3 py-2.5 text-left text-xs font-bold text-[#5d381f] ${selectedDistricts.length ? "border-[#744722] bg-[#ead8c0]" : "border-[#aa825d]/25 bg-white/75"}`}><span className="truncate">Quận{selectedDistricts.length ? ` (${selectedDistricts.length})` : ""}</span><ChevronDown size={15} className="shrink-0" /></button>
-              <button type="button" aria-haspopup="dialog" aria-expanded={openOptionGroup === "roomType"} onClick={() => setOpenOptionGroup("roomType")} className={`flex min-w-0 items-center justify-between gap-1 rounded-xl border px-3 py-2.5 text-left text-xs font-bold text-[#5d381f] ${selectedRoomTypes.length ? "border-[#744722] bg-[#ead8c0]" : "border-[#aa825d]/25 bg-white/75"}`}><span className="truncate">Loại phòng{selectedRoomTypes.length ? ` (${selectedRoomTypes.length})` : ""}</span><ChevronDown size={15} className="shrink-0" /></button>
-              <button type="button" aria-haspopup="dialog" aria-expanded={openOptionGroup === "status"} onClick={() => setOpenOptionGroup("status")} className="flex min-w-0 items-center justify-between gap-1 rounded-xl border border-[#744722] bg-[#ead8c0] px-3 py-2.5 text-left text-xs font-bold text-[#5d381f]"><span className="truncate">Trạng thái{allStatusesSelected ? "" : ` (${selectedStatuses.length})`}</span><ChevronDown size={15} className="shrink-0" /></button>
             </div>
           </div>
         ) : null}
         </div>
         <div className={`${resultsPanelCollapsed ? "hidden lg:block" : ""} min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1`} aria-label="Danh sách phòng trong vùng bản đồ">
           {geoMessage ? <p className="mb-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">{geoMessage}</p> : null}{error ? <p role="alert" className="mb-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{error}</p> : null}
-          <div className="space-y-2">{rooms.slice(0, 100).map((room) => <article key={room.id} onClick={() => focusRoom(room)} className={`flex cursor-pointer gap-3 rounded-xl border p-2 transition ${selectedId === room.id ? "border-[#744722] bg-[#f3e1c9]" : "border-[#aa825d]/20 bg-white"}`}>{room.thumbnail ? <img src={room.thumbnail} loading="lazy" alt="" className="h-16 w-20 rounded-lg object-cover" /> : <div className="grid h-16 w-20 place-items-center rounded-lg bg-[#ead8c0]"><MapPin size={20} /></div>}<div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><h2 className="truncate text-sm font-bold">{[room.room_code, room.room_type].filter(Boolean).join(" | ") || "Phòng cho thuê"}</h2><strong className="whitespace-nowrap text-sm text-[#744722]">{priceLabel(room.price)}</strong></div><p className="mt-1 truncate text-xs text-[#80634a]">{[room.address, room.ward, room.district].filter(Boolean).join(", ")}</p><Link href={`/rooms/${room.id}`} onClick={(e) => { e.stopPropagation(); markRoomViewed(room.id); }} className="mt-1 block w-full text-right text-xs font-bold text-[#744722] hover:underline">Xem chi tiết</Link></div></article>)}{!loading && rooms.length === 0 ? <p className="py-6 text-center text-sm text-[#80634a]">Chưa có phòng có tọa độ trong khu vực này.</p> : null}</div>
+          <div className="space-y-2">
+            {listedRooms.slice(0, 100).map(room => (
+              <article key={room.id} onClick={() => focusRoom(room)}
+                className={`flex cursor-pointer gap-3 rounded-xl border p-2 transition ${selectedId === room.id ? "border-[#744722] bg-[#f3e1c9]" : "border-[#aa825d]/20 bg-white"}`}>
+                {room.thumbnail ? (
+                  <img src={room.thumbnail} loading="lazy" alt="" className="h-16 w-20 shrink-0 rounded-lg object-cover" />
+                ) : (
+                  <div className="grid h-16 w-20 shrink-0 place-items-center rounded-lg bg-[#ead8c0]"><MapPin size={20} /></div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex justify-between gap-2">
+                    <h2 className="truncate text-sm font-bold">{[room.room_code, room.room_type].filter(Boolean).join(" | ") || "Phòng cho thuê"}</h2>
+                    <strong className="whitespace-nowrap text-sm text-[#744722]">{priceLabel(room.price)}</strong>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-[#80634a]">{[room.address, room.ward, room.district].filter(Boolean).join(", ")}</p>
+                  <div className="mt-1 flex flex-wrap items-center justify-end gap-x-2">
+                    {viewedRoomIds.has(room.id) && <div className="mr-auto"><ViewedRoomLabel /></div>}
+                    <Link href={`/rooms/${room.id}`} onClick={event => { event.stopPropagation(); markRoomViewed(room.id); }}
+                      className="text-xs font-bold text-[#744722] hover:underline">
+                      Xem chi tiết
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!loading && rooms.length === 0 ? <p className="py-6 text-center text-sm text-[#80634a]">Chưa có phòng có tọa độ trong khu vực này.</p> : null}
+          </div>
         </div>
       </aside>
       {mobilePanelHidden ? (
@@ -1615,6 +1696,7 @@ export default function MapSearchClient() {
                       <span className="mt-0.5 block truncate text-[10px] text-[#80634a]">
                         {[room.address, room.ward, room.district].filter(Boolean).join(", ") || "Chưa cập nhật địa chỉ"}
                       </span>
+                      {viewed && <ViewedRoomLabel />}
                     </span>
                     <strong className="shrink-0 text-xs text-[#744722]">{markerPriceLabel(room.price)}</strong>
                   </Link>
@@ -1635,13 +1717,46 @@ export default function MapSearchClient() {
           <section role="dialog" aria-modal="true" aria-labelledby="map-option-dialog-title" className="w-full max-w-md overflow-hidden rounded-2xl border border-[#aa825d]/35 bg-[#fff9ef] shadow-2xl">
             <header className="flex items-center justify-between gap-3 border-b border-[#aa825d]/20 px-4 py-3">
               <div className="min-w-0">
-                <h2 id="map-option-dialog-title" className="text-sm font-black text-[#4d3422]">{openOptionGroup === "district" ? "Chọn quận" : openOptionGroup === "roomType" ? "Chọn loại phòng" : "Chọn trạng thái phòng"}</h2>
-                <p className="mt-0.5 text-[11px] text-[#80634a]">Có thể chọn nhiều lựa chọn</p>
+                <h2 id="map-option-dialog-title" className="text-sm font-black text-[#4d3422]">{openOptionGroup === "district" ? "Chọn quận" : openOptionGroup === "roomType" ? "Chọn loại phòng" : openOptionGroup === "features" ? "Tiện nghi" : "Sắp xếp"}</h2>
+                {openOptionGroup !== "sort" && <p className="mt-0.5 text-[11px] text-[#80634a]">Có thể chọn nhiều lựa chọn</p>}
               </div>
               <button type="button" aria-label="Đóng bảng chọn" onClick={() => setOpenOptionGroup(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#ead8c0] text-[#5d381f]"><X size={16} /></button>
             </header>
             <div className="max-h-[55dvh] overflow-y-auto overscroll-contain p-3">
-              <div className="grid grid-cols-2 gap-2">
+              {openOptionGroup === "sort" && (
+                <div className="mb-4 grid grid-cols-1 gap-2" role="group" aria-label="Thứ tự phòng">
+                  {MAP_SORT_OPTIONS.map(({ value, label }) => (
+                    <button key={value} type="button" aria-pressed={sortOption.value === value}
+                      onClick={() => setParams({ sort: value })}
+                      className={`flex min-h-10 items-center justify-between rounded-xl border px-3 text-left text-xs text-[#5d381f] ${sortOption.value === value ? "border-[#744722] bg-[#ead8c0] font-bold" : "border-[#aa825d]/20 bg-white"}`}>
+                      {label}{sortOption.value === value && <Check size={14} aria-hidden="true" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {openOptionGroup === "sort" && <h3 className="mb-2 text-xs font-bold text-[#5d381f]">Trạng thái phòng</h3>}
+              {openOptionGroup === "features" ? (
+                <div className="grid gap-3">
+                  {MAP_AMENITY_GROUPS.map(({ title, param, options }) => (
+                    <fieldset key={title}>
+                      <legend className="mb-1.5 text-xs font-bold text-[#5d381f]">{title}</legend>
+                      <div className="grid grid-cols-2 gap-2">
+                        {options.map(({ value, label }) => {
+                          const active = selectedAmenities[param].some(item => item === value);
+                          return (
+                            <label key={value} className={`flex min-h-10 items-center gap-2 rounded-xl border px-3 py-2 text-xs text-[#5d381f] ${active ? "border-[#744722] bg-[#ead8c0] font-bold" : "border-[#aa825d]/20 bg-white"}`}>
+                              <input type={param === "move" ? "radio" : "checkbox"} name={param === "move" ? "map-amenity-move" : undefined}
+                                className="shrink-0 accent-[#744722]" checked={active}
+                                onChange={() => param === "move" ? setParams({ move: value }) : toggleListFilter(param, value)} />
+                              {label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              ) : <div className="grid grid-cols-2 gap-2">
                 {(openOptionGroup === "district" ? DISTRICT_OPTIONS : openOptionGroup === "roomType" ? ROOM_TYPE_OPTIONS : ["Tất cả", ...ROOM_STATUS_OPTIONS]).map((option) => {
                   const active = openOptionGroup === "district"
                     ? selectedDistricts.includes(option)
@@ -1649,15 +1764,15 @@ export default function MapSearchClient() {
                       ? selectedRoomTypes.includes(option)
                       : option === "Tất cả" ? allStatusesSelected : selectedStatuses.includes(option);
                   const selectOption = () => {
-                    if (openOptionGroup === "status") toggleStatusFilter(option === "Tất cả" ? "all" : option as (typeof ROOM_STATUS_OPTIONS)[number]);
+                    if (openOptionGroup === "sort") toggleStatusFilter(option === "Tất cả" ? "all" : option as (typeof ROOM_STATUS_OPTIONS)[number]);
                     else toggleListFilter(openOptionGroup, option);
                   };
-                  return <button key={option} type="button" aria-pressed={active} onClick={selectOption} className={`flex min-h-10 items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${active ? "border-[#744722] bg-[#ead8c0] font-bold text-[#4d3422]" : "border-[#aa825d]/20 bg-white text-[#5d381f] hover:bg-[#f3e1c9]/60"}`}><span className="truncate">{option}</span>{active ? <Check size={14} className="shrink-0" /> : null}</button>;
+                  return <button key={option} type="button" aria-pressed={active} onClick={selectOption} className={`flex min-h-10 items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${active ? "border-[#744722] bg-[#ead8c0] font-bold text-[#4d3422]" : "border-[#aa825d]/20 bg-white text-[#5d381f] hover:bg-[#f3e1c9]/60"}`}><span>{option}</span>{active ? <Check size={14} className="shrink-0" /> : null}</button>;
                 })}
-              </div>
+              </div>}
             </div>
             <footer className="flex items-center justify-between gap-3 border-t border-[#aa825d]/20 px-3 py-2.5">
-              <button type="button" onClick={() => setParams(openOptionGroup === "district" ? { district: "" } : openOptionGroup === "roomType" ? { roomType: "" } : { status: "" })} className="rounded-lg px-3 py-2 text-xs font-bold text-[#744722]">{openOptionGroup === "status" ? "Mặc định" : "Xóa lựa chọn"}</button>
+              <button type="button" onClick={() => setParams(openOptionGroup === "sort" ? { status: "", sort: "" } : openOptionGroup === "features" ? { features: "", move: "", pet: "", term: "" } : { [openOptionGroup]: "" })} className="rounded-lg px-3 py-2 text-xs font-bold text-[#744722]">{openOptionGroup === "sort" ? "Đặt lại" : "Xóa lựa chọn"}</button>
               <button type="button" onClick={() => setOpenOptionGroup(null)} className="rounded-xl bg-[#744722] px-5 py-2 text-xs font-bold text-white">Xong</button>
             </footer>
           </section>

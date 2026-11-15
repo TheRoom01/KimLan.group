@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
-import { roomFeatureStatusTokens, tenantRoomFeatureOptions } from "@/lib/rooms/features";
+import { roomFeatureStatusTokens } from "@/lib/rooms/features";
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +41,15 @@ export async function GET(request: Request) {
     if (statuses?.some((status) => !["all", "Đang trống", "Sắp trống", "Đã thuê"].includes(status))) {
       throw new Error("Trạng thái phòng không hợp lệ");
     }
-    const features = listParam(params, "features") ?? [];
-    const amenityTokens = roomFeatureStatusTokens(
-      features.filter(feature => tenantRoomFeatureOptions.some(option => option.value === feature)),
-    );
+    const amenityTokens = roomFeatureStatusTokens(listParam(params, "features"));
+    const move = params.get("move");
+    if (move === "elevator" || move === "stairs") amenityTokens.push(`__amenity:${move}`);
+    for (const [name, values] of [["pet", ["cat", "dog", "nopet"]], ["term", ["short", "long"]]] as const) {
+      const selected = listParam(params, name) ?? [];
+      for (const value of values) {
+        if (selected.includes(value)) amenityTokens.push(`__amenity:${value}`);
+      }
+    }
     const rpcParams = {
       p_west: west, p_south: south, p_east: east, p_north: north,
       p_search: params.get("search")?.trim().slice(0, 120) || null,
