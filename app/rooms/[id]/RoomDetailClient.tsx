@@ -321,6 +321,7 @@ export default function RoomDetailClient({
 
   
   const [room, setRoom] = useState<any>(initialRoom);
+  const [authResolved, setAuthResolved] = useState(initialAuthResolved);
   useRoomView(room?.id);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -382,12 +383,10 @@ const canSeePrivateFields =
   
 //=========== Màu modal chi tiết =========//
   const ROOM_THEME = {
-  modalBg: "var(--room-modalBg, #a06a29be)",
-  modalBgInner: "var(--room-modalBgInner, #74573094)",
+  modalBg: "var(--room-detail-background, #2c1a12)",
   modalText: "var(--room-modalText, #fcf6ef)",
   modalMutedText: "var(--room-modalMutedText, rgba(255, 246, 234, 0.9))",
   modalBorder: "var(--room-modalBorder, rgba(255,233,214,0.14))",
-  modalAccent: "var(--room-modalAccent, #38BDF8)",
   modalAccentSoft: "rgba(56,189,248,0.18)",
 
   shareBg: "rgba(86,57,36,0.30)",
@@ -398,6 +397,7 @@ const canSeePrivateFields =
 
 useEffect(() => {
   let mounted = true;
+  let authEventReceived = false;
 
   const applyAuthUser = (nextUser: any) => {
     if (!mounted) return;
@@ -422,15 +422,18 @@ useEffect(() => {
     }
 
     setUser(nextUserId ? { id: nextUserId } : null);
+    setAuthResolved(true);
   };
 
   if (!initialAuthResolved) {
-    void supabase.auth.getUser().then(({ data }) => {
+    void supabase.auth.getUser().then(({ data, error }) => {
+      if (authEventReceived || (error && error.name !== "AuthSessionMissingError")) return;
       applyAuthUser(data?.user ?? null);
     });
   }
 
   const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    authEventReceived = true;
     applyAuthUser(session?.user ?? null);
   });
 
@@ -1380,11 +1383,6 @@ return (
     }}
     onClick={(e) => e.stopPropagation()}
   >
-    <div
-      className="absolute inset-0 z-0 pointer-events-none"
-      style={{ background: ROOM_THEME.modalBgInner }}
-    />
-
       {!viewerOpen && (
       <button
         type="button"
@@ -1584,17 +1582,18 @@ return (
           )}
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-0">
+        <div className="room-detail-thumbnails flex gap-2 overflow-x-auto p-0.5">
           {mediaItems.slice(0, 20).map((it, idx) => (
             <button
               key={it.kind + it.url + idx}
               className={[
-                "relative flex-none w-[82px] h-[66px] rounded-[10px] overflow-hidden border bg-black",
+                "room-detail-thumbnail relative flex-none w-[82px] h-[66px] rounded-[10px] overflow-hidden border bg-black",
                 idx === activeIndex
                   ? "border-[#D7B08A] ring-2 ring-[#D7B08A]"
                   : "border-white/25",
               ].join(" ")}
               onClick={() => mediaSwipe.jumpTo(idx)}
+              aria-pressed={idx === activeIndex}
               aria-label={`Xem ${it.kind === "video" ? "video" : "ảnh"} ${idx + 1}`}
             >
               {it.kind === "video" ? (
@@ -1607,7 +1606,7 @@ return (
                   </div>
                 </>
               ) : (
-                <RoomCardImage src={it.url} alt="" width={82} height={66} sizes="82px"
+                <RoomCardImage src={it.url} alt="" width={82} height={66} sizes="(max-width: 640px) 41px, 82px"
                   unoptimized={!canOptimizeRoomCardImage(it.url)} className="size-full object-cover" loading="lazy" />
               )}
             </button>
@@ -1615,107 +1614,26 @@ return (
         </div>
       </>
     ) : (
-      <div className="h-[260px] bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
+      <div className="room-detail-stage h-[260px] bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
         Chưa có hình ảnh
       </div>
     )}
   </div>
 </div>
 
-  {/* ===== BOTTOM: PHẦN THÔNG TIN CUỘN ===== */}
-  <div
-    ref={scrollRef}
-    className="home-detail-content flex-1 min-h-0 overflow-y-auto overscroll-contain bg-transparent pb-3 [-webkit-overflow-scrolling:touch]"
-  >
-    <div className="px-3 space-y-2 text-sm text-white">
-      {showOpenBrowserBar && (
-        <div className="
-          sticky top-2 z-40
-          rounded-2xl
-          border border-white/20
-          bg-white/10
-          backdrop-blur-xl
-          shadow-[0_8px_30px_rgba(0,0,0,0.12)]
-          ring-1 ring-white/20
-        ">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4">
-            <div className="text-sm text-white/90">
-              <div className="font-semibold">
-                Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
-              </div>
-              <div className="text-white/70">
-                Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => openExternalBrowser(roomShareUrl || window.location.href)}
-                className="
-                  rounded-xl
-                  bg-black/80
-                  backdrop-blur-md
-                  px-4 py-2
-                  text-sm font-medium text-white
-                  shadow-lg
-                  hover:bg-black
-                  transition
-                "
-              >
-                Mở trình duyệt
-              </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  const ok = await copyText(roomShareUrl || window.location.href);
-
-                  showToast(
-                    ok
-                      ? "Đã copy link phòng"
-                      : "Không thể copy link — hãy copy thủ công"
-                  );
-                }}
-                className="
-                  rounded-xl
-                  border border-white/20
-                  bg-white/10
-                  backdrop-blur-md
-                  px-4 py-2
-                  text-sm font-medium text-white
-                  hover:bg-white/20
-                  transition
-                "
-              >
-                Copy link
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowOpenBrowserBar(false)}
-                className="
-                  rounded-xl
-                  border border-white/10
-                  bg-white/10
-                  text-white/80
-                  px-3 py-2 text-sm
-                  hover:bg-white/20
-                  transition
-                "
-                aria-label="Đóng"
-                title="Đóng"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+  <div className="room-detail-side flex min-h-0 min-w-0 flex-1 flex-col">
       {/* ===== TOOLBAR CHỨC NĂNG ===== */}
         {(
-          <div className="relative z-30 flex w-full min-w-0 items-center justify-start gap-2 overflow-x-auto overscroll-x-contain py-1 sm:justify-end">
+          <div className="room-detail-toolbar relative z-30 flex w-full min-w-0 shrink-0 items-center gap-2 overflow-x-auto overscroll-x-contain px-3 py-1">
+            {authResolved && !user && (
+          <button
+            type="button"
+            onClick={() => setInquiryOpen(true)}
+            className="room-detail-consult inline-flex min-h-9 shrink-0 whitespace-nowrap items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-3 text-xs font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
+          >
+            <span aria-hidden="true">✦</span> Đi xem/Tư vấn
+          </button>
+            )}
             {imageUrls.length > 0 && (
               <button
                 type="button"
@@ -1946,6 +1864,97 @@ return (
           </div>
         )}
 
+  {/* ===== BOTTOM: PHẦN THÔNG TIN CUỘN ===== */}
+  <div
+    ref={scrollRef}
+    className="home-detail-content flex-1 min-h-0 overflow-y-auto overscroll-contain bg-transparent pb-3 [-webkit-overflow-scrolling:touch]"
+  >
+    <div className="px-3 space-y-2 text-sm text-white">
+      {showOpenBrowserBar && (
+        <div className="
+          sticky top-2 z-40
+          rounded-2xl
+          border border-white/20
+          bg-white/10
+          backdrop-blur-xl
+          shadow-[0_8px_30px_rgba(0,0,0,0.12)]
+          ring-1 ring-white/20
+        ">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4">
+            <div className="text-sm text-white/90">
+              <div className="font-semibold">
+                Mở bằng trình duyệt ngoài để xem đầy đủ thông tin
+              </div>
+              <div className="text-white/70">
+                Zalo / Messenger đang mở web trong app nên có thể thiếu một số thông tin.
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => openExternalBrowser(roomShareUrl || window.location.href)}
+                className="
+                  rounded-xl
+                  bg-black/80
+                  backdrop-blur-md
+                  px-4 py-2
+                  text-sm font-medium text-white
+                  shadow-lg
+                  hover:bg-black
+                  transition
+                "
+              >
+                Mở trình duyệt
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await copyText(roomShareUrl || window.location.href);
+
+                  showToast(
+                    ok
+                      ? "Đã copy link phòng"
+                      : "Không thể copy link — hãy copy thủ công"
+                  );
+                }}
+                className="
+                  rounded-xl
+                  border border-white/20
+                  bg-white/10
+                  backdrop-blur-md
+                  px-4 py-2
+                  text-sm font-medium text-white
+                  hover:bg-white/20
+                  transition
+                "
+              >
+                Copy link
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowOpenBrowserBar(false)}
+                className="
+                  rounded-xl
+                  border border-white/10
+                  bg-white/10
+                  text-white/80
+                  px-3 py-2 text-sm
+                  hover:bg-white/20
+                  transition
+                "
+                aria-label="Đóng"
+                title="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
         {/* Dropdown link được render ngoài toolbar để không bị overflow cắt */}
 {zaloMenuOpen &&
   storedLinks.length > 1 &&
@@ -2044,7 +2053,7 @@ return (
 
       <div
         className="
-          room-detail-intro rounded-2xl p-4 space-y-2
+          room-detail-intro room-detail-panel rounded-2xl p-4 space-y-2
           border border-white/15
           bg-[rgba(255,255,255,0.04)]
           backdrop-blur-[28px]
@@ -2088,20 +2097,13 @@ return (
           <div className="flex items-center gap-1.5">
             <span className="font-medium text-[#F4E7D6]">Giá:</span>
             <span
-              className="font-semibold text-[20px]"
-              style={{ color: ROOM_THEME.modalAccent }}
+              className="room-price font-semibold text-[20px]"
             >
               {formatVND(room?.price)}
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setInquiryOpen(true)}
-            className="ml-auto inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-[#C9A46A]/55 bg-[#C9A46A] px-3 text-xs font-bold text-[#241206] shadow-[0_5px_17px_rgba(0,0,0,.18)] transition hover:bg-[#D9B77F] active:scale-[.99]"
-          >
-            <span aria-hidden="true">✦</span> Đi xem/Tư vấn
-          </button>
+
         </div>
 
         {addressLine && (
@@ -2127,7 +2129,7 @@ return (
 
       <div
         className="
-          space-y-2 pt-2 mt-2
+          room-detail-panel space-y-2 pt-2 mt-2
           border-t border-white/10
           bg-[rgba(255,255,255,0.03)]
           backdrop-blur-[20px]
@@ -2161,7 +2163,7 @@ return (
 
       <div
         className="
-          pt-4 mt-2
+          room-detail-panel pt-4 mt-2
           border-t border-white/10
           bg-[rgba(255,255,255,0.02)]
           backdrop-blur-[18px]
@@ -2211,7 +2213,7 @@ return (
       </div>
 
       {isAdmin && (
-        <div className="pt-4 border-t space-y-2">
+        <div className="room-detail-panel rounded-xl p-3 border-t space-y-2">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <button
@@ -2264,6 +2266,7 @@ return (
       )}
     </div>
   </div>
+</div>
 </div>
 
 

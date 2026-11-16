@@ -623,7 +623,7 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 }
 
 .home-room-card .home-room-price {
-  font-size: 24px !important;
+  font-size: 19.2px !important;
 }
 
 .home-room-card .home-room-content .flex.w-max.items-center {
@@ -811,7 +811,7 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
   }
 
   .home-redesign .home-room-card .home-room-price {
-    font-size: 18px !important;
+    font-size: 14.4px !important;
     line-height: 1.2 !important;
     white-space: nowrap;
   }
@@ -966,6 +966,7 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 
 .home-redesign .home-header-inner {
   width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   max-width: 1760px;
   margin-inline: auto;
   padding-inline: clamp(12px, 2.2vw, 36px);
@@ -1000,7 +1001,6 @@ video.room-media-video::-webkit-media-controls-start-playback-button {
 
 @media (min-width: 1024px) {
   .home-redesign .home-header-inner {
-    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     column-gap: clamp(16px, 2vw, 28px);
     padding-block: 12px;
