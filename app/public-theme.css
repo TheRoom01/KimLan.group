@@ -391,15 +391,26 @@ html[data-room-theme="light"] .fixed.inset-0[data-home-detail="true"] > div.rela
   .home-map-full-label, .home-price-vnd { display: none; }
   .home-map-short-label, .home-price-millions { display: inline; }
 }
-@media (max-width: 380px) {
+@media (max-width: 420px) {
   .home-redesign .home-room-card .home-room-content { grid-template-columns: minmax(0, 1fr) auto; }
   .home-redesign .home-room-card .home-room-content > div.home-room-status { width: auto; }
-  .home-redesign .home-room-card .home-room-content :is(span.home-room-status, .home-room-status > button).rounded-full.border {
-    transform: none;
-    min-width: 0 !important;
-    height: 20px !important;
-    padding-inline: 4px !important;
-    font-size: 10px !important;
+}
+
+@layer utilities {
+  @media (max-width: 420px) {
+    .home-redesign .home-room-card .home-room-content
+    :is(span.home-room-status, .home-room-status > button).rounded-full.border {
+      --home-status-height: 23px;
+      --home-status-min-width: 0px;
+      --home-status-padding-x: 4px;
+      --home-status-font-size: 11px;
+
+      transform: none !important;
+      min-width: var(--home-status-min-width) !important;
+      height: var(--home-status-height) !important;
+      padding-inline: var(--home-status-padding-x) !important;
+      font-size: var(--home-status-font-size) !important;
+    }
   }
 }
 @media (max-width: 389px) {
