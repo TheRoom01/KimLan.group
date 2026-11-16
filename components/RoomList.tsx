@@ -48,7 +48,7 @@ const RoomList = ({
   onResetAll,
   loading,
 }: RoomListProps) => {
-  if (fetchError) {
+  if (fetchError && roomsToRender.length === 0) {
     return (
       <main className="w-full max-w-none px-2 sm:px-3 lg:px-4 pb-10">
         <div className="rounded-[15px] border border-red-400/25 bg-red-950/25 px-4 py-3 text-sm text-red-200 backdrop-blur-[20px]">
@@ -68,6 +68,7 @@ const RoomList = ({
         {onResetAll ? <button type="button" className="home-reset-filters" disabled={loading} onClick={onResetAll}>Xóa bộ lọc</button> : null}
         {typeof total === "number" ? <span className="home-list-total shrink-0 rounded-full border border-[#c9a46a]/30 bg-[#c9a46a]/10 px-3 py-1.5 text-xs font-semibold text-[#f3e7d6]">Tổng {total.toLocaleString("vi-VN")} phòng</span> : null}
       </div>
+      {fetchError && <p role="alert" className="mb-3 rounded-xl border border-red-400/25 bg-red-950/25 px-4 py-3 text-sm text-red-200">{fetchError}</p>}
       {isRefreshing && hasRooms && (
         <div className="mb-3 rounded-[15px] border border-[rgba(197,165,130,0.16)] bg-[rgba(45,27,20,0.35)] px-4 py-2 text-sm text-[#A0856E] backdrop-blur-[20px]">
           Đang cập nhật danh sách...

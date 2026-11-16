@@ -85,9 +85,9 @@ async function main() {
     }
     const measured = await page.evaluate(()=>window.measurements);
     if (!baseline) { assert.equal(measured.characters,0); assert.ok(measured.lines>0); }
-    assert.equal(images.length,3,'three source images remain in order');
+    assert.equal(images.length, baseline ? 3 : 1, 'Home renders the cover only');
     if (!baseline) for (let i=0;i<images.length;i++) { assert.equal(images[i].srcSet,null);assert.equal(images[i].src,room.image_urls[i]);assert.equal(images[i].decoding,'async'); }
-    if (!baseline) images.forEach((image,index)=>assert.equal(image.loading,index===0?'eager':'lazy'));
+    if (!baseline) assert.equal(images[0].loading, 'lazy');
     const report = {label,positions,measurements:measured,imageAttributes:images.map(({src,srcSet,sizes,loading,decoding})=>({src,srcSet,sizes,loading,decoding}))};
     fs.writeFileSync(path.join(output,`${label}-card.json`),JSON.stringify(report,null,2));
     if (!baseline && fs.existsSync(path.join(output,'main-card.json'))) {
@@ -96,7 +96,7 @@ async function main() {
     }
     await page.screenshot({path:path.join(output,`${label}-card.png`)});
     console.log(JSON.stringify({label,measurements:measured,positions}));
-    console.log('RoomCard: copy full address, short/clamped address at three widths, equivalent button position, direct CDN image order, lazy decoding and legacy hosts PASS (offline)');
+    console.log('RoomCard: copy full address, short/clamped address at three widths, equivalent button position, first image as cover, lazy decoding and legacy hosts PASS (offline)');
   } finally { await browser.close(); }
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

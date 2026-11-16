@@ -4,6 +4,7 @@ import React from "react";
 import styles from "./Pagination.module.css";
 
 type PaginationProps = {
+  pageNumber: number;
   goNext: () => void;
   goPrev: () => void;
   hasNext: boolean;
@@ -16,6 +17,7 @@ const glassBtn =
   "rounded-2xl border border-white/25 bg-[rgba(255, 255, 255, 0)] px-[10px] py-[6px] text-[10px] tracking-wide font-semibold text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)] backdrop-blur-[28px] shadow-[0_8px_30px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255, 255, 255, 0)] hover:border-white/40 sm:px-3 sm:text-[11px]";
 
 const Pagination = ({
+  pageNumber,
   goNext,
   goPrev,
   hasNext,
@@ -38,7 +40,10 @@ const Pagination = ({
           ← Trước
         </button>
 
-        <button type="button" onClick={onConsult} className={`${styles.consultButton} min-h-11 rounded-2xl border px-4 py-2 text-xs font-bold sm:text-sm`}>Cần Tư Vấn</button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onConsult} className={`${styles.consultButton} min-h-11 rounded-2xl border px-4 py-2 text-xs font-bold sm:text-sm`}>Cần Tư Vấn</button>
+          <span className="whitespace-nowrap text-xs font-semibold" aria-live="polite">Trang {pageNumber}</span>
+        </div>
 
         {/* NEXT */}
         <button

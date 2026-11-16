@@ -33,7 +33,7 @@ const fixture = (page: number) => Array.from({ length: 20 }, (_, index) => ({
   room_detail: { has_window: true, has_balcony: true, other_amenities: 'Dọn phòng 2 lần/tuần' },
 }));
 const mocks: Record<string, string> = {
-  '@/lib/supabase': `export const supabase={auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},rpc:async()=>({data:0,error:null})};`,
+  '@/lib/supabase': `export const supabase={auth:{getUser:async()=>({data:{user:null}}),getSession:async()=>({data:{session:null}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},rpc:async()=>({data:0,error:null})};`,
   '@/lib/analytics/client': 'export const trackVisitorEvent=()=>{};',
   '@/lib/fetchRooms': `export async function fetchRooms(params){window.fixtureFetches.push(params);const n=params.cursor?Number(String(params.cursor).replace('cursor-','')):0;return {data:window.fixturePages[n]||[],nextCursor:n<8?'cursor-'+(n+1):null,total:180};}`,
   'next/navigation': `import{useState,useEffect}from'react';export function usePathname(){const[p,s]=useState(location.pathname);useEffect(()=>{const f=()=>s(location.pathname);addEventListener('popstate',f);addEventListener('fixture-route',f);return()=>{removeEventListener('popstate',f);removeEventListener('fixture-route',f)}},[]);return p}export const useRouter=()=>({back:()=>history.back(),push:u=>location.assign(u),replace:u=>history.replaceState(history.state,'',u)});`,
@@ -43,13 +43,16 @@ const mocks: Record<string, string> = {
   '@/components/admin/AdminNotificationCenter': `export default()=>null;`,
 };
 const script = (await build({
-  stdin: { contents: `import React,{useState,useEffect}from'react';import{createRoot}from'react-dom/client';import Home from'./app/HomeClient';
+  stdin: { contents: `import React,{useState,useEffect}from'react';import{createRoot}from'react-dom/client';import Home from'./app/HomeClient';import Detail from'./app/rooms/[id]/RoomDetailClient';
   window.fixtureFetches=[];window.fixturePages=${JSON.stringify(Array.from({length:9},(_,n)=>fixture(n)))};
+  const gallery=new URLSearchParams(location.search).get("gallery")==="1";
   window.fixtureSpa=new URLSearchParams(location.search).get('spa')==='1';
   window.fixtureMounts=0;window.fixturePageShows=[];
   addEventListener('pageshow',e=>window.fixturePageShows.push(e.persisted));
   function App(){const[detail,setDetail]=useState(location.pathname.startsWith('/rooms/'));useEffect(()=>{const f=()=>setDetail(location.pathname.startsWith('/rooms/'));addEventListener('popstate',f);addEventListener('fixture-route',f);return()=>{removeEventListener('popstate',f);removeEventListener('fixture-route',f)}},[]);
-    return detail?<main><h1>Chi tiết fixture</h1><button onClick={()=>history.back()}>Quay lại danh sách</button></main>:<Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={0} initialTotal={180} initialAnonSessionId="fixture-session" initialAnonExpiresAt={new Date(Date.now()+600000).toISOString()}/>}
+    const home=<Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={0} initialTotal={180} initialAnonSessionId="fixture-session" initialAnonExpiresAt={new Date(Date.now()+600000).toISOString()}/>;
+    if(gallery){const id=location.pathname.split('/')[2];const room=window.fixturePages[0].find(item=>item.id===id);return <>{home}{detail&&room&&<Detail roomId={id} initialRoom={room} initialUserId={null} initialAdminLevel={0} initialAuthResolved={true} privateDetailLoaded={false}/>}</>;}
+    return detail?<main><h1>Chi ti&#7871;t fixture</h1><button onClick={()=>history.back()}>Quay l&#7841;i danh s&#225;ch</button></main>:home}
   createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: root, loader: 'tsx' },
   bundle: true, write: false, platform: 'browser', logLevel: 'silent',
   tsconfig: path.join(root, 'tsconfig.json'), loader: { '.css': 'empty', '.module.css': 'empty' },
@@ -157,6 +160,73 @@ try {
     await page.getByPlaceholder(/^Tìm đường/).fill('UpdatedFixture');
     await page.waitForFunction(()=>window.fixtureFetches.some(request=>request.search==='UpdatedFixture'));
     await waitRoom(page,0); await page.waitForTimeout(300);
+    const assertResultStart = async () => {
+      const offset = await page.evaluate(selector => {
+        const scroller = document.querySelector(selector)!;
+        const header = scroller.querySelector<HTMLElement>('[data-home-header]')!;
+        const overlay = ['sticky', 'fixed'].includes(getComputedStyle(header).position) ? header.offsetHeight : 0;
+        return scroller.querySelector('#phong')!.getBoundingClientRect().top - scroller.getBoundingClientRect().top - overlay;
+      }, scrollSelector);
+      assert.ok(offset >= 7 && offset <= 9, `results should be 8px below header, got ${offset}`);
+    };
+    if (!baseline) {
+      const scroller = page.locator(scrollSelector);
+      for (const [button, index] of [['Sau →', 1], ['← Trước', 0]] as const) {
+        await scroller.evaluate(el => { el.scrollTop = el.scrollHeight; });
+        await settle(page);
+        await page.getByRole('button', { name: button, exact: true }).click();
+        await waitRoom(page, index);
+        await page.getByText(`Trang ${index + 1}`, { exact: true }).waitFor();
+        await assertResultStart();
+        assert.equal((await listState(page)).search, 'UpdatedFixture');
+      }
+      console.log(`${mobile ? 'mobile' : 'desktop'}: Next/Previous preserve search and return to results below the header`);
+      const galleryPage = await context.newPage();
+      await galleryPage.addInitScript('globalThis.__name = value => value');
+      const imageRequests: string[] = [];
+      galleryPage.on('request', request => {
+        if (request.url().includes('/fixture.webp?image=')) imageRequests.push(request.url());
+      });
+      await galleryPage.goto(`${origin}/?gallery=1&spa=1`);
+      await waitRoom(galleryPage, 0);
+      const card = galleryPage.locator('.home-room-gallery').nth(8);
+      await card.evaluate((gallery, selector) => {
+        const container = gallery.closest(selector)!;
+        container.scrollTop += gallery.getBoundingClientRect().top - container.getBoundingClientRect().top - 180;
+      }, scrollSelector);
+      await settle(galleryPage);
+      const priorScroll = (await listState(galleryPage)).scroll;
+      assert.ok(priorScroll > 0);
+      await galleryPage.waitForFunction(() => performance.getEntriesByType('resource').some(entry => entry.name.endsWith('/fixture.webp?image=0')));
+      assert.ok(imageRequests.length > 0 && imageRequests.every(url => url.endsWith('=0')), 'Home requests cover URL only');
+      const cover = await card.boundingBox();
+      assert.ok(cover);
+      await galleryPage.mouse.click(cover.x + cover.width / 2, cover.y + 30);
+      const modal = galleryPage.locator('[data-room-detail-modal]').first();
+      await modal.waitFor();
+      await modal.getByRole('button', { name: 'Xem ảnh 3' }).click();
+      await galleryPage.waitForFunction(() => performance.getEntriesByType('resource').some(entry => entry.name.endsWith('/fixture.webp?image=2')));
+      await modal.getByRole('button', { name: 'Đóng', exact: true }).first().click();
+      await modal.waitFor({ state: 'hidden' });
+      await settle(galleryPage);
+      assert.ok(Math.abs((await listState(galleryPage)).scroll - priorScroll) <= 1, 'closing gallery restores list scroll');
+      await galleryPage.close();
+      console.log(`${mobile ? 'mobile' : 'desktop'}: Home requests only cover; actual detail gallery loads third image; close restores scroll`);
+
+    }
+    if (baseline) {
+      const scroller = page.locator(scrollSelector);
+      await scroller.evaluate(el => { el.scrollTop = 999; });
+      await settle(page);
+      const before = (await listState(page)).scroll;
+      await page.getByRole('button', { name: 'Sau →', exact: true }).click();
+      await waitRoom(page, 1);
+      const after = (await listState(page)).scroll;
+      assert.equal(after, before, 'baseline retains the old deep scroll offset on Next');
+      await page.getByRole('button', { name: '← Trước', exact: true }).click();
+      await waitRoom(page, 0);
+      console.log(`Baseline ${mobile ? 'mobile' : 'desktop'}: Next kept scrollTop=${after}`);
+    }
     for (let n = 1; n <= 4; n++) { await page.getByRole('button', { name: 'Sau →', exact: true }).click(); await waitRoom(page, n); }
     await page.waitForTimeout(300);
     // Count full/list vs small writes and the actual bytes synchronously written

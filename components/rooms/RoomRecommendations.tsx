@@ -160,10 +160,10 @@ function RecommendationsForFilter({ requestKey, ...props }: Props & { requestKey
         onDragStart={event=>event.preventDefault()}
         onClickCapture={event=>{if(suppressClick.current){suppressClick.current=false;event.preventDefault();event.stopPropagation()}}}>
         {loading ? Array.from({ length: 3 }, (_, i) => <RoomCardSkeleton key={i} />)
-          : rooms?.map((room, index) => {
+          : rooms?.map(room => {
             const card = <RoomCard room={room} adminLevel={props.adminLevel} currentUserId={props.currentUserId}
               currentAdminPhone={props.currentAdminPhone} currentAdminName={props.currentAdminName}
-              onNavigate={props.onNavigate} isOpening={props.openingRoomId === room.id} index={index} />;
+              onNavigate={props.onNavigate} isOpening={props.openingRoomId === room.id} />;
             return <Fragment key={room.id}>{typeof room.distance_km === "number" ? <div className={styles.item}>
               <p className={styles.distance}>Cách điểm tìm kiếm khoảng {room.distance_km.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} km · đường chim bay</p>
               {card}

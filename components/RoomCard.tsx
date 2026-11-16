@@ -1,7 +1,8 @@
 "use client";
 
 import { roomStatusLabel } from "@/lib/rooms/availability";
-import { canOptimizeRoomCardImage, getFullImageUrls } from "@/lib/rooms/cardImages";
+import { getFullImageUrls } from "@/lib/rooms/cardImages";
+import { homeCoverLoader, isResizableHomeCover } from "@/lib/rooms/homeCover";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import { showRoomNavigationPreview } from "@/components/rooms/RoomNavigationPreview";
 import RoomCardImage from "@/components/rooms/RoomCardImage";
@@ -269,21 +270,14 @@ function RoomCard({
   currentUserId,
   currentAdminPhone,
   currentAdminName,
-  index = 0,
+  index,
   onNavigate,
   isOpening = false,
 }: RoomCardProps) {
 
   const images = getFullImageUrls(room);
   const videos = getFullVideoUrls(room);
-  const showImages = images.slice(0, 3);
-
   const FALLBACK = "/no-image.webp";
-
-  const safeSrc = (src?: string | null) => {
-    const s = (src ?? "").trim();
-    return s ? s : FALLBACK;
-  };
 
   const updatedAt =
   (room as any).updated_at ??
@@ -379,21 +373,8 @@ const contactName = isLoggedAdmin
 ]);
 
   // Tổng số ảnh (ưu tiên image_count từ DB)
-  const totalImages =
-    typeof room.image_count === "number" && Number.isFinite(room.image_count)
-      ? room.image_count
-      : images.length;
-
-  // The fixed R2 thumbnail has no reliable association with a cover URL.
-  const coverUrl = showImages[0] ?? String(room.thumb_url ?? "").trim();
+  const coverUrl = images[0] ?? "";
   const [failedCover, setFailedCover] = useState<string | null>(null);
-  const coverFailed = !coverUrl || failedCover === coverUrl;
-
-  const subImage1 = safeSrc(showImages[1] ?? "");
-  const subImage2 = safeSrc(showImages[2] ?? "");
-
-  const [failedSub1, setFailedSub1] = useState<string | null>(null);
-  const [failedSub2, setFailedSub2] = useState<string | null>(null);
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
   const adminPhones = useMemo(
     () => extractContactPhones(adminPhone),
@@ -422,10 +403,9 @@ useEffect(() => {
   setCurrentAvailableFrom((room as any).available_from ?? null);
 }, [room.status, (room as any).available_from]);
 
-  const mainSrc = coverFailed ? FALLBACK : coverUrl;
-
-  const sub1Src = failedSub1 === subImage1 ? FALLBACK : subImage1;
-  const sub2Src = failedSub2 === subImage2 ? FALLBACK : subImage2;
+  const mainSrc = !coverUrl || failedCover === coverUrl ? FALLBACK : coverUrl;
+  const eagerCover = index !== undefined && index < 2;
+  const coverSizes = "(max-width: 389px) calc(100vw - 24px), (max-width: 640px) calc(50vw - 16px), (max-width: 960px) 46vw, (max-width: 1280px) 31vw, (max-width: 1590px) 24vw, (max-width: 1799px) 19vw, 344px";
 
   const price =
     (room as any).price ??
@@ -1027,7 +1007,7 @@ return (
               code: room.room_code,
               type: room.room_type,
               price: room.price,
-              cover: coverFailed ? "" : coverUrl,
+              cover: mainSrc === FALLBACK ? "" : mainSrc,
               address: [room.address, room.ward, room.district].filter(Boolean).join(", "),
               badges: room.badges,
             });
@@ -1118,85 +1098,23 @@ return (
               })}
             </div>
           )}
-          <div className="grid h-full grid-cols-[60%_40%] gap-1">
-            <div className="relative w-full h-full overflow-hidden">
-              {room.has_video && coverFailed && room.video_url ? (
-                <video
-                  src={room.video_url}
-                  className="w-full h-full object-cover object-[50%_40%]"
-                  muted
-                  playsInline
-                  preload="metadata"
-                />
-              ) : (
-                <RoomCardImage
-                  src={mainSrc}
-                  alt={room.room_type ?? "Hình phòng"}
-                  fill
-                  sizes={index === 0
-                    ? "(max-width: 389px) 60vw, (max-width: 640px) 30vw, 60vw"
-                    : "auto, 1080px"}
-                  className="object-cover object-[50%_40%]"
-                  loading={index === 0 ? "eager" : "lazy"}
-                  unoptimized={!canOptimizeRoomCardImage(mainSrc)}
-                  onError={() => setFailedCover(coverUrl)}
-                />
-              )}
-
-              
-
-              {room.has_video && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="bg-black/50 text-white text-2xl rounded-full w-12 h-12 flex items-center justify-center">
-                    ▶
-                  </div>
-                </div>
-              )}
+          <RoomCardImage
+            src={mainSrc}
+            alt={room.room_code ? `Hình phòng ${room.room_code}` : room.room_type ?? "Hình phòng"}
+            fill
+            sizes={eagerCover ? coverSizes : `auto, ${coverSizes}`}
+            className="object-cover object-[50%_40%]"
+            loading={eagerCover ? "eager" : "lazy"}
+            fetchPriority={index === 0 ? "high" : undefined}
+            loader={homeCoverLoader}
+            unoptimized={!isResizableHomeCover(mainSrc)}
+            onError={() => setFailedCover(coverUrl)}
+          />
+          {room.has_video && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <span className="flex size-12 items-center justify-center rounded-full bg-black/50 text-2xl text-white" aria-label="Video">&#9654;</span>
             </div>
-
-            {/* SUB IMAGES */}
-            <div className="grid grid-rows-2 gap-1 relative h-full">
-              {showImages[1] && (
-                <div className="relative w-full h-full overflow-hidden">
-                  <RoomCardImage
-                    src={sub1Src}
-                    alt={
-                      room.room_code
-                        ? `Hình phòng ${room.room_code}`
-                        : "Hình phòng"
-                    }
-                    fill
-                    sizes="auto, 720px"
-                    className="object-cover"
-                    unoptimized={!canOptimizeRoomCardImage(sub1Src)}
-                    onError={() => setFailedSub1(subImage1)}
-                  />
-                </div>
-              )}
-
-              {showImages[2] && (
-                <div className="relative w-full h-full">
-                  <RoomCardImage
-                    src={sub2Src}
-                    alt={room.room_type ?? "Hình phòng"}
-                    fill
-                    sizes="auto, 720px"
-                    className="object-cover"
-                    unoptimized={!canOptimizeRoomCardImage(sub2Src)}
-                    onError={() => setFailedSub2(subImage2)}
-                  />
-
-                  <div className="absolute inset-0 bg-black/30" />
-
-                  {totalImages > 3 && (
-                    <div className="absolute inset-0 flex items-center justify-center text-white text-lg font-semibold">
-                      +{totalImages - 3}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          )}
 
         {contactPhones.length > 0 && (
           <button

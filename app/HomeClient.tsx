@@ -922,6 +922,7 @@ if (dirty) {
   const lastScrollTopRef = useRef(0);
 const lastPageIndexRef = useRef(0);
 const lastDisplayPageIndexRef = useRef(0);
+const pageNavigationRef = useRef<{ target: number; previous: number; version: number; qs: string } | null>(null);
 const pendingScrollTopRef = useRef<number | null>(null); // ✅ chờ render xong mới restore
 
 // ================== HISTORY SCROLL RESTORE ==================
@@ -2756,6 +2757,11 @@ if (targetIndex === pageIndexRef.current) {
 
     } catch (e: any) {
       if (myVersion === filtersVersionRef.current && targetIndex === pageIndexRef.current) {
+        const navigation = pageNavigationRef.current;
+        if (navigation?.target === targetIndex && navigation.version === myVersion) {
+          pageNavigationRef.current = null;
+          setPageIndex(navigation.previous);
+        }
         setFetchError(e?.message ?? "Tải dữ liệu thất bại");
         setLoading(false);
         setShowSkeleton(false);
@@ -2822,6 +2828,27 @@ useLayoutEffect(() => {
   showSkeleton,
 ]);
 
+
+  useLayoutEffect(() => {
+    const navigation = pageNavigationRef.current;
+    if (!navigation) return;
+    if (navigation.version !== filtersVersionRef.current) {
+      pageNavigationRef.current = null;
+      return;
+    }
+    if (loading || showSkeleton || navigation.target !== displayPageIndex) return;
+
+    pageNavigationRef.current = null;
+    replaceUrlShallow(navigation.qs);
+    const container = scrollRef.current;
+    const heading = container?.querySelector<HTMLElement>("#phong");
+    if (!container || !heading) return;
+    const header = container.querySelector<HTMLElement>("[data-home-header]");
+    const headerPosition = header ? getComputedStyle(header).position : "";
+    const headerHeight = headerPosition === "sticky" || headerPosition === "fixed" ? header?.offsetHeight ?? 0 : 0;
+    container.scrollTop += heading.getBoundingClientRect().top - container.getBoundingClientRect().top - headerHeight - 8;
+    lastScrollTopRef.current = container.scrollTop;
+  }, [displayPageIndex, loading, showSkeleton, replaceUrlShallow]);
 
   // ================== CENTRAL FETCH ==================
 useEffect(() => {
@@ -3229,7 +3256,8 @@ useEffect(() => {
 // ================== NEXT / PREV ==================
 const goNext = useCallback(() => {
   if (filterSig !== lastFilterSigRef.current || !searchReady) return;
-  if (loading || !hasNext) {
+  if (pageNavigationRef.current?.version === filtersVersionRef.current) return;
+  if (pageIndex !== displayPageIndex || loading || !hasNext) {
   if (debugEnabled) {
     pushPageDebug({
       at: new Date().toLocaleTimeString(),
@@ -3280,7 +3308,6 @@ if (!nextCursor) {
   return;
 }
 
-  setPageIndex(next);
 
 // ✅ lưu scroll của entry hiện tại trước khi đổi URL
 saveScrollToHistory();
@@ -3301,9 +3328,9 @@ term: termFilters,
   p: next,          // optional: hiển thị page
   c: nextCursor,    // ✅ nguồn sự thật để fetch
 });
-replaceUrlShallow(qs);
+pageNavigationRef.current = { target: next, previous: pageIndex, version: filtersVersionRef.current, qs };
+setPageIndex(next);
 
-persistSoon();
 
 }, [
   loading,
@@ -3312,7 +3339,6 @@ persistSoon();
   search,
   pageIndex,
   buildQs,
-  replaceUrlShallow,
   appliedSearch,
   priceApplied,
   priceFilterActive,
@@ -3324,7 +3350,6 @@ persistSoon();
 
   featureFilters,
   sortMode,
-  persistSoon,
   statusFilter,
   badgeFilter,
   saveScrollToHistory,
@@ -3335,15 +3360,16 @@ persistSoon();
 ]);
 
 const goPrev = useCallback(() => {
-  if (loading || filterSig !== lastFilterSigRef.current || !searchReady) return;
+  if (pageNavigationRef.current?.version === filtersVersionRef.current) return;
+  if (pageIndex !== displayPageIndex || loading || filterSig !== lastFilterSigRef.current || !searchReady) return;
 
-  const previous = Math.max(0, pageIndex - 1);
+  if (pageIndex === 0) return;
+  const previous = pageIndex - 1;
   const next = cursorsRef.current[previous] ? previous : 0;
 
   // ✅ page 0 -> cursor null, còn page khác -> cursor đã lưu ở cursorsRef[next]
   const prevCursor = (cursorsRef.current[next] ?? null) as UrlCursor;
 
-  setPageIndex(next);
 
 // ✅ lưu scroll của entry hiện tại trước khi đổi URL
 saveScrollToHistory();
@@ -3364,9 +3390,9 @@ term: termFilters,
   p: next,
   c: prevCursor,
 });
-replaceUrlShallow(qs);
+pageNavigationRef.current = { target: next, previous: pageIndex, version: filtersVersionRef.current, qs };
+setPageIndex(next);
 
-persistSoon();
 
 }, [
   loading,
@@ -3374,7 +3400,6 @@ persistSoon();
   search,
   pageIndex,
   buildQs,
-  replaceUrlShallow,
     appliedSearch,
   priceApplied,
   priceFilterActive,
@@ -3382,10 +3407,13 @@ persistSoon();
   selectedRoomTypes,
   moveFilter,
   sortMode,
-  persistSoon,
   statusFilter,
   badgeFilter,
   saveScrollToHistory,
+  displayPageIndex,
+  petFilters,
+  termFilters,
+  featureFilters,
 ]);
 
 // A server-verified session already owns the SSR page. Re-fetch only if the
@@ -3557,13 +3585,14 @@ const toggleSavedView = () => {
 
 const goToSavedPage = (nextPage: number) => {
   const target = Math.max(0, Math.min(savedPageCount - 1, nextPage));
+  if (target === savedPageIndex) return;
   setPageIndex(target);
   setDisplayPageIndex(target);
   pageIndexRef.current = target;
   const params = new URLSearchParams(window.location.search);
   params.set(QS.p, String(target));
   params.delete(QS.c);
-  replaceUrlShallow(params.toString());
+  pageNavigationRef.current = { target, previous: savedPageIndex, version: filtersVersionRef.current, qs: params.toString() };
 };
 
 const handleGoNext = isSavedView ? () => goToSavedPage(savedPageIndex + 1) : goNext;
@@ -3913,10 +3942,11 @@ return (
       "
     >
       <Pagination
+        pageNumber={(isSavedView ? savedPageIndex : displayPageIndex) + 1}
         goNext={handleGoNext}
         goPrev={handleGoPrev}
         hasNext={visibleHasNext}
-        loading={loading || isAnonLocked}
+        loading={loading || isAnonLocked || (!isSavedView && pageIndex !== displayPageIndex)}
         onConsult={() => setGeneralInquiryOpen(true)}
       />
     </div>
