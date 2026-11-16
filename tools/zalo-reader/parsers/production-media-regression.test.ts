@@ -79,6 +79,13 @@ async function main(){
  assert.equal(previews.length,1);assert.equal(previews[0].imageUrls.length,3);assert.equal(previews[0].albums[0].complete,true);
  const unknown=buildSemanticTimelineRooms({groupName:"Fixture",groupId:"g-fixture",messages:[text("building","458/50 Ba Tháng Hai, Q10",1000),text("anchor","Studio/CS - 5.900.000 - P.103 - trống",2000),{...photo,totalImages:null}]});
  assert.equal(unknown[0].albums[0].complete,false);assert.ok(unknown[0].warnings.includes("MEDIA_UNVERIFIED"));
+ const previewOnly=buildSemanticTimelineRooms({groupName:"Fixture",groupId:"g-fixture",messages:[
+   text("building","458/50 Ba Tháng Hai, Q10",1000),
+   text("anchor","Studio/CS - 5.900.000 - P.103 - trống",2000),
+   {...photo,imageUrls:[],imagePreviewOnly:true,totalImages:1},
+ ]});
+ assert.deepEqual(previewOnly[0].imageUrls,[]);
+ assert.ok(previewOnly[0].warnings.includes("MEDIA_IMAGE_PREVIEW_ONLY"));
  console.log("Production lifecycle / 3 Tháng 2 aliases / adaptive lazy loading / placeholders / same-message album / uncertain completeness: PASS (offline)");
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

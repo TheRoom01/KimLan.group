@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { getRoomDetailForRender } from "@/lib/rooms/publicCache";
-import { defaultShareImage } from "@/lib/default-share-image";
+import { defaultShareImage, siteUrl } from "@/lib/default-share-image";
 
 export const dynamic = "force-dynamic";
 
@@ -46,8 +46,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
 
-const base =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://canhodichvu.pro";
+const base = siteUrl.origin;
 
 // ✅ mặc định (trước khi query DB)
 let title = "The Room SG";
@@ -67,27 +66,12 @@ const price = data?.price;
 // ✅ nếu không có room -> giữ fallback title/desc + image và thoát try
 if (!data) throw new Error("room_not_found");
 
-// ✅ 1) Ưu tiên thumb.webp theo convention R2 chuẩn UUID: rooms/{id}/images/thumb.webp
-const R2_BASE = (process.env.R2_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "")
-  .toString()
-  .replace(/\/$/, "");
-
-const thumb = R2_BASE && id
-  ? `${R2_BASE}/rooms/${encodeURIComponent(id)}/images/thumb.webp`
-  : "";
-
-if (thumb) {
-  image = absUrl(base, thumb);
-} else {
-  // Fallback dùng chính payload detail đã cache, không tạo thêm query media.
-  const mediaRows = Array.isArray(data.media)
-    ? data.media.filter(
-        (item) => String(item?.type ?? "").toLowerCase() === "image",
-      )
-    : [];
-  const img = pickCoverUrl(mediaRows);
-  if (img) image = absUrl(base, img);
-}
+// Use the published cover instead of assuming a thumbnail object exists.
+const mediaRows = Array.isArray(data.media)
+  ? data.media.filter(item => String(item?.type ?? "").toLowerCase() === "image")
+  : [];
+const img = pickCoverUrl(mediaRows);
+if (img) image = absUrl(base, img);
 
     // ✅ Title preview theo format bạn yêu cầu
   const formatVND = (v: unknown) => {
@@ -136,7 +120,7 @@ desc = [
       url,
       title,
       description: desc,
-      images: [image ? { url: image } : defaultShareImage],
+      images: image ? [{ url: image }, defaultShareImage] : [defaultShareImage],
     },
     twitter: {
       card: "summary_large_image",

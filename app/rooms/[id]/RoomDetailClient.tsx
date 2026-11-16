@@ -2286,7 +2286,7 @@ return (
           return <div key={`viewer-${item.kind}-${item.url}`} className="relative flex h-full w-full shrink-0 items-center justify-center bg-black">
             {!nearbySlide ? null : item.kind === "video" ? (
               <RoomMediaVideo ref={isCurrentSlide ? fullscreenVideoRef : undefined} src={item.url} active={isCurrentSlide} swipeEnabled={mediaItems.length > 1} fullscreen onPlaybackChange={handleMediaPlaybackChange} className="h-full w-full object-contain bg-black/40" />
-            ) : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} loading={isCurrentSlide ? "eager" : "lazy"} />}
+            ) : <img src={item.url} alt={room?.title || room?.room_code || ""} className="h-full w-full object-contain select-none pointer-events-none" draggable={false} decoding="async" loading={isCurrentSlide ? "eager" : "lazy"} fetchPriority={isCurrentSlide ? "high" : "low"} />}
           </div>;
         })}
       </div>

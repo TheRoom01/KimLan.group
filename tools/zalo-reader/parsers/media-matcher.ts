@@ -1,3 +1,4 @@
+import { selectZaloPhotoSource } from "../photo-source";
 import type {
   MediaBundle,
   RoomAnchor,
@@ -25,32 +26,21 @@ export type MediaAssignmentResult = {
  * hoặc URL nằm ở field dự phòng/DOM hydration. Chuẩn hóa cục bộ tại tầng
  * media để không thay đổi logic ghép album và phòng hiện có.
  */
-function getFallbackImageUrls(message: SemanticIndexedDbMessage) {
+function getFallbackImageSources(message: SemanticIndexedDbMessage) {
   const raw = message as any;
+
+  const source = selectZaloPhotoSource(raw);
+  if (source.imageUrls.length) return source;
+  if (raw.imagePreviewOnly || source.imagePreviewOnly) {
+    return { imageUrls: [], imagePreviewOnly: true };
+  }
 
   const candidates = [
     ...(Array.isArray(raw.imageUrls) ? raw.imageUrls : []),
-    raw.hdUrl,
-    raw.originalUrl,
-    raw.originUrl,
-    raw.normalUrl,
-    raw.imageUrl,
-    raw.photoUrl,
-    raw.thumbUrl,
-    raw.thumbnailUrl,
-    raw.content?.hdUrl,
-    raw.content?.originalUrl,
-    raw.content?.originUrl,
-    raw.content?.url,
-    raw.content?.href,
-    raw.params?.hdUrl,
-    raw.params?.url,
-    ...(Array.isArray(raw.domHydration?.imageUrls)
-      ? raw.domHydration.imageUrls
-      : []),
+    ...(Array.isArray(raw.domHydration?.imageUrls) ? raw.domHydration.imageUrls : []),
   ];
 
-  return Array.from(
+  const imageUrls = Array.from(
     new Set(
       candidates
         .map((value) => String(value || "").trim())
@@ -70,16 +60,18 @@ function getFallbackImageUrls(message: SemanticIndexedDbMessage) {
         })
     )
   );
+  return { imageUrls, imagePreviewOnly: false };
 }
 
 function normalizeImageMessage(message: SemanticIndexedDbMessage) {
-  const imageUrls = getFallbackImageUrls(message);
-  if (imageUrls.length === 0) return message;
+  const { imageUrls, imagePreviewOnly } = getFallbackImageSources(message);
+  if (!imageUrls.length && !imagePreviewOnly) return message;
 
   return {
     ...message,
     kind: "image" as const,
     imageUrls,
+    imagePreviewOnly,
   };
 }
 

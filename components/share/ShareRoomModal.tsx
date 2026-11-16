@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { mapWithConcurrency } from "@/lib/media/uploadFileType";
+import { canOptimizeRoomCardImage } from "@/lib/rooms/cardImages";
+import RoomCardImage from "@/components/rooms/RoomCardImage";
 import { createPortal } from "react-dom";
 import { formatVietnameseWard } from "@/lib/formatWard";
 
@@ -39,7 +42,6 @@ type Props = {
   detail?: any;
 };
 
-type BitmapLike = ImageBitmap | HTMLImageElement;
 
 function joinParts(parts: Array<string | null | undefined>) {
   return parts
@@ -88,206 +90,6 @@ function safeFileBaseName(input: string) {
   );
 }
 
-async function loadImageFromBlob(blob: Blob): Promise<BitmapLike> {
-  if (typeof createImageBitmap === "function") {
-    return await createImageBitmap(blob);
-  }
-
-  return await new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(blob);
-    const img = new Image();
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(img);
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("Không đọc được ảnh"));
-    };
-
-    img.src = objectUrl;
-  });
-}
-
-async function blobToJpegBlob(blob: Blob, quality = 0.9): Promise<Blob> {
-  const image = await loadImageFromBlob(blob);
-
-  const width =
-    image instanceof HTMLImageElement ? image.naturalWidth : image.width;
-
-  const height =
-    image instanceof HTMLImageElement ? image.naturalHeight : image.height;
-
-  if (!width || !height) {
-    throw new Error("Ảnh không có kích thước hợp lệ");
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Không thể xử lý ảnh trên thiết bị này");
-  }
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(image, 0, 0, width, height);
-
-  if ("close" in image && typeof image.close === "function") {
-    image.close();
-  }
-
-  return await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (jpegBlob) => {
-        if (!jpegBlob) {
-          reject(new Error("Không thể chuyển ảnh sang JPG"));
-          return;
-        }
-        resolve(jpegBlob);
-      },
-      "image/jpeg",
-      quality
-    );
-  });
-}
-
-function drawCoverImage(
-  ctx: CanvasRenderingContext2D,
-  image: BitmapLike,
-  dx: number,
-  dy: number,
-  dw: number,
-  dh: number
-) {
-  const sw = image.width;
-  const sh = image.height;
-
-  const srcRatio = sw / sh;
-  const dstRatio = dw / dh;
-
-  let sx = 0;
-  let sy = 0;
-  let sW = sw;
-  let sH = sh;
-
-  if (srcRatio > dstRatio) {
-    sW = sh * dstRatio;
-    sx = (sw - sW) / 2;
-  } else {
-    sH = sw / dstRatio;
-    sy = (sh - sH) / 2;
-  }
-
-  ctx.drawImage(image, sx, sy, sW, sH, dx, dy, dw, dh);
-}
-
-async function buildCollageFileFromUrls(
-  urls: string[],
-  roomCodeOrId: string,
-  prepareFile: (url: string, index: number) => Promise<File> = (url, index) =>
-    r2ImageUrlToFile(url, index, roomCodeOrId)
-) {
-  const uniqueUrls = Array.from(
-    new Set(urls.map((u) => String(u ?? "").trim()).filter(Boolean))
-  );
-
-  if (!uniqueUrls.length) {
-    throw new Error("Không có ảnh để tạo collage");
-  }
-
-  const files = await Promise.all(
-    uniqueUrls.map((url, index) => prepareFile(url, index))
-  );
-
-  const images = await Promise.all(files.map((f) => loadImageFromBlob(f)));
-
-  const count = images.length;
-  const cols = count <= 2 ? count : count <= 4 ? 2 : count <= 9 ? 3 : 4;
-  const tile = count <= 2 ? 900 : count <= 4 ? 720 : count <= 9 ? 540 : 380;
-
-  const gap = 12;
-  const headerH = 104;
-  const footerH = 84;
-  const rows = Math.ceil(count / cols);
-
-  const width = cols * tile + (cols + 1) * gap;
-  const height = headerH + rows * tile + (rows + 1) * gap + footerH;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Không thể tạo canvas");
-
-  ctx.fillStyle = "#130c09";
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.fillStyle = "rgba(255,255,255,0.94)";
-  ctx.font = `700 ${Math.max(24, Math.round(tile * 0.06))}px system-ui, sans-serif`;
-  ctx.fillText("The Room SG", gap, 38);
-
-  ctx.fillStyle = "rgba(255,255,255,0.72)";
-  ctx.font = `500 ${Math.max(14, Math.round(tile * 0.03))}px system-ui, sans-serif`;
-  ctx.fillText(`Ảnh phòng · ${count} ảnh`, gap, 68);
-
-  for (let i = 0; i < images.length; i += 1) {
-    const img = images[i];
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-
-    const x = gap + col * (tile + gap);
-    const y = headerH + gap + row * (tile + gap);
-
-    ctx.fillStyle = "#1b120f";
-    ctx.fillRect(x, y, tile, tile);
-
-    drawCoverImage(ctx, img, x, y, tile, tile);
-
-    ctx.strokeStyle = "rgba(255,255,255,0.28)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x + 1, y + 1, tile - 2, tile - 2);
-
-    ctx.fillStyle = "rgba(0,0,0,0.42)";
-    ctx.fillRect(x + 10, y + 10, 44, 28);
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "700 16px system-ui, sans-serif";
-    ctx.fillText(String(i + 1), x + 24, y + 30);
-
-    if ("close" in img && typeof img.close === "function") {
-      img.close();
-    }
-  }
-
-  ctx.fillStyle = "rgba(255,255,255,0.78)";
-  ctx.font = `500 ${Math.max(13, Math.round(tile * 0.028))}px system-ui, sans-serif`;
-  ctx.fillText("Chia sẻ từ The Room SG", gap, height - 32);
-
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (b) => {
-        if (!b) {
-          reject(new Error("Không thể xuất ảnh collage"));
-          return;
-        }
-        resolve(b);
-      },
-      "image/jpeg",
-      0.92
-    );
-  });
-
-  return new File([blob], `${safeFileBaseName(roomCodeOrId)}-collage.jpg`, {
-    type: "image/jpeg",
-  });
-}
-
 function shareHouseNumberText(input: any) {
   const raw = String(input ?? "").trim();
   if (!raw) return "";
@@ -318,14 +120,12 @@ async function r2ImageUrlToFile(
     throw new Error(`Không tải được ảnh ${index + 1} qua proxy`);
   }
 
-  const originalBlob = await res.blob();
-  // Skip an expensive canvas decode/encode when the source is already JPEG.
-  const jpegBlob = originalBlob.type.toLowerCase().includes("jpeg")
-    ? originalBlob
-    : await blobToJpegBlob(originalBlob, 0.9);
-
-  return new File([jpegBlob], `${safeFileBaseName(roomCodeOrId)}-${index + 1}.jpg`, {
-    type: "image/jpeg",
+  const blob = await res.blob();
+  const subtype = blob.type.match(/^image\/([a-z0-9]+)$/i)?.[1];
+  const sourceExtension = new URL(cleanUrl, window.location.origin).pathname.match(/\.([a-z0-9]+)$/i)?.[1];
+  const extension = subtype === "jpeg" ? "jpg" : subtype || sourceExtension || "img";
+  return new File([blob], `${safeFileBaseName(roomCodeOrId)}-${index + 1}.${extension}`, {
+    type: blob.type,
   });
 }
 
@@ -379,6 +179,7 @@ const [sharing, setSharing] = useState(false);
 const [preparingImages, setPreparingImages] = useState(false);
 const [preparingVideos, setPreparingVideos] = useState(false);
 
+const [downloadFiles, setDownloadFiles] = useState<File[]>([]);
 const [preparedFiles, setPreparedFiles] = useState<Record<string, File>>({});
 const [preparedVideoFiles, setPreparedVideoFiles] = useState<Record<string, File>>({});
 const imagePreparationCache = useRef(new Map<string, Promise<File>>());
@@ -478,28 +279,31 @@ const MAX_NATIVE_SHARE_VIDEOS = 2;
     setShareVideoUrls(cleanVideos);
     setIncludeVideos(false);
 
+    setDownloadFiles([]);
     setPreparedFiles({});
     setPreparedVideoFiles({});
   }, [open, selectedImageUrls, videos]);
 
 useEffect(() => {
-  if (!open || selectedImageUrls.length === 0) return;
+  if (!open || typeof navigator.share !== "function" || selectedImageUrls.length === 0 || selectedImageUrls.length > MAX_NATIVE_SHARE_FILES) {
+    setPreparingImages(false);
+    return;
+  }
 
   let cancelled = false;
 
   async function prepareImages() {
     setPreparingImages(true);
 
-    const entries = await Promise.all(
-      selectedImageUrls.map(async (url, index) => {
+    const entries = await mapWithConcurrency(selectedImageUrls, 3, async (url, index) => {
+        if (cancelled) return null;
         try {
           return [url, await prepareImageFile(url, index)] as const;
         } catch (e) {
           console.error("prepare image error:", e);
           return null;
         }
-      })
-    );
+      });
     const next = Object.fromEntries(
       entries.filter(Boolean) as Array<readonly [string, File]>
     );
@@ -805,6 +609,10 @@ useEffect(() => {
     return lines.join("\n");
   }
 
+  useEffect(() => {
+    setDownloadFiles([]);
+  }, [shareImageUrls, shareVideoUrls, includeVideos]);
+
   function toggleShareImage(url: string) {
     const cleanUrl = String(url ?? "").trim();
     if (!cleanUrl) return;
@@ -870,74 +678,29 @@ useEffect(() => {
         return;
       }
 
-      if (
-  selected.length <= MAX_NATIVE_SHARE_FILES &&
-  selectedVideos.length <= MAX_NATIVE_SHARE_VIDEOS &&
-  navigator?.share
-) {
-  // Preloading makes the modal feel faster, but it must not be a prerequisite
-  // for sharing. A failed/slow preload used to leave the UI permanently saying
-  // "Ảnh đang chuẩn bị". Fetch missing files as part of this user action so a
-  // transient proxy/network failure can recover without reopening the modal.
-  const imageFiles = await Promise.all(
-    selected.map((url: string, index: number) =>
-      preparedFiles[url] ?? prepareImageFile(url, index)
-    )
-  );
-
-  const videoFiles = await Promise.all(
-    selectedVideos.map((url: string, index: number) =>
-      preparedVideoFiles[url] ?? prepareVideoFile(url, index)
-    )
-  );
-
+      const imageFiles: File[] = [];
+      for (let index = 0; index < selected.length; index += 1) {
+        const url = selected[index];
+        imageFiles.push(preparedFiles[url] ?? await prepareImageFile(url, index));
+      }
+      const videoFiles = await Promise.all(
+        selectedVideos.map((url, index) => preparedVideoFiles[url] ?? prepareVideoFile(url, index))
+      );
       const files = [...imageFiles, ...videoFiles];
 
-      const canShareFiles =
-        typeof navigator.canShare === "function"
-          ? navigator.canShare({ files })
-          : false;
-
-      if (canShareFiles) {
-        // Zalo's iOS Share Extension aborts mixed text + multi-image payloads
-        // after sending only part of the images. The text has already been
-        // copied above, so give the native share sheet images only.
-        await navigator.share({ files });
-
-        onClose();
-        return;
-      }
-    }
-
-      const collageFile = await buildCollageFileFromUrls(
-        selected,
-        room.room_code || room.id,
-        (url, index) =>
-          Promise.resolve(preparedFiles[url] ?? prepareImageFile(url, index))
-      );
-
-      const canShareCollage =
-        typeof navigator.canShare === "function"
-          ? navigator.canShare({ files: [collageFile] })
-          : false;
-
-      if (navigator?.share && canShareCollage) {
-        await navigator.share({
-          files: [collageFile],
-        });
-        onClose();
-        return;
+      if (typeof navigator.share === "function" && navigator.canShare?.({ files })) {
+        try {
+          // Some messaging apps handle files more reliably when room text is copied separately.
+          await navigator.share({ files });
+          onClose();
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+        }
       }
 
-      const url = URL.createObjectURL(collageFile);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = collageFile.name;
-      a.click();
-
-      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-      showToast("Thiết bị không hỗ trợ share trực tiếp — đã tải 1 ảnh tổng hợp");
-      onClose();
+      setDownloadFiles(files);
+      showToast("Bạn có thể tải từng tệp gốc để gửi");
     } catch (e) {
       console.error("handleShare error:", e);
       showToast("Không thể chia sẻ ngay lúc này");
@@ -1160,6 +923,28 @@ useEffect(() => {
                 </div>
               </div>
 
+              {downloadFiles.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2" aria-label="Tải tệp gốc">
+                  {downloadFiles.map((file, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      className="rounded-lg border border-white/20 px-3 py-1 text-sm"
+                      onClick={() => {
+                        const url = URL.createObjectURL(file);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = file.name;
+                        link.click();
+                        window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+                      }}
+                    >
+                      Tải {file.type.startsWith("video/") ? "video" : "ảnh"} {index + 1}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {selectedImageUrls.length > 0 ? (
                 <>
                   <div className="grid grid-cols-5 gap-2">
@@ -1179,8 +964,12 @@ useEffect(() => {
                           ].join(" ")}
                           title={selected ? "Bấm để bỏ chọn ảnh" : "Bấm để chọn ảnh"}
                         >
-                          <img
+                          <RoomCardImage
                             src={url}
+                            width={120}
+                            height={120}
+                            sizes="120px"
+                            unoptimized={!canOptimizeRoomCardImage(url)}
                             alt={`Ảnh phòng ${idx + 1}`}
                             className="h-full w-full object-cover"
                             loading="lazy"

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { defaultShareImage, siteUrl } from "@/lib/default-share-image";
 import { notFound } from "next/navigation";
 
 import SalesPortalView from "@/components/sales/SalesPortalView";
@@ -13,25 +14,14 @@ export async function generateMetadata({ params }: { params: Promise<{ token: st
 
   const title = `Tình trạng phòng trống - ${data.property.name}`;
   const description = `Link cập nhật tình trạng phòng trống Tòa nhà: ${data.property.full_address}`;
-  const image = `${publicSiteUrl()}/api/sales-og/${encodeURIComponent(token)}?v=${salesOgVersion(data)}`;
+  const image = `${siteUrl.origin}/api/sales-og/${encodeURIComponent(token)}?v=${salesOgVersion(data)}`;
   return {
     title,
     description,
     robots: { index: false, follow: false },
-    openGraph: { title, description, type: "website", images: [{ url: image, width: 1200, height: 630, alt: `Tình trạng phòng - ${data.property.name}` }] },
+    openGraph: { title, description, type: "website", images: [{ url: image, width: 1200, height: 630, type: "image/png", alt: `Tình trạng phòng - ${data.property.name}` }, defaultShareImage] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   };
-}
-
-function publicSiteUrl() {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL || "https://www.canhodichvu.pro";
-  try {
-    const url = new URL(configured);
-    if (url.hostname === "canhodichvu.pro") url.hostname = "www.canhodichvu.pro";
-    return url.origin;
-  } catch {
-    return "https://www.canhodichvu.pro";
-  }
 }
 
 function salesOgVersion(data: SalesPortalData) {

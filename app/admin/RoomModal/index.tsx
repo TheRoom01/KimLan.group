@@ -654,15 +654,16 @@ await runPool(okFiles.map((file, index) => ({ file, index })), CONCURRENCY, asyn
   const isVideo = file.type.startsWith('video/')
   const isImage = file.type.startsWith('image/')
 
-  // Ảnh: convert WebP 1600px, target ~500KB
+  // Keep originals that already fit the gallery image budget.
+  const imageTargetBytes = 500 * 1024
   let uploadFile: File = file
-  if (isImage) {
+  if (isImage && file.size > imageTargetBytes) {
     const baseName = (file.name || 'image').replace(/\.[^.]+$/, '')
     try {
       uploadFile = await withImageConvertLock(() =>
         compressImageWebp(file, {
           max: 1600,
-          targetBytes: 500 * 1024,
+          targetBytes: imageTargetBytes,
           baseName,
         })
       )

@@ -925,6 +925,18 @@ export async function POST(
       );
     }
 
+    const sourceImageFailure = importIssues.find(issue =>
+      issue.code === "MEDIA_IMAGE_PREVIEW_ONLY" || issue.code === "MEDIA_IMAGE_DOWNLOAD_FAILED"
+    );
+    if (sourceImageFailure) {
+      return NextResponse.json({
+        ok: false,
+        code: sourceImageFailure.code,
+        error: sourceImageFailure.message,
+        issues: importIssues,
+      }, { status: 422 });
+    }
+
     const testIdentity = testImportToPending
       ? makeTestPendingIdentity(sourceGroupId, sourceMessageId || "") : null;
     const officialParsed = officialReader ? parseZaloRoomText(rawText) : null;

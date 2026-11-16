@@ -644,6 +644,9 @@ function buildRoomsForSegment(params: {
     const videos = flattenVideoPayloads(videoBundles);
 
     const warnings = new Set<string>(segment.warnings);
+    if (albums.some(album => album.hasPreviewOnlyImage)) {
+      warnings.add("MEDIA_IMAGE_PREVIEW_ONLY");
+    }
 
     for (const warning of
       assignment.warningsByRoomId.get(room.id) || []) {

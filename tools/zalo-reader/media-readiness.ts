@@ -1,13 +1,13 @@
 /** Browser-side inspection: use only source URLs actually supplied by the UI. */
 export function inspectImageSource(image: HTMLImageElement) {
   const current=String(image.currentSrc || image.getAttribute("src") || "").trim();
-  const full=["data-original-src","data-original","data-full-src","data-large-src"].map(key=>image.getAttribute(key)||"")
+  const full=["data-original-src","data-original","data-hd-src","data-hd-url","data-full-src","data-large-src"].map(key=>image.getAttribute(key)||"")
     .find(value=>/^(?:https?:|blob:)/i.test(value)) || "";
   const hint=`${current.split(/[?#]/)[0]} ${image.className || ""} ${image.getAttribute("data-role") || ""}`.toLowerCase();
   const placeholder=!current || /^data:/i.test(current) || /placeholder|skeleton|spinner|transparent|blank(?:\.|-)|loading(?:\.|-)/.test(hint);
   const thumbnail=/thumbnail|(?:^|[/_\s-])thumb(?:[./_\s-]|$)/.test(hint) || image.getAttribute("data-thumbnail")==="true";
   const loaded=image.complete && image.naturalWidth>1 && image.naturalHeight>1;
-  return {url:full || current,loaded,quality:placeholder ? "placeholder" : thumbnail && !full ? "thumbnail" : "image",
+  return {url:full || current,explicitOriginal:!!full,loaded,quality:placeholder ? "placeholder" : thumbnail && !full ? "thumbnail" : "image",
     usableForRoom:loaded && !placeholder && (!thumbnail || !!full),naturalWidth:image.naturalWidth,naturalHeight:image.naturalHeight};
 }
 export function mediaReadinessBrowserScript() {

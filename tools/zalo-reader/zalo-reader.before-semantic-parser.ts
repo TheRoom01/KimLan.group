@@ -9,6 +9,7 @@ import { createVideoPlaybackProbe, VIDEO_OBJECT_OBSERVER } from "./video-playbac
 import { buildMediaReport } from "../../lib/zalo-reader/media-report";
 import { getOfficialSession } from "./official-runtime";
 import { canonicalAccountGroup } from "./account-group-identity";
+import { zaloPhotoSourceBrowserScript, type selectZaloPhotoSource as selectZaloPhotoSourceInBrowser } from "./photo-source";
 import { mediaReadinessBrowserScript, waitForStableMedia, mergeCapturedImages } from "./media-readiness";
 import { isDownloadableZaloVideoUrl } from "./parsers/utils";
 import { execFile } from "child_process";
@@ -247,6 +248,7 @@ type IndexedDbGroupMessage = {
   kind: "text" | "image" | "other";
   text: string;
   imageUrls: string[];
+  imagePreviewOnly?: boolean;
   groupLayoutId:
     | string
     | number
@@ -2434,6 +2436,7 @@ type DomMessageSnapshot = {
     mimeType?: string;
     sizeBytes?: number;
     loaded?: boolean;
+    explicitOriginal?: boolean;
     quality?: string;
     usableForRoom?: boolean;
   }>;
@@ -5696,8 +5699,7 @@ function buildIndexedDbAlbums(
             )
           );
 
-          const actualImageCount =
-            imageMessageIds.length;
+          const actualImageCount = imageUrls.length;
 
           const complete =
             expectedImageCount != null &&
@@ -5711,6 +5713,7 @@ function buildIndexedDbAlbums(
                 ?.groupLayoutId ?? null,
             expectedImageCount,
             actualImageCount,
+            hasPreviewOnlyImage: sortedMessages.some(message => message.imagePreviewOnly),
             complete,
             imageMessageIds,
             imageUrls,
@@ -6820,6 +6823,8 @@ function buildRoomsFromIndexedDbSoftTimeline(
           draft.warnings
         );
 
+      if (albums.some(album => album.hasPreviewOnlyImage)) warnings.add("MEDIA_IMAGE_PREVIEW_ONLY");
+
       if (!draft.house) {
         warnings.add(
           "NO_HOUSE_INFO_IN_SOFT_TIMELINE"
@@ -7829,6 +7834,7 @@ if (!hasStrongRoomMarker) {
 
         const warnings:
           string[] = [];
+        if (albums.some(album => album.hasPreviewOnlyImage)) warnings.push("MEDIA_IMAGE_PREVIEW_ONLY");
 
         if (
           !houseInfoText
@@ -8776,7 +8782,13 @@ async function importIndexedDbRoomPreviews(
         ].join(" "),
       });
     }
-    for(const code of room.warnings.filter(warning=>/^MEDIA_/.test(warning))) readerIssues.push({level:"warning",index:null,code,message:code});
+    for(const code of room.warnings.filter(warning=>/^MEDIA_/.test(warning))) {
+      if (code === "MEDIA_IMAGE_PREVIEW_ONLY") {
+        readerIssues.unshift({ level: "error", index: null, code, message: "Zalo chỉ cung cấp ảnh xem trước. Cần lấy lại ảnh gốc hoặc HD." });
+      } else {
+        readerIssues.push({ level: "warning", index: null, code, message: code });
+      }
+    }
     const albumExpectedImageCount=room.albums.length && room.albums.every(album=>album.expectedImageCount!=null)
       ? room.albums.reduce((sum,album)=>sum+Number(album.expectedImageCount),0) : null;
     const mediaVerification=room.warnings.includes("MEDIA_INCOMPLETE") ? "MEDIA_INCOMPLETE" : albumExpectedImageCount==null || room.warnings.some(warning=>/^MEDIA_/.test(warning)) ? "MEDIA_UNVERIFIED" : "VERIFIED";
@@ -9333,6 +9345,7 @@ if (preferredGroupId) {
 
   await page.evaluate(zdbMessageBrowserScript());
 
+    await page.evaluate(zaloPhotoSourceBrowserScript());
     const result = await page.evaluate(
       async ({
         groupName,
@@ -9348,6 +9361,7 @@ if (preferredGroupId) {
         officialWindow,
         stagingOnlyImport,
       }) => {
+      const selectZaloPhotoSource = (globalThis as any).__zaloSelectPhotoSource as typeof selectZaloPhotoSourceInBrowser;
       const zdbTools = (globalThis as any).__zaloZdbMessageTools as {
         decodeZdbMessagePayload: typeof decodeZdbMessagePayload;
         lookupZdbMessageRecord: typeof lookupZdbMessageRecord;
@@ -9743,6 +9757,7 @@ if (preferredGroupId) {
 
         let text = "";
         let imageUrls: string[] = [];
+        let imagePreviewOnly = false;
 
         let groupLayoutId:
           | string
@@ -9802,26 +9817,7 @@ if (preferredGroupId) {
                 : {}
             );
 
-          imageUrls = Array.from(
-            new Set(
-              [
-                media.hdUrl,
-                media.oriUrl,
-                media.normalUrl,
-                media.thumbUrl,
-                params.hd,
-                params.href,
-                params.hd_renew,
-                params.href_renew,
-              ]
-                .map((url) =>
-                  String(
-                    url || ""
-                  ).trim()
-                )
-                .filter(Boolean)
-            )
-          );
+          ({ imageUrls, imagePreviewOnly } = selectZaloPhotoSource(media, params));
 
           groupLayoutId =
             params.group_layout_id ??
@@ -9835,7 +9831,7 @@ if (preferredGroupId) {
             params.total_item_in_group ??
             null;
 
-          if (imageUrls.length > 0) {
+          if (imageUrls.length > 0 || imagePreviewOnly) {
             kind = "image";
           }
         }
@@ -10029,6 +10025,7 @@ if (preferredGroupId) {
           kind,
           text,
           imageUrls,
+          imagePreviewOnly,
           groupLayoutId,
           imageIndex,
           totalImages,
@@ -12376,6 +12373,7 @@ if (activeGroupHint) {
 
               let text = "";
               let imageUrls: string[] = [];
+              let imagePreviewOnly = false;
               let groupLayoutId:
                 | string
                 | number
@@ -12433,28 +12431,10 @@ if (activeGroupHint) {
                   value.message;
 
                 const params =
-                  safeJsonParse(
-                    media.params
-                  ) || {};
+                  safeJsonParse(media.params) ||
+                  (media.params && typeof media.params === "object" ? media.params : {});
 
-                imageUrls = Array.from(
-                  new Set(
-                    [
-                      media.hdUrl,
-                      media.oriUrl,
-                      media.normalUrl,
-                      media.thumbUrl,
-                      params.hd,
-                      params.href,
-                      params.hd_renew,
-                      params.href_renew,
-                    ]
-                      .map((url) =>
-                        String(url || "").trim()
-                      )
-                      .filter(Boolean)
-                  )
-                );
+                ({ imageUrls, imagePreviewOnly } = selectZaloPhotoSource(media, params));
 
                 groupLayoutId =
                   params.group_layout_id ??
@@ -12662,6 +12642,7 @@ if (activeGroupHint) {
                 kind,
                 text,
                 imageUrls,
+                imagePreviewOnly,
                 groupLayoutId,
                 imageIndex,
                 totalImages,
@@ -12823,6 +12804,16 @@ if (activeGroupHint) {
               contentEnrichment.decodedTextCount += 1;
               hasContent = true;
             }
+            if (decoded.imagePreviewOnly || decoded.imageUrls.length) {
+              message.imagePreviewOnly = decoded.imagePreviewOnly;
+              if (decoded.imagePreviewOnly) {
+                message.kind = "image";
+                message.imageUrls = [];
+                message.groupLayoutId = decoded.groupLayoutId;
+                message.imageIndex = decoded.imageIndex;
+                message.totalImages = decoded.totalImages;
+              }
+            }
             if (decoded.kind === "image" && decoded.imageUrls.length) {
               message.kind = "image";
               message.imageUrls = decoded.imageUrls;
@@ -12941,6 +12932,7 @@ if (activeGroupHint) {
             message: any
           ) {
             return (
+              !message?.imagePreviewOnly &&
               (
                 Number(
                   message?.msgType || 0
@@ -13477,7 +13469,7 @@ if (activeGroupHint) {
                   continue;
                 }
 
-                if(image.usableForRoom === false) continue;
+                if (image.usableForRoom === false && image.quality !== "thumbnail") continue;
                 const imageTargets = Array.from(new Set(
                   (
                     Array.isArray(
@@ -13493,11 +13485,20 @@ if (activeGroupHint) {
                     )
                     .filter(
                       (message: any) =>
-                        isBlankImageMessage(message) || assignedImageMessages.has(message)
+                        isBlankImageMessage(message) || assignedImageMessages.has(message) || (image.explicitOriginal && message?.imagePreviewOnly)
                     )));
                 const imageDirectTarget = imageTargets.length===1 ? imageTargets[0] as any : null;
 
+                if (image.usableForRoom === false) {
+                  if (imageDirectTarget && !imageDirectTarget.imageUrls?.length) {
+                    imageDirectTarget.kind = "image";
+                    imageDirectTarget.imagePreviewOnly = true;
+                  }
+                  continue;
+                }
+
                 if (imageDirectTarget) {
+                  imageDirectTarget.imagePreviewOnly = false;
                   imageDirectTarget.kind =
                     "image";
                   imageDirectTarget.imageUrls = [...new Set([...(imageDirectTarget.imageUrls||[]),imageUrl])];
@@ -13535,6 +13536,11 @@ if (activeGroupHint) {
                       ).trim();
 
                     return (
+                      image.usableForRoom !== false &&
+                      !(image.idCandidates || []).some((id: unknown) => {
+                        const message = messageByAnyId.get(String(id));
+                        return message?.imagePreviewOnly || (message?.kind === "image" && !!message.imageUrls?.length);
+                      }) &&
                       Boolean(imageUrl) &&
                       !assignedDomImageUrls.has(
                         imageUrl
@@ -15780,8 +15786,9 @@ async function sendBatch(params: {
         errorMessage
       );
 
-      readerIssues.push({
+      readerIssues.unshift({
         level: "error",
+        code: "MEDIA_IMAGE_DOWNLOAD_FAILED",
 
         index:
           imageIndex,

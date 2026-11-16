@@ -26,6 +26,7 @@ export type SemanticIndexedDbMessage = {
   kind: "text" | "image" | "other";
   text: string;
   imageUrls: string[];
+  imagePreviewOnly?: boolean;
   groupLayoutId: string | number | null;
   imageIndex: string | number | null;
   totalImages: string | number | null;
@@ -65,6 +66,7 @@ export type SemanticAlbumPreview = {
   groupLayoutId: string | number | null;
   expectedImageCount: number | null;
   actualImageCount: number;
+  hasPreviewOnlyImage?: boolean;
   complete: boolean;
   imageMessageIds: string[];
   imageUrls: string[];

@@ -4,6 +4,8 @@ import path from "node:path";
 import vm from "node:vm";
 import * as crypto from "node:crypto";
 import ts from "typescript";
+import { chromium } from "playwright";
+import { selectZaloPhotoSource, zaloPhotoSourceBrowserScript } from "../photo-source";
 import * as officialRequest from "../../../lib/zalo-reader/official-request";
 import { OFFICIAL_ZALO_GROUPS } from "../../../lib/zalo-reader/official";
 import { normalizedRoomIdentity } from "../../../lib/zalo-import/room-comparison";
@@ -19,6 +21,7 @@ async function main() {
     rooms: [], room_details: [], room_media: [], zalo_reader_runs: [], zalo_deleted_import_sources: [],
   };
   let uploads = 0;
+  let lastUpload: Buffer;
   let officialRequestActive = false, officialRpcCalls = 0;
   class Query {
     operation = "select";
@@ -92,7 +95,7 @@ async function main() {
     "@/lib/zalo-reader/controlled-staging": { isControlledZaloTarget, makeTestPendingIdentity },
     "@/lib/r2/zalo-temp": {
       makeZaloTempImageKey: (batch: string, id: string) => `test/${batch}/${id}`,
-      uploadBufferToR2: async ({ key }: { key: string }) => { uploads += 1; return { key, url: `https://example.test/${key}` }; },
+      uploadBufferToR2: async ({ key, buffer }: { key: string; buffer: Buffer }) => { lastUpload = buffer; uploads += 1; return { key, url: `https://example.test/${key}` }; },
       deleteR2Keys: async () => 0,
     },
   };
@@ -126,7 +129,154 @@ async function main() {
   tables.zalo_import_batches.push({ id: "real-batch", source_hash: body.sourceHash, status: "Chờ duyệt", parser_result: {} });
   tables.pending_room_versions.push({ id: "real-pending", batch_id: "real-batch", status: "Chờ duyệt", room_payload: { room_code: "REAL" } });
   const realBefore = JSON.stringify(tables.pending_room_versions[0]);
-  const created = await request();
+  const browser = await chromium.launch();
+  let originalUpload: Awaited<ReturnType<typeof request>>;
+  try {
+    const page = await browser.newPage();
+    // Same canvas content, rendered as an HD photo and its 300px preview.
+    const fixtures = await page.evaluate(async () => {
+      const original = document.createElement("canvas");
+      original.width = 1024;
+      original.height = 576;
+      const ctx = original.getContext("2d")!;
+      ctx.fillStyle = "#ac8";
+      ctx.fillRect(0, 0, 1024, 576);
+      ctx.fillStyle = "#123";
+      ctx.fillText("Room fixture", 100, 100);
+      const preview = document.createElement("canvas");
+      preview.width = 300;
+      preview.height = 169;
+      preview.getContext("2d")!.drawImage(original, 0, 0, 300, 169);
+      return [original, preview].map(canvas => canvas.toDataURL().split(",")[1]);
+    });
+    const hd = "https://example.test/room-hd.png";
+    const thumb = "https://example.test/room-thumb.png";
+    const fetched: string[] = [];
+    let failHD = false;
+    const readerPath = path.resolve(__dirname, "../zalo-reader.before-semantic-parser.ts");
+    const ast = ts.createSourceFile(readerPath, fs.readFileSync(readerPath, "utf8"), ts.ScriptTarget.Latest, true);
+    const functions = ast.statements.filter((node): node is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(node) && ["imageToBase64", "convertImageBufferToWebp", "detectImageMimeTypeFromBuffer"].includes(node.name?.text || ""));
+    const code = ts.transpileModule(functions.map(node => node.getText(ast)).join("\n"), {
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const download = vm.runInNewContext(code + "\nimageToBase64;", { Buffer, fs, path });
+    const fixturePage = {
+      evaluate: page.evaluate.bind(page),
+      context: () => ({ request: { get: async (url: string) => {
+        fetched.push(url);
+        return {
+          ok: () => !(failHD && url === hd),
+          status: () => 503,
+          headers: () => ({ "content-type": "image/png" }),
+          body: async () => Buffer.from(fixtures[url === hd ? 0 : 1], "base64"),
+        };
+      } } }),
+    };
+    const dimensions = (base64: string, type: string) => page.evaluate(async ({ base64, type }) => {
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const image = await createImageBitmap(new Blob([bytes], { type }));
+      return [image.width, image.height];
+    }, { base64, type });
+    await page.evaluate(zaloPhotoSourceBrowserScript());
+    const choice = await page.evaluate(({ hd, thumb }) =>
+      (globalThis as any).__zaloSelectPhotoSource({ thumbUrl: thumb, normalUrl: thumb }, { hd }),
+    { hd, thumb });
+    assert.deepEqual(choice.imageUrls, [hd]);
+    assert.deepEqual(await dimensions(fixtures[0], "image/png"), [1024, 576]);
+    assert.deepEqual(await dimensions(fixtures[1], "image/png"), [300, 169]);
+
+    const converted = await download(fixturePage, choice.imageUrls[0]);
+    assert.deepEqual(await dimensions(converted.base64, "image/webp"), [1024, 576]);
+    originalUpload = await request({ images: [converted] });
+    assert.equal(originalUpload.status, 200);
+    assert.deepEqual(await dimensions(lastUpload!.toString("base64"), "image/webp"), [1024, 576]);
+    assert.deepEqual(fetched, [hd]);
+
+    failHD = true;
+    await assert.rejects(download(fixturePage, choice.imageUrls[0]), /HTTP 503/);
+    assert.deepEqual(fetched, [hd, hd], "failed HD must never request thumbnail");
+    const beforeFailure = JSON.stringify(tables);
+    const uploadCount = uploads;
+    for (const code of ["MEDIA_IMAGE_DOWNLOAD_FAILED", "MEDIA_IMAGE_PREVIEW_ONLY"]) {
+      const failed = await request({ readerIssues: [{ code, level: "error", message: code }] });
+      assert.equal(failed.status, 422);
+      assert.equal(failed.body.code, code);
+      assert.equal(uploads, uploadCount);
+      assert.equal(JSON.stringify(tables), beforeFailure);
+    }
+
+    const low = selectZaloPhotoSource({ oriUrl: thumb });
+    const lowConverted = await download(fixturePage, low.imageUrls[0]);
+    const lowUpload = await request({ sourceMessageId: "low-original", images: [lowConverted] });
+    assert.equal(lowUpload.status, 200);
+    assert.deepEqual(await dimensions(lastUpload!.toString("base64"), "image/webp"), [300, 169]);
+    const lowIdentity = makeTestPendingIdentity(body.groupId, "low-original");
+    for (const [table, column, id] of [
+      ["pending_room_versions", "id", lowIdentity.pendingId],
+      ["zalo_import_batches", "id", lowIdentity.batchId],
+      ["zalo_import_images", "batch_id", lowIdentity.batchId],
+    ]) {
+      tables[table] = tables[table].filter(row => row[column] !== id);
+    }
+    assert.deepEqual(selectZaloPhotoSource({ thumbUrl: thumb, href: thumb }), {
+      imageUrls: [], imagePreviewOnly: true,
+    });
+
+    // Exercise Admin's real resize/encode functions on a manual image.
+    const adminPath = path.resolve(__dirname, "../../../app/admin/RoomModal/index.tsx");
+    const adminAst = ts.createSourceFile(adminPath, fs.readFileSync(adminPath, "utf8"), ts.ScriptTarget.Latest, true);
+    const adminFunctions: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isFunctionDeclaration(node) && ["fileToImageBitmap", "resizeToCanvas", "fillCanvasWhite", "canvasToWebpFile", "compressImageWebp"].includes(node.name?.text || "")) {
+        adminFunctions.push(node.getText(adminAst));
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(adminAst);
+    const adminCode = ts.transpileModule(adminFunctions.join("\n"), {
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const adminSource = adminAst.getFullText();
+    const adminUploadStart = adminSource.indexOf("  const imageTargetBytes =");
+    assert.notEqual(adminUploadStart, -1);
+    const adminSelection = ts.transpileModule(
+      adminSource.slice(adminUploadStart, adminSource.indexOf("  const roomId = roomUuid", adminUploadStart)),
+      { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+    ).outputText;
+    const directUploadSource = fs.readFileSync(path.resolve(__dirname, "../../../lib/media/upload-direct.ts"), "utf8");
+    const directUploadCode = ts.transpileModule(directUploadSource.replace("export async function", "async function"), {
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    const adminUpload = await page.evaluate(async ({ adminCode, adminSelection, directUploadCode, base64 }) => {
+      const selectFile = new Function(adminCode + "\nreturn async (file) => { const isImage = true; const withImageConvertLock = fn => fn(); " + adminSelection + "\nreturn uploadFile; };")();
+      const file = new File([Uint8Array.from(atob(base64), c => c.charCodeAt(0))], "room.png", { type: "image/png" });
+      const uploadFile = await selectFile(file);
+      let sent: File | undefined;
+      class FixtureXHR {
+        upload = {};
+        status = 200;
+        onload?: () => void;
+        open(method: string) {
+          if (method !== "PUT") throw new Error("Expected PUT");
+        }
+        setRequestHeader() {}
+        send(file: File) {
+          sent = file;
+          this.onload?.();
+        }
+      }
+      const uploadDirect = new Function("XMLHttpRequest", directUploadCode + "\nreturn uploadDirect;")(FixtureXHR);
+      await uploadDirect({ url: "https://r2.example.test/room", file: uploadFile, headers: {} });
+      const image = await createImageBitmap(sent!);
+      return { width: image.width, height: image.height, original: sent === file };
+    }, { adminCode, adminSelection, directUploadCode, base64: fixtures[0] });
+    assert.deepEqual(adminUpload, { width: 1024, height: 576, original: true });
+    console.log("Image fixture: HD bytes at R2 upload boundary, low-resolution original, HD failure and Admin resize PASS");
+  } finally {
+    await browser.close();
+  }
+  const created = originalUpload;
   assert.equal(created.status, 200);
   assert.equal(created.body.testPendingAction, "created");
   assert.equal(created.body.partial, true, "missing video remains an explicit error while a valid image permits Pending");
