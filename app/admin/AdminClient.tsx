@@ -174,16 +174,25 @@ const closeConfirm = useCallback(() => {
 }, []);
 
 const openRoomCopy = useCallback(async (source: Room, includeMedia: boolean) => {
-  const { data, error } = await supabase.rpc("fetch_room_detail_full_v1", {
-    p_id: source.id,
-    p_role: 0,
-  });
+  const [{ data, error }, locationResult] = await Promise.all([
+    supabase.rpc("fetch_room_detail_full_v1", { p_id: source.id, p_role: 0 }),
+    supabase.rpc("get_admin_room_property_location_v1", { p_room_id: source.id }),
+  ]);
   if (error) {
     notify(`Không thể tải dữ liệu phòng nguồn: ${error.message}`);
     return;
   }
   const full = (data ?? {}) as any;
-  setEditingRoom(buildClonedRoom({ ...source, ...full } as Room, includeMedia));
+  const sourceProperty = locationResult.data as Record<string, unknown> | null;
+  const propertyId = sourceProperty?.property_id ?? full.property_id ?? source.property_id;
+  if (locationResult.error && (locationResult.error.code !== "P0002" || propertyId)) {
+    notify(`Không thể tải vị trí tòa nhà nguồn: ${locationResult.error.message}`);
+    return;
+  }
+  setEditingRoom({
+    ...buildClonedRoom({ ...source, ...full, property_id: propertyId } as Room, includeMedia),
+    _clonePropertyLocation: sourceProperty,
+  });
   setActiveTab("info");
   setOpenModal(true);
 }, [notify]);

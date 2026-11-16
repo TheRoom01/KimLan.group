@@ -29,6 +29,13 @@ import {
   prepareImageForUpload,
 } from '@/lib/media/uploadFileType'
 
+function readPropertyLocation(location: Record<string, unknown> | null | undefined) {
+  if (location?.latitude == null || location.longitude == null) return null
+  const latitude = Number(location.latitude)
+  const longitude = Number(location.longitude)
+  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null
+}
+
 type MediaForSave = Pick<MediaItem, 'type' | 'url'>
 type StoredMedia = MediaForSave & { id: string; sort_order: number; is_cover: boolean }
 
@@ -1128,6 +1135,7 @@ const detailSample =
   // NEW / CLONE
   // ======================
   if (isNew || isCloneMode) {
+    if (isCloneMode) setBuildingLocation(readPropertyLocation(base._clonePropertyLocation))
     initialRoomBadgesRef.current = []
     draftRoomIdRef.current = genDraftId()
 
@@ -1223,14 +1231,7 @@ const detailSample =
       if (locationResult.error) {
         setBuildingLocationError(locationResult.error.message)
       } else {
-        const propertyLocation = (locationResult.data ?? {}) as Record<string, unknown>
-        const latitude = propertyLocation.latitude == null ? null : Number(propertyLocation.latitude)
-        const longitude = propertyLocation.longitude == null ? null : Number(propertyLocation.longitude)
-        setBuildingLocation(
-          latitude !== null && longitude !== null && Number.isFinite(latitude) && Number.isFinite(longitude)
-            ? { latitude, longitude }
-            : null,
-        )
+        setBuildingLocation(readPropertyLocation(locationResult.data as Record<string, unknown> | null))
       }
       const sharedFields = sharedFieldsResult.error
         ? null
@@ -2309,6 +2310,10 @@ const stopBackdropEvents = (e: any) => {
 
                 if (addressChanged) {
                   if (isPending) { setBuildingLocation(null); setBuildingLocationDirty(true); }
+                  if (isClone) {
+                    setBuildingLocation(null)
+                    setBuildingLocationDirty(false)
+                  }
                   setPropertyCandidates([])
                   setErrorMsg(null)
                 }
@@ -2355,7 +2360,7 @@ const stopBackdropEvents = (e: any) => {
               value={buildingLocation}
               loading={buildingLocationLoading}
               error={buildingLocationError}
-              autoSuggest
+              autoSuggest={!isClone}
               isPending={isPending}
               fallbackQueries={importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward).slice(1)}
               addressQuery={importLocationQueries(roomForm.house_number, roomForm.address, roomForm.ward)[0] || ""}
