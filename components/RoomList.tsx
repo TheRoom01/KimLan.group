@@ -81,7 +81,7 @@ const RoomList = ({
           ))}
         </div>
       ) : hasRooms ? (
-        <div className={`grid w-full${stableCardWidth ? " home-room-grid-stable" : ""}`} style={ROOM_GRID_STYLE}>
+        <div data-home-filter-scroll-target className={`grid w-full${stableCardWidth ? " home-room-grid-stable" : ""}`} style={ROOM_GRID_STYLE}>
           {roomsToRender.map((room, index) => (
             <RoomCard
               key={room.id}

@@ -94,6 +94,59 @@ async function listState(page: Page) {
   }), scrollSelector);
 }
 try {
+  if (process.argv.includes('--filter-panel')) {
+    for (const mobile of [false, true]) {
+      const device = mobile ? 'mobile' : 'desktop';
+      const context = await browser.newContext({
+        viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 },
+        isMobile: mobile, hasTouch: mobile,
+      });
+      const page = await context.newPage();
+      await page.addInitScript('globalThis.__name = value => value');
+      await page.goto(`${origin}/?q=Studio&d=B%C3%ACnh+Th%E1%BA%A1nh&t=Studio&min=3000000&max=12000000`);
+      await waitRoom(page, 0);
+      await page.waitForFunction(() => document.querySelector('.home-filter-toggle')?.hasAttribute('aria-label'));
+      const toggle = page.getByRole('button', { name: /^Bộ lọc/ });
+      const panel = page.locator('.home-filter-controls');
+      const search = page.getByPlaceholder(/^Tìm đường/);
+      const applied = await toggle.getAttribute('aria-label');
+      assert.equal(await search.inputValue(), 'Studio');
+      await toggle.click();
+      await panel.waitFor({ state: 'visible' });
+      const selectedControls = await panel.innerText();
+      await page.screenshot({ path: path.join(output, `filter-${device}-open.png`) });
+
+      const grid = page.locator('[data-home-filter-scroll-target]').first();
+      const scroller = page.locator(scrollSelector);
+      const anchorTop = await scroller.evaluate(container => {
+        const grid = container.querySelector('[data-home-filter-scroll-target]')!;
+        const panel = container.querySelector<HTMLElement>('.home-filter-controls')!;
+        container.scrollTop = Math.max(panel.offsetHeight + 40, grid.getBoundingClientRect().top - container.clientHeight / 2);
+        return grid.getBoundingClientRect().top;
+      });
+      await panel.waitFor({ state: 'hidden' });
+      await settle(page);
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+      const afterTop = await grid.evaluate(el => el.getBoundingClientRect().top);
+      assert.ok(Math.abs(afterTop - anchorTop) <= 1, `${device}: room cards moved ${afterTop - anchorTop}px`);
+
+      await scroller.evaluate(container => { container.scrollTop = 0; });
+      await settle(page);
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+      assert.equal(await toggle.getAttribute('aria-label'), applied);
+      assert.equal(await search.inputValue(), 'Studio');
+      await page.screenshot({ path: path.join(output, `filter-${device}-closed.png`) });
+      await toggle.click();
+      await panel.waitFor({ state: 'visible' });
+      assert.equal(await panel.innerText(), selectedControls);
+      await toggle.click();
+      await panel.waitFor({ state: 'hidden' });
+      await context.close();
+      console.log(`${device}: auto-close, stable cards, closed at top, filters preserved and manual toggle PASS`);
+    }
+    return;
+  }
+
   for (const mobile of fallbacksOnly ? [] : [false, true]) {
     const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 } });
     // All external network is blocked without routing browser navigation (BFCache).

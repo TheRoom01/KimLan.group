@@ -1,6 +1,6 @@
 "use client";
 
-import React, { startTransition, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { startTransition, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AppWindow, CalendarCheck, CalendarClock, Cat, Dog, Globe2, LayoutGrid, Search, createLucideIcon, type LucideIcon } from "lucide-react";
 import FilterChoicePanel, { AMENITIES_MODAL_QUERY } from "@/components/FilterChoicePanel";
 import { roomFeatureOptions, tenantRoomFeatureOptions, type RoomFeature } from "@/lib/rooms/features";
@@ -44,6 +44,7 @@ function AmenityOption({ label, icon: Icon, checked, onChange, radio = false }: 
 }
 
 type FilterBarProps = {
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
   districts: string[];
   roomTypes: string[];
   total?: number | null;
@@ -128,6 +129,7 @@ const floorMillion = (v: number) => Math.floor(v / 1000000) * 1000000;
 const ceilMillion = (v: number) => Math.ceil(v / 1000000) * 1000000;
 
 const FilterBar = ({
+  scrollContainerRef,
   districts,
   roomTypes,
   search,
@@ -160,6 +162,49 @@ const FilterBar = ({
 }: FilterBarProps) => {
   const [panelOpen, setPanelOpen] = useState(false);
   const panelId = useId();
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const closingAnchor = useRef<{ grid: HTMLElement; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = closingAnchor.current;
+    const container = scrollContainerRef?.current;
+    if (panelOpen || !anchor || !container) return;
+
+    closingAnchor.current = null;
+    if (anchor.grid.isConnected) {
+      // If the browser already anchored the list, the remaining adjustment is zero.
+      container.scrollTop += anchor.grid.getBoundingClientRect().top - anchor.top;
+    }
+  }, [panelOpen, scrollContainerRef]);
+
+  useEffect(() => {
+    const container = scrollContainerRef?.current;
+    const controls = controlsRef.current;
+    if (!panelOpen || !container || !controls) return;
+
+    let previousTop = container.scrollTop;
+    const onListScroll = () => {
+      const top = container.scrollTop;
+      const movingDown = top > previousTop;
+      previousTop = top;
+      if (!movingDown || closingAnchor.current) return;
+
+      const grid = container.querySelector<HTMLElement>("[data-home-filter-scroll-target]");
+      if (!grid) return;
+      const bounds = grid.getBoundingClientRect();
+      const viewport = container.getBoundingClientRect();
+      const collapseHeight = controls.offsetHeight + (parseFloat(getComputedStyle(controls).marginTop) || 0);
+      // Close only once cards are in view and there is room to offset the collapse.
+      if (bounds.top >= viewport.bottom || bounds.bottom <= viewport.top || top < collapseHeight) return;
+
+      closingAnchor.current = { grid, top: bounds.top };
+      setOpenFilter(null);
+      setPanelOpen(false);
+    };
+
+    container.addEventListener("scroll", onListScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onListScroll);
+  }, [panelOpen, scrollContainerRef]);
   const [openFilter, setOpenFilter] = useState<"district" | "roomType" | "amenities" | "sort" | null>(null);
  const [minInput, setMinInput] = useState(formatMoneyInput(priceDraft[0]));
 const [maxInput, setMaxInput] = useState(formatMoneyInput(priceDraft[1]));
@@ -495,7 +540,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
       )}
     </form>
 
-    <div id={panelId} hidden={!panelOpen} className="home-filter-controls">
+    <div ref={controlsRef} id={panelId} hidden={!panelOpen} className="home-filter-controls">
         {/* Overlay bắt click-outside */}
     {openFilter !== null && (
       <div

@@ -3675,6 +3675,7 @@ return (
      {/* FILTER BAR */}
       <div className="home-filter-shell relative z-[5000] mx-auto w-full max-w-[1440px] px-4 py-3 sm:px-6">
             <FilterBar
+              scrollContainerRef={scrollRef}
               districts={districts}
               roomTypes={roomTypes}
               loading={loading}

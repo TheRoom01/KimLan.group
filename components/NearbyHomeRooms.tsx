@@ -40,7 +40,7 @@ export default function NearbyHomeRooms({ center, filters }: { center: NearbyRoo
         ? <p role="status">Đang tìm phòng gần địa điểm…</p> : rooms.length === 0
           ? <p>Không có phòng có tọa độ phù hợp.</p> : (
             <>
-              <ul className="my-3 grid gap-2 md:grid-cols-2">
+              <ul data-home-filter-scroll-target className="my-3 grid gap-2 md:grid-cols-2">
                 {rooms.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(room => (
                   <li key={room.id} className="rounded-xl border border-current/20 p-3">
                     <a href={`/rooms/${encodeURIComponent(room.id)}`}>
