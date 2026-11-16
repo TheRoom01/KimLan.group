@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
+import { getFullImageUrls } from "@/lib/rooms/cardImages";
 import { getRoomDetailForRender } from "@/lib/rooms/publicCache";
 import { defaultShareImage, siteUrl } from "@/lib/default-share-image";
 
 export const dynamic = "force-dynamic";
-
-type MetadataMedia = {
-  type?: unknown;
-  url?: unknown;
-  is_cover?: unknown;
-};
 
 type PublicRoomMetadata = {
   room_code?: unknown;
@@ -17,20 +12,7 @@ type PublicRoomMetadata = {
   address?: unknown;
   ward?: unknown;
   district?: unknown;
-  media?: MetadataMedia[] | null;
-};
-
-function pickCoverUrl(rows?: MetadataMedia[]): string {
-  if (!Array.isArray(rows) || rows.length === 0) return "";
-
-  // ưu tiên is_cover
-  const cover = rows.find((r) => r && r.is_cover && r.url);
-  if (cover?.url) return String(cover.url);
-
-  // fallback: row đầu tiên đã được order sẵn từ query
-  const first = rows.find((r) => r && r.url);
-  return first?.url ? String(first.url) : "";
-}
+} & Parameters<typeof getFullImageUrls>[0];
 
 function absUrl(base: string, u: string) {
   const x = String(u || "").trim();
@@ -66,12 +48,8 @@ const price = data?.price;
 // ✅ nếu không có room -> giữ fallback title/desc + image và thoát try
 if (!data) throw new Error("room_not_found");
 
-// Use the published cover instead of assuming a thumbnail object exists.
-const mediaRows = Array.isArray(data.media)
-  ? data.media.filter(item => String(item?.type ?? "").toLowerCase() === "image")
-  : [];
-const img = pickCoverUrl(mediaRows);
-if (img) image = absUrl(base, img);
+const [firstImage] = getFullImageUrls(data);
+if (firstImage) image = absUrl(base, firstImage);
 
     // ✅ Title preview theo format bạn yêu cầu
   const formatVND = (v: unknown) => {
@@ -120,7 +98,7 @@ desc = [
       url,
       title,
       description: desc,
-      images: image ? [{ url: image }, defaultShareImage] : [defaultShareImage],
+      images: [image ? { url: image } : defaultShareImage],
     },
     twitter: {
       card: "summary_large_image",
