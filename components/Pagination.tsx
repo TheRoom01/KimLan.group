@@ -5,12 +5,13 @@ import styles from "./Pagination.module.css";
 
 type PaginationProps = {
   pageNumber: number;
+  pagePulse: number;
   goNext: () => void;
   goPrev: () => void;
   hasNext: boolean;
   loading: boolean;
 
-  onConsult: () => void;
+  onConsult?: () => void;
 };
 
 const glassBtn =
@@ -18,6 +19,7 @@ const glassBtn =
 
 const Pagination = ({
   pageNumber,
+  pagePulse,
   goNext,
   goPrev,
   hasNext,
@@ -40,9 +42,11 @@ const Pagination = ({
           ← Trước
         </button>
 
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={onConsult} className={`${styles.consultButton} min-h-11 rounded-2xl border px-4 py-2 text-xs font-bold sm:text-sm`}>Cần Tư Vấn</button>
-          <span className="whitespace-nowrap text-xs font-semibold" aria-live="polite">Trang {pageNumber}</span>
+        <div className="home-page-center flex items-center gap-2">
+          {onConsult && <button type="button" onClick={onConsult} className={`${styles.consultButton} min-h-11 rounded-2xl border px-4 py-2 text-xs font-bold sm:text-sm`}>Cần Tư Vấn</button>}
+          <span className="whitespace-nowrap text-xs font-semibold" aria-live="polite" aria-atomic="true">
+            <span key={pagePulse} className={pagePulse > 0 ? "home-page-pulse" : undefined}>Trang {pageNumber}</span>
+          </span>
         </div>
 
         {/* NEXT */}

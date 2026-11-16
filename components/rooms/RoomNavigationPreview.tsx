@@ -74,7 +74,7 @@ export function RoomNavigationPreview({ routeLoading = false }: { routeLoading?:
           <div className="home-detail-content min-w-0 p-3">
             <div className="space-y-2 rounded-2xl border border-white/15 p-4">
               <p className="font-semibold">{[room.code, room.type].filter(Boolean).join(" · ")}</p>
-              {Number.isFinite(Number(room.price)) && <p className="text-xl font-semibold">{Number(room.price).toLocaleString("vi-VN")} đ</p>}
+              {Number.isFinite(Number(room.price)) && <p className="room-price text-xl font-semibold">{Number(room.price).toLocaleString("vi-VN")} đ</p>}
               <p className="break-words">{room.address}</p>
             </div>
           </div>

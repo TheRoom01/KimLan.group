@@ -613,7 +613,7 @@ function addRoomMapLayers(map: MapLibreMap, data: RoomFeatureCollection) {
       "text-color": [
         "case",
         ["==", ["get", "roomCount"], 1],
-        "#ffffff",
+        getComputedStyle(map.getContainer()).getPropertyValue("--room-price-color").trim() || "#60a5fa",
         "#fff",
       ],
       "text-halo-color": [
@@ -1449,7 +1449,7 @@ export default function MapSearchClient() {
                 <div className="min-w-0 flex-1">
                   <div className="flex justify-between gap-2">
                     <h2 className="truncate text-sm font-bold">{[room.room_code, room.room_type].filter(Boolean).join(" | ") || "Phòng cho thuê"}</h2>
-                    <strong className="whitespace-nowrap text-sm text-[#744722]">{priceLabel(room.price)}</strong>
+                    <strong className="whitespace-nowrap text-sm room-price">{priceLabel(room.price)}</strong>
                   </div>
                   <p className="mt-1 truncate text-xs text-[#80634a]">{[room.address, room.ward, room.district].filter(Boolean).join(", ")}</p>
                   <div className="mt-1 flex flex-wrap items-center justify-end gap-x-2">
@@ -1615,7 +1615,7 @@ export default function MapSearchClient() {
                   <div className="min-w-0 flex-1">
                     <strong className="block truncate text-sm text-[#4d3422]">{[room.address, room.ward, room.district].filter(Boolean).join(", ") || "Phòng cho thuê"}</strong>
                     <p className="mt-1 truncate text-xs text-[#80634a]">{room.room_type || "Chưa cập nhật loại phòng"}</p>
-                    <p className="mt-1 text-sm font-black text-[#744722]">{markerPriceLabel(room.price)} <span className="text-[11px] font-medium text-[#80634a]">/ tháng</span></p>
+                    <p className="mt-1 text-sm font-black room-price">{markerPriceLabel(room.price)} <span className="text-[11px] font-medium text-[#80634a]">/ tháng</span></p>
                   </div>
                 </div>
               );
@@ -1633,7 +1633,7 @@ export default function MapSearchClient() {
                         <strong className="block truncate text-xs text-[#4d3422]">{[room.room_code, room.room_type].filter(Boolean).join(" | ") || "Phòng cho thuê"}</strong>
                         <span className="block truncate text-[10px] text-[#80634a]">{[room.address, room.ward, room.district].filter(Boolean).join(", ")}</span>
                       </div>
-                      <strong className="shrink-0 text-xs text-[#744722]">{markerPriceLabel(room.price)}</strong>
+                      <strong className="shrink-0 text-xs room-price">{markerPriceLabel(room.price)}</strong>
                     </button>
                   ))}
                   {markerPreview.rooms.length > 5 ? <p className="text-center text-[10px] font-semibold text-[#80634a]">Và {markerPreview.rooms.length - 5} phòng khác</p> : null}
@@ -1698,7 +1698,7 @@ export default function MapSearchClient() {
                       </span>
                       {viewed && <ViewedRoomLabel />}
                     </span>
-                    <strong className="shrink-0 text-xs text-[#744722]">{markerPriceLabel(room.price)}</strong>
+                    <strong className="shrink-0 text-xs room-price">{markerPriceLabel(room.price)}</strong>
                   </Link>
                 );
               })}

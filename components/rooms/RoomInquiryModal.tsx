@@ -161,7 +161,7 @@ export default function RoomInquiryModal({ open, room, mode = "room", onClose }:
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold">{room.type || "Phòng cho thuê"} <span className="font-normal text-[#71675e]">· {room.code}</span></p>
               <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#71675e]">{room.address}</p>
-              <p className="mt-1 text-sm font-bold text-[#704526]">{room.price ? `${room.price.toLocaleString("vi-VN")} đ/tháng` : "Liên hệ để biết giá"}</p>
+              <p className="room-price mt-1 text-sm font-bold">{room.price ? `${room.price.toLocaleString("vi-VN")} đ/tháng` : "Liên hệ để biết giá"}</p>
             </div>
             <a href={room.href} target="_blank" rel="noreferrer" className="self-start text-xs font-semibold text-[#704526] underline underline-offset-2">Chi tiết</a>
           </div> : null}

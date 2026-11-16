@@ -30,28 +30,37 @@ const fixture = (page: number) => Array.from({ length: 20 }, (_, index) => ({
   image_urls: ['/fixture.webp?image=0', '/fixture.webp?image=1', '/fixture.webp?image=2'],
   image_count: 5, has_video: false, badges: [],
   description: 'Phòng thoáng, đầy đủ nội thất. '.repeat(8),
+  google_maps_url: 'https://maps.google.com/maps?q=10.76,106.68',
+  link_zalo: 'https://zalo.me/g/fixture',
   room_detail: { has_window: true, has_balcony: true, other_amenities: 'Dọn phòng 2 lần/tuần' },
 }));
 const mocks: Record<string, string> = {
-  '@/lib/supabase': `export const supabase={auth:{getUser:async()=>({data:{user:null}}),getSession:async()=>({data:{session:null}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},rpc:async()=>({data:0,error:null})};`,
+  '@/lib/supabase': `export const supabase={auth:{getUser:async()=>{if(window.fixtureDeferredAuth)await window.fixtureDeferredAuth;window.fixtureDetailAuthFinished=true;return {data:{user:window.fixtureDetailRole==="user"?{id:"fixture-user"}:null},error:null}},getSession:async()=>({data:{session:window.fixtureHomeAdmin?{user:{id:"fixture-admin",email:"admin@fixture.test"}}:null}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},rpc:async()=>({data:0,error:null})};`,
   '@/lib/analytics/client': 'export const trackVisitorEvent=()=>{};',
   '@/lib/fetchRooms': `export async function fetchRooms(params){window.fixtureFetches.push(params);const n=params.cursor?Number(String(params.cursor).replace('cursor-','')):0;return {data:window.fixturePages[n]||[],nextCursor:n<8?'cursor-'+(n+1):null,total:180};}`,
   'next/navigation': `import{useState,useEffect}from'react';export function usePathname(){const[p,s]=useState(location.pathname);useEffect(()=>{const f=()=>s(location.pathname);addEventListener('popstate',f);addEventListener('fixture-route',f);return()=>{removeEventListener('popstate',f);removeEventListener('fixture-route',f)}},[]);return p}export const useRouter=()=>({back:()=>history.back(),push:u=>location.assign(u),replace:u=>history.replaceState(history.state,'',u)});`,
   'next/link': `import React from'react';export default React.forwardRef(function Link({href,children,onClick,prefetch,scroll,replace,...props},ref){return <a {...props} ref={ref} href={href} onClick={e=>{onClick?.(e);if(!e.defaultPrevented&&window.fixtureSpa&&e.button===0){e.preventDefault();history.pushState({},'',href);dispatchEvent(new Event('fixture-route'))}}}>{children}</a>});`,
-  'next/dynamic': `import React from'react';export default()=>()=>null;`,
-  '@/components/LogoIntroButton': `export default()=>null;`,
-  '@/components/admin/AdminNotificationCenter': `export default()=>null;`,
+  'next/dynamic': `import React from'react';export default(load,options)=>{if(options?.ssr!==false||!location.search.includes("homeExtras=1"))return ()=>null;const Component=React.lazy(load);return props=><React.Suspense fallback={null}><Component {...props}/></React.Suspense>;};`,
+  '@/components/LogoIntroButton': `import React from 'react';export default()=> <img src='/logo-ui.webp' alt='Logo' width={56} height={56}/>;`,
 };
 const script = (await build({
-  stdin: { contents: `import React,{useState,useEffect}from'react';import{createRoot}from'react-dom/client';import Home from'./app/HomeClient';import Detail from'./app/rooms/[id]/RoomDetailClient';
+  stdin: { contents: `import React,{useState,useEffect}from'react';import{createRoot}from'react-dom/client';import Home from'./app/HomeClient';import Detail from'./app/rooms/[id]/RoomDetailClient';import Auth from './components/AuthControls';
   window.fixtureFetches=[];window.fixturePages=${JSON.stringify(Array.from({length:9},(_,n)=>fixture(n)))};
   const gallery=new URLSearchParams(location.search).get("gallery")==="1";
+  const role=new URLSearchParams(location.search).get("role");
+  const homeExtras=new URLSearchParams(location.search).has("homeExtras");
+  window.fixtureHomeAdmin=homeExtras&&role==="admin";
+  if(homeExtras)for(const rooms of window.fixturePages)[15000000,15500000,7999000].forEach((price,index)=>{rooms[index].price=price;});
+  window.fixtureDetailRole=role;
+  if(new URLSearchParams(location.search).has("deferAuth"))window.fixtureDeferredAuth=new Promise(resolve=>{window.resolveDetailAuth=resolve;});
+
   window.fixtureSpa=new URLSearchParams(location.search).get('spa')==='1';
   window.fixtureMounts=0;window.fixturePageShows=[];
   addEventListener('pageshow',e=>window.fixturePageShows.push(e.persisted));
   function App(){const[detail,setDetail]=useState(location.pathname.startsWith('/rooms/'));useEffect(()=>{const f=()=>setDetail(location.pathname.startsWith('/rooms/'));addEventListener('popstate',f);addEventListener('fixture-route',f);return()=>{removeEventListener('popstate',f);removeEventListener('fixture-route',f)}},[]);
-    const home=<Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={0} initialTotal={180} initialAnonSessionId="fixture-session" initialAnonExpiresAt={new Date(Date.now()+600000).toISOString()}/>;
-    if(gallery){const id=location.pathname.split('/')[2];const room=window.fixturePages[0].find(item=>item.id===id);return <>{home}{detail&&room&&<Detail roomId={id} initialRoom={room} initialUserId={null} initialAdminLevel={0} initialAuthResolved={true} privateDetailLoaded={false}/>}</>;}
+    const home=<Home initialRooms={window.fixturePages[0]} initialNextCursor="cursor-1" initialAdminLevel={window.fixtureHomeAdmin?1:0} initialUserId={window.fixtureHomeAdmin?"fixture-admin":null} initialTotal={180} initialAnonSessionId="fixture-session" initialAnonExpiresAt={new Date(Date.now()+600000).toISOString()}/>;
+    if(homeExtras)return <><Auth/>{home}</>;
+    if(gallery){const id=location.pathname.split('/')[2];const room=window.fixturePages[0].find(item=>item.id===id);return <>{home}{detail&&room&&<Detail roomId={id} initialRoom={room} initialUserId={!window.fixtureDeferredAuth&&role&&role!=="anon"?"fixture-"+role:null} initialAdminLevel={role==="admin"?1:0} initialAuthResolved={!window.fixtureDeferredAuth} privateDetailLoaded={role==="admin"}/>}</>;}
     return detail?<main><h1>Chi ti&#7871;t fixture</h1><button onClick={()=>history.back()}>Quay l&#7841;i danh s&#225;ch</button></main>:home}
   createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: root, loader: 'tsx' },
   bundle: true, write: false, platform: 'browser', logLevel: 'silent',
@@ -70,11 +79,12 @@ const productionCss = path.join(root, '.next/static/css');
 const cssFile = fs.existsSync(devCss) ? devCss : fs.existsSync(productionCss)
   ? fs.readdirSync(productionCss).filter(name=>name.endsWith('.css')).map(name=>path.join(productionCss,name)).find(file=>fs.readFileSync(file,'utf8').includes('.home-redesign')) : undefined;
 assert.ok(cssFile, 'Run npm run build or generate the localhost:3000 application CSS first');
-const css = fs.readFileSync(cssFile, 'utf8');
+const css = fs.readFileSync(cssFile, 'utf8') + fs.readFileSync('app/globals.css', 'utf8').replace(/^@import.*$/gm, '') + fs.readFileSync('app/public-theme.css', 'utf8');
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>`;
 const fixtureImage = await sharp({ create: { width: 1024, height: 768, channels: 3, background: '#b78755' } }).webp().toBuffer();
 const server = http.createServer((req, res) => {
-  if (req.url?.startsWith('/fixture.js')) { res.setHeader('Content-Type', 'text/javascript'); res.end(script); }
+  if (req.url === '/logo-ui.webp') { res.setHeader('Content-Type', 'image/webp'); res.end(fs.readFileSync('public/logo-ui.webp')); }
+  else if (req.url?.startsWith('/fixture.js')) { res.setHeader('Content-Type', 'text/javascript'); res.end(script); }
   else if (req.url?.startsWith('/fixture.webp') || req.url?.startsWith('/_next/image') || req.url?.endsWith('.jpg')) { res.setHeader('Content-Type', 'image/webp'); res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); res.end(fixtureImage); }
   else if (req.url?.startsWith('/api/')) { res.setHeader('Content-Type', 'application/json'); res.end('{}'); }
   else { res.setHeader('Content-Type', 'text/html'); res.end(html); }
@@ -97,6 +107,177 @@ async function listState(page: Page) {
   }), scrollSelector);
 }
 try {
+  const pricePositionOnly = process.argv.includes('--price-position');
+  if (pricePositionOnly || process.argv.includes('--home-extras')) {
+    for (const mobile of [false, true]) for (const theme of ['dark', 'light']) for (const role of ['anon', 'admin']) {
+      const device = mobile ? 'mobile' : 'desktop';
+      const reducedMotion = theme === 'light' ? 'reduce' : 'no-preference';
+      const context = await browser.newContext({
+        viewport: mobile ? { width: 320, height: 780 } : { width: 1366, height: 900 },
+        isMobile: mobile, hasTouch: mobile, reducedMotion,
+      });
+      const page = await context.newPage();
+      await page.addInitScript(theme => {
+        document.documentElement.dataset.roomTheme = theme;
+        localStorage.setItem('the-room-public-theme', theme);
+      }, theme);
+      await page.addInitScript('globalThis.__name = value => value');
+      await page.goto(`${origin}/?homeExtras=1&role=${role}`);
+      await waitRoom(page, 0);
+      const themeSwitch = page.getByRole('switch', { name: 'Giao diện sáng' });
+      if ((await themeSwitch.getAttribute('aria-checked')) !== String(theme === 'light')) await themeSwitch.click();
+      assert.equal(await themeSwitch.getAttribute('aria-checked'), String(theme === 'light'));
+      if (!pricePositionOnly) {
+        const map = page.getByRole('link', { name: 'Tìm bằng bản đồ' });
+        assert.equal(await map.count(), 1);
+        assert.equal(await map.getAttribute('href'), '/map');
+        assert.ok(await map.locator(mobile ? '.home-map-short-label' : '.home-map-full-label').isVisible());
+        const [left, center, right] = await Promise.all([
+          page.locator('.home-header-brand').boundingBox(), map.boundingBox(), page.locator('.home-header-actions').boundingBox(),
+        ]);
+        assert.ok(left && center && right);
+        assert.ok(left.x + left.width <= center.x && center.x + center.width <= right.x, `map sits between header clusters: ${JSON.stringify({ left, center, right })}`);
+        assert.ok(Math.abs(center.x + center.width / 2 - (left.x + left.width + right.x) / 2) <= 1);
+      }
+      const expected = mobile ? ['15 triệu', '15,5 triệu', '7,999 triệu'] : ['15.000.000 đ', '15.500.000 đ', '7.999.000 đ'];
+      for (let index = 0; index < expected.length; index++) {
+        const card = page.locator('.home-room-list .home-room-card').nth(index);
+        const price = card.locator('.home-room-price');
+        assert.equal(await price.innerText(), expected[index]);
+        const style = await price.evaluate(el => [getComputedStyle(el).fontSize, getComputedStyle(el).color]);
+        assert.deepEqual(style, [mobile ? '12.8px' : '19.2px', 'rgb(96, 165, 250)']);
+        const badge = await card.getByText('Đang trống', { exact: true }).first().boundingBox();
+        const amount = await price.boundingBox();
+        assert.ok(amount && badge);
+        const meta = await card.locator('.home-room-meta').boundingBox();
+        assert.ok(meta && amount.y < meta.y, 'price appears above room code and type');
+        if (mobile) assert.ok(Math.abs(amount.y + amount.height / 2 - badge.y - badge.height / 2) <= 2, 'status shares the price row');
+        const overlaps = amount.x < badge.x + badge.width && amount.x + amount.width > badge.x
+          && amount.y < badge.y + badge.height && amount.y + amount.height > badge.y;
+        assert.equal(overlaps, false, 'price and status badge do not overlap');
+      }
+      if (pricePositionOnly) {
+        await context.close();
+        console.log(`${device} ${theme} ${role}: price above metadata, no badge overlap PASS`);
+        continue;
+      }
+      const footer = page.locator('.home-pagination');
+      const consult = footer.getByRole('button', { name: 'Cần Tư Vấn' });
+      if (role === 'anon') await consult.waitFor();
+      else assert.equal(await consult.count(), 0);
+      assert.ok(await footer.getByRole('button').evaluateAll(buttons => buttons.every(button => {
+        const bounds = button.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= innerWidth;
+      })), 'footer buttons fit within viewport');
+      for (const [button, index] of [['Sau →', 1], ['← Trước', 0]] as const) {
+        await page.locator(scrollSelector).evaluate(el => { el.scrollTop = el.scrollHeight; });
+        await settle(page);
+        await footer.getByRole('button', { name: button, exact: true }).click();
+        await waitRoom(page, index);
+        const indicator = footer.getByText(`Trang ${index + 1}`, { exact: true });
+        assert.equal(await indicator.count(), 1);
+        assert.equal(await indicator.evaluate(el => getComputedStyle(el).animationName), reducedMotion === 'reduce' ? 'none' : 'home-page-pulse');
+        const offset = await page.evaluate(selector => {
+          const scroller = document.querySelector(selector)!;
+          const header = scroller.querySelector('[data-home-header]')!;
+          return scroller.querySelector('#phong')!.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+        }, scrollSelector);
+        assert.ok(Math.abs(offset - 8) <= 1, `result title offset ${offset}`);
+        if (index === 1) {
+          await page.locator(scrollSelector).evaluate(el => { el.scrollTop = 0; });
+          await settle(page);
+          await page.screenshot({ path: path.join(output, `home-${device}-${theme}-${role}.png`), animations: 'disabled' });
+        }
+      }
+      if (role === 'anon') {
+        await consult.click();
+        await page.getByRole('dialog', { name: 'TƯ VẤN PHÒNG' }).waitFor();
+      }
+      await context.close();
+      console.log(`${device} ${theme} ${role}: map, exact price, page indicator and scroll PASS`);
+    }
+    return;
+  }
+  if (process.argv.includes('--detail-layout')) {
+    for (const mobile of [false, true]) for (const theme of ['dark', 'light']) for (const role of ['anon', 'user', 'admin']) {
+      const viewport = mobile ? { width: 320, height: 460 } : { width: 1366, height: 900 };
+      const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, reducedMotion: "reduce" });
+      const page = await context.newPage();
+      await page.addInitScript(theme => {
+        document.documentElement.dataset.roomTheme = theme;
+        localStorage.setItem('the-room-public-theme', theme);
+      }, theme);
+      await page.addInitScript('globalThis.__name = value => value');
+      await page.goto(`${origin}/rooms/room-0-0?gallery=1&role=${role}${role === 'user' ? '&deferAuth' : ''}`);
+      const modal = page.locator('[data-room-detail-modal]').first();
+      await modal.waitFor();
+      const toolbar = modal.locator('.room-detail-toolbar');
+      const consult = toolbar.getByRole('button', { name: 'Đi xem/Tư vấn' });
+      assert.equal(await consult.count(), role === 'anon' ? 1 : 0);
+      assert.equal(await toolbar.getByText('GG Maps', { exact: true }).count(), 1);
+      assert.equal(await toolbar.getByText('Nhóm Zalo', { exact: true }).count(), role === 'admin' ? 1 : 0);
+      if (role === 'user') {
+        await page.evaluate(() => (window as unknown as { resolveDetailAuth: () => void }).resolveDetailAuth());
+        await page.waitForFunction(() => (window as unknown as { fixtureDetailAuthFinished?: boolean }).fixtureDetailAuthFinished);
+        await settle(page);
+        assert.equal(await consult.count(), 0);
+      }
+      const colors = await modal.evaluate(element => ({
+        outer: getComputedStyle(element.querySelector('.room-detail-shell')!).backgroundColor,
+        panel: getComputedStyle(element.querySelector(innerWidth >= 1200 ? '.room-detail-summary' : '.room-detail-intro')!).backgroundColor,
+        price: getComputedStyle(element.querySelector('.room-price')!).color,
+        header: getComputedStyle(document.querySelector('[data-home-header]')!).backdropFilter,
+        homePrice: getComputedStyle(document.querySelector('.home-room-price')!).color,
+      }));
+      assert.notEqual(colors.outer, colors.panel);
+      assert.equal(colors.price, 'rgb(96, 165, 250)');
+      assert.equal(colors.homePrice, colors.price);
+      assert.equal(colors.header, 'blur(12px)');
+      if (mobile) {
+        if (role === 'anon') {
+          const overflow = await toolbar.evaluate(el => {
+            el.scrollLeft = el.scrollWidth;
+            return el.scrollLeft;
+          });
+          assert.ok(overflow > 0, 'toolbar scrolls horizontally without resizing its buttons');
+          await toolbar.evaluate(el => { el.scrollLeft = 0; });
+        }
+        const gallery = modal.locator('.room-detail-gallery');
+        const thumb = modal.getByRole('button', { name: 'Xem ảnh 2' });
+        const size = await thumb.boundingBox();
+        assert.equal(size?.width, 41);
+        assert.equal(size?.height, 33);
+        const before = [await gallery.boundingBox(), await toolbar.boundingBox()];
+        const content = modal.locator('.home-detail-content');
+        await content.evaluate(el => { el.scrollTop = el.scrollHeight; });
+        await settle(page);
+        assert.deepEqual([await gallery.boundingBox(), await toolbar.boundingBox()], before);
+        const scroll = await content.evaluate(el => ({ top: el.scrollTop, max: el.scrollHeight - el.clientHeight }));
+        assert.ok(scroll.top > 0 && Math.abs(scroll.top - scroll.max) <= 1);
+        await thumb.click();
+        assert.equal(await thumb.getAttribute('aria-pressed'), 'true');
+        if (role === 'anon') {
+          const stage = await gallery.locator('.room-detail-stage').boundingBox();
+          assert.ok(stage);
+          const session = await context.newCDPSession(page);
+          const y = stage.y + stage.height * 0.75;
+          for (const [type, fraction] of [['touchStart', 0.72], ['touchMove', 0.60], ['touchMove', 0.45], ['touchMove', 0.28]] as const) {
+            await session.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x: stage.x + stage.width * fraction, y }] });
+          }
+          await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await page.waitForFunction(() => document.querySelector('[aria-label="Xem ảnh 3"]')?.getAttribute('aria-pressed') === 'true');
+          await session.detach();
+        }
+      }
+      if (role === 'anon') {
+        await consult.click();
+        await page.getByRole('dialog', { name: 'Tư vấn hoặc đặt lịch xem phòng' }).waitFor();
+      }
+      await context.close();
+      console.log(`${mobile ? 'mobile' : 'desktop'} ${theme} ${role}: room layout and auth PASS`);
+    }
+    return;
+  }
   if (process.argv.includes('--filter-panel')) {
     for (const mobile of [false, true]) {
       const device = mobile ? 'mobile' : 'desktop';

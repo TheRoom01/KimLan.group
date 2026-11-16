@@ -44,7 +44,7 @@ export default function NearbyHomeRooms({ center, filters }: { center: NearbyRoo
                 {rooms.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(room => (
                   <li key={room.id} className="rounded-xl border border-current/20 p-3">
                     <a href={`/rooms/${encodeURIComponent(room.id)}`}>
-                      <strong>{room.room_type}</strong> · {room.price?.toLocaleString("vi-VN")} ₫ · {room.distance_km.toLocaleString("vi-VN", { maximumFractionDigits: 2 })} km
+                      <strong>{room.room_type}</strong> · <span className="room-price">{room.price?.toLocaleString("vi-VN")} ₫</span> · {room.distance_km.toLocaleString("vi-VN", { maximumFractionDigits: 2 })} km
                       <div>{room.address}</div>
                     </a>
                   </li>

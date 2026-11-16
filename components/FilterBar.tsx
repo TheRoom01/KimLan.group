@@ -553,14 +553,6 @@ const toggleStatus = (value: RoomStatusFilter) => {
     {/* HÀNG NÚT */}
   <div ref={filterRowRef} className="home-filter-row flex items-center justify-between gap-2">
   <div ref={filterButtonsRef} className="home-filter-buttons flex flex-nowrap items-center gap-2">
-    <a
-      href="/map"
-      aria-label="Tìm phòng trên bản đồ"
-      title="Tìm phòng trên bản đồ"
-      className="inline-flex h-[30px] min-h-[30px] shrink-0 items-center justify-center gap-1 rounded-2xl border border-white/25 bg-[rgba(255,255,255,0.06)] px-[9px] py-[5px] text-[9.5px] font-semibold tracking-wide text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)] backdrop-blur-[28px] shadow-[0_8px_28px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)] transition-all hover:bg-[rgba(255,255,255,0.1)] hover:border-white/40 sm:text-[10.5px]"
-    >
-      📍 Bản đồ
-    </a>
     {/* QUẬN */}
     <div className={`relative ${openFilter === "district" ? "z-[1600]" : "z-[1500]"}`}>
       <button

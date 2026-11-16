@@ -68,6 +68,8 @@ type RoomCardProps = {
 
 export type { Room as RoomCardRoom };
 
+const mobilePriceFormatter = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 6 });
+
 function roomAmenityLabels(room: Room): string[] {
   const rawDetail = room.room_detail ?? room.room_details;
   const detail = Array.isArray(rawDetail) ? rawDetail[0] : rawDetail;
@@ -1167,8 +1169,13 @@ return (
 
         <div className="contents">
           <div className="home-room-price-amenities-row col-span-2 row-start-2 flex min-w-0 items-center gap-2">
-            <div className="home-room-price shrink-0 text-[18px] font-semibold text-[#60A5FA]">
-              {price ? Number(price).toLocaleString("vi-VN") + " đ" : "Liên hệ"}
+            <div className="home-room-price room-price shrink-0 text-[18px] font-semibold">
+              {price ? (
+                <>
+                  <span className="home-price-vnd">{Number(price).toLocaleString("vi-VN")} đ</span>
+                  <span className="home-price-millions">{mobilePriceFormatter.format(Number(price) / 1_000_000)} triệu</span>
+                </>
+              ) : "Liên hệ"}
             </div>
             <div
               className="home-room-amenities relative z-20 min-w-0 flex-1 cursor-grab touch-auto select-none overflow-x-auto overscroll-x-contain whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
@@ -1204,11 +1211,11 @@ return (
           </div>
 
           {safeAdminLevel > 0 && room.is_hidden === true ? (
-            <span className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} col-start-2 row-start-1 justify-self-end !border-[#e5e7eb] !bg-[#f3f4f6] !text-[#6b7280]`}>
+            <span className={`${statusBadgeBaseClass} ${statusBadgeAdminClass} home-room-status col-start-2 row-start-1 justify-self-end !border-[#e5e7eb] !bg-[#f3f4f6] !text-[#6b7280]`}>
               Đã ẩn
             </span>
           ) : isAdmin ? (
-            <div className="relative z-20 col-start-2 row-start-1 justify-self-end">
+            <div className="relative z-20 home-room-status col-start-2 row-start-1 justify-self-end">
 
   <button
     ref={badgeRef}
@@ -1296,7 +1303,7 @@ return (
 
 </div>
           ) : (
-            <span className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass} col-start-2 row-start-1 justify-self-end`}>
+            <span className={`${statusBadgeBaseClass} ${statusBadgeAnonClass} ${statusBadgeColorClass} home-room-status col-start-2 row-start-1 justify-self-end`}>
               {roomStatusLabel(currentStatus, currentAvailableFrom)}
             </span>
           )}

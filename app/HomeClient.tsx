@@ -391,6 +391,8 @@ const prevMoveFilterRef = useRef<"elevator" | "stairs" | null>(null);
 
   // ================== ANON LOCK ==================
 const [isAnonLocked, setIsAnonLocked] = useState(initialAnonExpired && !initialUserId && !initialVipAccessTokenHash);
+const [footerSessionResolved, setFooterSessionResolved] = useState(Boolean(initialUserId));
+const [pagePulse, setPagePulse] = useState(0);
 const [isLoggedIn, setIsLoggedIn] = useState(Boolean(initialUserId));
 const [authResolving, setAuthResolving] = useState(false);
 const authResolvingRef = useRef(false);
@@ -2839,6 +2841,7 @@ useLayoutEffect(() => {
     if (loading || showSkeleton || navigation.target !== displayPageIndex) return;
 
     pageNavigationRef.current = null;
+    setPagePulse(pulse => pulse + 1);
     replaceUrlShallow(navigation.qs);
     const container = scrollRef.current;
     const heading = container?.querySelector<HTMLElement>("#phong");
@@ -3423,7 +3426,9 @@ useEffect(() => {
   let active = true;
   let sawAuthEvent = false;
   const applySession = (uid: string | null) => {
-    if (!active || uid === lastSessionUserIdRef.current) return;
+    if (!active) return;
+    setFooterSessionResolved(true);
+    if (uid === lastSessionUserIdRef.current) return;
     lastSessionUserIdRef.current = uid;
     authResolvingRef.current = Boolean(uid);
     setAuthResolving(Boolean(uid));
@@ -3442,8 +3447,8 @@ useEffect(() => {
     resetPagination(0);
   };
 
-  void supabase.auth.getSession().then(({ data }) => {
-    if (!sawAuthEvent) applySession(data.session?.user?.id ?? null);
+  void supabase.auth.getSession().then(({ data, error }) => {
+    if (!sawAuthEvent && !error) applySession(data.session?.user?.id ?? null);
   });
   const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
     sawAuthEvent = true;
@@ -3624,13 +3629,13 @@ return (
           relative z-50
           border-b border-[#E5C9A9]/20
           bg-[rgba(45,27,20,0.48)]
-          backdrop-blur-[28px]
+          backdrop-blur-[12px]
           shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.12)]
         "
       >
-        <div className="home-header-inner grid w-full max-w-none grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
+        <div className="home-header-inner grid w-full max-w-none items-center gap-x-3 gap-y-1.5 px-3 py-2.5 md:px-8 md:py-3 2xl:px-12">
           {/* LEFT: LOGO + TITLE */}
-          <div className="flex min-w-0 items-center gap-2 md:gap-3">
+          <div className="home-header-brand flex min-w-0 items-center gap-2 md:gap-3">
             <LogoIntroButton logoSrc="/logo-ui.webp" />
 
             <ThemeToggle />
@@ -3643,6 +3648,31 @@ return (
               </div>
             </div>
           </div>
+
+       <a
+  href="/map"
+  className="home-header-map"
+  aria-label="Tìm bằng bản đồ"
+  title="Tìm bằng bản đồ"
+>
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    style={{ flexShrink: 0 }}
+  >
+    <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z" />
+    <path d="M9 3v15M15 6v15" />
+  </svg>
+  <span className="home-map-full-label">Tìm bằng bản đồ</span>
+  <span className="home-map-short-label">Tìm bằng maps</span>
+</a>
 
     {/* RIGHT: ACCOUNT */}
         <div className="home-header-actions relative z-[3000] flex shrink-0 items-center gap-2 whitespace-nowrap">
@@ -3943,11 +3973,12 @@ return (
     >
       <Pagination
         pageNumber={(isSavedView ? savedPageIndex : displayPageIndex) + 1}
+        pagePulse={pagePulse}
         goNext={handleGoNext}
         goPrev={handleGoPrev}
         hasNext={visibleHasNext}
         loading={loading || isAnonLocked || (!isSavedView && pageIndex !== displayPageIndex)}
-        onConsult={() => setGeneralInquiryOpen(true)}
+        onConsult={footerSessionResolved && !isLoggedIn ? () => setGeneralInquiryOpen(true) : undefined}
       />
     </div>
 
