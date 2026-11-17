@@ -3,6 +3,7 @@ import { isUpdateCodeChange, stableJson } from "./room-comparison";
 import { applyPendingLocation } from "./pending-location";
 import { runSettledPool } from "@/lib/async-pool";
 import { randomUUID } from "crypto";
+import { getRoomVideoPosterKey } from "@/lib/media/videoPoster";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getImportReview } from "./room-comparison";
@@ -604,6 +605,15 @@ export async function publishPendingRoom(params: {
       ).trim();
 
       if (tempThumbKey) {
+        const posterKey = getRoomVideoPosterKey(copied.key, roomId);
+        if (posterKey) {
+          try {
+            const poster = await copyR2Object({ fromKey: tempThumbKey, toKey: posterKey });
+            finalKeys.push(poster.key);
+          } catch {
+            console.warn("Could not preserve Zalo video poster");
+          }
+        }
         tempKeysToDelete.push(tempThumbKey);
       }
 

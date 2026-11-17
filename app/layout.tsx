@@ -9,7 +9,7 @@ import LazyAuthControls from "@/components/LazyAuthControls";
 import ClientErrorOverlay from './_debug/ClientErrorOverlay';
 import InstallPrompt from "@/components/pwa/InstallPrompt";
 import PwaRegister from "@/components/pwa/PwaRegister";
-import { defaultShareImage, siteUrl } from "@/lib/default-share-image";
+import { defaultShareImage, homeOpenGraph, siteUrl } from "@/lib/default-share-image";
 
 export const metadata: Metadata = {
   metadataBase: siteUrl,
@@ -67,19 +67,7 @@ export const metadata: Metadata = {
     },
   },
 
-  openGraph: {
-    type: "website",
-    locale: "vi_VN",
-    url: "/",
-    siteName: "The Room SG",
-
-    title: "THE ROOM SG",
-
-    description:
-      "Hệ thống tìm kiếm căn hộ dịch vụ, phòng trọ, chung cư và nhà cho thuê tại TP.HCM.",
-
-    images: [defaultShareImage],
-  },
+  openGraph: homeOpenGraph,
 
   twitter: {
     card: "summary_large_image",

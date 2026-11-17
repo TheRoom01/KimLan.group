@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getFullImageUrls } from "@/lib/rooms/cardImages";
+import { compareRoomMediaOrder, getFullImageUrls } from "@/lib/rooms/cardImages";
 import { attachRoomBadges } from "@/lib/roomBadges";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PRIVATE_NO_STORE_HEADERS, requirePublicRoomDataAccess } from "@/lib/rooms/anonymousHomeAccess";
@@ -75,7 +75,7 @@ export async function GET(req: Request) {
 
       const images = getFullImageUrls({ media }, false);
 
-      const video = media.find((m) => m.type === "video" && m.url);
+      const video = media.filter((m) => m.type === "video" && m.url).sort(compareRoomMediaOrder)[0];
 
       roomMap.set(room.id, {
         ...room,

@@ -4,6 +4,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { authorizeRoomMutation } from "@/lib/rooms/authorizeRoomMutation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveUploadContentType } from "@/lib/media/uploadFileType";
+import { getRoomVideoPosterKey } from "@/lib/media/videoPoster";
 
 export const runtime = "nodejs";
 
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
     const tenantSide = String(body?.tenant_side || "").trim();
     const salesDocument = body?.sales_document === true;
     const fixedName = String(body?.fixed_name || "").trim();
+    const posterFor = String(body?.poster_for || "").trim();
     const fileName = String(body?.file_name || "").trim();
     const contentType = resolveUploadContentType({
       name: fileName,
@@ -150,6 +152,13 @@ export async function POST(request: Request) {
     }
 
     const allowFixedThumb = !isVideo && fixedName === "thumb.webp";
+    const posterKey = posterFor && roomId && !propertyId && !tenantId && !salesDocument
+      && !fixedName && contentType === "image/webp" && size <= 512 * 1024
+      ? getRoomVideoPosterKey(posterFor, roomId)
+      : "";
+    if (posterFor && !posterKey) {
+      return NextResponse.json({ error: "Invalid video poster" }, { status: 400 });
+    }
 
     if (allowFixedThumb && contentType !== "image/webp") {
       return NextResponse.json(
@@ -160,13 +169,13 @@ export async function POST(request: Request) {
 
     const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
     const folder = salesDocument ? "sales-documents" : isVideo ? "video" : "images";
-    const key = propertyId
+    const key = posterKey || (propertyId
       ? `properties/${propertyId}/${folder}/${crypto.randomUUID()}.${extension}`
       : tenantId
       ? `rooms/${roomId}/tenants/${tenantId}/cccd-${tenantSide}-${crypto.randomUUID()}.${extension}`
       : allowFixedThumb
       ? `rooms/${roomId}/${folder}/thumb.webp`
-      : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${extension}`;
+      : `rooms/${roomId}/${folder}/${crypto.randomUUID()}.${extension}`);
 
     const isThumb = key.endsWith("/thumb.webp");
     const cacheControl = isThumb

@@ -571,7 +571,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
       >
         Quận
         {selectedDistricts.length > 0 && (
-          <span className="text-xs text-white/65">
+          <span className="text-xs text-white/65 [[data-room-theme=light]_&]:text-[#513423]">
             ({selectedDistricts.length})
           </span>
         )}
@@ -626,7 +626,7 @@ const toggleStatus = (value: RoomStatusFilter) => {
       >
         Loại phòng
         {selectedRoomTypes.length > 0 && (
-          <span className="text-xs text-white/65">
+          <span className="text-xs text-white/65 [[data-room-theme=light]_&]:text-[#513423]">
             ({selectedRoomTypes.length})
           </span>
         )}

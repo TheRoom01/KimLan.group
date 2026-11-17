@@ -1,7 +1,8 @@
 "use client";
 
 import { roomStatusLabel } from "@/lib/rooms/availability";
-import { getFullImageUrls } from "@/lib/rooms/cardImages";
+import { getFullImageUrls, getVideoCardPoster } from "@/lib/rooms/cardImages";
+import { getRoomVideoPosterUrl } from "@/lib/media/videoPoster";
 import { homeCoverLoader, isResizableHomeCover } from "@/lib/rooms/homeCover";
 import { requestAvailabilityDate } from "@/components/rooms/requestAvailabilityDate";
 import { showRoomNavigationPreview } from "@/components/rooms/RoomNavigationPreview";
@@ -42,6 +43,8 @@ type Room = {
   video_url?: string | null;
   video_urls?: string[] | null;
   thumb_url?: string | null;
+  media?: Parameters<typeof getVideoCardPoster>[0]["media"];
+  video_poster_url?: string | null;
 
   owner_id?: string | null;
   link_zalo?: string | null;
@@ -375,7 +378,8 @@ const contactName = isLoggedAdmin
 ]);
 
   // Tổng số ảnh (ưu tiên image_count từ DB)
-  const coverUrl = images[0] ?? "";
+  const videoPoster = getVideoCardPoster(room) || getRoomVideoPosterUrl(videos[0] ?? "");
+  const coverUrl = images[0] ?? videoPoster;
   const [failedCover, setFailedCover] = useState<string | null>(null);
   const [adminPhone, setAdminPhone] = useState<string | null>(null);
   const adminPhones = useMemo(

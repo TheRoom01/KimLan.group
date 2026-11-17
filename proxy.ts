@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { homeOpenGraph } from "@/lib/default-share-image";
 import {
   ANONYMOUS_HOME_COOKIE,
   ANONYMOUS_HOME_COOKIE_MAX_AGE,
@@ -50,6 +51,36 @@ async function sha256Base64Url(input: string) {
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  const userAgent = request.headers.get("user-agent") ?? "";
+  if (
+    pathname === "/" &&
+    (request.method === "GET" || request.method === "HEAD") &&
+    /\b(?:facebookexternalhit|facebot)\b/i.test(userAgent)
+  ) {
+    const { type, locale, url, siteName, title, description, images: [image] } = homeOpenGraph;
+    return new NextResponse(request.method === "HEAD" ? null : `<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<title>${title}</title>
+<link rel="canonical" href="${url}">
+<meta property="og:type" content="${type}">
+<meta property="og:locale" content="${locale}">
+<meta property="og:url" content="${url}">
+<meta property="og:site_name" content="${siteName}">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${description}">
+<meta property="og:image" content="${image.url}">
+<meta property="og:image:width" content="${image.width}">
+<meta property="og:image:height" content="${image.height}">
+<meta property="og:image:type" content="${image.type}">
+<meta property="og:image:alt" content="${image.alt}">
+</head><body>${title}</body></html>`, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "private, no-store",
+        Vary: "User-Agent",
+      },
+    });
+  }
   const needsRoomSession = pathname === "/" || pathname === "/map" || pathname.startsWith("/rooms/");
   let anonymousCookieToSet: string | null = null;
   const existingAnonymousToken = needsRoomSession

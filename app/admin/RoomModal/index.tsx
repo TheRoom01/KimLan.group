@@ -6,6 +6,7 @@ import { beginImportTask, updateImportTask, finishImportTask, isImportBusy, pres
 import { vacancyDateFromText, withoutStructuredAmenities } from "@/lib/zalo-import/listing-fields";
 import { importLocationQueries } from "@/lib/zalo-import/pending-location";
 import { uploadDirect } from "@/lib/media/upload-direct";
+import { captureVideoPoster, getRoomVideoPosterUrl } from "@/lib/media/videoPoster";
 import { requireAvailabilityDate } from "@/lib/rooms/availability";
 import { useEffect, useState, useRef, type CSSProperties } from 'react'
 import type { Room, TabKey, RoomStatus } from '../../types/room'
@@ -517,6 +518,38 @@ async function makeThumbWebp(
     }
   }
 
+  async function saveVideoPoster(roomId: string, videoUrl: string, file?: File) {
+    const posterUrl = getRoomVideoPosterUrl(videoUrl, roomId);
+    if (!posterUrl) return;
+    const source = file ? URL.createObjectURL(file) : videoUrl;
+    try {
+      if (!file) {
+        const existing = await fetch(posterUrl, { method: 'HEAD', cache: 'no-store' })
+          .catch(() => null);
+        if (existing?.ok || (existing && existing.status !== 404)) return;
+      }
+      const poster = await captureVideoPoster(source);
+      const response = await fetch('/api/upload/r2-presign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_id: roomId,
+          poster_for: inferR2KeyFromPublicUrl(videoUrl),
+          file_name: poster.name,
+          content_type: poster.type,
+          size: poster.size,
+        }),
+      });
+      if (!response.ok) throw new Error(`Poster presign failed (HTTP ${response.status})`);
+      const { uploadUrl, requiredHeaders } = await response.json();
+      await uploadDirect({ url: uploadUrl, file: poster, headers: requiredHeaders });
+    } catch (error) {
+      console.warn('Video poster could not be saved', error);
+    } finally {
+      if (file) URL.revokeObjectURL(source);
+    }
+  }
+
   // ================== UPLOAD FILES ==================
 const handleUploadFiles = async (files: File[]) => {
   if (!files?.length) return
@@ -823,6 +856,8 @@ try {
     room_id: roomId,
     file: uploadFile,
   })
+
+  if (isVideo && !isPending) await saveVideoPoster(roomId, publicUrl, file)
 
   const mediaItem = {
     type: isVideo ? 'video' : 'image',
@@ -2007,6 +2042,11 @@ if (mediaChanged) {
   const coverUrl = nextMedia.find(({ type }) => type === 'image')?.url
   const previousCoverUrl = initialMedia?.displayed.find(({ type }) => type === 'image')?.url
   if (coverUrl && coverUrl !== previousCoverUrl) void uploadThumbFromCover({ roomId, coverUrl })
+}
+
+if (!nextMedia.some(({ type }) => type === 'image')) {
+  const firstVideo = nextMedia.find(({ type }) => type === 'video');
+  if (firstVideo) await saveVideoPoster(roomId, firstVideo.url);
 }
 
 // Đồng bộ cache RSC sau khi rooms + media đã ghi xong. Đây là request chỉ chạy

@@ -25,6 +25,9 @@ type RoomImageMedia = {
   url?: string | null;
   sort_order?: number | null;
   created_at?: string | null;
+  poster_url?: string | null;
+  thumb_url?: string | null;
+  thumbnail_url?: string | null;
 };
 
 export function compareRoomMediaOrder(left: RoomImageMedia, right: RoomImageMedia) {
@@ -58,4 +61,16 @@ export function getFullImageUrls(room: {
     : [];
   const urls = images.length ? images : (room.image_urls ?? []).map(url => url?.trim()).filter(Boolean);
   return deduplicate ? [...new Set(urls)] : urls;
+}
+
+export function getVideoCardPoster(room: {
+  media?: RoomImageMedia[] | null;
+  video_poster_url?: string | null;
+}) {
+  const video = (Array.isArray(room.media) ? room.media : []).filter(item =>
+    (item?.type ?? item?.kind)?.toLowerCase() === "video" && item.url?.trim()
+  ).sort(compareRoomMediaOrder)[0];
+
+  return [video?.poster_url, video?.thumb_url, video?.thumbnail_url, room.video_poster_url]
+    .find(url => url?.trim())?.trim() ?? "";
 }
