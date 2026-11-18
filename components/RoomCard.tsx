@@ -333,18 +333,11 @@ const isLoggedAdmin =
   Boolean(currentUserId) &&
   (safeAdminLevel === 1 || safeAdminLevel === 2);
 
-// Admin L2 phải liên hệ đúng người đã tạo phòng, không phải tài khoản L2
-// đang xem card. Admin L1 vẫn giữ fallback hiện tại.
-// Anon VIP: chỉ nhận contact đã được HomeClient truyền từ Link Giỏ hàng.
-// Anon thường dùng hotline công khai; Link Giỏ hàng vẫn dùng contact được truyền xuống.
+// Admin ở mọi cấp liên hệ người tạo phòng. Không dùng số người đang xem
+// hoặc số chủ nhà thay thế khi phòng chưa có contact của admin tạo phòng.
+// Khách VIP nhận contact của người tạo link từ HomeClient.
 const contactPhone = isLoggedAdmin
-  ? String(
-      (safeAdminLevel === 2
-        ? room.creator_admin_phone || currentAdminPhone
-        : currentAdminPhone || room.creator_admin_phone) ||
-      room.zalo_phone ||
-      ""
-    ).trim() || null
+  ? String(room.creator_admin_phone ?? "").trim() || null
   : String(currentAdminPhone ?? "").trim() || "0967467587";
 
 const contactPhones = useMemo(
@@ -353,12 +346,7 @@ const contactPhones = useMemo(
 );
 
 const contactName = isLoggedAdmin
-  ? String(
-      (safeAdminLevel === 2
-        ? room.creator_admin_name || currentAdminName
-        : currentAdminName || room.creator_admin_name) ||
-      ""
-    ).trim() || "Liên hệ"
+  ? String(room.creator_admin_name ?? "").trim() || "Liên hệ"
   : String(currentAdminName ?? "").trim() || "The Room SG";
 
   useEffect(() => {

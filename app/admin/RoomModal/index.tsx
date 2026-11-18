@@ -2175,7 +2175,7 @@ const stopBackdropEvents = (e: any) => {
 
   return (
       <div
-        className={isPending ? undefined : 'room-modal-compact admin-room-drawer'}
+        className={isPending ? 'room-modal-compact room-modal-import' : 'room-modal-compact admin-room-drawer'}
         style={overlay}
         onPointerDown={handleBackdropDown}
       >

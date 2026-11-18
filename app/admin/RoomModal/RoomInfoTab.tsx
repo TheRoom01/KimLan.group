@@ -171,7 +171,7 @@ const [isMobile, setIsMobile] = useState(false)
 useEffect(() => {
   if (typeof window === 'undefined') return
 
-  const mq = window.matchMedia('(max-width: 640px)')
+  const mq = window.matchMedia('(max-width: 700px)')
   const apply = () => setIsMobile(mq.matches)
 
   apply()
@@ -213,8 +213,8 @@ useEffect(() => {
 };
 
   const infoGridStyle: React.CSSProperties = isMobile
-  ? { ...grid4, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }
-  : grid4
+  ? { ...grid3, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }
+  : grid3
 
   const detailGridStyle: React.CSSProperties = {
     display: 'grid',
@@ -223,11 +223,54 @@ useEffect(() => {
     alignItems: 'start',
   }
 
+  const uploadField = (
+        <div className="room-modal-upload-field">
+          {isMobile && <label style={labelStyle}>Ảnh</label>}
+
+
+          <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          style={{ display: "none" }}
+
+          onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+
+          if (files.length) onUploadFiles(files);
+
+          e.currentTarget.value = "";
+        }}
+        />
+
+
+          <button
+            type="button"
+            style={{ ...addImageBtn, opacity: uploading ? 0.6 : 1 }}
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+            aria-busy={uploading}
+          >
+            {uploading ? 'Đang tải...' : 'Thêm ảnh/Video'}
+          </button>
+
+          {uploading && <div className="room-modal-upload-help" role="status" style={{ ...helperText, overflowWrap: 'anywhere' }}>{uploadMessage || 'Đang chuẩn bị tải...'}</div>}
+
+          {/* Gợi ý UX nhỏ */}
+          <div className="room-modal-upload-help" style={helperText}>
+            {isMobile && imageUrls.length > 0 ? (
+              <><b>{imageUrls.length}</b> ảnh · Kéo thả để sắp xếp.</>
+            ) : 'Chọn nhiều ảnh/video cùng lúc.'}
+          </div>
+        </div>
+  );
+
   return (
     <div className="room-modal-section" style={sectionBox}>
       <div className="room-modal-info-fields">
-      {/* Row 1: Số nhà | tên đường | Phường | Quận */}
-      <div style={infoGridStyle}>
+      {/* Row 1: Số nhà | Phường | Quận */}
+      <div className="room-modal-address-row" style={infoGridStyle}>
         <Input
           label="Số nhà"
           value={value.house_number}
@@ -247,24 +290,6 @@ useEffect(() => {
             }
             onAutofillByAddress?.(value.house_number, normalizedAddress);
           }}
-        />
-        <Input
-          label="Tên đường"
-          value={value.address}
-          onChange={v => onChange({
-            ...value,
-            property_id: undefined,
-            address: v,
-          })}
-          onBlur={() => {
-        const normalizedAddress = toTitleCaseStreet(value.address);
-        onChange({
-          ...value,
-          property_id: undefined,
-          address: normalizedAddress,
-        });
-        onAutofillByAddress?.(value.house_number, normalizedAddress);
-      }}
         />
         <Input
           label="Phường"
@@ -298,8 +323,26 @@ useEffect(() => {
 
       </div>
 
-      {/* Row 2: Mã phòng | Giá | Loại phòng */}
+      {/* Row 2: Tên đường | Mã phòng | Giá */}
       <div className="room-modal-core-row" style={infoGridStyle}>
+        <Input
+          label="Tên đường"
+          value={value.address}
+          onChange={v => onChange({
+            ...value,
+            property_id: undefined,
+            address: v,
+          })}
+          onBlur={() => {
+        const normalizedAddress = toTitleCaseStreet(value.address);
+        onChange({
+          ...value,
+          property_id: undefined,
+          address: normalizedAddress,
+        });
+        onAutofillByAddress?.(value.house_number, normalizedAddress);
+      }}
+        />
         <Input
           label="Mã phòng"
           value={value.room_code}
@@ -310,17 +353,13 @@ useEffect(() => {
           value={value.price}
           onChange={v => onChange({ ...value, price: v })}
         />
-        <Select
-          label="Loại phòng"
-          value={value.room_type}
-          options={ensureOption(ROOM_TYPE_OPTIONS, value.room_type)}
-          onChange={(v) => onChange({ ...value, room_type: v })}
-        />
+
 
       </div>
 
-      {/* Row 3: Trạng thái | Ngày tạo (lấy updated_at) | Thêm ảnh */}
+      {/* Row 3: Ngày tạo (lấy updated_at) | Trạng thái | Loại phòng */}
       <div className="room-modal-status-media-row" style={infoGridStyle}>
+        <ReadOnly label="Ngày tạo" value={formatDate(updatedAt)} />
        <Select
         label="Trạng thái"
         statusColors
@@ -338,53 +377,17 @@ useEffect(() => {
         }}
       />
 
-        <ReadOnly label="Ngày tạo" value={formatDate(updatedAt)} />
 
-        <div className="room-modal-upload-field">
-          <label style={labelStyle}>Ảnh</label>
 
-          <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          style={{ display: "none" }}
-
-          onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-
-          if (files.length) onUploadFiles(files);
-
-          e.currentTarget.value = "";
-        }}
+        <Select
+          label="Loại phòng"
+          value={value.room_type}
+          options={ensureOption(ROOM_TYPE_OPTIONS, value.room_type)}
+          onChange={(v) => onChange({ ...value, room_type: v })}
         />
-
-
-          <button
-            type="button"
-            style={{ ...addImageBtn, opacity: uploading ? 0.6 : 1 }}
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-            aria-busy={uploading}
-          >
-            {uploading ? 'Đang tải...' : 'Thêm ảnh/Video'}
-          </button>
-
-          {uploading && <div className="room-modal-upload-help" role="status" style={{ ...helperText, overflowWrap: 'anywhere' }}>{uploadMessage || 'Đang chuẩn bị tải...'}</div>}
-
-          {/* Gợi ý UX nhỏ */}
-          <div className="room-modal-upload-help" style={helperText}>
-            {imageUrls.length > 0 ? (
-              <>
-                <b>{imageUrls.length}</b> ảnh · Kéo thả để sắp xếp.
-              </>
-            ) : (
-              <>Chọn nhiều ảnh/video cùng lúc.</>
-            )}
-          </div>
-        </div>
       </div>
 
+        {isMobile && uploadField}
       </div>
       <section
         className="room-modal-badges"
@@ -397,13 +400,9 @@ useEffect(() => {
           background: "rgba(255, 248, 238, .62)",
         }}
       >
-        <h3 id="room-badges-heading" style={{ ...labelStyle, marginBottom: 4 }}>
-          Badge hiển thị
-        </h3>
-        <p style={{ margin: "0 0 12px", color: "#806a55", fontSize: 12, lineHeight: 1.5 }}>
-          Chọn các nhãn muốn hiển thị trên thẻ phòng.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div className="room-modal-badge-options">
+          <h3 id="room-badges-heading" style={{ ...labelStyle, margin: 0 }}>{isMobile ? 'Badge hiển thị' : 'Nhãn:'}</h3>
+          {isMobile && <p className="room-modal-badge-description">Chọn các nhãn muốn hiển thị trên thẻ phòng.</p>}
           {ROOM_BADGES.map((badge) => {
             const selected = normalizeRoomBadges(value.badges).includes(badge.id);
             return (
@@ -441,7 +440,69 @@ useEffect(() => {
             );
           })}
         </div>
+        {!isMobile && uploadField}
       </section>
+
+{/* Các khối nhiều chữ luôn xếp 2 cột, kể cả mobile */}
+<div className="room-modal-details" style={detailGridStyle}>
+  <TextArea
+    label="Link nhóm Zalo & File:"
+    value={zaloUrlDraft}
+    onChange={(v) => {
+      const nextUrl = String(v ?? "");
+      setZaloUrlDraft(nextUrl);
+
+      // ✅ chỉ cập nhật link_zalo
+      onChange({ ...(value as any), link_zalo: nextUrl });
+    }}
+  />
+
+  <div style={{ minWidth: 0 }}>
+    <label style={labelStyle}>SĐT chủ nhà:</label>
+
+    <ResizableTextArea
+      value={zaloPhoneDraft}
+      onChange={(nextPhoneBlock) => {
+        setZaloPhoneDraft(nextPhoneBlock);
+        onChange({ ...(value as any), zalo_phone: nextPhoneBlock });
+      }}
+      placeholder={'☎️0** *** 000 A Tú'}
+    />
+
+    {/* ✅ HIỂN THỊ SỐ ĐÃ LỌC (mỗi dòng -> 1 số) */}
+    <div style={{ marginTop: 6, fontSize: 13, color: "#111827", lineHeight: 1.4 }}>
+      {zaloPhoneDraft
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\D/g, "")) // ✅ chỉ giữ số
+        .filter(Boolean)
+        .map((digits, i) => (
+          <div key={i}>{digits}</div>
+        ))}
+    </div>
+  </div>
+
+
+ {/* Mô tả */}
+      <TextArea
+        label="Mô tả:"
+        value={value.description}
+        onChange={v => onChange({ ...value, description: v })}
+      />
+
+    <div style={{ minWidth: 0 }}>
+      <label style={labelStyle}>Chính sách:</label>
+      <ResizableTextArea
+        value={chinh_sach}
+        onChange={onChangeChinhSach}
+        placeholder="Nhập chính sách..."
+      />
+    </div>
+    <TextArea
+        label="Link Google Maps:"
+        value={value.google_maps_url}
+        onChange={(v) => onChange({ ...value, google_maps_url: v })}
+      />
+</div>
 
       {/* Preview ảnh */}
 {imageUrls.filter((u: string) => /^https?:\/\//.test(u)).length > 0 && (
@@ -590,66 +651,6 @@ useEffect(() => {
   })}
 </div>
 
-{/* Các khối nhiều chữ luôn xếp 2 cột, kể cả mobile */}
-<div className="room-modal-details" style={detailGridStyle}>
-  <TextArea
-    label="Link nhóm Zalo & File:"
-    value={zaloUrlDraft}
-    onChange={(v) => {
-      const nextUrl = String(v ?? "");
-      setZaloUrlDraft(nextUrl);
-
-      // ✅ chỉ cập nhật link_zalo
-      onChange({ ...(value as any), link_zalo: nextUrl });
-    }}
-  />
-
-  <div style={{ minWidth: 0 }}>
-    <label style={labelStyle}>SĐT chủ nhà:</label>
-
-    <ResizableTextArea
-      value={zaloPhoneDraft}
-      onChange={(nextPhoneBlock) => {
-        setZaloPhoneDraft(nextPhoneBlock);
-        onChange({ ...(value as any), zalo_phone: nextPhoneBlock });
-      }}
-      placeholder={'☎️0** *** 000 A Tú'}
-    />
-
-    {/* ✅ HIỂN THỊ SỐ ĐÃ LỌC (mỗi dòng -> 1 số) */}
-    <div style={{ marginTop: 6, fontSize: 13, color: "#111827", lineHeight: 1.4 }}>
-      {zaloPhoneDraft
-        .split(/\r?\n/)
-        .map((line) => line.replace(/\D/g, "")) // ✅ chỉ giữ số
-        .filter(Boolean)
-        .map((digits, i) => (
-          <div key={i}>{digits}</div>
-        ))}
-    </div>
-  </div>
-      
-
- {/* Mô tả */}
-      <TextArea
-        label="Mô tả:"
-        value={value.description}
-        onChange={v => onChange({ ...value, description: v })}
-      />
-
-    <div style={{ minWidth: 0 }}>
-      <label style={labelStyle}>Chính sách:</label>
-      <ResizableTextArea
-        value={chinh_sach}
-        onChange={onChangeChinhSach}
-        placeholder="Nhập chính sách..."
-      />
-    </div>
-    <TextArea
-        label="Link Google Maps:"
-        value={value.google_maps_url}
-        onChange={(v) => onChange({ ...value, google_maps_url: v })}
-      />
-</div>
     </div>
   )
 }
@@ -1044,9 +1045,9 @@ const previewGrid: React.CSSProperties = {
   gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
 }
 
-const grid4: React.CSSProperties = {
+const grid3: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
   gap: 12,
 }
 const thumbWrap: React.CSSProperties = {

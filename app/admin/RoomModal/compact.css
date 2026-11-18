@@ -13,6 +13,24 @@
   --room-modal-control: 36px;
 }
 
+.room-modal-import {
+  --room-modal-width: 690px;
+  --room-modal-footer-columns: auto auto minmax(0, 1fr);
+}
+
+.room-modal-import > div {
+  border: 1px solid rgba(154, 112, 75, 0.25);
+  border-radius: 18px !important;
+}
+
+@media (min-width: 1100px) {
+  .room-modal-import {
+    --room-modal-gutter: 13px;
+    --room-modal-control: 34px;
+    --room-modal-header-gap: 16px;
+  }
+}
+
 html:has(.room-modal-compact) { overflow: hidden; }
 .room-modal-compact .room-modal-body {
   overscroll-behavior: contain;
@@ -43,12 +61,23 @@ html:has(.room-modal-compact) { overflow: hidden; }
 }
 .room-modal-compact .room-modal-info-fields {
   display: grid;
-  grid-template-columns: repeat(var(--room-modal-columns), minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 8px 10px;
 }
-.room-modal-compact .room-modal-info-fields > div { display: contents !important; }
-.room-modal-compact .room-modal-info-fields > div:last-child > div:last-child { grid-column: span 2; }
+.room-modal-compact .room-modal-info-fields > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+.room-modal-compact .room-modal-info-fields > div > div { min-width: 0; }
+.room-modal-compact .room-modal-badges .room-modal-upload-field button {
+  min-height: calc(var(--room-modal-control) + 4px);
+  padding: 7px 12px !important;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .room-modal-compact .room-modal-section { gap: 10px !important; }
 .room-modal-compact .room-modal-section label:not(:has(input[type="checkbox"], input[type="radio"])) {
   margin-bottom: 4px !important;
@@ -65,10 +94,41 @@ html:has(.room-modal-compact) { overflow: hidden; }
 .room-modal-compact .room-modal-info-fields button { gap: 5px; text-align: left; }
 .room-modal-compact .room-modal-info-fields button span:first-child { overflow-wrap: anywhere; }
 .room-modal-compact .room-modal-badges {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 12px;
+  align-items: center;
   margin-top: 0 !important;
   padding: 8px 10px !important;
 }
-.room-modal-compact .room-modal-badges p { margin-bottom: 6px !important; }
+.room-modal-compact .room-modal-badge-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.room-modal-compact .room-modal-badge-options h3 {
+  flex-shrink: 0;
+  font-size: 13px !important;
+  line-height: 1.35;
+}
+.room-modal-compact .room-modal-badges > .room-modal-upload-field {
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid rgba(129, 89, 55, .22);
+}
+.room-modal-compact .room-modal-badges .room-modal-upload-field > label {
+  min-height: 0;
+  padding: 0 !important;
+}
+.room-modal-compact .room-modal-badges .room-modal-upload-help {
+  margin-top: 4px !important;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .room-modal-compact .room-modal-badges label { min-height: 36px; padding: 4px 9px !important; }
 .room-modal-compact .room-modal-thumbnails {
   grid-template-columns: none !important;
@@ -100,6 +160,8 @@ html:has(.room-modal-compact) { overflow: hidden; }
   line-height: 1.3;
 }
 @media (max-width: 700px) {
+  .room-modal-import { --room-modal-footer-columns: auto minmax(0, 1fr); }
+  .room-modal-import .room-modal-footer > div:last-child { grid-column: 1 / -1; }
   .room-modal-compact {
     --room-modal-top: max(6px, env(safe-area-inset-top));
     --room-modal-bottom: max(6px, env(safe-area-inset-bottom));
@@ -151,10 +213,49 @@ html:has(.room-modal-compact) { overflow: hidden; }
     padding-inline: 15px !important;
     font-size: 15px;
   }
+  .room-modal-compact .room-modal-badges { grid-template-columns: minmax(0, 1fr); }
+  .room-modal-compact .room-modal-badges > .room-modal-upload-field {
+    border-left: 0;
+    border-top: 1px solid rgba(129, 89, 55, .22);
+    padding-left: 0;
+    padding-top: 10px;
+  }
   .room-modal-compact .room-modal-badges label { min-height: 44px; }
-  .room-modal-compact .room-modal-info-fields > div:last-child > div:last-child { grid-column: auto; }
+  .room-modal-compact .room-modal-info-fields > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .room-modal-compact .room-modal-info-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .room-modal-compact .room-modal-info-fields > :is(.room-modal-address-row, .room-modal-core-row, .room-modal-status-media-row) {
+    display: contents !important;
+  }
+  .room-modal-compact .room-modal-address-row > div:nth-child(1) { order: 1; }
+  .room-modal-compact .room-modal-core-row > div:nth-child(1) { order: 2; }
+  .room-modal-compact .room-modal-address-row > div:nth-child(2) { order: 3; }
+  .room-modal-compact .room-modal-address-row > div:nth-child(3) { order: 4; }
+  .room-modal-compact .room-modal-core-row > div:nth-child(2) { order: 5; }
+  .room-modal-compact .room-modal-core-row > div:nth-child(3) { order: 6; }
+  .room-modal-compact .room-modal-status-media-row > div:nth-child(3) { order: 7; }
+  .room-modal-compact .room-modal-status-media-row > div:nth-child(2) { order: 8; }
+  .room-modal-compact .room-modal-status-media-row > div:nth-child(1) { order: 9; }
+  .room-modal-compact .room-modal-info-fields > .room-modal-upload-field {
+    display: block;
+    order: 10;
+  }
+  .room-modal-compact .room-modal-badge-options h3 {
+    flex-basis: 100%;
+    font-size: 14px !important;
+    font-weight: 400;
+  }
+  .room-modal-compact .room-modal-badge-description {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #806a55;
+  }
 }
 @media (max-width: 350px) {
   .room-modal-compact { --room-modal-gutter: 8px; }
-  .room-modal-compact .room-modal-info-fields > div:nth-child(3) > div:first-child { grid-column: 1 / -1; }
 }

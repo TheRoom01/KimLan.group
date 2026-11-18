@@ -406,81 +406,59 @@
     --room-modal-header-gap: 16px;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-header {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-header {
     top: calc(-1 * var(--room-modal-gutter)) !important;
     margin-bottom: var(--room-modal-header-gap) !important;
     padding-bottom: 10px !important;
     box-shadow: 0 8px 16px rgba(67, 41, 24, 0.08) !important;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-info-fields > .room-modal-core-row,
-  .admin-room-manager .admin-room-drawer .room-modal-info-fields > .room-modal-status-media-row {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-info-fields > .room-modal-address-row,
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-info-fields > .room-modal-core-row,
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-info-fields > .room-modal-status-media-row {
     display: grid !important;
     grid-column: 1 / -1;
     align-items: start;
     gap: 10px;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-info-fields > .room-modal-core-row {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-info-fields > .room-modal-address-row,
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-info-fields > .room-modal-core-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-info-fields > .room-modal-status-media-row {
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.8fr) minmax(0, 1.25fr);
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-info-fields > .room-modal-status-media-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-info-fields > .room-modal-status-media-row > div:last-child {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-info-fields > .room-modal-status-media-row > div:last-child {
     grid-column: auto !important;
     min-width: 0;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-upload-field button {
-    overflow: hidden;
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-upload-field button {
     padding-inline: 8px !important;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-upload-help {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-upload-help {
     margin-top: 3px !important;
-    overflow: hidden;
     color: #806a55 !important;
     font-size: 10.5px !important;
     line-height: 1.25 !important;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-badges {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: baseline;
-    column-gap: 10px;
-    row-gap: 6px;
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-badges {
     border-radius: 12px !important;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-badges h3,
-  .admin-room-manager .admin-room-drawer .room-modal-badges p {
-    margin: 0 !important;
-  }
-
-  .admin-room-manager .admin-room-drawer .room-modal-badges p {
-    font-size: 11px !important;
-    line-height: 1.3 !important;
-  }
-
-  .admin-room-manager .admin-room-drawer .room-modal-badges > div:last-child {
-    grid-column: 1 / -1;
-    gap: 6px !important;
-  }
-
-  .admin-room-manager .admin-room-drawer .room-modal-badges label {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-badges label {
     min-height: 29px;
     padding: 3px 8px !important;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-image-preview {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-image-preview {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
@@ -488,47 +466,47 @@
     min-width: 0;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-image-preview > label {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-image-preview > label {
     margin: 0 !important;
     white-space: nowrap;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-image-preview .room-modal-thumbnails {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-image-preview .room-modal-thumbnails {
     grid-template-columns: repeat(auto-fill, 87px) !important;
     grid-auto-flow: row;
     grid-auto-columns: unset;
     overflow: visible;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-video-strip {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-video-strip {
     flex-wrap: wrap;
     overflow: visible;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-video {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-video {
     width: 150px;
     height: 105px;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-video-strip:empty {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-video-strip:empty {
     display: none;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-details textarea {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-details textarea {
     min-height: 72px !important;
   }
 
-  .admin-room-manager .admin-room-drawer :is(.room-modal-sync-button, .room-modal-save-button) {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) :is(.room-modal-sync-button, .room-modal-save-button) {
     width: 112px;
     min-width: 112px;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-details,
-  .admin-room-manager .admin-room-drawer .room-modal-fees {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-details,
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-fees {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
-  .admin-room-manager .admin-room-drawer .room-modal-body {
+  :is(.admin-room-manager .admin-room-drawer, .room-modal-import) .room-modal-body {
     scrollbar-gutter: stable;
   }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { buildVipShareUrl } from "@/lib/vipShareUrl";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -198,9 +199,7 @@ export async function GET(
             creator_admin_name:
               creatorNames.get(String(row.created_by ?? "").trim()) || null,
             link: token_value
-              ? `${origin}/?vip=${encodeURIComponent(
-                  token_value
-                )}`
+              ? buildVipShareUrl(origin, token_value)
               : null,
           };
         }
@@ -363,9 +362,7 @@ export async function POST(
       getSiteOrigin(request);
 
     const vipLink =
-      `${origin}/?vip=${encodeURIComponent(
-        token
-      )}`;
+      buildVipShareUrl(origin, token);
 
     const {
       token_value:

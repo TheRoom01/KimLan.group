@@ -55,9 +55,19 @@ export async function proxy(request: NextRequest) {
   if (
     pathname === "/" &&
     (request.method === "GET" || request.method === "HEAD") &&
-    /\b(?:facebookexternalhit|facebot)\b/i.test(userAgent)
+    // In-app browsers can also mention Zalo/WhatsApp/Viber in their UA.
+    // Keep serving the app to those browsers instead of this metadata-only page.
+    (/\b(?:facebookexternalhit|facebot|zalobot|twitterbot|telegrambot|slackbot(?:-linkexpanding)?|discordbot|linkedinbot|line(?:bot|poker))\b/i.test(userAgent) ||
+      (!/Mozilla\//i.test(userAgent) && /\b(?:zalo|whatsapp|viber)\b/i.test(userAgent)))
   ) {
-    const { type, locale, url, siteName, title, description, images: [image] } = homeOpenGraph;
+    const { type, locale, siteName, title, description, images: [image] } = homeOpenGraph;
+    // Keep the VIP identity when a platform caches or follows og:url.
+    // Only include the access parameter, never arbitrary query text in HTML.
+    const shareUrl = new URL(homeOpenGraph.url);
+    const vip = request.nextUrl.searchParams.get("vip");
+    if (vip) shareUrl.searchParams.set("vip", vip);
+    const url = shareUrl.href.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;");
     return new NextResponse(request.method === "HEAD" ? null : `<!doctype html>
 <html lang="vi"><head><meta charset="utf-8">
 <title>${title}</title>
@@ -69,10 +79,16 @@ export async function proxy(request: NextRequest) {
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
 <meta property="og:image" content="${image.url}">
+<meta property="og:image:secure_url" content="${image.url}">
 <meta property="og:image:width" content="${image.width}">
 <meta property="og:image:height" content="${image.height}">
 <meta property="og:image:type" content="${image.type}">
 <meta property="og:image:alt" content="${image.alt}">
+<meta name="description" content="${description}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${title}">
+<meta name="twitter:description" content="${description}">
+<meta name="twitter:image" content="${image.url}">
 </head><body>${title}</body></html>`, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
